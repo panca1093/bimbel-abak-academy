@@ -1,0 +1,12 @@
+# Go
+/backend/bin/
+*.test
+
+# Env files (keep the *.example variants)
+.env
+.env.local
+backend/.env
+web/.env.local
+
+# OS
+.DS_Store

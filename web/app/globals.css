@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* Brand tokens — see design-app-abak/source/styles.css (CSS vars are named
+   --green-* upstream but the actual palette is indigo/violet). */
+@theme {
+  --color-brand-50: #eef0fe;
+  --color-brand-500: #5161e8;
+  --color-brand-600: #3d4ddb;
+  --color-brand-700: #2e3bb8;
+  --color-brand-900: #1a2168;
+
+  --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-spline-mono), ui-monospace, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+}
