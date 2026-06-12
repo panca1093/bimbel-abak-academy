@@ -1,0 +1,188 @@
+package server
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/service"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
+)
+
+func newTestDeps(t *testing.T) (*platform.JWTSigner, *service.Service, *miniredis.Miniredis) {
+	t.Helper()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	signer := platform.NewJWTSigner("test-secret", time.Hour)
+	svc := service.NewForTest(rdb)
+	return signer, svc, mr
+}
+
+func echoWithMiddlewares(mws ...echo.MiddlewareFunc) (*echo.Echo, *httptest.ResponseRecorder) {
+	e := echo.New()
+	e.HideBanner = true
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler := func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	}
+	h := handler
+	for i := len(mws) - 1; i >= 0; i-- {
+		h = func(next echo.HandlerFunc, mw echo.MiddlewareFunc) echo.HandlerFunc {
+			return mw(next)
+		}(h, mws[i])
+	}
+	c := e.NewContext(req, rec)
+	_ = h(c)
+	return e, rec
+}
+
+func TestJWTMiddleware_MissingHeader(t *testing.T) {
+	signer, svc, _ := newTestDeps(t)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTMiddleware(svc, signer)
+	err := mw(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rec.Code)
+	}
+}
+
+func TestJWTMiddleware_InvalidToken(t *testing.T) {
+	signer, svc, _ := newTestDeps(t)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer garbage.token.here")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTMiddleware(svc, signer)
+	err := mw(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rec.Code)
+	}
+}
+
+func TestJWTMiddleware_RevokedSession(t *testing.T) {
+	signer, svc, _ := newTestDeps(t)
+
+	tokenStr, _, err := signer.SignAccess("user1", service.RoleStudent, nil, nil)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTMiddleware(svc, signer)
+	err = mw(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	})(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401 (revoked), got %d", rec.Code)
+	}
+}
+
+func TestJWTMiddleware_InsufficientRole(t *testing.T) {
+	signer, svc, mr := newTestDeps(t)
+
+	tokenStr, jti, err := signer.SignAccess("user1", service.RoleStudent, nil, nil)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	mr.Set("session:access:"+jti, "user1")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTMiddleware(svc, signer)
+	rbac := RBACMiddleware("questions:read")
+
+	chain := mw(rbac(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	}))
+	err = chain(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d", rec.Code)
+	}
+}
+
+func TestJWTMiddleware_ValidToken(t *testing.T) {
+	signer, svc, mr := newTestDeps(t)
+
+	tokenStr, jti, err := signer.SignAccess("user1", service.RoleAdminExam, nil, nil)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	mr.Set("session:access:"+jti, "user1")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	var gotClaims *platform.Claims
+	mw := JWTMiddleware(svc, signer)
+	rbac := RBACMiddleware("questions:read")
+
+	chain := mw(rbac(func(c echo.Context) error {
+		gotClaims = ClaimsFromContext(c)
+		return c.String(http.StatusOK, "ok")
+	}))
+	err = chain(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rec.Code)
+	}
+	if gotClaims == nil {
+		t.Error("ClaimsFromContext returned nil, want non-nil claims")
+	}
+	if gotClaims != nil && gotClaims.Sub != "user1" {
+		t.Errorf("claims.Sub = %q, want %q", gotClaims.Sub, "user1")
+	}
+}

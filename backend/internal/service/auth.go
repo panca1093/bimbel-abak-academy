@@ -1,0 +1,398 @@
+package service
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"math/big"
+	"strings"
+	"time"
+
+	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/repository"
+
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
+)
+
+type UserRepository interface {
+	Ping(ctx context.Context) error
+	CreateUser(ctx context.Context, u *repository.User) error
+	GetUserByEmail(ctx context.Context, email string) (*repository.User, error)
+	GetUserByUsername(ctx context.Context, username string) (*repository.User, error)
+	GetUserByID(ctx context.Context, id string) (*repository.User, error)
+	UpdatePasswordHash(ctx context.Context, userID, hash string) error
+	TombstoneUser(ctx context.Context, userID string) error
+}
+
+var (
+	ErrEmailTaken          = errors.New("email already registered")
+	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrOTPRateLimit        = errors.New("otp requested too recently")
+	ErrOTPExpired          = errors.New("otp expired")
+	ErrInvalidOTP          = errors.New("invalid otp")
+	ErrInvalidPendingToken = errors.New("invalid pending token")
+	ErrInvalidRefreshToken = errors.New("invalid refresh token")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrInvalidResetToken   = errors.New("invalid reset token")
+	ErrAccountDeactivated  = errors.New("account deactivated")
+	ErrWeakPassword        = errors.New("password too weak")
+	ErrInvalidToken        = errors.New("invalid token")
+)
+
+const minPasswordLen = 8
+
+func (s *Service) Register(ctx context.Context, email, password, name string) (pendingToken string, err error) {
+	email = normalizeEmail(email)
+	if email == "" {
+		return "", ErrInvalidCredentials
+	}
+	if len(password) < minPasswordLen {
+		return "", ErrWeakPassword
+	}
+	if strings.TrimSpace(name) == "" {
+		return "", ErrInvalidCredentials
+	}
+
+	existing, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil {
+		return "", err
+	}
+	if existing != nil {
+		return "", ErrEmailTaken
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	if err != nil {
+		return "", err
+	}
+	user := &repository.User{
+		Email:        &email,
+		PasswordHash: string(hash),
+		Role:         RoleStudent,
+		Name:         name,
+		Status:       "active",
+		OTPEnabled:   true,
+	}
+	if err := s.repo.CreateUser(ctx, user); err != nil {
+		return "", err
+	}
+	return s.startOTPChallenge(ctx, user)
+}
+
+func (s *Service) Login(ctx context.Context, identifier, password string) (pendingToken string, otpRequired bool, accessToken string, refreshToken string, err error) {
+	user, err := s.lookupByIdentifier(ctx, identifier)
+	if err != nil {
+		return "", false, "", "", err
+	}
+	if user == nil || user.Status != "active" {
+		return "", false, "", "", ErrInvalidCredentials
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+		return "", false, "", "", ErrInvalidCredentials
+	}
+
+	if !user.OTPEnabled {
+		access, refresh, err := s.mintSession(ctx, user)
+		if err != nil {
+			return "", false, "", "", err
+		}
+		return "", false, access, refresh, nil
+	}
+
+	pending, err := s.startOTPChallenge(ctx, user)
+	if err != nil {
+		return "", false, "", "", err
+	}
+	return pending, true, "", "", nil
+}
+
+func (s *Service) lookupByIdentifier(ctx context.Context, identifier string) (*repository.User, error) {
+	identifier = strings.TrimSpace(identifier)
+	if strings.Contains(identifier, "@") {
+		return s.repo.GetUserByEmail(ctx, identifier)
+	}
+	user, err := s.repo.GetUserByUsername(ctx, identifier)
+	if err != nil {
+		return nil, err
+	}
+	if user != nil {
+		return user, nil
+	}
+	return s.repo.GetUserByEmail(ctx, identifier)
+}
+
+func (s *Service) startOTPChallenge(ctx context.Context, user *repository.User) (pendingToken string, err error) {
+	if err := s.dispatchOTP(ctx, user); err != nil {
+		return "", err
+	}
+	pendingToken = newToken(user.ID)
+	if err := s.rdb.Set(ctx, "pending:"+pendingToken, user.ID, s.cfg.OTPTTL).Err(); err != nil {
+		return "", err
+	}
+	return pendingToken, nil
+}
+
+func (s *Service) dispatchOTP(ctx context.Context, user *repository.User) error {
+	code, err := genOTP()
+	if err != nil {
+		return err
+	}
+	if err := s.rdb.Set(ctx, "otp:"+user.ID, code, s.cfg.OTPTTL).Err(); err != nil {
+		return err
+	}
+	channel, destination := platform.PreferredOTPChannel(deref(user.Phone), deref(user.Email))
+	return s.otpProvider.SendOTP(ctx, channel, destination, code)
+}
+
+func (s *Service) ResolveUserFromPendingToken(ctx context.Context, pendingToken string) (string, error) {
+	userID, err := s.rdb.Get(ctx, "pending:"+pendingToken).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", ErrInvalidPendingToken
+	}
+	return userID, err
+}
+
+func (s *Service) ResolveUserFromEmail(ctx context.Context, email string) (string, error) {
+	user, err := s.repo.GetUserByEmail(ctx, normalizeEmail(email))
+	if err != nil {
+		return "", err
+	}
+	if user == nil {
+		return "", ErrUserNotFound
+	}
+	return user.ID, nil
+}
+
+func (s *Service) SendOTP(ctx context.Context, userID string) error {
+	rl := s.rdb.SetNX(ctx, "otpsend:"+userID, "1", 60*time.Second)
+	if err := rl.Err(); err != nil {
+		return err
+	}
+	if !rl.Val() {
+		return ErrOTPRateLimit
+	}
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+	return s.dispatchOTP(ctx, user)
+}
+
+func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (accessToken, refreshToken string, err error) {
+	userID, err := s.rdb.Get(ctx, "pending:"+pendingToken).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", "", ErrInvalidPendingToken
+	}
+	if err != nil {
+		return "", "", err
+	}
+
+	stored, err := s.rdb.Get(ctx, "otp:"+userID).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", "", ErrOTPExpired
+	}
+	if err != nil {
+		return "", "", err
+	}
+	if stored != code {
+		return "", "", ErrInvalidOTP
+	}
+
+	s.rdb.Del(ctx, "otp:"+userID, "pending:"+pendingToken)
+
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", "", err
+	}
+	if user == nil {
+		return "", "", ErrUserNotFound
+	}
+	return s.mintSession(ctx, user)
+}
+
+func (s *Service) Refresh(ctx context.Context, refreshToken string) (newAccessToken, newRefreshToken string, err error) {
+	userID, err := s.rdb.Get(ctx, "session:refresh:"+refreshToken).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", "", ErrInvalidRefreshToken
+	}
+	if err != nil {
+		return "", "", err
+	}
+
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", "", err
+	}
+	if user == nil || user.Status != "active" {
+		return "", "", ErrInvalidRefreshToken
+	}
+
+	s.rdb.Del(ctx, "session:refresh:"+refreshToken)
+	return s.mintSession(ctx, user)
+}
+
+func (s *Service) Logout(ctx context.Context, jti, refreshToken string) error {
+	userID, _ := s.rdb.Get(ctx, "session:access:"+jti).Result()
+	if err := s.rdb.Del(ctx, "session:access:"+jti).Err(); err != nil {
+		return err
+	}
+	if refreshToken != "" {
+		s.rdb.Del(ctx, "session:refresh:"+refreshToken)
+	}
+	if userID != "" {
+		s.rdb.SRem(ctx, "user_access_sessions:"+userID, jti)
+		if refreshToken != "" {
+			s.rdb.SRem(ctx, "user_refresh_sessions:"+userID, refreshToken)
+		}
+	}
+	return nil
+}
+
+func (s *Service) Me(ctx context.Context, userID string) (*repository.User, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+	return user, nil
+}
+
+func (s *Service) ForgotPassword(ctx context.Context, email string) error {
+	email = normalizeEmail(email)
+	user, err := s.repo.GetUserByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		// No enumeration: pretend success when the email is unknown.
+		return nil
+	}
+
+	code, err := genOTP()
+	if err != nil {
+		return err
+	}
+	token := newToken(user.ID)
+	if err := s.rdb.Set(ctx, "reset:"+token, user.ID+":"+code, s.cfg.OTPTTL).Err(); err != nil {
+		return err
+	}
+	body := fmt.Sprintf("Your password reset code is %s. Token: %s", code, token)
+	return s.emailProvider.SendEmail(ctx, deref(user.Email), "Password reset", body)
+}
+
+func (s *Service) ResetPassword(ctx context.Context, token, otp, newPassword string) error {
+	stored, err := s.rdb.Get(ctx, "reset:"+token).Result()
+	if errors.Is(err, redis.Nil) {
+		return ErrInvalidResetToken
+	}
+	if err != nil {
+		return err
+	}
+	userID, code, ok := strings.Cut(stored, ":")
+	if !ok || code != otp {
+		return ErrInvalidResetToken
+	}
+	if len(newPassword) < minPasswordLen {
+		return ErrWeakPassword
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	if err != nil {
+		return err
+	}
+	if err := s.repo.UpdatePasswordHash(ctx, userID, string(hash)); err != nil {
+		return err
+	}
+	s.rdb.Del(ctx, "reset:"+token)
+	s.revokeAllSessions(ctx, userID)
+	return nil
+}
+
+func (s *Service) revokeAllSessions(ctx context.Context, userID string) {
+	jtis, _ := s.rdb.SMembers(ctx, "user_access_sessions:"+userID).Result()
+	for _, jti := range jtis {
+		s.rdb.Del(ctx, "session:access:"+jti)
+	}
+	refreshTokens, _ := s.rdb.SMembers(ctx, "user_refresh_sessions:"+userID).Result()
+	for _, rt := range refreshTokens {
+		s.rdb.Del(ctx, "session:refresh:"+rt)
+	}
+	s.rdb.Del(ctx, "user_access_sessions:"+userID, "user_refresh_sessions:"+userID)
+}
+
+func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)) != nil {
+		return ErrInvalidCredentials
+	}
+	if len(newPassword) < minPasswordLen {
+		return ErrWeakPassword
+	}
+	if newPassword == currentPassword {
+		return ErrWeakPassword
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpdatePasswordHash(ctx, userID, string(hash))
+}
+
+func (s *Service) SessionActive(ctx context.Context, jti string) bool {
+	exists, _ := s.rdb.Exists(ctx, "session:access:"+jti).Result()
+	return exists > 0
+}
+
+func (s *Service) mintSession(ctx context.Context, user *repository.User) (accessToken, refreshToken string, err error) {
+	caps := Capabilities(user.Role)
+	tokenString, jti, err := s.jwtSigner.SignAccess(user.ID, user.Role, user.SchoolID, caps)
+	if err != nil {
+		return "", "", err
+	}
+	if err := s.rdb.Set(ctx, "session:access:"+jti, user.ID, s.cfg.AccessTokenTTL).Err(); err != nil {
+		return "", "", err
+	}
+	refreshToken = fmt.Sprintf("%s-%d", user.ID, time.Now().UnixNano())
+	if err := s.rdb.Set(ctx, "session:refresh:"+refreshToken, user.ID, s.cfg.RefreshTokenTTL).Err(); err != nil {
+		return "", "", err
+	}
+	s.rdb.SAdd(ctx, "user_access_sessions:"+user.ID, jti)
+	s.rdb.SAdd(ctx, "user_refresh_sessions:"+user.ID, refreshToken)
+	return tokenString, refreshToken, nil
+}
+
+func genOTP() (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
+}
+
+func newToken(userID string) string {
+	return fmt.Sprintf("%s-%d", userID, time.Now().UnixNano())
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
