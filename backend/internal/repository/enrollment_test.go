@@ -48,9 +48,8 @@ func TestEnrollmentMethods(t *testing.T) {
 
 	_ = ctx
 
-	// Verify that CreateCourseEnrollment signature accepts pgx.Tx
-	var tx pgx.Tx
-	_ = r.CreateCourseEnrollment(ctx, tx, enrollment)
+	// Verify that CreateCourseEnrollment signature accepts pgx.Tx (compile-time only)
+	var _ func(context.Context, pgx.Tx, CourseEnrollment) error = r.CreateCourseEnrollment
 }
 
 func TestCreateCourseEnrollmentSQLContainsConflictClause(t *testing.T) {
