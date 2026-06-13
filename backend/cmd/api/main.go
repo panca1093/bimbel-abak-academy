@@ -1,6 +1,7 @@
 package main
 
 import (
+	"akademi-bimbel/config"
 	"context"
 	"errors"
 	"log/slog"
@@ -10,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"akademi-bimbel/internal/config"
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/repository"

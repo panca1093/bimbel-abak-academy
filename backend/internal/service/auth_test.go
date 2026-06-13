@@ -1,6 +1,7 @@
 package service
 
 import (
+	"akademi-bimbel/config"
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"akademi-bimbel/internal/config"
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/repository"
 
@@ -19,8 +19,8 @@ import (
 )
 
 type fakeUserRepo struct {
-	byID    map[string]*repository.User
-	seq     int
+	byID      map[string]*repository.User
+	seq       int
 	createErr error
 }
 

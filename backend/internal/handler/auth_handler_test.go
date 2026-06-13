@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"akademi-bimbel/config"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"akademi-bimbel/internal/config"
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/repository"
@@ -25,8 +25,8 @@ import (
 
 // fakeRepo is an in-memory UserRepository for handler tests.
 type fakeRepo struct {
-	byID  map[string]*repository.User
-	seq   int
+	byID map[string]*repository.User
+	seq  int
 }
 
 func newFakeRepo() *fakeRepo {

@@ -1,13 +1,13 @@
 package main
 
 import (
+	"akademi-bimbel/config"
 	"context"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"akademi-bimbel/internal/config"
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/worker"
 )

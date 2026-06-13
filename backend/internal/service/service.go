@@ -1,10 +1,11 @@
 package service
 
 import (
+	"akademi-bimbel/config"
 	"context"
 
-	"akademi-bimbel/internal/config"
 	"akademi-bimbel/internal/platform"
+
 	"github.com/redis/go-redis/v9"
 )
 

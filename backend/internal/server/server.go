@@ -1,12 +1,13 @@
 package server
 
 import (
+	"akademi-bimbel/config"
 	"log/slog"
 
-	"akademi-bimbel/internal/config"
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/service"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
