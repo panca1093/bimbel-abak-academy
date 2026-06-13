@@ -2,11 +2,15 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
+
+var ErrInsufficientStock = errors.New("insufficient stock")
 
 type Order struct {
 	ID                 uuid.UUID
@@ -229,30 +233,30 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]Orde
 	argNum := 1
 
 	if filter.StudentID != nil {
-		query += ` AND student_id = $` + string(rune(argNum))
+		query += fmt.Sprintf(` AND student_id = $%d`, argNum)
 		args = append(args, *filter.StudentID)
 		argNum++
 	}
 
 	if filter.Status != "" {
-		query += ` AND status = $` + string(rune(argNum))
+		query += fmt.Sprintf(` AND status = $%d`, argNum)
 		args = append(args, filter.Status)
 		argNum++
 	}
 
 	if filter.ProductType != "" {
-		query += ` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $` + string(rune(argNum)) + `)`
+		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $%d)`, argNum)
 		args = append(args, filter.ProductType)
 		argNum++
 	}
 
 	if filter.Cursor != "" {
-		query += ` AND id > $` + string(rune(argNum))
+		query += fmt.Sprintf(` AND id > $%d`, argNum)
 		args = append(args, filter.Cursor)
 		argNum++
 	}
 
-	query += ` ORDER BY id ASC LIMIT $` + string(rune(argNum))
+	query += fmt.Sprintf(` ORDER BY id ASC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -401,10 +405,10 @@ func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.
 			return err
 		}
 
-		newStock := currentStock - item.Qty
-		if newStock < 0 {
-			newStock = 0
+		if currentStock < item.Qty {
+			return ErrInsufficientStock
 		}
+		newStock := currentStock - item.Qty
 
 		_, err = tx.Exec(ctx,
 			`UPDATE product SET stock = $1, updated_at = now() WHERE id = $2`,
