@@ -2,19 +2,22 @@ package service
 
 import (
 	"akademi-bimbel/config"
-	"context"
-
 	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/repository"
+	"context"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type Service struct {
 	repo          UserRepository
+	storeRepo     *repository.Repository
 	rdb           *redis.Client
 	jwtSigner     *platform.JWTSigner
 	otpProvider   platform.OTPProvider
 	emailProvider platform.EmailProvider
+	payment       platform.PaymentClient
+	logistics     platform.LogisticsClient
 	cfg           *config.Config
 }
 
@@ -37,6 +40,30 @@ func New(
 		jwtSigner:     jwtSigner,
 		otpProvider:   otpProvider,
 		emailProvider: emailProvider,
+		cfg:           cfg,
+	}
+}
+
+func NewWithStore(
+	repo UserRepository,
+	storeRepo *repository.Repository,
+	rdb *redis.Client,
+	jwtSigner *platform.JWTSigner,
+	otpProvider platform.OTPProvider,
+	emailProvider platform.EmailProvider,
+	payment platform.PaymentClient,
+	logistics platform.LogisticsClient,
+	cfg *config.Config,
+) *Service {
+	return &Service{
+		repo:          repo,
+		storeRepo:     storeRepo,
+		rdb:           rdb,
+		jwtSigner:     jwtSigner,
+		otpProvider:   otpProvider,
+		emailProvider: emailProvider,
+		payment:       payment,
+		logistics:     logistics,
 		cfg:           cfg,
 	}
 }
