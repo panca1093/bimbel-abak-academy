@@ -1,0 +1,92 @@
+package service
+
+import "testing"
+
+func TestCapabilities_knownRoles(t *testing.T) {
+	cases := []struct {
+		role string
+		want int // minimum expected length; 0 means empty
+	}{
+		{RoleStudent, 0},
+		{RoleAdminExam, 5},
+		{RoleAdminStore, 7},
+		{RoleAdminSchool, 2},
+		{RoleSuperAdmin, 1},
+	}
+	for _, tc := range cases {
+		caps := Capabilities(tc.role)
+		if tc.want == 0 && len(caps) != 0 {
+			t.Errorf("Capabilities(%q): want empty slice, got %v", tc.role, caps)
+		}
+		if tc.want > 0 && len(caps) < tc.want {
+			t.Errorf("Capabilities(%q): want at least %d entries, got %d", tc.role, tc.want, len(caps))
+		}
+	}
+}
+
+func TestCapabilities_unknownRole(t *testing.T) {
+	caps := Capabilities("ghost")
+	if len(caps) != 0 {
+		t.Errorf("Capabilities(unknown): want empty slice, got %v", caps)
+	}
+}
+
+func TestHasCapability_superAdminMatchesAll(t *testing.T) {
+	required := []string{"questions:create", "orders:delete", "students:read", "anything:write", "*"}
+	for _, r := range required {
+		if !HasCapability(RoleSuperAdmin, r) {
+			t.Errorf("HasCapability(super_admin, %q): want true", r)
+		}
+	}
+}
+
+func TestHasCapability_adminExamWildcard(t *testing.T) {
+	// admin_exam has "questions:*" — should match any questions: action
+	if !HasCapability(RoleAdminExam, "questions:create") {
+		t.Error("HasCapability(admin_exam, questions:create): want true")
+	}
+	if !HasCapability(RoleAdminExam, "questions:delete") {
+		t.Error("HasCapability(admin_exam, questions:delete): want true")
+	}
+	// but NOT orders:read
+	if HasCapability(RoleAdminExam, "orders:read") {
+		t.Error("HasCapability(admin_exam, orders:read): want false")
+	}
+}
+
+func TestHasCapability_adminStoreWildcard(t *testing.T) {
+	if !HasCapability(RoleAdminStore, "orders:read") {
+		t.Error("HasCapability(admin_store, orders:read): want true")
+	}
+	if !HasCapability(RoleAdminStore, "orders:delete") {
+		t.Error("HasCapability(admin_store, orders:delete): want true")
+	}
+	// admin_store cannot touch questions
+	if HasCapability(RoleAdminStore, "questions:create") {
+		t.Error("HasCapability(admin_store, questions:create): want false")
+	}
+}
+
+func TestHasCapability_adminSchool(t *testing.T) {
+	if !HasCapability(RoleAdminSchool, "students:create") {
+		t.Error("HasCapability(admin_school, students:create): want true")
+	}
+	if HasCapability(RoleAdminSchool, "questions:create") {
+		t.Error("HasCapability(admin_school, questions:create): want false")
+	}
+}
+
+func TestHasCapability_studentSatisfiesNothing(t *testing.T) {
+	caps := []string{"questions:read", "orders:read", "students:read", "*"}
+	for _, c := range caps {
+		if HasCapability(RoleStudent, c) {
+			t.Errorf("HasCapability(student, %q): want false", c)
+		}
+	}
+}
+
+func TestHasCapability_unknownRoleSatisfiesNothing(t *testing.T) {
+	if HasCapability("ghost", "questions:read") {
+		t.Error("HasCapability(unknown, questions:read): want false")
+	}
+}

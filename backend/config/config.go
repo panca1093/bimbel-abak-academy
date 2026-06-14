@@ -13,6 +13,16 @@ type Config struct {
 	RedisPassword      string
 	WorkerPollInterval time.Duration
 	CORSOrigins        []string
+
+	JWTSecret           string
+	AccessTokenTTL      time.Duration
+	RefreshTokenTTL     time.Duration
+	OTPSecret           string
+	OTPTTL              time.Duration
+	GoogleClientID      string
+	FazpassMerchantKey  string
+	FazpassAPIKey       string
+	FazpassBaseURL      string
 }
 
 func Load() Config {
@@ -24,6 +34,16 @@ func Load() Config {
 		RedisPassword:      env("REDIS_PASSWORD", ""),
 		WorkerPollInterval: envDuration("WORKER_POLL_INTERVAL", 5*time.Second),
 		CORSOrigins:        []string{env("WEB_ORIGIN", "http://localhost:3000")},
+
+		JWTSecret:          env("JWT_SECRET", ""),
+		AccessTokenTTL:     envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL:    envDuration("REFRESH_TOKEN_TTL", 168*time.Hour),
+		OTPSecret:          env("OTP_SECRET", ""),
+		OTPTTL:             envDuration("OTP_TTL", 5*time.Minute),
+		GoogleClientID:     env("GOOGLE_CLIENT_ID", ""),
+		FazpassMerchantKey: env("FAZPASS_MERCHANT_KEY", ""),
+		FazpassAPIKey:      env("FAZPASS_API_KEY", ""),
+		FazpassBaseURL:     env("FAZPASS_BASE_URL", "https://api.fazpass.com"),
 	}
 }
 

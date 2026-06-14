@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS school;
+DROP TABLE IF EXISTS tenant_profile;

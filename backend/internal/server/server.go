@@ -1,15 +1,18 @@
 package server
 
 import (
+	"akademi-bimbel/config"
 	"log/slog"
 
-	"akademi-bimbel/internal/config"
 	"akademi-bimbel/internal/handler"
+	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/service"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
-func New(h *handler.Handler, cfg config.Config) *echo.Echo {
+func New(h *handler.Handler, svc *service.Service, jwtSigner *platform.JWTSigner, cfg config.Config) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 
@@ -28,6 +31,6 @@ func New(h *handler.Handler, cfg config.Config) *echo.Echo {
 		},
 	}))
 
-	registerRoutes(e, h)
+	registerRoutes(e, h, svc, jwtSigner)
 	return e
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"akademi-bimbel/config"
 	"context"
 	"errors"
 	"log/slog"
@@ -10,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"akademi-bimbel/internal/config"
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/repository"
@@ -25,6 +25,11 @@ func main() {
 	cfg := config.Load()
 	ctx := context.Background()
 
+	if err := platform.RunMigrations(ctx, cfg.DatabaseURL); err != nil {
+		logger.Error("run migrations", "err", err)
+		os.Exit(1)
+	}
+
 	pool, err := platform.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("connect postgres", "err", err)
@@ -36,9 +41,11 @@ func main() {
 	defer rdb.Close()
 
 	repo := repository.New(pool)
-	svc := service.New(repo, rdb)
+	jwtSigner := platform.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+	otpProvider, emailProvider := newNotifyProviders(cfg)
+	svc := service.New(repo, rdb, jwtSigner, otpProvider, emailProvider, &cfg)
 	h := handler.New(svc)
-	e := server.New(h, cfg)
+	e := server.New(h, svc, jwtSigner, cfg)
 
 	go func() {
 		if err := e.Start(":" + cfg.HTTPPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -58,4 +65,16 @@ func main() {
 		logger.Error("shutdown", "err", err)
 	}
 	logger.Info("api stopped")
+}
+
+func newNotifyProviders(cfg config.Config) (platform.OTPProvider, platform.EmailProvider) {
+	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
+		return &platform.NoopOTPProvider{}, &platform.NoopEmailProvider{}
+	}
+	fz := platform.NewFazpassProvider(platform.FazpassConfig{
+		MerchantKey: cfg.FazpassMerchantKey,
+		APIKey:      cfg.FazpassAPIKey,
+		BaseURL:     cfg.FazpassBaseURL,
+	})
+	return fz, fz
 }

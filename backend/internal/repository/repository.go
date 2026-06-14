@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -18,4 +20,8 @@ func New(pool *pgxpool.Pool) *Repository {
 // struct as feature work lands.
 func (r *Repository) Ping(ctx context.Context) error {
 	return r.pool.Ping(ctx)
+}
+
+func isNotFound(err error) bool {
+	return errors.Is(err, pgx.ErrNoRows)
 }
