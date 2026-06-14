@@ -131,3 +131,28 @@ func (r *Repository) ReorderLessons(ctx context.Context, sectionID uuid.UUID, or
 	}
 	return nil
 }
+
+func (r *Repository) ListLessonsBySection(ctx context.Context, sectionID uuid.UUID) ([]Lesson, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, section_id, title, video_url, duration_seconds, position, created_at
+		FROM lesson
+		WHERE section_id = $1
+		ORDER BY position ASC`,
+		sectionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var lessons []Lesson
+	for rows.Next() {
+		l := Lesson{}
+		err := rows.Scan(&l.ID, &l.SectionID, &l.Title, &l.VideoURL, &l.DurationSeconds, &l.Position, &l.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		lessons = append(lessons, l)
+	}
+	return lessons, rows.Err()
+}
