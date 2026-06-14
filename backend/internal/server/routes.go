@@ -27,6 +27,38 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	auth.POST("/password/reset", h.ResetPassword)
 	auth.PATCH("/password/change", h.ChangePassword, JWTMiddleware(svc, jwtSigner))
 	auth.GET("/me", h.Me, JWTMiddleware(svc, jwtSigner))
+
+	// Student product routes
+	products := v1.Group("/products")
+	products.GET("", h.ListProducts)
+	products.GET("/:id", h.GetProduct)
+
+	// Admin product routes
+	admin := v1.Group("/admin")
+	admin.Use(JWTMiddleware(svc, jwtSigner))
+
+	adminProducts := admin.Group("/products")
+	adminProducts.GET("", h.AdminListProducts)
+	adminProducts.POST("", h.AdminCreateProduct)
+	adminProducts.GET("/:id", h.AdminGetProduct)
+	adminProducts.PATCH("/:id", h.AdminUpdateProduct)
+	adminProducts.POST("/:id/publish", h.AdminPublishProduct)
+	adminProducts.DELETE("/:id", h.AdminDeleteProduct)
+
+	// Admin course routes
+	adminCourses := admin.Group("/products/:id/sections")
+	adminCourses.GET("", h.AdminListSections)
+	adminCourses.POST("", h.AdminCreateSection)
+	adminCourses.PUT("/:sId", h.AdminUpdateSection)
+	adminCourses.DELETE("/:sId", h.AdminDeleteSection)
+	adminCourses.PATCH("/reorder", h.AdminReorderSections)
+
+	// Admin lesson routes
+	adminLessons := admin.Group("/products/:id/sections/:sId/lessons")
+	adminLessons.POST("", h.AdminCreateLesson)
+	adminLessons.PUT("/:lId", h.AdminUpdateLesson)
+	adminLessons.DELETE("/:lId", h.AdminDeleteLesson)
+	adminLessons.PATCH("/reorder", h.AdminReorderLessons)
 }
 
 func loginRateLimiter() echo.MiddlewareFunc {
