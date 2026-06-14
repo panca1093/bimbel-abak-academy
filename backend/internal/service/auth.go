@@ -9,8 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"akademi-bimbel/internal/platform"
-	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/model"
 
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -18,10 +17,10 @@ import (
 
 type UserRepository interface {
 	Ping(ctx context.Context) error
-	CreateUser(ctx context.Context, u *repository.User) error
-	GetUserByEmail(ctx context.Context, email string) (*repository.User, error)
-	GetUserByUsername(ctx context.Context, username string) (*repository.User, error)
-	GetUserByID(ctx context.Context, id string) (*repository.User, error)
+	CreateUser(ctx context.Context, u *model.User) error
+	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
+	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
+	GetUserByID(ctx context.Context, id string) (*model.User, error)
 	UpdatePasswordHash(ctx context.Context, userID, hash string) error
 	TombstoneUser(ctx context.Context, userID string) error
 }
@@ -67,7 +66,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 	if err != nil {
 		return "", err
 	}
-	user := &repository.User{
+	user := &model.User{
 		Email:        &email,
 		PasswordHash: string(hash),
 		Role:         RoleStudent,
@@ -108,7 +107,7 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (pendi
 	return pending, true, "", "", nil
 }
 
-func (s *Service) lookupByIdentifier(ctx context.Context, identifier string) (*repository.User, error) {
+func (s *Service) lookupByIdentifier(ctx context.Context, identifier string) (*model.User, error) {
 	identifier = strings.TrimSpace(identifier)
 	if strings.Contains(identifier, "@") {
 		return s.repo.GetUserByEmail(ctx, identifier)
@@ -123,7 +122,7 @@ func (s *Service) lookupByIdentifier(ctx context.Context, identifier string) (*r
 	return s.repo.GetUserByEmail(ctx, identifier)
 }
 
-func (s *Service) startOTPChallenge(ctx context.Context, user *repository.User) (pendingToken string, err error) {
+func (s *Service) startOTPChallenge(ctx context.Context, user *model.User) (pendingToken string, err error) {
 	if err := s.dispatchOTP(ctx, user); err != nil {
 		return "", err
 	}
@@ -134,7 +133,7 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *repository.User) 
 	return pendingToken, nil
 }
 
-func (s *Service) dispatchOTP(ctx context.Context, user *repository.User) error {
+func (s *Service) dispatchOTP(ctx context.Context, user *model.User) error {
 	code, err := genOTP()
 	if err != nil {
 		return err
@@ -142,7 +141,7 @@ func (s *Service) dispatchOTP(ctx context.Context, user *repository.User) error 
 	if err := s.rdb.Set(ctx, "otp:"+user.ID, code, s.cfg.OTPTTL).Err(); err != nil {
 		return err
 	}
-	channel, destination := platform.PreferredOTPChannel(deref(user.Phone), deref(user.Email))
+	channel, destination := PreferredOTPChannel(deref(user.Phone), deref(user.Email))
 	return s.otpProvider.SendOTP(ctx, channel, destination, code)
 }
 
@@ -253,7 +252,7 @@ func (s *Service) Logout(ctx context.Context, jti, refreshToken string) error {
 	return nil
 }
 
-func (s *Service) Me(ctx context.Context, userID string) (*repository.User, error) {
+func (s *Service) Me(ctx context.Context, userID string) (*model.User, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -356,7 +355,7 @@ func (s *Service) SessionActive(ctx context.Context, jti string) bool {
 	return exists > 0
 }
 
-func (s *Service) mintSession(ctx context.Context, user *repository.User) (accessToken, refreshToken string, err error) {
+func (s *Service) mintSession(ctx context.Context, user *model.User) (accessToken, refreshToken string, err error) {
 	caps := Capabilities(user.Role)
 	tokenString, jti, err := s.jwtSigner.SignAccess(user.ID, user.Role, user.SchoolID, caps)
 	if err != nil {

@@ -3,36 +3,15 @@ package repository
 import (
 	"context"
 	"strings"
-	"time"
-)
 
-type User struct {
-	ID           string
-	Email        *string
-	Username     *string
-	Phone        *string
-	PasswordHash string
-	Role         string
-	Name         string
-	SchoolID     *string
-	Status       string
-	OTPEnabled   bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	// student-only
-	NIS            *string
-	DOB            *time.Time
-	Gender         *string
-	Grade          *int
-	AlamatDomisili *string
-	TargetExam     *string
-}
+	"akademi-bimbel/internal/model"
+)
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(email)
 }
 
-func (r *Repository) CreateUser(ctx context.Context, u *User) error {
+func (r *Repository) CreateUser(ctx context.Context, u *model.User) error {
 	if u.Email != nil {
 		normalized := normalizeEmail(*u.Email)
 		u.Email = &normalized
@@ -53,9 +32,9 @@ func (r *Repository) CreateUser(ctx context.Context, u *User) error {
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
-func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*User, error) {
+func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	email = normalizeEmail(email)
-	u := &User{}
+	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
 			school_id, status, otp_enabled, created_at, updated_at,
@@ -77,8 +56,8 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*User, e
 	return u, nil
 }
 
-func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	u := &User{}
+func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
+	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
 			school_id, status, otp_enabled, created_at, updated_at,
@@ -100,8 +79,8 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*U
 	return u, nil
 }
 
-func (r *Repository) GetUserByID(ctx context.Context, id string) (*User, error) {
-	u := &User{}
+func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, error) {
+	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
 			school_id, status, otp_enabled, created_at, updated_at,

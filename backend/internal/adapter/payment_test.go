@@ -1,14 +1,16 @@
-package platform
+package adapter
 
 import (
 	"context"
 	"testing"
 	"time"
+
+	"akademi-bimbel/internal/service"
 )
 
 func TestNoopPaymentClient_CreatePayment(t *testing.T) {
 	client := &NoopPaymentClient{}
-	req := PaymentRequest{
+	req := service.PaymentRequest{
 		OrderID:   "order-123",
 		Reference: "ref-123",
 		Amount:    100000,

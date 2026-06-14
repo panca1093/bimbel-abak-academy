@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"github.com/labstack/echo/v4"
 )
 
@@ -31,7 +31,7 @@ func (h *Handler) AdminCreateSection(c echo.Context) error {
 		return badRequest(c, "title is required")
 	}
 
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -55,7 +55,7 @@ func (h *Handler) AdminUpdateSection(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -72,7 +72,7 @@ func (h *Handler) AdminUpdateSection(c echo.Context) error {
 func (h *Handler) AdminDeleteSection(c echo.Context) error {
 	productID := c.Param("id")
 	sectionID := c.Param("sId")
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -95,7 +95,7 @@ func (h *Handler) AdminReorderSections(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -126,7 +126,7 @@ func (h *Handler) AdminCreateLesson(c echo.Context) error {
 		return badRequest(c, "title is required")
 	}
 
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -153,7 +153,7 @@ func (h *Handler) AdminUpdateLesson(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -171,7 +171,7 @@ func (h *Handler) AdminDeleteLesson(c echo.Context) error {
 	productID := c.Param("id")
 	sectionID := c.Param("sId")
 	lessonID := c.Param("lId")
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -195,7 +195,7 @@ func (h *Handler) AdminReorderLessons(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role

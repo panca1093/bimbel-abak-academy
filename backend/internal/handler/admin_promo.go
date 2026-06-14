@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/model"
 	"github.com/labstack/echo/v4"
 )
 
@@ -36,7 +36,7 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		return badRequest(c, "code is required")
 	}
 
-	promo := repository.PromoCode{
+	promo := model.PromoCode{
 		Code:              req.Code,
 		DiscountPercent:   req.DiscountPercent,
 		DiscountAmount:    req.DiscountAmount,

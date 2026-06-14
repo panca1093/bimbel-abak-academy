@@ -2,12 +2,12 @@ package server
 
 import (
 	"akademi-bimbel/internal/handler"
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
 
-func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtSigner *platform.JWTSigner) {
+func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtSigner *infra.JWTSigner) {
 	v1 := e.Group("/api/v1")
 	v1.GET("/health", h.Health)
 
@@ -109,6 +109,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 }
 
 // RegisterRoutesForTest is the same as registerRoutes but exported for handler tests.
-func RegisterRoutesForTest(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtSigner *platform.JWTSigner) {
+func RegisterRoutesForTest(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtSigner *infra.JWTSigner) {
 	registerRoutes(e, h, svc, jwtSigner)
 }

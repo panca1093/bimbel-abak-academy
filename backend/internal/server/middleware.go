@@ -2,14 +2,14 @@ package server
 
 import (
 	"akademi-bimbel/internal/handler"
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
 
 // JWTMiddleware delegates to handler.JWTMiddleware.
-func JWTMiddleware(svc *service.Service, signer *platform.JWTSigner) echo.MiddlewareFunc {
+func JWTMiddleware(svc *service.Service, signer *infra.JWTSigner) echo.MiddlewareFunc {
 	return handler.JWTMiddleware(svc, signer)
 }
 
@@ -19,6 +19,6 @@ func RBACMiddleware(required string) echo.MiddlewareFunc {
 }
 
 // ClaimsFromContext delegates to handler.ClaimsFromContext.
-func ClaimsFromContext(c echo.Context) *platform.Claims {
+func ClaimsFromContext(c echo.Context) *infra.Claims {
 	return handler.ClaimsFromContext(c)
 }

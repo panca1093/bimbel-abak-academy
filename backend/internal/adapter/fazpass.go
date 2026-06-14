@@ -1,4 +1,4 @@
-package platform
+package adapter
 
 import (
 	"bytes"

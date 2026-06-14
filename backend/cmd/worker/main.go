@@ -11,7 +11,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/worker"
 )
@@ -25,7 +25,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := platform.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := infra.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("connect postgres", "err", err)
 		os.Exit(1)

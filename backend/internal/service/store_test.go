@@ -10,26 +10,26 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
 
 // fakeStoreRepo is an in-memory stub for repository.Repository store methods.
 type fakeStoreRepo struct {
-	products map[string]*repository.Product
-	promos   map[string]repository.PromoCode
+	products map[string]*model.Product
+	promos   map[string]model.PromoCode
 	seq      int
 }
 
 func newFakeStoreRepo() *fakeStoreRepo {
 	return &fakeStoreRepo{
-		products: map[string]*repository.Product{},
-		promos:   map[string]repository.PromoCode{},
+		products: map[string]*model.Product{},
+		promos:   map[string]model.PromoCode{},
 	}
 }
 
-func (f *fakeStoreRepo) ListProducts(_ context.Context, filter repository.ProductFilter) ([]repository.Product, string, error) {
-	var out []repository.Product
+func (f *fakeStoreRepo) ListProducts(_ context.Context, filter repository.ProductFilter) ([]model.Product, string, error) {
+	var out []model.Product
 	for _, p := range f.products {
 		if filter.Type != "" && p.Type != filter.Type {
 			continue
@@ -46,7 +46,7 @@ func (f *fakeStoreRepo) ListProducts(_ context.Context, filter repository.Produc
 	return out, "", nil
 }
 
-func (f *fakeStoreRepo) GetProductByID(_ context.Context, id string) (*repository.Product, error) {
+func (f *fakeStoreRepo) GetProductByID(_ context.Context, id string) (*model.Product, error) {
 	p, ok := f.products[id]
 	if !ok {
 		return nil, repository.ErrNotFound
@@ -55,14 +55,14 @@ func (f *fakeStoreRepo) GetProductByID(_ context.Context, id string) (*repositor
 	return &cp, nil
 }
 
-func (f *fakeStoreRepo) CreateProduct(_ context.Context, p *repository.Product) error {
+func (f *fakeStoreRepo) CreateProduct(_ context.Context, p *model.Product) error {
 	f.seq++
 	p.ID = "p" + string(rune('0'+f.seq))
 	f.products[p.ID] = p
 	return nil
 }
 
-func (f *fakeStoreRepo) UpdateProduct(_ context.Context, id string, p *repository.Product) error {
+func (f *fakeStoreRepo) UpdateProduct(_ context.Context, id string, p *model.Product) error {
 	if _, ok := f.products[id]; !ok {
 		return repository.ErrNotFound
 	}
@@ -95,20 +95,20 @@ func (f *fakeStoreRepo) ArchiveProduct(_ context.Context, id string) error {
 	return nil
 }
 
-func (f *fakeStoreRepo) GetPromoByCode(_ context.Context, code string) (repository.PromoCode, error) {
+func (f *fakeStoreRepo) GetPromoByCode(_ context.Context, code string) (model.PromoCode, error) {
 	p, ok := f.promos[code]
 	if !ok {
-		return repository.PromoCode{}, nil
+		return model.PromoCode{}, nil
 	}
 	return p, nil
 }
 
-func (f *fakeStoreRepo) seedProduct(p repository.Product) {
+func (f *fakeStoreRepo) seedProduct(p model.Product) {
 	cp := p
 	f.products[p.ID] = &cp
 }
 
-func (f *fakeStoreRepo) seedPromo(p repository.PromoCode) {
+func (f *fakeStoreRepo) seedPromo(p model.PromoCode) {
 	f.promos[p.Code] = p
 }
 
@@ -132,7 +132,7 @@ type storeService struct {
 func newStoreService(fake *fakeStoreRepo) *storeService {
 	svc := &Service{
 		storeRepo: nil, // we'll override via storeRepoShim
-		logistics: &platform.NoopLogisticsClient{},
+		logistics: &NoopLogisticsClient{},
 	}
 	return &storeService{svc: svc, fake: fake}
 }
@@ -145,10 +145,10 @@ func newStoreService(fake *fakeStoreRepo) *storeService {
 // This avoids needing a real DB while keeping test coverage of the logic.
 type shimService struct {
 	fake      *fakeStoreRepo
-	logistics platform.LogisticsClient
+	logistics LogisticsClient
 }
 
-func (s *shimService) ListProducts(ctx context.Context, filter repository.ProductFilter, role string) ([]repository.Product, string, error) {
+func (s *shimService) ListProducts(ctx context.Context, filter repository.ProductFilter, role string) ([]model.Product, string, error) {
 	switch role {
 	case RoleSuperAdmin:
 	case RoleAdminStore:
@@ -167,28 +167,28 @@ func (s *shimService) ListProducts(ctx context.Context, filter repository.Produc
 	return s.fake.ListProducts(ctx, filter)
 }
 
-func (s *shimService) GetProduct(ctx context.Context, id string, role string) (repository.Product, error) {
+func (s *shimService) GetProduct(ctx context.Context, id string, role string) (model.Product, error) {
 	p, err := s.fake.GetProductByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return repository.Product{}, ErrProductNotFound
+			return model.Product{}, ErrProductNotFound
 		}
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	if role == RoleStudent || role == "" {
 		if p.Status != "published" || !p.IsVisible {
-			return repository.Product{}, ErrProductNotFound
+			return model.Product{}, ErrProductNotFound
 		}
 	}
 	return *p, nil
 }
 
-func (s *shimService) CreateProduct(ctx context.Context, p repository.Product, role string) (repository.Product, error) {
+func (s *shimService) CreateProduct(ctx context.Context, p model.Product, role string) (model.Product, error) {
 	if err := checkTypeRBAC(role, p.Type); err != nil {
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	if err := s.fake.CreateProduct(ctx, &p); err != nil {
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	return p, nil
 }
@@ -227,12 +227,12 @@ func (s *shimService) ValidatePromo(ctx context.Context, code string, subtotal f
 	return PromoValidation{Code: code, Discount: discount, Total: subtotal - discount}, nil
 }
 
-func (s *shimService) GetShippingRates(ctx context.Context, req platform.ShippingQuoteRequest) ([]platform.CourierRate, error) {
+func (s *shimService) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
 	return s.logistics.GetRates(ctx, req)
 }
 
 func newShim(fake *fakeStoreRepo) *shimService {
-	return &shimService{fake: fake, logistics: &platform.NoopLogisticsClient{}}
+	return &shimService{fake: fake, logistics: &NoopLogisticsClient{}}
 }
 
 func float64ptr(f float64) *float64 { return &f }
@@ -241,9 +241,9 @@ func intptr(i int) *int             { return &i }
 func TestListProducts_StudentSeesOnlyPublished(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	fake.seedProduct(repository.Product{ID: "p1", Type: "book", Status: "published", IsVisible: true})
-	fake.seedProduct(repository.Product{ID: "p2", Type: "book", Status: "draft", IsVisible: true})
-	fake.seedProduct(repository.Product{ID: "p3", Type: "book", Status: "published", IsVisible: false})
+	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "published", IsVisible: true})
+	fake.seedProduct(model.Product{ID: "p2", Type: "book", Status: "draft", IsVisible: true})
+	fake.seedProduct(model.Product{ID: "p3", Type: "book", Status: "published", IsVisible: false})
 
 	svc := newShim(fake)
 	products, _, err := svc.ListProducts(ctx, repository.ProductFilter{}, RoleStudent)
@@ -261,7 +261,7 @@ func TestListProducts_StudentSeesOnlyPublished(t *testing.T) {
 func TestListProducts_AdminStoreExamReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	fake.seedProduct(repository.Product{ID: "p1", Type: "exam", Status: "published", IsVisible: true})
+	fake.seedProduct(model.Product{ID: "p1", Type: "exam", Status: "published", IsVisible: true})
 
 	svc := newShim(fake)
 	products, _, err := svc.ListProducts(ctx, repository.ProductFilter{Type: "exam"}, RoleAdminStore)
@@ -279,19 +279,19 @@ func TestCreateProduct_TypeRBAC(t *testing.T) {
 	svc := newShim(fake)
 
 	// admin_store creating exam type → ErrForbidden
-	_, err := svc.CreateProduct(ctx, repository.Product{Type: "exam", Title: "Exam 1"}, RoleAdminStore)
+	_, err := svc.CreateProduct(ctx, model.Product{Type: "exam", Title: "Exam 1"}, RoleAdminStore)
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("want ErrForbidden for admin_store creating exam, got %v", err)
 	}
 
 	// admin_exam creating book type → ErrForbidden
-	_, err = svc.CreateProduct(ctx, repository.Product{Type: "book", Title: "Book 1"}, RoleAdminExam)
+	_, err = svc.CreateProduct(ctx, model.Product{Type: "book", Title: "Book 1"}, RoleAdminExam)
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("want ErrForbidden for admin_exam creating book, got %v", err)
 	}
 
 	// admin_store creating book → ok
-	p, err := svc.CreateProduct(ctx, repository.Product{Type: "book", Title: "Book 1"}, RoleAdminStore)
+	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Title: "Book 1"}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("admin_store creating book: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestCreateProduct_TypeRBAC(t *testing.T) {
 	}
 
 	// super_admin creating any type → ok
-	_, err = svc.CreateProduct(ctx, repository.Product{Type: "exam", Title: "Exam 1"}, RoleSuperAdmin)
+	_, err = svc.CreateProduct(ctx, model.Product{Type: "exam", Title: "Exam 1"}, RoleSuperAdmin)
 	if err != nil {
 		t.Fatalf("super_admin creating exam: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestValidatePromo_Expired(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
 	past := time.Now().Add(-time.Hour)
-	fake.seedPromo(repository.PromoCode{
+	fake.seedPromo(model.PromoCode{
 		Code:      "EXPIRED",
 		ExpiresAt: &past,
 	})
@@ -324,7 +324,7 @@ func TestValidatePromo_Expired(t *testing.T) {
 func TestValidatePromo_Math(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	fake.seedPromo(repository.PromoCode{
+	fake.seedPromo(model.PromoCode{
 		Code:              "DISC10",
 		DiscountPercent:   float64ptr(10),
 		MaxDiscountAmount: float64ptr(8),
@@ -346,7 +346,7 @@ func TestValidatePromo_Math(t *testing.T) {
 func TestValidatePromo_MinOrder(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	fake.seedPromo(repository.PromoCode{
+	fake.seedPromo(model.PromoCode{
 		Code:           "MINORDER",
 		DiscountAmount: float64ptr(20),
 		MinOrderAmount: float64ptr(200),
@@ -371,7 +371,7 @@ func TestValidatePromo_NotFound(t *testing.T) {
 func TestGetShippingRates(t *testing.T) {
 	ctx := context.Background()
 	svc := newShim(newFakeStoreRepo())
-	rates, err := svc.GetShippingRates(ctx, platform.ShippingQuoteRequest{DestinationZip: "12345", WeightGrams: 500})
+	rates, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationZip: "12345", WeightGrams: 500})
 	if err != nil {
 		t.Fatalf("GetShippingRates: %v", err)
 	}
@@ -382,19 +382,19 @@ func TestGetShippingRates(t *testing.T) {
 
 // Order lifecycle tests use fakeOrderRepo for testing service logic.
 type fakeOrderRepo struct {
-	products map[string]*repository.Product
-	orders   map[string]*repository.Order
+	products map[string]*model.Product
+	orders   map[string]*model.Order
 	seq      int
 }
 
 func newFakeOrderRepo() *fakeOrderRepo {
 	return &fakeOrderRepo{
-		products: map[string]*repository.Product{},
-		orders:   map[string]*repository.Order{},
+		products: map[string]*model.Product{},
+		orders:   map[string]*model.Order{},
 	}
 }
 
-func (f *fakeOrderRepo) GetProductByID(_ context.Context, id string) (*repository.Product, error) {
+func (f *fakeOrderRepo) GetProductByID(_ context.Context, id string) (*model.Product, error) {
 	p, ok := f.products[id]
 	if !ok {
 		return nil, repository.ErrNotFound
@@ -403,12 +403,12 @@ func (f *fakeOrderRepo) GetProductByID(_ context.Context, id string) (*repositor
 	return &cp, nil
 }
 
-func (f *fakeOrderRepo) seedProduct(p repository.Product) {
+func (f *fakeOrderRepo) seedProduct(p model.Product) {
 	cp := p
 	f.products[p.ID] = &cp
 }
 
-func (f *fakeOrderRepo) seedOrder(o repository.Order) {
+func (f *fakeOrderRepo) seedOrder(o model.Order) {
 	cp := o
 	f.orders[o.ID.String()] = &cp
 }
@@ -466,7 +466,7 @@ func TestAddItem_OutOfStock(t *testing.T) {
 	studentID := "00000000-0000-0000-0000-000000000001"
 	productID := "00000000-0000-0000-0000-000000000002"
 
-	fake.seedProduct(repository.Product{
+	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
 		Title: "Book 1",
@@ -497,7 +497,7 @@ func TestAddItem_OrderNotCart(t *testing.T) {
 	sid, _ := uuid.Parse(studentID)
 	oid, _ := uuid.Parse(orderID)
 
-	fake.seedProduct(repository.Product{
+	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
 		Title: "Book 1",
@@ -505,7 +505,7 @@ func TestAddItem_OrderNotCart(t *testing.T) {
 		Price: 10000,
 	})
 
-	fake.seedOrder(repository.Order{
+	fake.seedOrder(model.Order{
 		ID:        oid,
 		StudentID: sid,
 		Status:    "payment_pending",
@@ -528,7 +528,7 @@ func TestPatchCart_NonCart(t *testing.T) {
 	sid, _ := uuid.Parse(studentID)
 	oid, _ := uuid.Parse(orderID)
 
-	fake.seedOrder(repository.Order{
+	fake.seedOrder(model.Order{
 		ID:        oid,
 		StudentID: sid,
 		Status:    "payment_pending",
@@ -545,14 +545,14 @@ type shimOrderService struct {
 	fake *fakeOrderRepo
 }
 
-func (s *shimOrderService) MintCart(ctx context.Context, studentID string) (repository.Order, bool, error) {
+func (s *shimOrderService) MintCart(ctx context.Context, studentID string) (model.Order, bool, error) {
 	id, _ := uuid.Parse(studentID)
 	for _, o := range s.fake.orders {
 		if o.StudentID == id && o.Status == "cart" {
 			return *o, false, nil
 		}
 	}
-	order := repository.Order{
+	order := model.Order{
 		ID:        uuid.New(),
 		StudentID: id,
 		Status:    "cart",
@@ -588,7 +588,7 @@ func (s *shimOrderService) AddItem(ctx context.Context, studentID, orderID, prod
 		return ErrOutOfStock
 	}
 
-	item := repository.OrderItem{
+	item := model.OrderItem{
 		ID:          uuid.New(),
 		OrderID:     oID,
 		ProductID:   pID,
@@ -647,7 +647,7 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 	pid, _ := uuid.Parse(productID)
 
 	// Seed product with stock
-	fake.seedProduct(repository.Product{
+	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
 		Title: "Book 1",
@@ -656,13 +656,13 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 	})
 
 	// Seed cart order with items
-	order := repository.Order{
+	order := model.Order{
 		ID:        oid,
 		StudentID: sid,
 		Status:    "cart",
 		Subtotal:  100,
 	}
-	order.Items = append(order.Items, repository.OrderItem{
+	order.Items = append(order.Items, model.OrderItem{
 		ID:          uuid.New(),
 		OrderID:     oid,
 		ProductID:   pid,
@@ -753,12 +753,12 @@ type mockPaymentClient struct {
 	shouldAccept bool
 }
 
-func (m *mockPaymentClient) CreatePayment(ctx context.Context, req platform.PaymentRequest) (platform.PaymentResponse, error) {
-	return platform.PaymentResponse{}, nil
+func (m *mockPaymentClient) CreatePayment(ctx context.Context, req PaymentRequest) (PaymentResponse, error) {
+	return PaymentResponse{}, nil
 }
 
-func (m *mockPaymentClient) QueryStatus(ctx context.Context, reference string) (platform.PaymentStatus, error) {
-	return platform.PaymentStatus{}, nil
+func (m *mockPaymentClient) QueryStatus(ctx context.Context, reference string) (PaymentStatus, error) {
+	return PaymentStatus{}, nil
 }
 
 func (m *mockPaymentClient) VerifySignature(payload []byte, signature string) bool {

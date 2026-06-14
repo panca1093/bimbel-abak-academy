@@ -6,29 +6,26 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"akademi-bimbel/internal/model"
 )
 
 func TestCourseMethods(t *testing.T) {
-	// Compile-time test: verify all Course and Lesson methods exist on *Repository
-
 	r := &Repository{}
 	ctx := context.Background()
 
-	// CourseSection methods
 	_ = r.ListSections
 	_ = r.CreateSection
 	_ = r.UpdateSection
 	_ = r.DeleteSection
 	_ = r.ReorderSections
 
-	// Lesson methods
 	_ = r.CreateLesson
 	_ = r.UpdateLesson
 	_ = r.DeleteLesson
 	_ = r.ReorderLessons
 
-	// Verify struct field names compile
-	section := CourseSection{
+	section := model.CourseSection{
 		ID:        uuid.New(),
 		ProductID: uuid.New(),
 		Title:     "Section 1",
@@ -37,7 +34,7 @@ func TestCourseMethods(t *testing.T) {
 	}
 	_ = section
 
-	lesson := Lesson{
+	lesson := model.Lesson{
 		ID:              uuid.New(),
 		SectionID:       uuid.New(),
 		Title:           "Lesson 1",

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
@@ -14,7 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func newTestDeps(t *testing.T) (*platform.JWTSigner, *service.Service, *miniredis.Miniredis) {
+func newTestDeps(t *testing.T) (*infra.JWTSigner, *service.Service, *miniredis.Miniredis) {
 	t.Helper()
 	mr, err := miniredis.Run()
 	if err != nil {
@@ -23,7 +23,7 @@ func newTestDeps(t *testing.T) (*platform.JWTSigner, *service.Service, *miniredi
 	t.Cleanup(mr.Close)
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	signer := platform.NewJWTSigner("test-secret", time.Hour)
+	signer := infra.NewJWTSigner("test-secret", time.Hour)
 	svc := service.NewForTest(rdb)
 	return signer, svc, mr
 }
@@ -163,7 +163,7 @@ func TestJWTMiddleware_ValidToken(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	var gotClaims *platform.Claims
+	var gotClaims *infra.Claims
 	mw := JWTMiddleware(svc, signer)
 	rbac := RBACMiddleware("questions:read")
 

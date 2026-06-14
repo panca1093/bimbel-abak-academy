@@ -3,13 +3,15 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"akademi-bimbel/internal/model"
 )
 
 // Compile-time check: *Repository must implement all user methods.
 var _ interface {
-	CreateUser(context.Context, *User) error
-	GetUserByEmail(context.Context, string) (*User, error)
-	GetUserByID(context.Context, string) (*User, error)
+	CreateUser(context.Context, *model.User) error
+	GetUserByEmail(context.Context, string) (*model.User, error)
+	GetUserByID(context.Context, string) (*model.User, error)
 	UpdatePasswordHash(context.Context, string, string) error
 	TombstoneUser(context.Context, string) error
 } = (*Repository)(nil)

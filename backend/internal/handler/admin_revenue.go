@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
@@ -39,7 +39,7 @@ func (h *Handler) AdminGetRevenue(c echo.Context) error {
 }
 
 func (h *Handler) AdminListNotifications(c echo.Context) error {
-	claims, ok := c.Get("claims").(*platform.Claims)
+	claims, ok := c.Get("claims").(*infra.Claims)
 	if !ok || claims == nil || claims.Role == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -68,7 +68,7 @@ func (h *Handler) AdminListNotifications(c echo.Context) error {
 }
 
 func (h *Handler) AdminMarkNotificationRead(c echo.Context) error {
-	claims, ok := c.Get("claims").(*platform.Claims)
+	claims, ok := c.Get("claims").(*infra.Claims)
 	if !ok || claims == nil || claims.Role == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}

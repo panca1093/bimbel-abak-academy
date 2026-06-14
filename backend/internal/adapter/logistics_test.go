@@ -1,13 +1,15 @@
-package platform
+package adapter
 
 import (
 	"context"
 	"testing"
+
+	"akademi-bimbel/internal/service"
 )
 
 func TestNoopLogisticsClient_GetRates(t *testing.T) {
 	client := &NoopLogisticsClient{}
-	req := ShippingQuoteRequest{
+	req := service.ShippingQuoteRequest{
 		DestinationZip: "12345",
 		WeightGrams:    1000,
 	}

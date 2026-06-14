@@ -2,30 +2,13 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
+
+	"akademi-bimbel/internal/model"
 )
 
-type CourseSection struct {
-	ID        uuid.UUID
-	ProductID uuid.UUID
-	Title     string
-	Position  int
-	CreatedAt time.Time
-}
-
-type Lesson struct {
-	ID              uuid.UUID
-	SectionID       uuid.UUID
-	Title           string
-	VideoURL        string
-	DurationSeconds int
-	Position        int
-	CreatedAt       time.Time
-}
-
-func (r *Repository) ListSections(ctx context.Context, productID uuid.UUID) ([]CourseSection, error) {
+func (r *Repository) ListSections(ctx context.Context, productID uuid.UUID) ([]model.CourseSection, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, product_id, title, position, created_at
 		FROM course_section
@@ -38,9 +21,9 @@ func (r *Repository) ListSections(ctx context.Context, productID uuid.UUID) ([]C
 	}
 	defer rows.Close()
 
-	var sections []CourseSection
+	var sections []model.CourseSection
 	for rows.Next() {
-		s := CourseSection{}
+		s := model.CourseSection{}
 		err := rows.Scan(&s.ID, &s.ProductID, &s.Title, &s.Position, &s.CreatedAt)
 		if err != nil {
 			return nil, err
@@ -50,7 +33,7 @@ func (r *Repository) ListSections(ctx context.Context, productID uuid.UUID) ([]C
 	return sections, rows.Err()
 }
 
-func (r *Repository) CreateSection(ctx context.Context, s CourseSection) (CourseSection, error) {
+func (r *Repository) CreateSection(ctx context.Context, s model.CourseSection) (model.CourseSection, error) {
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO course_section (product_id, title, position)
 		VALUES ($1, $2, $3)
@@ -60,8 +43,8 @@ func (r *Repository) CreateSection(ctx context.Context, s CourseSection) (Course
 	return s, err
 }
 
-func (r *Repository) UpdateSection(ctx context.Context, id uuid.UUID, title string) (CourseSection, error) {
-	s := CourseSection{}
+func (r *Repository) UpdateSection(ctx context.Context, id uuid.UUID, title string) (model.CourseSection, error) {
+	s := model.CourseSection{}
 	err := r.pool.QueryRow(ctx,
 		`UPDATE course_section SET title = $1 WHERE id = $2
 		RETURNING id, product_id, title, position, created_at`,
@@ -91,7 +74,7 @@ func (r *Repository) ReorderSections(ctx context.Context, productID uuid.UUID, o
 	return nil
 }
 
-func (r *Repository) CreateLesson(ctx context.Context, l Lesson) (Lesson, error) {
+func (r *Repository) CreateLesson(ctx context.Context, l model.Lesson) (model.Lesson, error) {
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO lesson (section_id, title, video_url, duration_seconds, position)
 		VALUES ($1, $2, $3, $4, $5)
@@ -101,8 +84,8 @@ func (r *Repository) CreateLesson(ctx context.Context, l Lesson) (Lesson, error)
 	return l, err
 }
 
-func (r *Repository) UpdateLesson(ctx context.Context, id uuid.UUID, l Lesson) (Lesson, error) {
-	result := Lesson{}
+func (r *Repository) UpdateLesson(ctx context.Context, id uuid.UUID, l model.Lesson) (model.Lesson, error) {
+	result := model.Lesson{}
 	err := r.pool.QueryRow(ctx,
 		`UPDATE lesson SET title = $1, video_url = $2, duration_seconds = $3, position = $4 WHERE id = $5
 		RETURNING id, section_id, title, video_url, duration_seconds, position, created_at`,
@@ -132,7 +115,7 @@ func (r *Repository) ReorderLessons(ctx context.Context, sectionID uuid.UUID, or
 	return nil
 }
 
-func (r *Repository) ListLessonsBySection(ctx context.Context, sectionID uuid.UUID) ([]Lesson, error) {
+func (r *Repository) ListLessonsBySection(ctx context.Context, sectionID uuid.UUID) ([]model.Lesson, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, section_id, title, video_url, duration_seconds, position, created_at
 		FROM lesson
@@ -145,9 +128,9 @@ func (r *Repository) ListLessonsBySection(ctx context.Context, sectionID uuid.UU
 	}
 	defer rows.Close()
 
-	var lessons []Lesson
+	var lessons []model.Lesson
 	for rows.Next() {
-		l := Lesson{}
+		l := model.Lesson{}
 		err := rows.Scan(&l.ID, &l.SectionID, &l.Title, &l.VideoURL, &l.DurationSeconds, &l.Position, &l.CreatedAt)
 		if err != nil {
 			return nil, err

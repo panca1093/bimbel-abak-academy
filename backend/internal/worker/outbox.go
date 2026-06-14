@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
-	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/model"
 )
 
 // OrderPaidPayload unmarshals from the outbox event payload
@@ -28,12 +28,12 @@ type OrderItemMini struct {
 
 // outboxRepository interface defines the methods needed from the repository
 type outboxRepository interface {
-	ClaimOutboxEvents(context.Context, int) ([]repository.OutboxEvent, error)
+	ClaimOutboxEvents(context.Context, int) ([]model.OutboxEvent, error)
 	MarkOutboxProcessed(context.Context, pgx.Tx, int64) error
-	GetOrderByID(context.Context, uuid.UUID) (repository.Order, error)
+	GetOrderByID(context.Context, uuid.UUID) (model.Order, error)
 	SetOrderStatus(context.Context, pgx.Tx, uuid.UUID, string, string) error
-	CreateCourseEnrollment(context.Context, pgx.Tx, repository.CourseEnrollment) error
-	CreateExamRegistration(context.Context, pgx.Tx, repository.ExamRegistration) error
+	CreateCourseEnrollment(context.Context, pgx.Tx, model.CourseEnrollment) error
+	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	BeginTx(context.Context) (pgx.Tx, error)
 	GetExpiredPaymentOrders(context.Context, int) ([]uuid.UUID, error)
 }
@@ -102,7 +102,7 @@ func (w *Worker) pollOutbox(ctx context.Context) {
 	}
 }
 
-func (w *Worker) handleOrderPaid(ctx context.Context, event repository.OutboxEvent) {
+func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 	var payload OrderPaidPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		slog.Error("unmarshal OrderPaid payload", "event_id", event.ID, "err", err)
@@ -126,7 +126,7 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event repository.OutboxEve
 	for _, item := range payload.Items {
 		switch item.ProductType {
 		case "course":
-			enrollment := repository.CourseEnrollment{
+			enrollment := model.CourseEnrollment{
 				ID:        uuid.New(),
 				StudentID: order.StudentID,
 				ProductID: item.ProductID,
@@ -141,7 +141,7 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event repository.OutboxEve
 			}
 		case "exam":
 			token := uuid.New().String()
-			registration := repository.ExamRegistration{
+			registration := model.ExamRegistration{
 				ID:        uuid.New(),
 				StudentID: order.StudentID,
 				ExamID:    item.ProductID,

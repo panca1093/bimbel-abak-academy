@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/model"
 )
 
 type googleTokenInfo struct {
@@ -33,7 +33,7 @@ func (s *Service) GoogleLogin(ctx context.Context, idToken string) (pendingToken
 	}
 
 	if user == nil {
-		newUser := &repository.User{
+		newUser := &model.User{
 			Email:      &email,
 			Role:       RoleStudent,
 			Name:       info.Name,

@@ -1,4 +1,4 @@
-package platform
+package infra
 
 import "github.com/redis/go-redis/v9"
 

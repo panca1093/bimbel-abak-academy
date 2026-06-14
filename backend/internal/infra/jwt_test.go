@@ -1,15 +1,15 @@
-package platform_test
+package infra_test
 
 import (
 	"strings"
 	"testing"
 	"time"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 )
 
 func TestJWT_RoundTrip(t *testing.T) {
-	signer := platform.NewJWTSigner("supersecret", 15*time.Minute)
+	signer := infra.NewJWTSigner("supersecret", 15*time.Minute)
 	schoolID := "school-1"
 	caps := []string{"read", "write"}
 
@@ -38,7 +38,7 @@ func TestJWT_RoundTrip(t *testing.T) {
 }
 
 func TestJWT_TamperedToken(t *testing.T) {
-	signer := platform.NewJWTSigner("supersecret", 15*time.Minute)
+	signer := infra.NewJWTSigner("supersecret", 15*time.Minute)
 	token, _, err := signer.SignAccess("user-1", "student", nil, nil)
 	if err != nil {
 		t.Fatalf("SignAccess: %v", err)
@@ -52,7 +52,7 @@ func TestJWT_TamperedToken(t *testing.T) {
 }
 
 func TestJWT_ExpiredToken(t *testing.T) {
-	signer := platform.NewJWTSigner("supersecret", -1*time.Second)
+	signer := infra.NewJWTSigner("supersecret", -1*time.Second)
 	token, _, err := signer.SignAccess("user-1", "student", nil, nil)
 	if err != nil {
 		t.Fatalf("SignAccess: %v", err)

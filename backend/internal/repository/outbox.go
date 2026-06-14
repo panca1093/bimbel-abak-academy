@@ -6,17 +6,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-)
 
-type OutboxEvent struct {
-	ID          int64
-	AggregateID uuid.UUID
-	EventType   string
-	Payload     json.RawMessage
-	CreatedAt   string
-	Attempts    int
-	LastError   *string
-}
+	"akademi-bimbel/internal/model"
+)
 
 func (r *Repository) InsertOutboxEvent(ctx context.Context, tx pgx.Tx, aggregateID uuid.UUID, eventType string, payload any) error {
 	b, err := json.Marshal(payload)
@@ -30,7 +22,7 @@ func (r *Repository) InsertOutboxEvent(ctx context.Context, tx pgx.Tx, aggregate
 	return err
 }
 
-func (r *Repository) ClaimOutboxEvents(ctx context.Context, limit int) ([]OutboxEvent, error) {
+func (r *Repository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, aggregate_id, event_type, payload, created_at, attempts, last_error
 		 FROM outbox
@@ -45,9 +37,9 @@ func (r *Repository) ClaimOutboxEvents(ctx context.Context, limit int) ([]Outbox
 	}
 	defer rows.Close()
 
-	var events []OutboxEvent
+	var events []model.OutboxEvent
 	for rows.Next() {
-		var e OutboxEvent
+		var e model.OutboxEvent
 		if err := rows.Scan(&e.ID, &e.AggregateID, &e.EventType, &e.Payload, &e.CreatedAt, &e.Attempts, &e.LastError); err != nil {
 			return nil, err
 		}

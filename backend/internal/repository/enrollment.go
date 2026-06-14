@@ -2,34 +2,14 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"akademi-bimbel/internal/model"
 )
 
-type CourseEnrollment struct {
-	ID        uuid.UUID
-	StudentID uuid.UUID
-	ProductID uuid.UUID
-	OrderID   *uuid.UUID
-	Status    string
-	Source    string
-	EnrolledAt time.Time
-	RevokedAt  *time.Time
-}
-
-type ExamRegistration struct {
-	ID        uuid.UUID
-	StudentID uuid.UUID
-	ExamID    uuid.UUID
-	OrderID   *uuid.UUID
-	Token     string
-	Status    string
-	CreatedAt time.Time
-}
-
-func (r *Repository) CreateCourseEnrollment(ctx context.Context, tx pgx.Tx, e CourseEnrollment) error {
+func (r *Repository) CreateCourseEnrollment(ctx context.Context, tx pgx.Tx, e model.CourseEnrollment) error {
 	_, err := tx.Exec(ctx,
 		`INSERT INTO course_enrollment (student_id, product_id, order_id, status, source, enrolled_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
@@ -48,7 +28,7 @@ func (r *Repository) RevokeEnrollmentsByOrder(ctx context.Context, tx pgx.Tx, or
 	return err
 }
 
-func (r *Repository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg ExamRegistration) error {
+func (r *Repository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
 	_, err := tx.Exec(ctx,
 		`INSERT INTO exam_registration (student_id, exam_id, order_id, token, status)
 		VALUES ($1, $2, $3, $4, $5)

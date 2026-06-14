@@ -7,15 +7,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"akademi-bimbel/internal/model"
 )
 
 // Compile-time check: *Repository must implement all order methods.
 var _ interface {
-	MintCart(context.Context, uuid.UUID) (Order, bool, error)
-	GetCartByStudentID(context.Context, uuid.UUID) (Order, error)
-	GetOrderByID(context.Context, uuid.UUID) (Order, error)
-	ListOrders(context.Context, OrderFilter) ([]Order, string, error)
-	AddItem(context.Context, uuid.UUID, OrderItem) error
+	MintCart(context.Context, uuid.UUID) (model.Order, bool, error)
+	GetCartByStudentID(context.Context, uuid.UUID) (model.Order, error)
+	GetOrderByID(context.Context, uuid.UUID) (model.Order, error)
+	ListOrders(context.Context, OrderFilter) ([]model.Order, string, error)
+	AddItem(context.Context, uuid.UUID, model.OrderItem) error
 	RemoveItem(context.Context, uuid.UUID, uuid.UUID) error
 	PatchCart(context.Context, uuid.UUID, OrderPatch) error
 	SetOrderStatus(context.Context, pgx.Tx, uuid.UUID, string, string) error
@@ -25,12 +27,11 @@ var _ interface {
 } = (*Repository)(nil)
 
 func TestOrderStructs(t *testing.T) {
-	// Verify Order struct can be instantiated
-	order := Order{
+	order := model.Order{
 		ID:        uuid.New(),
 		StudentID: uuid.New(),
 		Status:    "cart",
-		Items:     []OrderItem{},
+		Items:     []model.OrderItem{},
 	}
 	if order.Status != "cart" {
 		t.Errorf("Order.Status = %q, want 'cart'", order.Status)
@@ -38,8 +39,7 @@ func TestOrderStructs(t *testing.T) {
 }
 
 func TestOrderItemStruct(t *testing.T) {
-	// Verify OrderItem struct can be instantiated
-	item := OrderItem{
+	item := model.OrderItem{
 		ID:        uuid.New(),
 		OrderID:   uuid.New(),
 		ProductID: uuid.New(),

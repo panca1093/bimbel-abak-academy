@@ -7,28 +7,29 @@ import (
 
 	"github.com/google/uuid"
 
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
 
 // fakeCourseRepo stubs course repository methods.
 type fakeCourseRepo struct {
-	sections map[string]*repository.CourseSection
-	lessons  map[string]*repository.Lesson
-	products map[string]*repository.Product
+	sections map[string]*model.CourseSection
+	lessons  map[string]*model.Lesson
+	products map[string]*model.Product
 	seqSec   int
 	seqLes   int
 }
 
 func newFakeCourseRepo() *fakeCourseRepo {
 	return &fakeCourseRepo{
-		sections: make(map[string]*repository.CourseSection),
-		lessons:  make(map[string]*repository.Lesson),
-		products: make(map[string]*repository.Product),
+		sections: make(map[string]*model.CourseSection),
+		lessons:  make(map[string]*model.Lesson),
+		products: make(map[string]*model.Product),
 	}
 }
 
-func (f *fakeCourseRepo) ListSections(_ context.Context, productID uuid.UUID) ([]repository.CourseSection, error) {
-	var result []repository.CourseSection
+func (f *fakeCourseRepo) ListSections(_ context.Context, productID uuid.UUID) ([]model.CourseSection, error) {
+	var result []model.CourseSection
 	for _, sec := range f.sections {
 		if sec.ProductID == productID {
 			result = append(result, *sec)
@@ -37,16 +38,16 @@ func (f *fakeCourseRepo) ListSections(_ context.Context, productID uuid.UUID) ([
 	return result, nil
 }
 
-func (f *fakeCourseRepo) CreateSection(_ context.Context, s repository.CourseSection) (repository.CourseSection, error) {
+func (f *fakeCourseRepo) CreateSection(_ context.Context, s model.CourseSection) (model.CourseSection, error) {
 	s.ID = uuid.New()
 	f.sections[s.ID.String()] = &s
 	return s, nil
 }
 
-func (f *fakeCourseRepo) UpdateSection(_ context.Context, id uuid.UUID, title string) (repository.CourseSection, error) {
+func (f *fakeCourseRepo) UpdateSection(_ context.Context, id uuid.UUID, title string) (model.CourseSection, error) {
 	sec, ok := f.sections[id.String()]
 	if !ok {
-		return repository.CourseSection{}, repository.ErrNotFound
+		return model.CourseSection{}, repository.ErrNotFound
 	}
 	sec.Title = title
 	return *sec, nil
@@ -68,16 +69,16 @@ func (f *fakeCourseRepo) ReorderSections(_ context.Context, productID uuid.UUID,
 	return nil
 }
 
-func (f *fakeCourseRepo) CreateLesson(_ context.Context, l repository.Lesson) (repository.Lesson, error) {
+func (f *fakeCourseRepo) CreateLesson(_ context.Context, l model.Lesson) (model.Lesson, error) {
 	l.ID = uuid.New()
 	f.lessons[l.ID.String()] = &l
 	return l, nil
 }
 
-func (f *fakeCourseRepo) UpdateLesson(_ context.Context, id uuid.UUID, l repository.Lesson) (repository.Lesson, error) {
+func (f *fakeCourseRepo) UpdateLesson(_ context.Context, id uuid.UUID, l model.Lesson) (model.Lesson, error) {
 	lesson, ok := f.lessons[id.String()]
 	if !ok {
-		return repository.Lesson{}, repository.ErrNotFound
+		return model.Lesson{}, repository.ErrNotFound
 	}
 	lesson.Title = l.Title
 	lesson.VideoURL = l.VideoURL
@@ -101,7 +102,7 @@ func (f *fakeCourseRepo) ReorderLessons(_ context.Context, sectionID uuid.UUID, 
 	return nil
 }
 
-func (f *fakeCourseRepo) GetProductByID(_ context.Context, id string) (*repository.Product, error) {
+func (f *fakeCourseRepo) GetProductByID(_ context.Context, id string) (*model.Product, error) {
 	p, ok := f.products[id]
 	if !ok {
 		return nil, repository.ErrNotFound
@@ -109,8 +110,8 @@ func (f *fakeCourseRepo) GetProductByID(_ context.Context, id string) (*reposito
 	return p, nil
 }
 
-func (f *fakeCourseRepo) ListLessonsBySection(_ context.Context, sectionID uuid.UUID) ([]repository.Lesson, error) {
-	var result []repository.Lesson
+func (f *fakeCourseRepo) ListLessonsBySection(_ context.Context, sectionID uuid.UUID) ([]model.Lesson, error) {
+	var result []model.Lesson
 	for _, lesson := range f.lessons {
 		if lesson.SectionID == sectionID {
 			result = append(result, *lesson)
@@ -119,7 +120,7 @@ func (f *fakeCourseRepo) ListLessonsBySection(_ context.Context, sectionID uuid.
 	return result, nil
 }
 
-func (f *fakeCourseRepo) seedProduct(p repository.Product) {
+func (f *fakeCourseRepo) seedProduct(p model.Product) {
 	f.products[p.ID] = &p
 }
 
@@ -128,7 +129,7 @@ type shimCourseService struct {
 	fake *fakeCourseRepo
 }
 
-func (s *shimCourseService) ListSections(ctx context.Context, productID string) ([]repository.CourseSection, error) {
+func (s *shimCourseService) ListSections(ctx context.Context, productID string) ([]model.CourseSection, error) {
 	pID, err := parseUUID(productID)
 	if err != nil {
 		return nil, err
@@ -145,31 +146,31 @@ func (s *shimCourseService) ListSections(ctx context.Context, productID string) 
 	return s.fake.ListSections(ctx, pID)
 }
 
-func (s *shimCourseService) CreateSection(ctx context.Context, productID string, title string, role string) (repository.CourseSection, error) {
+func (s *shimCourseService) CreateSection(ctx context.Context, productID string, title string, role string) (model.CourseSection, error) {
 	if role != RoleAdminStore {
-		return repository.CourseSection{}, ErrForbidden
+		return model.CourseSection{}, ErrForbidden
 	}
 
 	pID, err := parseUUID(productID)
 	if err != nil {
-		return repository.CourseSection{}, err
+		return model.CourseSection{}, err
 	}
 
 	product, err := s.fake.GetProductByID(ctx, pID.String())
 	if err != nil {
-		return repository.CourseSection{}, ErrProductNotFound
+		return model.CourseSection{}, ErrProductNotFound
 	}
 	if product.Type != "course" {
-		return repository.CourseSection{}, errors.New("product is not a course")
+		return model.CourseSection{}, errors.New("product is not a course")
 	}
 
 	sections, err := s.fake.ListSections(ctx, pID)
 	if err != nil {
-		return repository.CourseSection{}, err
+		return model.CourseSection{}, err
 	}
 
 	position := len(sections)
-	sec := repository.CourseSection{
+	sec := model.CourseSection{
 		ProductID: pID,
 		Title:     title,
 		Position:  position,
@@ -177,14 +178,14 @@ func (s *shimCourseService) CreateSection(ctx context.Context, productID string,
 	return s.fake.CreateSection(ctx, sec)
 }
 
-func (s *shimCourseService) UpdateSection(ctx context.Context, productID, sectionID string, title string, role string) (repository.CourseSection, error) {
+func (s *shimCourseService) UpdateSection(ctx context.Context, productID, sectionID string, title string, role string) (model.CourseSection, error) {
 	if role != RoleAdminStore {
-		return repository.CourseSection{}, ErrForbidden
+		return model.CourseSection{}, ErrForbidden
 	}
 
 	sID, err := parseUUID(sectionID)
 	if err != nil {
-		return repository.CourseSection{}, err
+		return model.CourseSection{}, err
 	}
 
 	return s.fake.UpdateSection(ctx, sID, title)
@@ -225,23 +226,23 @@ func (s *shimCourseService) ReorderSections(ctx context.Context, productID strin
 	return s.fake.ReorderSections(ctx, pID, ids)
 }
 
-func (s *shimCourseService) CreateLesson(ctx context.Context, productID, sectionID string, title, videoURL string, duration int, role string) (repository.Lesson, error) {
+func (s *shimCourseService) CreateLesson(ctx context.Context, productID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
 	if role != RoleAdminStore {
-		return repository.Lesson{}, ErrForbidden
+		return model.Lesson{}, ErrForbidden
 	}
 
 	sID, err := parseUUID(sectionID)
 	if err != nil {
-		return repository.Lesson{}, err
+		return model.Lesson{}, err
 	}
 
 	lessons, err := s.fake.ListLessonsBySection(ctx, sID)
 	if err != nil {
-		return repository.Lesson{}, err
+		return model.Lesson{}, err
 	}
 
 	position := len(lessons)
-	lesson := repository.Lesson{
+	lesson := model.Lesson{
 		SectionID:       sID,
 		Title:           title,
 		VideoURL:        videoURL,
@@ -251,17 +252,17 @@ func (s *shimCourseService) CreateLesson(ctx context.Context, productID, section
 	return s.fake.CreateLesson(ctx, lesson)
 }
 
-func (s *shimCourseService) UpdateLesson(ctx context.Context, productID, sectionID, lessonID string, title, videoURL string, duration int, role string) (repository.Lesson, error) {
+func (s *shimCourseService) UpdateLesson(ctx context.Context, productID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
 	if role != RoleAdminStore {
-		return repository.Lesson{}, ErrForbidden
+		return model.Lesson{}, ErrForbidden
 	}
 
 	lID, err := parseUUID(lessonID)
 	if err != nil {
-		return repository.Lesson{}, err
+		return model.Lesson{}, err
 	}
 
-	lesson := repository.Lesson{
+	lesson := model.Lesson{
 		Title:           title,
 		VideoURL:        videoURL,
 		DurationSeconds: duration,
@@ -311,7 +312,7 @@ func TestListSections_ValidatesCourseType(t *testing.T) {
 	svc := &shimCourseService{fake: fake}
 
 	bookID := uuid.New().String()
-	bookProd := repository.Product{ID: bookID, Type: "book"}
+	bookProd := model.Product{ID: bookID, Type: "book"}
 	fake.seedProduct(bookProd)
 
 	_, err := svc.ListSections(ctx, bookID)
@@ -327,7 +328,7 @@ func TestCreateSection_RejectsNonCourse(t *testing.T) {
 	svc := &shimCourseService{fake: fake}
 
 	bookID := uuid.New().String()
-	bookProd := repository.Product{ID: bookID, Type: "book"}
+	bookProd := model.Product{ID: bookID, Type: "book"}
 	fake.seedProduct(bookProd)
 
 	_, err := svc.CreateSection(ctx, bookID, "Test Section", RoleAdminStore)
@@ -343,10 +344,10 @@ func TestReorderSections_RejectsMismatchedIDs(t *testing.T) {
 	svc := &shimCourseService{fake: fake}
 
 	prodID := uuid.New()
-	courseProd := repository.Product{ID: prodID.String(), Type: "course"}
+	courseProd := model.Product{ID: prodID.String(), Type: "course"}
 	fake.seedProduct(courseProd)
 
-	sec1 := repository.CourseSection{ID: uuid.New(), ProductID: prodID, Title: "Sec 1", Position: 0}
+	sec1 := model.CourseSection{ID: uuid.New(), ProductID: prodID, Title: "Sec 1", Position: 0}
 	fake.sections[sec1.ID.String()] = &sec1
 
 	wrongSecID := uuid.New()

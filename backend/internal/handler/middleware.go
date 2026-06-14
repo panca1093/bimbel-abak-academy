@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
@@ -14,7 +14,7 @@ import (
 
 const claimsKey = "claims"
 
-func JWTMiddleware(svc *service.Service, signer *platform.JWTSigner) echo.MiddlewareFunc {
+func JWTMiddleware(svc *service.Service, signer *infra.JWTSigner) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			header := c.Request().Header.Get("Authorization")
@@ -38,7 +38,7 @@ func JWTMiddleware(svc *service.Service, signer *platform.JWTSigner) echo.Middle
 func RBACMiddleware(required string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			claims, _ := c.Get(claimsKey).(*platform.Claims)
+			claims, _ := c.Get(claimsKey).(*infra.Claims)
 			if claims == nil {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"code": "unauthorized", "message": "missing or invalid token"})
 			}
@@ -79,7 +79,7 @@ func LoginRateLimiter() echo.MiddlewareFunc {
 	})
 }
 
-func ClaimsFromContext(c echo.Context) *platform.Claims {
-	claims, _ := c.Get(claimsKey).(*platform.Claims)
+func ClaimsFromContext(c echo.Context) *infra.Claims {
+	claims, _ := c.Get(claimsKey).(*infra.Claims)
 	return claims
 }

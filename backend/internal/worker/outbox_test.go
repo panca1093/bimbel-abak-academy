@@ -10,21 +10,21 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/model"
 )
 
 type mockRepository struct {
-	claimOutboxEventsFn       func(context.Context, int) ([]repository.OutboxEvent, error)
+	claimOutboxEventsFn       func(context.Context, int) ([]model.OutboxEvent, error)
 	markOutboxProcessedFn     func(context.Context, pgx.Tx, int64) error
 	setOrderStatusFn          func(context.Context, pgx.Tx, uuid.UUID, string, string) error
-	getOrderByIDFn            func(context.Context, uuid.UUID) (repository.Order, error)
-	createCourseEnrollmentFn  func(context.Context, pgx.Tx, repository.CourseEnrollment) error
-	createExamRegistrationFn  func(context.Context, pgx.Tx, repository.ExamRegistration) error
+	getOrderByIDFn            func(context.Context, uuid.UUID) (model.Order, error)
+	createCourseEnrollmentFn  func(context.Context, pgx.Tx, model.CourseEnrollment) error
+	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
 	beginTxFn                 func(context.Context) (pgx.Tx, error)
 	getExpiredPaymentOrdersFn func(context.Context, int) ([]uuid.UUID, error)
 }
 
-func (m *mockRepository) ClaimOutboxEvents(ctx context.Context, limit int) ([]repository.OutboxEvent, error) {
+func (m *mockRepository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 	return m.claimOutboxEventsFn(ctx, limit)
 }
 
@@ -36,15 +36,15 @@ func (m *mockRepository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID 
 	return m.setOrderStatusFn(ctx, tx, orderID, status, reason)
 }
 
-func (m *mockRepository) GetOrderByID(ctx context.Context, id uuid.UUID) (repository.Order, error) {
+func (m *mockRepository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Order, error) {
 	return m.getOrderByIDFn(ctx, id)
 }
 
-func (m *mockRepository) CreateCourseEnrollment(ctx context.Context, tx pgx.Tx, e repository.CourseEnrollment) error {
+func (m *mockRepository) CreateCourseEnrollment(ctx context.Context, tx pgx.Tx, e model.CourseEnrollment) error {
 	return m.createCourseEnrollmentFn(ctx, tx, e)
 }
 
-func (m *mockRepository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg repository.ExamRegistration) error {
+func (m *mockRepository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
 	return m.createExamRegistrationFn(ctx, tx, reg)
 }
 
@@ -102,7 +102,7 @@ func TestOrderPaidHandlerCreatesEnrollments(t *testing.T) {
 	orderStatusUpdated := false
 
 	repo := &mockRepository{
-		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]repository.OutboxEvent, error) {
+		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 			payload, _ := json.Marshal(OrderPaidPayload{
 				OrderID: orderID,
 				Items: []OrderItemMini{
@@ -112,7 +112,7 @@ func TestOrderPaidHandlerCreatesEnrollments(t *testing.T) {
 					},
 				},
 			})
-			return []repository.OutboxEvent{
+			return []model.OutboxEvent{
 				{
 					ID:          outboxID,
 					AggregateID: orderID,
@@ -122,20 +122,20 @@ func TestOrderPaidHandlerCreatesEnrollments(t *testing.T) {
 				},
 			}, nil
 		},
-		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (repository.Order, error) {
-			return repository.Order{
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{
 				ID:        orderID,
 				StudentID: studentID,
 				Status:    "paid",
 			}, nil
 		},
-		createCourseEnrollmentFn: func(ctx context.Context, tx pgx.Tx, e repository.CourseEnrollment) error {
+		createCourseEnrollmentFn: func(ctx context.Context, tx pgx.Tx, e model.CourseEnrollment) error {
 			if e.StudentID == studentID && e.ProductID == productID && e.OrderID != nil && *e.OrderID == orderID {
 				courseEnrollmentCreated = true
 			}
 			return nil
 		},
-		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg repository.ExamRegistration) error {
+		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
 			return nil
 		},
 		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
@@ -183,7 +183,7 @@ func TestOrderPaidHandlerIdempotent(t *testing.T) {
 	createEnrollmentCallCount := 0
 
 	repo := &mockRepository{
-		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]repository.OutboxEvent, error) {
+		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 			payload, _ := json.Marshal(OrderPaidPayload{
 				OrderID: orderID,
 				Items: []OrderItemMini{
@@ -193,7 +193,7 @@ func TestOrderPaidHandlerIdempotent(t *testing.T) {
 					},
 				},
 			})
-			return []repository.OutboxEvent{
+			return []model.OutboxEvent{
 				{
 					ID:          outboxID,
 					AggregateID: orderID,
@@ -203,18 +203,18 @@ func TestOrderPaidHandlerIdempotent(t *testing.T) {
 				},
 			}, nil
 		},
-		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (repository.Order, error) {
-			return repository.Order{
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{
 				ID:        orderID,
 				StudentID: studentID,
 				Status:    "paid",
 			}, nil
 		},
-		createCourseEnrollmentFn: func(ctx context.Context, tx pgx.Tx, e repository.CourseEnrollment) error {
+		createCourseEnrollmentFn: func(ctx context.Context, tx pgx.Tx, e model.CourseEnrollment) error {
 			createEnrollmentCallCount++
 			return nil
 		},
-		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg repository.ExamRegistration) error {
+		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
 			return nil
 		},
 		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
@@ -250,12 +250,12 @@ func TestStalePaymentSweeperUpdatesStatus(t *testing.T) {
 		getExpiredPaymentOrdersFn: func(ctx context.Context, limit int) ([]uuid.UUID, error) {
 			return []uuid.UUID{orderID}, nil
 		},
-		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (repository.Order, error) {
-			return repository.Order{
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{
 				ID:        orderID,
 				Status:    "payment_pending",
 				StudentID: uuid.New(),
-				Items: []repository.OrderItem{
+				Items: []model.OrderItem{
 					{
 						ProductID:   uuid.New(),
 						Qty:         2,
@@ -297,12 +297,12 @@ func TestStalePaymentSweeperIdempotent(t *testing.T) {
 		getExpiredPaymentOrdersFn: func(ctx context.Context, limit int) ([]uuid.UUID, error) {
 			return []uuid.UUID{orderID}, nil
 		},
-		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (repository.Order, error) {
-			return repository.Order{
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{
 				ID:        orderID,
 				Status:    "payment_pending",
 				StudentID: uuid.New(),
-				Items: []repository.OrderItem{
+				Items: []model.OrderItem{
 					{
 						ProductID:   uuid.New(),
 						Qty:         1,
