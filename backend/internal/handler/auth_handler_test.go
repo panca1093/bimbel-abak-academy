@@ -14,7 +14,6 @@ import (
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/repository"
-	"akademi-bimbel/internal/server"
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
@@ -142,7 +141,27 @@ func newTestEnv(t *testing.T) *testEnv {
 	h := handler.New(svc)
 	e := echo.New()
 	e.HideBanner = true
-	server.RegisterRoutesForTest(e, h, svc, signer)
+	v1 := e.Group("/api/v1")
+	auth := v1.Group("/auth")
+	auth.POST("/register", h.Register)
+	auth.POST("/login", h.Login, handler.LoginRateLimiter())
+	auth.POST("/otp/send", h.SendOTP)
+	auth.POST("/otp/verify", h.VerifyOTP)
+	auth.POST("/logout", h.Logout, handler.JWTMiddleware(svc, signer))
+	auth.POST("/password/forgot", h.ForgotPassword)
+	auth.POST("/password/reset", h.ResetPassword)
+	auth.PATCH("/password/change", h.ChangePassword, handler.JWTMiddleware(svc, signer))
+	auth.GET("/me", h.Me, handler.JWTMiddleware(svc, signer))
+
+	admin := v1.Group("/admin")
+	admin.Use(handler.JWTMiddleware(svc, signer))
+	adminProducts := admin.Group("/products")
+	adminProducts.GET("", h.AdminListProducts)
+	adminProducts.POST("", h.AdminCreateProduct)
+	adminProducts.GET("/:id", h.AdminGetProduct)
+	adminProducts.PATCH("/:id", h.AdminUpdateProduct)
+	adminProducts.POST("/:id/publish", h.AdminPublishProduct)
+	adminProducts.DELETE("/:id", h.AdminDeleteProduct)
 
 	return &testEnv{e: e, mr: mr, svc: svc, signer: signer, repo: repo}
 }
