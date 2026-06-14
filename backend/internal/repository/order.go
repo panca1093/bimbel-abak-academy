@@ -366,6 +366,32 @@ func (r *Repository) SetPaymentRef(ctx context.Context, orderID uuid.UUID, ref s
 	return err
 }
 
+func (r *Repository) GetExpiredPaymentOrders(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id
+		FROM orders
+		WHERE status = 'payment_pending'
+		  AND payment_expires_at < now()
+		ORDER BY created_at
+		FOR UPDATE SKIP LOCKED
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orderIDs []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		orderIDs = append(orderIDs, id)
+	}
+	return orderIDs, rows.Err()
+}
+
 func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
 	// Fetch order items
 	rows, err := tx.Query(ctx,
