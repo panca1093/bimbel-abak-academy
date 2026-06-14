@@ -78,6 +78,38 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	promo := v1.Group("/promo-codes")
 	promo.POST("/validate", h.ValidatePromo)
+
+	// Payment webhook route (no auth, uses HMAC signature)
+	webhooks := v1.Group("/webhooks")
+	webhooks.POST("/payment", h.HandlePaymentWebhook)
+
+	// Admin order routes
+	adminOrders := admin.Group("/orders")
+	adminOrders.Use(RBACMiddleware("orders:write"))
+	adminOrders.GET("", h.AdminListOrders)
+	adminOrders.GET("/:id", h.AdminGetOrder)
+	adminOrders.POST("/:id/confirm", h.AdminConfirmOrder)
+	adminOrders.POST("/:id/ship", h.AdminShipOrder)
+	adminOrders.POST("/:id/refund", h.AdminRefundOrder)
+	adminOrders.POST("/:id/reconcile", h.AdminReconcileOrder)
+
+	// Admin promo code routes
+	adminPromos := admin.Group("/promo-codes")
+	adminPromos.Use(RBACMiddleware("promos:write"))
+	adminPromos.GET("", h.AdminListPromoCodes)
+	adminPromos.POST("", h.AdminCreatePromoCode)
+	adminPromos.PUT("/:id", h.AdminUpdatePromoCode)
+	adminPromos.DELETE("/:id", h.AdminDeletePromoCode)
+
+	// Admin revenue and notification routes
+	adminRevenue := admin.Group("/revenue")
+	adminRevenue.Use(RBACMiddleware("revenue:read"))
+	adminRevenue.GET("", h.AdminGetRevenue)
+
+	adminNotifs := admin.Group("/notifications")
+	adminNotifs.Use(RBACMiddleware("notifications:read"))
+	adminNotifs.GET("", h.AdminListNotifications)
+	adminNotifs.PATCH("/:id/read", h.AdminMarkNotificationRead)
 }
 
 func loginRateLimiter() echo.MiddlewareFunc {
