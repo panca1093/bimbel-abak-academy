@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -302,6 +303,22 @@ type CheckoutResult struct {
 	PaymentExpiresAt time.Time
 }
 
+type OrderPaidPayload struct {
+	OrderID string                 `json:"order_id"`
+	Items   []OrderPaidPayloadItem `json:"items"`
+}
+
+type OrderPaidPayloadItem struct {
+	ProductID   string `json:"product_id"`
+	ProductType string `json:"product_type"`
+	Qty         int    `json:"qty"`
+}
+
+type PaymentWebhookPayload struct {
+	PaymentRef string `json:"payment_ref"`
+	OrderID    string `json:"order_id"`
+}
+
 func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -349,19 +366,25 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
-	paymentRef := "pay_" + oID.String()[:8]
-	expiresAt := time.Now().Add(24 * time.Hour)
+	paymentResp, err := s.payment.CreatePayment(ctx, platform.PaymentRequest{
+		OrderID:   oID.String(),
+		Amount:    int64(order.Total * 100),
+		ExpiresIn: 24 * time.Hour,
+	})
+	if err != nil {
+		return CheckoutResult{}, err
+	}
 
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentRef, expiresAt); err != nil {
+	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.PaymentRef, paymentResp.ExpiresAt); err != nil {
 		return CheckoutResult{}, err
 	}
 
 	result := CheckoutResult{
-		PaymentRef:       paymentRef,
-		PaymentExpiresAt: expiresAt,
+		PaymentRef:       paymentResp.PaymentRef,
+		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
-	if err := s.rdb.Set(ctx, cacheKey, paymentRef, 24*time.Hour).Err(); err != nil {
+	if err := s.rdb.Set(ctx, cacheKey, paymentResp.PaymentRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -398,19 +421,39 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
-	paymentRef := "pay_" + oID.String()[:8]
-	expiresAt := time.Now().Add(24 * time.Hour)
+	paymentResp, err := s.payment.CreatePayment(ctx, platform.PaymentRequest{
+		OrderID:   oID.String(),
+		Amount:    int64(order.Total * 100),
+		ExpiresIn: 24 * time.Hour,
+	})
+	if err != nil {
+		return CheckoutResult{}, err
+	}
 
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentRef, expiresAt); err != nil {
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.PaymentRef, paymentResp.ExpiresAt); err != nil {
+		return CheckoutResult{}, err
+	}
+
+	if err := s.storeRepo.SetOrderStatus(ctx, tx, oID, "payment_pending", ""); err != nil {
+		return CheckoutResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return CheckoutResult{}, err
 	}
 
 	result := CheckoutResult{
-		PaymentRef:       paymentRef,
-		PaymentExpiresAt: expiresAt,
+		PaymentRef:       paymentResp.PaymentRef,
+		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
-	if err := s.rdb.Set(ctx, cacheKey, paymentRef, 24*time.Hour).Err(); err != nil {
+	if err := s.rdb.Set(ctx, cacheKey, paymentResp.PaymentRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -515,7 +558,16 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, orderID, key string) er
 		return err
 	}
 
-	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, id, "OrderPaid", nil); err != nil {
+	payload := OrderPaidPayload{OrderID: id.String()}
+	for _, item := range order.Items {
+		payload.Items = append(payload.Items, OrderPaidPayloadItem{
+			ProductID:   item.ProductID.String(),
+			ProductType: item.ProductType,
+			Qty:         item.Qty,
+		})
+	}
+
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, id, "OrderPaid", payload); err != nil {
 		return err
 	}
 
@@ -600,6 +652,14 @@ func (s *Service) AdminRefundOrder(ctx context.Context, orderID string) error {
 		return err
 	}
 
+	if err := s.storeRepo.ClearOrderTracking(ctx, tx, id); err != nil {
+		return err
+	}
+
+	if err := s.storeRepo.InsertAuditLog(ctx, tx, "", "order", id.String(), "refund"); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -666,10 +726,7 @@ func (s *Service) AdminDeletePromoCode(ctx context.Context, id string) error {
 // Admin revenue method
 
 func (s *Service) AdminGetRevenue(ctx context.Context, from, to time.Time) (map[string]interface{}, error) {
-	// Placeholder - will aggregate orders with paid/processing/shipped status
-	return map[string]interface{}{
-		"total": 0.0,
-	}, nil
+	return s.storeRepo.GetRevenue(ctx, from, to)
 }
 
 // Payment webhook handler
@@ -685,7 +742,55 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		return nil
 	}
 
-	// Placeholder - will parse webhook, update order status, insert outbox event
+	var webhook PaymentWebhookPayload
+	if err := json.Unmarshal(payload, &webhook); err != nil {
+		return err
+	}
+
+	orderID, err := parseUUID(webhook.OrderID)
+	if err != nil {
+		return err
+	}
+
+	order, err := s.storeRepo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	if order.ID.String() == "" {
+		return ErrOrderNotFound
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, webhook.PaymentRef); err != nil {
+		return err
+	}
+
+	if err := s.storeRepo.SetOrderStatus(ctx, tx, orderID, "paid", ""); err != nil {
+		return err
+	}
+
+	outboxPayload := OrderPaidPayload{OrderID: orderID.String()}
+	for _, item := range order.Items {
+		outboxPayload.Items = append(outboxPayload.Items, OrderPaidPayloadItem{
+			ProductID:   item.ProductID.String(),
+			ProductType: item.ProductType,
+			Qty:         item.Qty,
+		})
+	}
+
+	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, orderID, "OrderPaid", outboxPayload); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
 	if err := s.rdb.Set(ctx, cacheKey, "ok", 24*time.Hour).Err(); err != nil {
 		return err
 	}

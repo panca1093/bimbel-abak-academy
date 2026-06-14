@@ -256,7 +256,7 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]Orde
 		argNum++
 	}
 
-	query += fmt.Sprintf(` ORDER BY id ASC LIMIT $%d`, argNum)
+	query += fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -453,4 +453,81 @@ func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.
 		orderID,
 	)
 	return err
+}
+
+func (r *Repository) InsertWebhookLog(ctx context.Context, tx pgx.Tx, eventType string, payload []byte, paymentRef string) error {
+	_, err := tx.Exec(ctx,
+		`INSERT INTO webhook_log (event_type, payload, payment_ref)
+		 VALUES ($1, $2, $3)`,
+		eventType, payload, paymentRef,
+	)
+	return err
+}
+
+func (r *Repository) InsertAuditLog(ctx context.Context, tx pgx.Tx, actorID, targetType, targetID, action string) error {
+	var err error
+	if tx != nil {
+		_, err = tx.Exec(ctx,
+			`INSERT INTO audit_log (actor_id, target_type, target_id, action)
+			 VALUES ($1, $2, $3, $4)`,
+			actorID, targetType, targetID, action,
+		)
+	} else {
+		_, err = r.pool.Exec(ctx,
+			`INSERT INTO audit_log (actor_id, target_type, target_id, action)
+			 VALUES ($1, $2, $3, $4)`,
+			actorID, targetType, targetID, action,
+		)
+	}
+	return err
+}
+
+func (r *Repository) ClearOrderTracking(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE orders
+		 SET tracking_number = '', shipped_at = NULL, updated_at = now()
+		 WHERE id = $1`,
+		orderID,
+	)
+	return err
+}
+
+func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[string]interface{}, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT COALESCE(SUM(o.total), 0) as total, oi.product_type, COUNT(*) as count
+		FROM orders o
+		JOIN order_item oi ON o.id = oi.order_id
+		WHERE o.status IN ('paid', 'processing', 'shipped')
+		  AND o.created_at BETWEEN $1 AND $2
+		GROUP BY oi.product_type
+	`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := map[string]interface{}{
+		"total":   0.0,
+		"by_type": map[string]interface{}{},
+	}
+	var grandTotal float64
+	byType := map[string]interface{}{}
+
+	for rows.Next() {
+		var total float64
+		var productType string
+		var count int
+		if err := rows.Scan(&total, &productType, &count); err != nil {
+			return nil, err
+		}
+		grandTotal += total
+		byType[productType] = map[string]interface{}{
+			"total": total,
+			"count": count,
+		}
+	}
+
+	result["total"] = grandTotal
+	result["by_type"] = byType
+	return result, rows.Err()
 }
