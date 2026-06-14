@@ -527,6 +527,23 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, orderID, key string) er
 		return err
 	}
 
+	// Push notification (best-effort; non-fatal error)
+	student, _ := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
+	studentName := "Student"
+	if student != nil {
+		studentName = student.Name
+	}
+	notif := PurchaseNotification{
+		ID:          uuid.New().String(),
+		Type:        "order_confirmed",
+		OrderID:     order.ID,
+		StudentName: studentName,
+		Amount:      int64(order.Total * 100),
+		CreatedAt:   time.Now(),
+		Read:        false,
+	}
+	_ = s.PushPurchaseNotification(ctx, RoleAdminStore, notif)
+
 	return nil
 }
 

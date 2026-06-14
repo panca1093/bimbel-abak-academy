@@ -22,6 +22,11 @@ func (r *Repository) Ping(ctx context.Context) error {
 	return r.pool.Ping(ctx)
 }
 
+// BeginTx starts a new transaction.
+func (r *Repository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.pool.Begin(ctx)
+}
+
 func isNotFound(err error) bool {
 	return errors.Is(err, pgx.ErrNoRows)
 }
