@@ -1,4 +1,4 @@
-# Akademi Bimbel — App
+# Abak Academy Bimbel — App
 
 Monorepo for the Abak Academy platform (exam engine + ecommerce + video courses).
 Source of truth for requirements lives one level up in `../requirements/`
