@@ -12,9 +12,8 @@ import (
 	"time"
 
 	"akademi-bimbel/internal/handler"
-	"akademi-bimbel/internal/platform"
-	"akademi-bimbel/internal/repository"
-	"akademi-bimbel/internal/server"
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
@@ -25,17 +24,17 @@ import (
 
 // fakeRepo is an in-memory UserRepository for handler tests.
 type fakeRepo struct {
-	byID map[string]*repository.User
+	byID map[string]*model.User
 	seq  int
 }
 
 func newFakeRepo() *fakeRepo {
-	return &fakeRepo{byID: map[string]*repository.User{}}
+	return &fakeRepo{byID: map[string]*model.User{}}
 }
 
 func (f *fakeRepo) Ping(_ context.Context) error { return nil }
 
-func (f *fakeRepo) CreateUser(_ context.Context, u *repository.User) error {
+func (f *fakeRepo) CreateUser(_ context.Context, u *model.User) error {
 	f.seq++
 	u.ID = fmt.Sprintf("u%d", f.seq)
 	now := time.Now()
@@ -46,7 +45,7 @@ func (f *fakeRepo) CreateUser(_ context.Context, u *repository.User) error {
 	return nil
 }
 
-func (f *fakeRepo) GetUserByEmail(_ context.Context, email string) (*repository.User, error) {
+func (f *fakeRepo) GetUserByEmail(_ context.Context, email string) (*model.User, error) {
 	for _, u := range f.byID {
 		if u.Email != nil && *u.Email == email && u.Status != "deleted" {
 			cp := *u
@@ -56,7 +55,7 @@ func (f *fakeRepo) GetUserByEmail(_ context.Context, email string) (*repository.
 	return nil, nil
 }
 
-func (f *fakeRepo) GetUserByUsername(_ context.Context, username string) (*repository.User, error) {
+func (f *fakeRepo) GetUserByUsername(_ context.Context, username string) (*model.User, error) {
 	for _, u := range f.byID {
 		if u.Username != nil && *u.Username == username && u.Status != "deleted" {
 			cp := *u
@@ -66,7 +65,7 @@ func (f *fakeRepo) GetUserByUsername(_ context.Context, username string) (*repos
 	return nil, nil
 }
 
-func (f *fakeRepo) GetUserByID(_ context.Context, id string) (*repository.User, error) {
+func (f *fakeRepo) GetUserByID(_ context.Context, id string) (*model.User, error) {
 	u, ok := f.byID[id]
 	if !ok {
 		return nil, nil
@@ -93,7 +92,7 @@ func (f *fakeRepo) TombstoneUser(_ context.Context, userID string) error {
 	return nil
 }
 
-func (f *fakeRepo) seed(u *repository.User) {
+func (f *fakeRepo) seed(u *model.User) {
 	f.seq++
 	if u.ID == "" {
 		u.ID = fmt.Sprintf("seed%d", f.seq)
@@ -116,7 +115,7 @@ type testEnv struct {
 	e      *echo.Echo
 	mr     *miniredis.Miniredis
 	svc    *service.Service
-	signer *platform.JWTSigner
+	signer *infra.JWTSigner
 	repo   *fakeRepo
 }
 
@@ -135,14 +134,34 @@ func newTestEnv(t *testing.T) *testEnv {
 		RefreshTokenTTL: 168 * time.Hour,
 		OTPTTL:          5 * time.Minute,
 	}
-	signer := platform.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	repo := newFakeRepo()
-	svc := service.New(repo, rdb, signer, &platform.NoopOTPProvider{}, &platform.NoopEmailProvider{}, cfg)
+	svc := service.New(repo, rdb, signer, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, cfg)
 
 	h := handler.New(svc)
 	e := echo.New()
 	e.HideBanner = true
-	server.RegisterRoutesForTest(e, h, svc, signer)
+	v1 := e.Group("/api/v1")
+	auth := v1.Group("/auth")
+	auth.POST("/register", h.Register)
+	auth.POST("/login", h.Login, handler.LoginRateLimiter())
+	auth.POST("/otp/send", h.SendOTP)
+	auth.POST("/otp/verify", h.VerifyOTP)
+	auth.POST("/logout", h.Logout, handler.JWTMiddleware(svc, signer))
+	auth.POST("/password/forgot", h.ForgotPassword)
+	auth.POST("/password/reset", h.ResetPassword)
+	auth.PATCH("/password/change", h.ChangePassword, handler.JWTMiddleware(svc, signer))
+	auth.GET("/me", h.Me, handler.JWTMiddleware(svc, signer))
+
+	admin := v1.Group("/admin")
+	admin.Use(handler.JWTMiddleware(svc, signer))
+	adminProducts := admin.Group("/products")
+	adminProducts.GET("", h.AdminListProducts)
+	adminProducts.POST("", h.AdminCreateProduct)
+	adminProducts.GET("/:id", h.AdminGetProduct)
+	adminProducts.PATCH("/:id", h.AdminUpdateProduct)
+	adminProducts.POST("/:id/publish", h.AdminPublishProduct)
+	adminProducts.DELETE("/:id", h.AdminDeleteProduct)
 
 	return &testEnv{e: e, mr: mr, svc: svc, signer: signer, repo: repo}
 }
@@ -192,7 +211,7 @@ func TestRegisterHandler_HappyPath(t *testing.T) {
 
 func TestRegisterHandler_DuplicateEmail(t *testing.T) {
 	env := newTestEnv(t)
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		Email:        strptr("taken@example.com"),
 		PasswordHash: mustHash("whatever"),
 		Role:         service.RoleStudent,
@@ -215,7 +234,7 @@ func TestRegisterHandler_DuplicateEmail(t *testing.T) {
 
 func TestLoginHandler_OTPEnabled(t *testing.T) {
 	env := newTestEnv(t)
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		ID:           "u1",
 		Email:        strptr("otp@example.com"),
 		PasswordHash: mustHash("password123"),
@@ -242,7 +261,7 @@ func TestLoginHandler_OTPEnabled(t *testing.T) {
 
 func TestVerifyOTPHandler_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		ID:           "u1",
 		Email:        strptr("otp@example.com"),
 		PasswordHash: mustHash("password123"),
@@ -337,7 +356,7 @@ func TestLoginHandler_RateLimit(t *testing.T) {
 func TestMeHandler_ValidToken(t *testing.T) {
 	env := newTestEnv(t)
 	email := "me@example.com"
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		ID:           "u1",
 		Email:        &email,
 		PasswordHash: mustHash("password123"),

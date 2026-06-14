@@ -11,8 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"akademi-bimbel/internal/adapter"
 	"akademi-bimbel/internal/handler"
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/server"
 	"akademi-bimbel/internal/service"
@@ -25,25 +26,27 @@ func main() {
 	cfg := config.Load()
 	ctx := context.Background()
 
-	if err := platform.RunMigrations(ctx, cfg.DatabaseURL); err != nil {
+	if err := infra.RunMigrations(ctx, cfg.DatabaseURL); err != nil {
 		logger.Error("run migrations", "err", err)
 		os.Exit(1)
 	}
 
-	pool, err := platform.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := infra.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("connect postgres", "err", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
 
-	rdb := platform.NewRedis(cfg.RedisAddr, cfg.RedisPassword)
+	rdb := infra.NewRedis(cfg.RedisAddr, cfg.RedisPassword)
 	defer rdb.Close()
 
-	repo := repository.New(pool)
-	jwtSigner := platform.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+	storeRepo := repository.New(pool)
+	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	otpProvider, emailProvider := newNotifyProviders(cfg)
-	svc := service.New(repo, rdb, jwtSigner, otpProvider, emailProvider, &cfg)
+	paymentClient := &adapter.NoopPaymentClient{}
+	logisticsClient := &adapter.NoopLogisticsClient{}
+	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, &cfg)
 	h := handler.New(svc)
 	e := server.New(h, svc, jwtSigner, cfg)
 
@@ -67,11 +70,11 @@ func main() {
 	logger.Info("api stopped")
 }
 
-func newNotifyProviders(cfg config.Config) (platform.OTPProvider, platform.EmailProvider) {
+func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailProvider) {
 	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
-		return &platform.NoopOTPProvider{}, &platform.NoopEmailProvider{}
+		return &adapter.NoopOTPProvider{}, &adapter.NoopEmailProvider{}
 	}
-	fz := platform.NewFazpassProvider(platform.FazpassConfig{
+	fz := adapter.NewFazpassProvider(adapter.FazpassConfig{
 		MerchantKey: cfg.FazpassMerchantKey,
 		APIKey:      cfg.FazpassAPIKey,
 		BaseURL:     cfg.FazpassBaseURL,

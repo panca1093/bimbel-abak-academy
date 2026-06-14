@@ -7,8 +7,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	"akademi-bimbel/internal/platform"
+	"github.com/redis/go-redis/v9"
+
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/worker"
 )
 
@@ -21,15 +25,23 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := platform.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := infra.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("connect postgres", "err", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
 
-	w := worker.New(pool, cfg.WorkerPollInterval)
-	logger.Info("worker started", "poll_interval", cfg.WorkerPollInterval.String())
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+	})
+	defer rdb.Close()
+
+	repo := repository.New(pool)
+	sweeperInterval := 5 * time.Minute // default 5m
+	w := worker.New(pool, rdb, repo, cfg.WorkerPollInterval, sweeperInterval)
+	logger.Info("worker started", "poll_interval", cfg.WorkerPollInterval.String(), "sweeper_interval", sweeperInterval.String())
 	w.Run(ctx)
 	logger.Info("worker stopped")
 }

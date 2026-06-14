@@ -1,8 +1,10 @@
-package platform
+package adapter
 
 import (
 	"context"
 	"testing"
+
+	"akademi-bimbel/internal/service"
 )
 
 func TestPreferredOTPChannel(t *testing.T) {
@@ -19,7 +21,7 @@ func TestPreferredOTPChannel(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ch, dest := PreferredOTPChannel(tc.phone, tc.email)
+			ch, dest := service.PreferredOTPChannel(tc.phone, tc.email)
 			if ch != tc.wantChannel {
 				t.Errorf("channel: got %q, want %q", ch, tc.wantChannel)
 			}
@@ -47,5 +49,5 @@ func TestNoopEmailProvider(t *testing.T) {
 }
 
 // Compile-time interface checks for FazpassProvider.
-var _ OTPProvider = (*FazpassProvider)(nil)
-var _ EmailProvider = (*FazpassProvider)(nil)
+var _ service.OTPProvider = (*FazpassProvider)(nil)
+var _ service.EmailProvider = (*FazpassProvider)(nil)

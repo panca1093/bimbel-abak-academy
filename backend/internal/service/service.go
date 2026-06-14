@@ -2,19 +2,22 @@ package service
 
 import (
 	"akademi-bimbel/config"
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/repository"
 	"context"
-
-	"akademi-bimbel/internal/platform"
 
 	"github.com/redis/go-redis/v9"
 )
 
 type Service struct {
 	repo          UserRepository
+	storeRepo     *repository.Repository
 	rdb           *redis.Client
-	jwtSigner     *platform.JWTSigner
-	otpProvider   platform.OTPProvider
-	emailProvider platform.EmailProvider
+	jwtSigner     *infra.JWTSigner
+	otpProvider   OTPProvider
+	emailProvider EmailProvider
+	payment       PaymentClient
+	logistics     LogisticsClient
 	cfg           *config.Config
 }
 
@@ -26,9 +29,9 @@ func NewForTest(rdb *redis.Client) *Service {
 func New(
 	repo UserRepository,
 	rdb *redis.Client,
-	jwtSigner *platform.JWTSigner,
-	otpProvider platform.OTPProvider,
-	emailProvider platform.EmailProvider,
+	jwtSigner *infra.JWTSigner,
+	otpProvider OTPProvider,
+	emailProvider EmailProvider,
 	cfg *config.Config,
 ) *Service {
 	return &Service{
@@ -41,13 +44,37 @@ func New(
 	}
 }
 
+func NewWithStore(
+	repo UserRepository,
+	storeRepo *repository.Repository,
+	rdb *redis.Client,
+	jwtSigner *infra.JWTSigner,
+	otpProvider OTPProvider,
+	emailProvider EmailProvider,
+	payment PaymentClient,
+	logistics LogisticsClient,
+	cfg *config.Config,
+) *Service {
+	return &Service{
+		repo:          repo,
+		storeRepo:     storeRepo,
+		rdb:           rdb,
+		jwtSigner:     jwtSigner,
+		otpProvider:   otpProvider,
+		emailProvider: emailProvider,
+		payment:       payment,
+		logistics:     logistics,
+		cfg:           cfg,
+	}
+}
+
 type Health struct {
 	Status   string `json:"status"`
 	Postgres string `json:"postgres"`
 	Redis    string `json:"redis"`
 }
 
-func (s *Service) ParseAccess(tokenString string) (*platform.Claims, error) {
+func (s *Service) ParseAccess(tokenString string) (*infra.Claims, error) {
 	return s.jwtSigner.ParseAccess(tokenString)
 }
 
