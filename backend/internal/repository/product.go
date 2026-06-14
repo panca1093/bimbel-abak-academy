@@ -4,25 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
+
+	"akademi-bimbel/internal/model"
 )
 
 var ErrNotFound = errors.New("not found")
-
-type Product struct {
-	ID            string
-	Type          string
-	Title         string
-	Description   string
-	Price         int64
-	Stock         int
-	Status        string
-	IsVisible     bool
-	WeightGrams   int
-	CoverImageURL string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-}
 
 type ProductFilter struct {
 	Type          string
@@ -32,7 +18,7 @@ type ProductFilter struct {
 	Limit         int
 }
 
-func (r *Repository) CreateProduct(ctx context.Context, p *Product) error {
+func (r *Repository) CreateProduct(ctx context.Context, p *model.Product) error {
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO product (type, title, description, price, stock, status, is_visible, weight_grams, cover_image_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -42,8 +28,8 @@ func (r *Repository) CreateProduct(ctx context.Context, p *Product) error {
 	return err
 }
 
-func (r *Repository) GetProductByID(ctx context.Context, id string) (*Product, error) {
-	p := &Product{}
+func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Product, error) {
+	p := &model.Product{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, type, title, description, price, stock, status, is_visible, weight_grams, cover_image_url, created_at, updated_at
 		FROM product
@@ -61,12 +47,12 @@ func (r *Repository) GetProductByID(ctx context.Context, id string) (*Product, e
 	return p, nil
 }
 
-func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]Product, string, error) {
+func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]model.Product, string, error) {
 	if filter.Limit == 0 {
 		filter.Limit = 20
 	}
 
-	var products []Product
+	var products []model.Product
 	query := `SELECT id, type, title, description, price, stock, status, is_visible, weight_grams, cover_image_url, created_at, updated_at
 	FROM product WHERE 1=1`
 	args := []interface{}{}
@@ -103,7 +89,7 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	defer rows.Close()
 
 	for rows.Next() {
-		p := Product{}
+		p := model.Product{}
 		err := rows.Scan(
 			&p.ID, &p.Type, &p.Title, &p.Description, &p.Price, &p.Stock, &p.Status, &p.IsVisible, &p.WeightGrams, &p.CoverImageURL, &p.CreatedAt, &p.UpdatedAt,
 		)
@@ -125,7 +111,7 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	return products, nextCursor, nil
 }
 
-func (r *Repository) UpdateProduct(ctx context.Context, id string, p *Product) error {
+func (r *Repository) UpdateProduct(ctx context.Context, id string, p *model.Product) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE product
 		SET type = $1, title = $2, description = $3, price = $4, stock = $5, status = $6, is_visible = $7, weight_grams = $8, cover_image_url = $9, updated_at = now()

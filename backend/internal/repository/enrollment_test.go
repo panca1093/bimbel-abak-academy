@@ -7,35 +7,32 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"akademi-bimbel/internal/model"
 )
 
 func TestEnrollmentMethods(t *testing.T) {
-	// Compile-time test: verify all Enrollment and ExamRegistration methods exist on *Repository
-
 	r := &Repository{}
 	ctx := context.Background()
 
-	// CourseEnrollment methods
 	_ = r.CreateCourseEnrollment
 	_ = r.RevokeEnrollmentsByOrder
 
-	// ExamRegistration methods
 	_ = r.CreateExamRegistration
 	_ = r.ExpireExamRegistrationsByOrder
 
-	// Verify struct field names compile
-	enrollment := CourseEnrollment{
-		ID:        uuid.New(),
-		StudentID: uuid.New(),
-		ProductID: uuid.New(),
-		OrderID:   ptrUUID(uuid.New()),
-		Status:    "active",
-		Source:    "order",
+	enrollment := model.CourseEnrollment{
+		ID:         uuid.New(),
+		StudentID:  uuid.New(),
+		ProductID:  uuid.New(),
+		OrderID:    ptrUUID(uuid.New()),
+		Status:     "active",
+		Source:     "order",
 		EnrolledAt: time.Now(),
 	}
 	_ = enrollment
 
-	examReg := ExamRegistration{
+	examReg := model.ExamRegistration{
 		ID:        uuid.New(),
 		StudentID: uuid.New(),
 		ExamID:    uuid.New(),
@@ -48,8 +45,7 @@ func TestEnrollmentMethods(t *testing.T) {
 
 	_ = ctx
 
-	// Verify that CreateCourseEnrollment signature accepts pgx.Tx (compile-time only)
-	var _ func(context.Context, pgx.Tx, CourseEnrollment) error = r.CreateCourseEnrollment
+	var _ func(context.Context, pgx.Tx, model.CourseEnrollment) error = r.CreateCourseEnrollment
 }
 
 func TestCreateCourseEnrollmentSQLContainsConflictClause(t *testing.T) {

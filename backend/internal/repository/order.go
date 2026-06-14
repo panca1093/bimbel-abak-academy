@@ -8,42 +8,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"akademi-bimbel/internal/model"
 )
 
 var ErrInsufficientStock = errors.New("insufficient stock")
-
-type Order struct {
-	ID                 uuid.UUID
-	StudentID          uuid.UUID
-	Status             string
-	Subtotal           float64
-	Discount           float64
-	ShippingAmount     float64
-	Total              float64
-	PromoCodeID        *uuid.UUID
-	ShippingAddress    []byte
-	Courier            string
-	TrackingNumber     string
-	ShippedAt          *time.Time
-	PaymentRef         string
-	PaymentExpiresAt   *time.Time
-	CancellationReason string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	Items              []OrderItem
-}
-
-type OrderItem struct {
-	ID          uuid.UUID
-	OrderID     uuid.UUID
-	ProductID   uuid.UUID
-	ProductType string
-	Title       string
-	UnitPrice   float64
-	Qty         int
-	FulfilledAt *time.Time
-	CreatedAt   time.Time
-}
 
 type OrderFilter struct {
 	StudentID   *uuid.UUID
@@ -62,8 +31,8 @@ type OrderPatch struct {
 	Total           float64
 }
 
-func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (Order, bool, error) {
-	order := Order{}
+func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.Order, bool, error) {
+	order := model.Order{}
 	// Try to INSERT; ON CONFLICT DO NOTHING returns nothing if conflict
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_amount, total)
@@ -98,17 +67,17 @@ func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (Order, 
 				&order.CreatedAt, &order.UpdatedAt,
 			)
 			if err != nil {
-				return Order{}, false, err
+				return model.Order{}, false, err
 			}
 			return order, false, nil
 		}
-		return Order{}, false, err
+		return model.Order{}, false, err
 	}
 	return order, true, nil
 }
 
-func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID) (Order, error) {
-	order := Order{}
+func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID) (model.Order, error) {
+	order := model.Order{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, student_id, status, subtotal, discount, shipping_amount, total,
 		        promo_code_id, shipping_address, courier, tracking_number, shipped_at,
@@ -125,12 +94,12 @@ func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID
 	)
 	if err != nil {
 		if isNotFound(err) {
-			return Order{}, nil
+			return model.Order{}, nil
 		}
-		return Order{}, err
+		return model.Order{}, err
 	}
 
-	items := []OrderItem{}
+	items := []model.OrderItem{}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, order_id, product_id, product_type, title, unit_price, qty, fulfilled_at, created_at
 		 FROM order_item
@@ -139,30 +108,30 @@ func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID
 		order.ID,
 	)
 	if err != nil {
-		return Order{}, err
+		return model.Order{}, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		item := OrderItem{}
+		item := model.OrderItem{}
 		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
 			&item.Title, &item.UnitPrice, &item.Qty, &item.FulfilledAt, &item.CreatedAt)
 		if err != nil {
-			return Order{}, err
+			return model.Order{}, err
 		}
 		items = append(items, item)
 	}
 
 	if err = rows.Err(); err != nil {
-		return Order{}, err
+		return model.Order{}, err
 	}
 
 	order.Items = items
 	return order, nil
 }
 
-func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error) {
-	order := Order{}
+func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Order, error) {
+	order := model.Order{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, student_id, status, subtotal, discount, shipping_amount, total,
 		        promo_code_id, shipping_address, courier, tracking_number, shipped_at,
@@ -179,12 +148,12 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, err
 	)
 	if err != nil {
 		if isNotFound(err) {
-			return Order{}, nil
+			return model.Order{}, nil
 		}
-		return Order{}, err
+		return model.Order{}, err
 	}
 
-	items := []OrderItem{}
+	items := []model.OrderItem{}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, order_id, product_id, product_type, title, unit_price, qty, fulfilled_at, created_at
 		 FROM order_item
@@ -193,29 +162,29 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, err
 		order.ID,
 	)
 	if err != nil {
-		return Order{}, err
+		return model.Order{}, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		item := OrderItem{}
+		item := model.OrderItem{}
 		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
 			&item.Title, &item.UnitPrice, &item.Qty, &item.FulfilledAt, &item.CreatedAt)
 		if err != nil {
-			return Order{}, err
+			return model.Order{}, err
 		}
 		items = append(items, item)
 	}
 
 	if err = rows.Err(); err != nil {
-		return Order{}, err
+		return model.Order{}, err
 	}
 
 	order.Items = items
 	return order, nil
 }
 
-func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]Order, string, error) {
+func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]model.Order, string, error) {
 	if filter.Limit == 0 {
 		filter.Limit = 10
 	}
@@ -265,11 +234,11 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]Orde
 	}
 	defer rows.Close()
 
-	orders := []Order{}
+	orders := []model.Order{}
 	nextCursor := ""
 
 	for rows.Next() {
-		order := Order{}
+		order := model.Order{}
 		err := rows.Scan(
 			&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
 			&order.ShippingAmount, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
@@ -295,7 +264,7 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]Orde
 	return orders, nextCursor, nil
 }
 
-func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item OrderItem) error {
+func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.OrderItem) error {
 	item.ID = uuid.New()
 	item.OrderID = orderID
 	_, err := r.pool.Exec(ctx,
@@ -405,9 +374,9 @@ func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.
 	}
 	defer rows.Close()
 
-	items := []OrderItem{}
+	items := []model.OrderItem{}
 	for rows.Next() {
-		item := OrderItem{}
+		item := model.OrderItem{}
 		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
 			&item.Title, &item.UnitPrice, &item.Qty, &item.FulfilledAt, &item.CreatedAt)
 		if err != nil {

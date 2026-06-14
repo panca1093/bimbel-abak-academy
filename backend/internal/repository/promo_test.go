@@ -6,34 +6,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"akademi-bimbel/internal/model"
 )
 
 func TestPromoCodeMethods(t *testing.T) {
-	// Compile-time test: verify all PromoCode methods exist on *Repository
-
 	r := &Repository{}
 	ctx := context.Background()
 
-	// GetPromoByCode
 	_ = r.GetPromoByCode
-
-	// CreatePromoCode
 	_ = r.CreatePromoCode
-
-	// UpdatePromoCode
 	_ = r.UpdatePromoCode
-
-	// DeletePromoCode
 	_ = r.DeletePromoCode
-
-	// ListPromoCodes
 	_ = r.ListPromoCodes
-
-	// IncrementPromoUses
 	_ = r.IncrementPromoUses
 
-	// Verify method signatures compile
-	promo := PromoCode{
+	promo := model.PromoCode{
 		ID:              uuid.New(),
 		Code:            "TEST",
 		DiscountPercent: ptrFloat64(10.0),

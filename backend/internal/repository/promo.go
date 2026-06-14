@@ -5,23 +5,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"akademi-bimbel/internal/model"
 )
 
-type PromoCode struct {
-	ID                uuid.UUID
-	Code              string
-	DiscountPercent   *float64
-	DiscountAmount    *float64
-	MinOrderAmount    *float64
-	MaxDiscountAmount *float64
-	MaxUses           *int
-	Uses              int
-	ExpiresAt         *time.Time
-	CreatedAt         time.Time
-}
-
-func (r *Repository) GetPromoByCode(ctx context.Context, code string) (PromoCode, error) {
-	p := PromoCode{}
+func (r *Repository) GetPromoByCode(ctx context.Context, code string) (model.PromoCode, error) {
+	p := model.PromoCode{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, uses, expires_at, created_at
 		FROM promo_code
@@ -32,14 +21,14 @@ func (r *Repository) GetPromoByCode(ctx context.Context, code string) (PromoCode
 	)
 	if err != nil {
 		if isNotFound(err) {
-			return PromoCode{}, nil
+			return model.PromoCode{}, nil
 		}
-		return PromoCode{}, err
+		return model.PromoCode{}, err
 	}
 	return p, nil
 }
 
-func (r *Repository) CreatePromoCode(ctx context.Context, p PromoCode) (PromoCode, error) {
+func (r *Repository) CreatePromoCode(ctx context.Context, p model.PromoCode) (model.PromoCode, error) {
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO promo_code (code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, uses, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -67,7 +56,7 @@ func (r *Repository) DeletePromoCode(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-func (r *Repository) ListPromoCodes(ctx context.Context) ([]PromoCode, error) {
+func (r *Repository) ListPromoCodes(ctx context.Context) ([]model.PromoCode, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, uses, expires_at, created_at
 		FROM promo_code
@@ -78,9 +67,9 @@ func (r *Repository) ListPromoCodes(ctx context.Context) ([]PromoCode, error) {
 	}
 	defer rows.Close()
 
-	var promos []PromoCode
+	var promos []model.PromoCode
 	for rows.Next() {
-		p := PromoCode{}
+		p := model.PromoCode{}
 		err := rows.Scan(
 			&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.Uses, &p.ExpiresAt, &p.CreatedAt,
 		)
