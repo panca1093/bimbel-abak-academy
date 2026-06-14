@@ -6,12 +6,13 @@ import (
 
 	"github.com/google/uuid"
 
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
 
 var ErrNotCourse = errors.New("product is not a course")
 
-func (s *Service) ListSections(ctx context.Context, productID string) ([]repository.CourseSection, error) {
+func (s *Service) ListSections(ctx context.Context, productID string) ([]model.CourseSection, error) {
 	pID, err := parseUUID(productID)
 	if err != nil {
 		return nil, err
@@ -31,34 +32,34 @@ func (s *Service) ListSections(ctx context.Context, productID string) ([]reposit
 	return s.storeRepo.ListSections(ctx, pID)
 }
 
-func (s *Service) CreateSection(ctx context.Context, productID string, title string, role string) (repository.CourseSection, error) {
+func (s *Service) CreateSection(ctx context.Context, productID string, title string, role string) (model.CourseSection, error) {
 	if role != RoleAdminStore {
-		return repository.CourseSection{}, ErrForbidden
+		return model.CourseSection{}, ErrForbidden
 	}
 
 	pID, err := parseUUID(productID)
 	if err != nil {
-		return repository.CourseSection{}, err
+		return model.CourseSection{}, err
 	}
 
 	product, err := s.storeRepo.GetProductByID(ctx, pID.String())
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return repository.CourseSection{}, ErrProductNotFound
+			return model.CourseSection{}, ErrProductNotFound
 		}
-		return repository.CourseSection{}, err
+		return model.CourseSection{}, err
 	}
 	if product.Type != "course" {
-		return repository.CourseSection{}, ErrNotCourse
+		return model.CourseSection{}, ErrNotCourse
 	}
 
 	sections, err := s.storeRepo.ListSections(ctx, pID)
 	if err != nil {
-		return repository.CourseSection{}, err
+		return model.CourseSection{}, err
 	}
 
 	position := len(sections)
-	sec := repository.CourseSection{
+	sec := model.CourseSection{
 		ProductID: pID,
 		Title:     title,
 		Position:  position,
@@ -66,14 +67,14 @@ func (s *Service) CreateSection(ctx context.Context, productID string, title str
 	return s.storeRepo.CreateSection(ctx, sec)
 }
 
-func (s *Service) UpdateSection(ctx context.Context, productID, sectionID string, title string, role string) (repository.CourseSection, error) {
+func (s *Service) UpdateSection(ctx context.Context, productID, sectionID string, title string, role string) (model.CourseSection, error) {
 	if role != RoleAdminStore {
-		return repository.CourseSection{}, ErrForbidden
+		return model.CourseSection{}, ErrForbidden
 	}
 
 	sID, err := parseUUID(sectionID)
 	if err != nil {
-		return repository.CourseSection{}, err
+		return model.CourseSection{}, err
 	}
 
 	return s.storeRepo.UpdateSection(ctx, sID, title)
@@ -114,23 +115,23 @@ func (s *Service) ReorderSections(ctx context.Context, productID string, ordered
 	return s.storeRepo.ReorderSections(ctx, pID, ids)
 }
 
-func (s *Service) CreateLesson(ctx context.Context, productID, sectionID string, title, videoURL string, duration int, role string) (repository.Lesson, error) {
+func (s *Service) CreateLesson(ctx context.Context, productID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
 	if role != RoleAdminStore {
-		return repository.Lesson{}, ErrForbidden
+		return model.Lesson{}, ErrForbidden
 	}
 
 	sID, err := parseUUID(sectionID)
 	if err != nil {
-		return repository.Lesson{}, err
+		return model.Lesson{}, err
 	}
 
 	lessons, err := s.listLessonsBySection(ctx, sID)
 	if err != nil {
-		return repository.Lesson{}, err
+		return model.Lesson{}, err
 	}
 
 	position := len(lessons)
-	lesson := repository.Lesson{
+	lesson := model.Lesson{
 		SectionID:       sID,
 		Title:           title,
 		VideoURL:        videoURL,
@@ -140,17 +141,17 @@ func (s *Service) CreateLesson(ctx context.Context, productID, sectionID string,
 	return s.storeRepo.CreateLesson(ctx, lesson)
 }
 
-func (s *Service) UpdateLesson(ctx context.Context, productID, sectionID, lessonID string, title, videoURL string, duration int, role string) (repository.Lesson, error) {
+func (s *Service) UpdateLesson(ctx context.Context, productID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
 	if role != RoleAdminStore {
-		return repository.Lesson{}, ErrForbidden
+		return model.Lesson{}, ErrForbidden
 	}
 
 	lID, err := parseUUID(lessonID)
 	if err != nil {
-		return repository.Lesson{}, err
+		return model.Lesson{}, err
 	}
 
-	lesson := repository.Lesson{
+	lesson := model.Lesson{
 		Title:           title,
 		VideoURL:        videoURL,
 		DurationSeconds: duration,
@@ -193,6 +194,6 @@ func (s *Service) ReorderLessons(ctx context.Context, productID, sectionID strin
 	return s.storeRepo.ReorderLessons(ctx, sID, ids)
 }
 
-func (s *Service) listLessonsBySection(ctx context.Context, sectionID uuid.UUID) ([]repository.Lesson, error) {
+func (s *Service) listLessonsBySection(ctx context.Context, sectionID uuid.UUID) ([]model.Lesson, error) {
 	return s.storeRepo.ListLessonsBySection(ctx, sectionID)
 }

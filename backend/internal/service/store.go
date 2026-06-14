@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
 
@@ -30,7 +30,7 @@ type PromoValidation struct {
 	Total    float64
 }
 
-func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFilter, role string) ([]repository.Product, string, error) {
+func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFilter, role string) ([]model.Product, string, error) {
 	switch role {
 	case RoleSuperAdmin:
 		// no filter restrictions
@@ -50,45 +50,45 @@ func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFil
 	return s.storeRepo.ListProducts(ctx, filter)
 }
 
-func (s *Service) GetProduct(ctx context.Context, id string, role string) (repository.Product, error) {
+func (s *Service) GetProduct(ctx context.Context, id string, role string) (model.Product, error) {
 	p, err := s.storeRepo.GetProductByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return repository.Product{}, ErrProductNotFound
+			return model.Product{}, ErrProductNotFound
 		}
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	if role == RoleStudent || role == "" {
 		if p.Status != "published" || !p.IsVisible {
-			return repository.Product{}, ErrProductNotFound
+			return model.Product{}, ErrProductNotFound
 		}
 	}
 	return *p, nil
 }
 
-func (s *Service) CreateProduct(ctx context.Context, p repository.Product, role string) (repository.Product, error) {
+func (s *Service) CreateProduct(ctx context.Context, p model.Product, role string) (model.Product, error) {
 	if err := checkTypeRBAC(role, p.Type); err != nil {
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	if err := s.storeRepo.CreateProduct(ctx, &p); err != nil {
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	return p, nil
 }
 
-func (s *Service) UpdateProduct(ctx context.Context, id string, p repository.Product, role string) (repository.Product, error) {
+func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product, role string) (model.Product, error) {
 	existing, err := s.storeRepo.GetProductByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return repository.Product{}, ErrProductNotFound
+			return model.Product{}, ErrProductNotFound
 		}
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {
-		return repository.Product{}, err
+		return model.Product{}, err
 	}
 	p.ID = id
 	return p, nil
@@ -159,14 +159,14 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 	return PromoValidation{Code: code, Discount: discount, Total: subtotal - discount}, nil
 }
 
-func (s *Service) GetShippingRates(ctx context.Context, req platform.ShippingQuoteRequest) ([]platform.CourierRate, error) {
+func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
 	return s.logistics.GetRates(ctx, req)
 }
 
-func (s *Service) MintCart(ctx context.Context, studentID string) (repository.Order, bool, error) {
+func (s *Service) MintCart(ctx context.Context, studentID string) (model.Order, bool, error) {
 	id, err := parseUUID(studentID)
 	if err != nil {
-		return repository.Order{}, false, err
+		return model.Order{}, false, err
 	}
 	return s.storeRepo.MintCart(ctx, id)
 }
@@ -210,7 +210,7 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 		return ErrOutOfStock
 	}
 
-	item := repository.OrderItem{
+	item := model.OrderItem{
 		ProductID:   pID,
 		ProductType: product.Type,
 		Title:       product.Title,
@@ -366,7 +366,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
-	paymentResp, err := s.payment.CreatePayment(ctx, platform.PaymentRequest{
+	paymentResp, err := s.payment.CreatePayment(ctx, PaymentRequest{
 		OrderID:   oID.String(),
 		Amount:    int64(order.Total * 100),
 		ExpiresIn: 24 * time.Hour,
@@ -421,7 +421,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
-	paymentResp, err := s.payment.CreatePayment(ctx, platform.PaymentRequest{
+	paymentResp, err := s.payment.CreatePayment(ctx, PaymentRequest{
 		OrderID:   oID.String(),
 		Amount:    int64(order.Total * 100),
 		ExpiresIn: 24 * time.Hour,
@@ -460,7 +460,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	return result, nil
 }
 
-func (s *Service) ListStudentOrders(ctx context.Context, studentID string, cursor string, limit int) ([]repository.Order, string, error) {
+func (s *Service) ListStudentOrders(ctx context.Context, studentID string, cursor string, limit int) ([]model.Order, string, error) {
 	sID, err := parseUUID(studentID)
 	if err != nil {
 		return nil, "", err
@@ -474,7 +474,7 @@ func (s *Service) ListStudentOrders(ctx context.Context, studentID string, curso
 		return nil, "", err
 	}
 
-	var filtered []repository.Order
+	var filtered []model.Order
 	for _, o := range orders {
 		if o.Status != "cart" {
 			filtered = append(filtered, o)
@@ -483,25 +483,25 @@ func (s *Service) ListStudentOrders(ctx context.Context, studentID string, curso
 	return filtered, nextCursor, nil
 }
 
-func (s *Service) GetStudentOrder(ctx context.Context, studentID, orderID string) (repository.Order, error) {
+func (s *Service) GetStudentOrder(ctx context.Context, studentID, orderID string) (model.Order, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
-		return repository.Order{}, err
+		return model.Order{}, err
 	}
 	sID, err := parseUUID(studentID)
 	if err != nil {
-		return repository.Order{}, err
+		return model.Order{}, err
 	}
 
 	order, err := s.storeRepo.GetOrderByID(ctx, oID)
 	if err != nil {
-		return repository.Order{}, err
+		return model.Order{}, err
 	}
 	if order.ID.String() == "" {
-		return repository.Order{}, ErrOrderNotFound
+		return model.Order{}, ErrOrderNotFound
 	}
 	if order.StudentID != sID {
-		return repository.Order{}, ErrOrderNotFound
+		return model.Order{}, ErrOrderNotFound
 	}
 	return order, nil
 }
@@ -516,14 +516,14 @@ func parseUUID(s string) (uuid.UUID, error) {
 
 // Admin order methods
 
-func (s *Service) AdminListOrders(ctx context.Context, filter repository.OrderFilter) ([]repository.Order, string, error) {
+func (s *Service) AdminListOrders(ctx context.Context, filter repository.OrderFilter) ([]model.Order, string, error) {
 	return s.storeRepo.ListOrders(ctx, filter)
 }
 
-func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (repository.Order, error) {
+func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Order, error) {
 	id, err := parseUUID(orderID)
 	if err != nil {
-		return repository.Order{}, err
+		return model.Order{}, err
 	}
 	return s.storeRepo.GetOrderByID(ctx, id)
 }
@@ -699,11 +699,11 @@ func (s *Service) AdminReconcileOrder(ctx context.Context, orderID, key string) 
 
 // Admin promo methods
 
-func (s *Service) AdminListPromoCodes(ctx context.Context) ([]repository.PromoCode, error) {
+func (s *Service) AdminListPromoCodes(ctx context.Context) ([]model.PromoCode, error) {
 	return s.storeRepo.ListPromoCodes(ctx)
 }
 
-func (s *Service) AdminCreatePromoCode(ctx context.Context, p repository.PromoCode) (repository.PromoCode, error) {
+func (s *Service) AdminCreatePromoCode(ctx context.Context, p model.PromoCode) (model.PromoCode, error) {
 	return s.storeRepo.CreatePromoCode(ctx, p)
 }
 

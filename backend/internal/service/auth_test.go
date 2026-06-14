@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"akademi-bimbel/internal/platform"
-	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -19,18 +19,18 @@ import (
 )
 
 type fakeUserRepo struct {
-	byID      map[string]*repository.User
+	byID      map[string]*model.User
 	seq       int
 	createErr error
 }
 
 func newFakeUserRepo() *fakeUserRepo {
-	return &fakeUserRepo{byID: map[string]*repository.User{}}
+	return &fakeUserRepo{byID: map[string]*model.User{}}
 }
 
 func (f *fakeUserRepo) Ping(_ context.Context) error { return nil }
 
-func (f *fakeUserRepo) CreateUser(_ context.Context, u *repository.User) error {
+func (f *fakeUserRepo) CreateUser(_ context.Context, u *model.User) error {
 	if f.createErr != nil {
 		return f.createErr
 	}
@@ -44,7 +44,7 @@ func (f *fakeUserRepo) CreateUser(_ context.Context, u *repository.User) error {
 	return nil
 }
 
-func (f *fakeUserRepo) GetUserByEmail(_ context.Context, email string) (*repository.User, error) {
+func (f *fakeUserRepo) GetUserByEmail(_ context.Context, email string) (*model.User, error) {
 	for _, u := range f.byID {
 		if u.Email != nil && *u.Email == email && u.Status != "deleted" {
 			cp := *u
@@ -54,7 +54,7 @@ func (f *fakeUserRepo) GetUserByEmail(_ context.Context, email string) (*reposit
 	return nil, nil
 }
 
-func (f *fakeUserRepo) GetUserByUsername(_ context.Context, username string) (*repository.User, error) {
+func (f *fakeUserRepo) GetUserByUsername(_ context.Context, username string) (*model.User, error) {
 	for _, u := range f.byID {
 		if u.Username != nil && *u.Username == username && u.Status != "deleted" {
 			cp := *u
@@ -64,7 +64,7 @@ func (f *fakeUserRepo) GetUserByUsername(_ context.Context, username string) (*r
 	return nil, nil
 }
 
-func (f *fakeUserRepo) GetUserByID(_ context.Context, id string) (*repository.User, error) {
+func (f *fakeUserRepo) GetUserByID(_ context.Context, id string) (*model.User, error) {
 	u, ok := f.byID[id]
 	if !ok {
 		return nil, nil
@@ -92,7 +92,7 @@ func (f *fakeUserRepo) TombstoneUser(_ context.Context, userID string) error {
 }
 
 // seed inserts a user directly, bypassing CreateUser sequencing concerns.
-func (f *fakeUserRepo) seed(u *repository.User) {
+func (f *fakeUserRepo) seed(u *model.User) {
 	f.seq++
 	if u.ID == "" {
 		u.ID = fmt.Sprintf("seed-%d", f.seq)
@@ -118,8 +118,8 @@ func newTestService(t *testing.T, repo UserRepository) (*Service, *miniredis.Min
 		OTPTTL:          5 * time.Minute,
 		GoogleClientID:  "google-client-id",
 	}
-	signer := platform.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
-	svc := New(repo, rdb, signer, &platform.NoopOTPProvider{}, &platform.NoopEmailProvider{}, cfg)
+	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+	svc := New(repo, rdb, signer, &NoopOTPProvider{}, &NoopEmailProvider{}, cfg)
 	return svc, mr
 }
 
@@ -153,7 +153,7 @@ func TestRegister(t *testing.T) {
 
 	t.Run("duplicate email", func(t *testing.T) {
 		repo := newFakeUserRepo()
-		repo.seed(&repository.User{Email: strptr("taken@example.com"), Status: "active", Role: RoleStudent})
+		repo.seed(&model.User{Email: strptr("taken@example.com"), Status: "active", Role: RoleStudent})
 		svc, _ := newTestService(t, repo)
 		_, err := svc.Register(ctx, "taken@example.com", "password123", "Budi")
 		if !errors.Is(err, ErrEmailTaken) {
@@ -175,7 +175,7 @@ func TestLogin(t *testing.T) {
 	ctx := context.Background()
 
 	seedActive := func(repo *fakeUserRepo, otp bool) {
-		repo.seed(&repository.User{
+		repo.seed(&model.User{
 			Email:        strptr("user@example.com"),
 			PasswordHash: mustHashStd("password123"),
 			Role:         RoleStudent,
@@ -196,7 +196,7 @@ func TestLogin(t *testing.T) {
 
 	t.Run("inactive user", func(t *testing.T) {
 		repo := newFakeUserRepo()
-		repo.seed(&repository.User{
+		repo.seed(&model.User{
 			Email:        strptr("user@example.com"),
 			PasswordHash: mustHashStd("password123"),
 			Role:         RoleStudent,
@@ -246,7 +246,7 @@ func TestLogin(t *testing.T) {
 
 	t.Run("login by username", func(t *testing.T) {
 		repo := newFakeUserRepo()
-		repo.seed(&repository.User{
+		repo.seed(&model.User{
 			Username:     strptr("budi"),
 			PasswordHash: mustHashStd("password123"),
 			Role:         RoleStudent,
@@ -268,7 +268,7 @@ func TestVerifyOTP(t *testing.T) {
 
 	setup := func(t *testing.T) (*Service, *miniredis.Miniredis, *fakeUserRepo, string) {
 		repo := newFakeUserRepo()
-		repo.seed(&repository.User{
+		repo.seed(&model.User{
 			ID:           "u1",
 			Email:        strptr("user@example.com"),
 			PasswordHash: mustHashStd("password123"),
@@ -330,7 +330,7 @@ func TestRefresh(t *testing.T) {
 
 	t.Run("valid token rotates", func(t *testing.T) {
 		repo := newFakeUserRepo()
-		repo.seed(&repository.User{
+		repo.seed(&model.User{
 			ID:           "u1",
 			Email:        strptr("user@example.com"),
 			PasswordHash: mustHashStd("password123"),
@@ -370,7 +370,7 @@ func TestRefresh(t *testing.T) {
 func TestLogout(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeUserRepo()
-	repo.seed(&repository.User{
+	repo.seed(&model.User{
 		ID:           "u1",
 		Email:        strptr("user@example.com"),
 		PasswordHash: mustHashStd("password123"),
@@ -382,7 +382,7 @@ func TestLogout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	claims, err := platform.NewJWTSigner("test-secret", 15*time.Minute).ParseAccess(access)
+	claims, err := infra.NewJWTSigner("test-secret", 15*time.Minute).ParseAccess(access)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestLogout(t *testing.T) {
 func TestSendOTP(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeUserRepo()
-	repo.seed(&repository.User{
+	repo.seed(&model.User{
 		ID:         "u1",
 		Email:      strptr("user@example.com"),
 		Role:       RoleStudent,
@@ -429,7 +429,7 @@ func TestResetPassword(t *testing.T) {
 
 	t.Run("valid token and otp updates password", func(t *testing.T) {
 		repo := newFakeUserRepo()
-		repo.seed(&repository.User{
+		repo.seed(&model.User{
 			ID:           "u1",
 			Email:        strptr("user@example.com"),
 			PasswordHash: mustHashStd("oldpassword"),
@@ -452,7 +452,7 @@ func TestResetPassword(t *testing.T) {
 
 	t.Run("wrong otp", func(t *testing.T) {
 		repo := newFakeUserRepo()
-		repo.seed(&repository.User{ID: "u1", Email: strptr("user@example.com"), PasswordHash: mustHashStd("oldpassword"), Role: RoleStudent, Status: "active"})
+		repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), PasswordHash: mustHashStd("oldpassword"), Role: RoleStudent, Status: "active"})
 		svc, mr := newTestService(t, repo)
 		mr.Set("reset:tok", "u1:654321")
 		if err := svc.ResetPassword(ctx, "tok", "000000", "brandnewpass"); !errors.Is(err, ErrInvalidResetToken) {
@@ -510,7 +510,7 @@ func (r *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error)
 func TestLogout_WithRefreshToken(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeUserRepo()
-	repo.seed(&repository.User{
+	repo.seed(&model.User{
 		ID:           "u1",
 		Email:        strptr("user@example.com"),
 		PasswordHash: mustHashStd("password123"),
@@ -524,7 +524,7 @@ func TestLogout_WithRefreshToken(t *testing.T) {
 		t.Fatalf("Login: %v", err)
 	}
 
-	claims, err := platform.NewJWTSigner("test-secret", 15*time.Minute).ParseAccess(access)
+	claims, err := infra.NewJWTSigner("test-secret", 15*time.Minute).ParseAccess(access)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -549,7 +549,7 @@ func TestLogout_WithRefreshToken(t *testing.T) {
 func TestResetPassword_RevokesAllSessions(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeUserRepo()
-	repo.seed(&repository.User{
+	repo.seed(&model.User{
 		ID:           "u1",
 		Email:        strptr("user@example.com"),
 		PasswordHash: mustHashStd("oldpassword"),
@@ -563,7 +563,7 @@ func TestResetPassword_RevokesAllSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
-	claims, err := platform.NewJWTSigner("test-secret", 15*time.Minute).ParseAccess(access)
+	claims, err := infra.NewJWTSigner("test-secret", 15*time.Minute).ParseAccess(access)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
