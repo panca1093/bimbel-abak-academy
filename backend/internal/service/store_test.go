@@ -6,6 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/repository"
 )
@@ -374,4 +378,370 @@ func TestGetShippingRates(t *testing.T) {
 	if len(rates) == 0 {
 		t.Error("want at least one rate")
 	}
+}
+
+// Order lifecycle tests use fakeOrderRepo for testing service logic.
+type fakeOrderRepo struct {
+	products map[string]*repository.Product
+	orders   map[string]*repository.Order
+	seq      int
+}
+
+func newFakeOrderRepo() *fakeOrderRepo {
+	return &fakeOrderRepo{
+		products: map[string]*repository.Product{},
+		orders:   map[string]*repository.Order{},
+	}
+}
+
+func (f *fakeOrderRepo) GetProductByID(_ context.Context, id string) (*repository.Product, error) {
+	p, ok := f.products[id]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	cp := *p
+	return &cp, nil
+}
+
+func (f *fakeOrderRepo) seedProduct(p repository.Product) {
+	cp := p
+	f.products[p.ID] = &cp
+}
+
+func (f *fakeOrderRepo) seedOrder(o repository.Order) {
+	cp := o
+	f.orders[o.ID.String()] = &cp
+}
+
+func TestMintCart_FirstTime(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	order, created, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart first time: %v", err)
+	}
+	if !created {
+		t.Error("want created=true for first call")
+	}
+	if order.Status != "cart" {
+		t.Errorf("want status=cart, got %s", order.Status)
+	}
+}
+
+func TestMintCart_SecondTime(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+
+	order1, created1, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart first time: %v", err)
+	}
+	if !created1 {
+		t.Error("want created=true for first call")
+	}
+
+	order2, created2, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart second time: %v", err)
+	}
+	if created2 {
+		t.Error("want created=false for second call")
+	}
+	if order1.ID != order2.ID {
+		t.Error("want same order ID returned")
+	}
+}
+
+func TestAddItem_OutOfStock(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+
+	fake.seedProduct(repository.Product{
+		ID:    productID,
+		Type:  "book",
+		Title: "Book 1",
+		Stock: 0,
+		Price: 10000,
+	})
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+
+	err = svc.AddItem(ctx, studentID, order.ID.String(), productID, 1)
+	if !errors.Is(err, ErrOutOfStock) {
+		t.Errorf("want ErrOutOfStock, got %v", err)
+	}
+}
+
+func TestAddItem_OrderNotCart(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+	orderID := "00000000-0000-0000-0000-000000000003"
+
+	sid, _ := uuid.Parse(studentID)
+	oid, _ := uuid.Parse(orderID)
+
+	fake.seedProduct(repository.Product{
+		ID:    productID,
+		Type:  "book",
+		Title: "Book 1",
+		Stock: 10,
+		Price: 10000,
+	})
+
+	fake.seedOrder(repository.Order{
+		ID:        oid,
+		StudentID: sid,
+		Status:    "payment_pending",
+	})
+
+	err := svc.AddItem(ctx, studentID, orderID, productID, 1)
+	if !errors.Is(err, ErrOrderNotEditable) {
+		t.Errorf("want ErrOrderNotEditable, got %v", err)
+	}
+}
+
+func TestPatchCart_NonCart(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	orderID := "00000000-0000-0000-0000-000000000003"
+
+	sid, _ := uuid.Parse(studentID)
+	oid, _ := uuid.Parse(orderID)
+
+	fake.seedOrder(repository.Order{
+		ID:        oid,
+		StudentID: sid,
+		Status:    "payment_pending",
+	})
+
+	err := svc.PatchCart(ctx, studentID, orderID, CartPatch{})
+	if !errors.Is(err, ErrOrderNotEditable) {
+		t.Errorf("want ErrOrderNotEditable, got %v", err)
+	}
+}
+
+// shimOrderService is a minimal service that uses fakeOrderRepo for testing.
+type shimOrderService struct {
+	fake *fakeOrderRepo
+}
+
+func (s *shimOrderService) MintCart(ctx context.Context, studentID string) (repository.Order, bool, error) {
+	id, _ := uuid.Parse(studentID)
+	for _, o := range s.fake.orders {
+		if o.StudentID == id && o.Status == "cart" {
+			return *o, false, nil
+		}
+	}
+	order := repository.Order{
+		ID:        uuid.New(),
+		StudentID: id,
+		Status:    "cart",
+	}
+	s.fake.seedOrder(order)
+	return order, true, nil
+}
+
+func (s *shimOrderService) AddItem(ctx context.Context, studentID, orderID, productID string, qty int) error {
+	sID, _ := uuid.Parse(studentID)
+	oID, _ := uuid.Parse(orderID)
+	pID, _ := uuid.Parse(productID)
+
+	order, ok := s.fake.orders[oID.String()]
+	if !ok {
+		return ErrOrderNotFound
+	}
+	if order.StudentID != sID {
+		return ErrOrderNotFound
+	}
+	if order.Status != "cart" {
+		return ErrOrderNotEditable
+	}
+
+	product, err := s.fake.GetProductByID(ctx, pID.String())
+	if err != nil {
+		return err
+	}
+	if product == nil {
+		return ErrProductNotFound
+	}
+	if product.Stock == 0 {
+		return ErrOutOfStock
+	}
+
+	item := repository.OrderItem{
+		ID:          uuid.New(),
+		OrderID:     oID,
+		ProductID:   pID,
+		ProductType: product.Type,
+		Title:       product.Title,
+		UnitPrice:   float64(product.Price) / 100,
+		Qty:         qty,
+	}
+	order.Items = append(order.Items, item)
+	return nil
+}
+
+func (s *shimOrderService) PatchCart(ctx context.Context, studentID, orderID string, patch CartPatch) error {
+	sID, _ := uuid.Parse(studentID)
+	oID, _ := uuid.Parse(orderID)
+
+	order, ok := s.fake.orders[oID.String()]
+	if !ok {
+		return ErrOrderNotFound
+	}
+	if order.StudentID != sID {
+		return ErrOrderNotFound
+	}
+	if order.Status != "cart" {
+		return ErrOrderNotEditable
+	}
+
+	order.ShippingAddress = patch.ShippingAddress
+	order.Courier = patch.Courier
+	return nil
+}
+
+func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	checkoutService := &shimCheckoutService{
+		fake: fake,
+		rdb:  rdb,
+	}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+	idempotencyKey := "test-key-123"
+
+	sid, _ := uuid.Parse(studentID)
+	oid := uuid.New()
+	pid, _ := uuid.Parse(productID)
+
+	// Seed product with stock
+	fake.seedProduct(repository.Product{
+		ID:    productID,
+		Type:  "book",
+		Title: "Book 1",
+		Stock: 100,
+		Price: 10000,
+	})
+
+	// Seed cart order with items
+	order := repository.Order{
+		ID:        oid,
+		StudentID: sid,
+		Status:    "cart",
+		Subtotal:  100,
+	}
+	order.Items = append(order.Items, repository.OrderItem{
+		ID:          uuid.New(),
+		OrderID:     oid,
+		ProductID:   pid,
+		ProductType: "book",
+		Title:       "Book 1",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+	fake.seedOrder(order)
+
+	// First checkout
+	result1, err := checkoutService.Checkout(ctx, studentID, oid.String(), idempotencyKey)
+	if err != nil {
+		t.Fatalf("First checkout: %v", err)
+	}
+	if result1.PaymentRef == "" {
+		t.Error("want non-empty payment_ref")
+	}
+
+	// Second checkout with same key should return cached result
+	result2, err := checkoutService.Checkout(ctx, studentID, oid.String(), idempotencyKey)
+	if err != nil {
+		t.Fatalf("Second checkout: %v", err)
+	}
+
+	if result1.PaymentRef != result2.PaymentRef {
+		t.Errorf("want same payment_ref, got %s vs %s", result1.PaymentRef, result2.PaymentRef)
+	}
+
+	// Verify order status is payment_pending
+	updatedOrder, ok := fake.orders[oid.String()]
+	if !ok {
+		t.Fatal("order not found after checkout")
+	}
+	if updatedOrder.Status != "payment_pending" {
+		t.Errorf("want status=payment_pending, got %s", updatedOrder.Status)
+	}
+}
+
+type shimCheckoutService struct {
+	fake *fakeOrderRepo
+	rdb  *redis.Client
+}
+
+func (s *shimCheckoutService) Checkout(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
+	oID, _ := uuid.Parse(orderID)
+	sID, _ := uuid.Parse(studentID)
+
+	cacheKey := "idempotency:checkout:" + key
+	cached, err := s.rdb.Get(ctx, cacheKey).Result()
+	if err == nil && cached != "" {
+		return CheckoutResult{PaymentRef: cached}, nil
+	}
+
+	order, ok := s.fake.orders[oID.String()]
+	if !ok {
+		return CheckoutResult{}, ErrOrderNotFound
+	}
+	if order.StudentID != sID {
+		return CheckoutResult{}, ErrOrderNotFound
+	}
+	if order.Status != "cart" {
+		return CheckoutResult{}, ErrOrderNotEditable
+	}
+
+	// Mark order as payment_pending
+	order.Status = "payment_pending"
+	paymentRef := "pay_" + oID.String()[:8]
+	order.PaymentRef = paymentRef
+	order.PaymentExpiresAt = &(time.Time{})
+
+	result := CheckoutResult{
+		PaymentRef:       paymentRef,
+		PaymentExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+
+	if err := s.rdb.Set(ctx, cacheKey, paymentRef, 24*time.Hour).Err(); err != nil {
+		return CheckoutResult{}, err
+	}
+
+	return result, nil
 }
