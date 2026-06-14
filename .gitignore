@@ -1,6 +1,9 @@
 # Go
 /backend/bin/
+/backend/api
+/backend/worker
 *.test
+coverage.out
 
 # Env files (keep the *.example variants)
 .env
