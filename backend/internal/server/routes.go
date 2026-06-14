@@ -59,6 +59,25 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminLessons.PUT("/:lId", h.AdminUpdateLesson)
 	adminLessons.DELETE("/:lId", h.AdminDeleteLesson)
 	adminLessons.PATCH("/reorder", h.AdminReorderLessons)
+
+	// Student order routes
+	orders := v1.Group("/orders")
+	orders.Use(JWTMiddleware(svc, jwtSigner))
+	orders.POST("", h.MintCart)
+	orders.GET("", h.GetOrders)
+	orders.GET("/:id", h.GetOrder)
+	orders.POST("/:id/items", h.AddItem)
+	orders.DELETE("/:id/items/:itemId", h.RemoveItem)
+	orders.PATCH("/:id", h.PatchCart)
+	orders.POST("/:id/checkout", h.Checkout)
+	orders.POST("/:id/retry", h.RetryPayment)
+
+	// Shipping and promo routes
+	shipping := v1.Group("/orders/shipping")
+	shipping.POST("", h.GetShipping)
+
+	promo := v1.Group("/promo-codes")
+	promo.POST("/validate", h.ValidatePromo)
 }
 
 func loginRateLimiter() echo.MiddlewareFunc {
