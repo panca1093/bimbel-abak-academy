@@ -5,14 +5,14 @@ import (
 	"log/slog"
 
 	"akademi-bimbel/internal/handler"
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
-func New(h *handler.Handler, svc *service.Service, jwtSigner *platform.JWTSigner, cfg config.Config) *echo.Echo {
+func New(h *handler.Handler, svc *service.Service, jwtSigner *infra.JWTSigner, cfg config.Config) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 

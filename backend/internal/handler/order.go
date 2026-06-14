@@ -3,13 +3,13 @@ package handler
 import (
 	"net/http"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
 
 func (h *Handler) MintCart(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -27,7 +27,7 @@ func (h *Handler) MintCart(c echo.Context) error {
 }
 
 func (h *Handler) GetOrders(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -47,7 +47,7 @@ func (h *Handler) GetOrders(c echo.Context) error {
 }
 
 func (h *Handler) GetOrder(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -62,7 +62,7 @@ func (h *Handler) GetOrder(c echo.Context) error {
 }
 
 func (h *Handler) AddItem(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -91,7 +91,7 @@ func (h *Handler) AddItem(c echo.Context) error {
 }
 
 func (h *Handler) RemoveItem(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -108,7 +108,7 @@ func (h *Handler) RemoveItem(c echo.Context) error {
 }
 
 func (h *Handler) PatchCart(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -141,7 +141,7 @@ func (h *Handler) PatchCart(c echo.Context) error {
 }
 
 func (h *Handler) Checkout(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -164,7 +164,7 @@ func (h *Handler) Checkout(c echo.Context) error {
 }
 
 func (h *Handler) RetryPayment(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
@@ -198,7 +198,7 @@ func (h *Handler) GetShipping(c echo.Context) error {
 		return badRequest(c, "destination_zip and weight_grams are required")
 	}
 
-	rates, err := h.svc.GetShippingRates(c.Request().Context(), platform.ShippingQuoteRequest{
+	rates, err := h.svc.GetShippingRates(c.Request().Context(), service.ShippingQuoteRequest{
 		DestinationZip: req.DestinationZip,
 		WeightGrams:    req.WeightGrams,
 	})

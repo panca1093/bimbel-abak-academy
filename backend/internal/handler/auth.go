@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
 	"github.com/labstack/echo/v4"
 )
 
@@ -165,8 +165,8 @@ func (h *Handler) Refresh(c echo.Context) error {
 	})
 }
 
-func claimsFromContext(c echo.Context) *platform.Claims {
-	claims, _ := c.Get("claims").(*platform.Claims)
+func claimsFromContext(c echo.Context) *infra.Claims {
+	claims, _ := c.Get("claims").(*infra.Claims)
 	return claims
 }
 

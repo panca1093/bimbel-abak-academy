@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/service"
 
 	"github.com/redis/go-redis/v9"
@@ -45,7 +45,7 @@ func TestAdminCreateProduct_AdminExamToken_BookType_Returns403(t *testing.T) {
 	env := newTestEnv(t)
 
 	// Create admin_exam user
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		ID:     "admin_exam_user",
 		Email:  strptr("admin_exam@example.com"),
 		Role:   service.RoleAdminExam,

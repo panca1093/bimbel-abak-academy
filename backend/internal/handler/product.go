@@ -3,13 +3,14 @@ package handler
 import (
 	"net/http"
 
-	"akademi-bimbel/internal/platform"
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 	"github.com/labstack/echo/v4"
 )
 
 func (h *Handler) ListProducts(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -33,7 +34,7 @@ func (h *Handler) ListProducts(c echo.Context) error {
 
 func (h *Handler) GetProduct(c echo.Context) error {
 	id := c.Param("id")
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -48,7 +49,7 @@ func (h *Handler) GetProduct(c echo.Context) error {
 }
 
 func (h *Handler) AdminListProducts(c echo.Context) error {
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -86,13 +87,13 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		return badRequest(c, "type and title are required")
 	}
 
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
 	}
 
-	p := repository.Product{
+	p := model.Product{
 		Type:        req.Type,
 		Title:       req.Title,
 		Description: req.Description,
@@ -112,7 +113,7 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 
 func (h *Handler) AdminGetProduct(c echo.Context) error {
 	id := c.Param("id")
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -139,13 +140,13 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
 	}
 
-	p := repository.Product{
+	p := model.Product{
 		Title:       req.Title,
 		Description: req.Description,
 		Price:       req.Price,
@@ -165,7 +166,7 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 
 func (h *Handler) AdminPublishProduct(c echo.Context) error {
 	id := c.Param("id")
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role
@@ -183,7 +184,7 @@ func (h *Handler) AdminPublishProduct(c echo.Context) error {
 
 func (h *Handler) AdminDeleteProduct(c echo.Context) error {
 	id := c.Param("id")
-	claims, _ := c.Get("claims").(*platform.Claims)
+	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
 	if claims != nil {
 		role = claims.Role

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"akademi-bimbel/internal/handler"
-	"akademi-bimbel/internal/platform"
-	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
@@ -24,17 +24,17 @@ import (
 
 // fakeRepo is an in-memory UserRepository for handler tests.
 type fakeRepo struct {
-	byID map[string]*repository.User
+	byID map[string]*model.User
 	seq  int
 }
 
 func newFakeRepo() *fakeRepo {
-	return &fakeRepo{byID: map[string]*repository.User{}}
+	return &fakeRepo{byID: map[string]*model.User{}}
 }
 
 func (f *fakeRepo) Ping(_ context.Context) error { return nil }
 
-func (f *fakeRepo) CreateUser(_ context.Context, u *repository.User) error {
+func (f *fakeRepo) CreateUser(_ context.Context, u *model.User) error {
 	f.seq++
 	u.ID = fmt.Sprintf("u%d", f.seq)
 	now := time.Now()
@@ -45,7 +45,7 @@ func (f *fakeRepo) CreateUser(_ context.Context, u *repository.User) error {
 	return nil
 }
 
-func (f *fakeRepo) GetUserByEmail(_ context.Context, email string) (*repository.User, error) {
+func (f *fakeRepo) GetUserByEmail(_ context.Context, email string) (*model.User, error) {
 	for _, u := range f.byID {
 		if u.Email != nil && *u.Email == email && u.Status != "deleted" {
 			cp := *u
@@ -55,7 +55,7 @@ func (f *fakeRepo) GetUserByEmail(_ context.Context, email string) (*repository.
 	return nil, nil
 }
 
-func (f *fakeRepo) GetUserByUsername(_ context.Context, username string) (*repository.User, error) {
+func (f *fakeRepo) GetUserByUsername(_ context.Context, username string) (*model.User, error) {
 	for _, u := range f.byID {
 		if u.Username != nil && *u.Username == username && u.Status != "deleted" {
 			cp := *u
@@ -65,7 +65,7 @@ func (f *fakeRepo) GetUserByUsername(_ context.Context, username string) (*repos
 	return nil, nil
 }
 
-func (f *fakeRepo) GetUserByID(_ context.Context, id string) (*repository.User, error) {
+func (f *fakeRepo) GetUserByID(_ context.Context, id string) (*model.User, error) {
 	u, ok := f.byID[id]
 	if !ok {
 		return nil, nil
@@ -92,7 +92,7 @@ func (f *fakeRepo) TombstoneUser(_ context.Context, userID string) error {
 	return nil
 }
 
-func (f *fakeRepo) seed(u *repository.User) {
+func (f *fakeRepo) seed(u *model.User) {
 	f.seq++
 	if u.ID == "" {
 		u.ID = fmt.Sprintf("seed%d", f.seq)
@@ -115,7 +115,7 @@ type testEnv struct {
 	e      *echo.Echo
 	mr     *miniredis.Miniredis
 	svc    *service.Service
-	signer *platform.JWTSigner
+	signer *infra.JWTSigner
 	repo   *fakeRepo
 }
 
@@ -134,9 +134,9 @@ func newTestEnv(t *testing.T) *testEnv {
 		RefreshTokenTTL: 168 * time.Hour,
 		OTPTTL:          5 * time.Minute,
 	}
-	signer := platform.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	repo := newFakeRepo()
-	svc := service.New(repo, rdb, signer, &platform.NoopOTPProvider{}, &platform.NoopEmailProvider{}, cfg)
+	svc := service.New(repo, rdb, signer, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, cfg)
 
 	h := handler.New(svc)
 	e := echo.New()
@@ -211,7 +211,7 @@ func TestRegisterHandler_HappyPath(t *testing.T) {
 
 func TestRegisterHandler_DuplicateEmail(t *testing.T) {
 	env := newTestEnv(t)
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		Email:        strptr("taken@example.com"),
 		PasswordHash: mustHash("whatever"),
 		Role:         service.RoleStudent,
@@ -234,7 +234,7 @@ func TestRegisterHandler_DuplicateEmail(t *testing.T) {
 
 func TestLoginHandler_OTPEnabled(t *testing.T) {
 	env := newTestEnv(t)
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		ID:           "u1",
 		Email:        strptr("otp@example.com"),
 		PasswordHash: mustHash("password123"),
@@ -261,7 +261,7 @@ func TestLoginHandler_OTPEnabled(t *testing.T) {
 
 func TestVerifyOTPHandler_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		ID:           "u1",
 		Email:        strptr("otp@example.com"),
 		PasswordHash: mustHash("password123"),
@@ -356,7 +356,7 @@ func TestLoginHandler_RateLimit(t *testing.T) {
 func TestMeHandler_ValidToken(t *testing.T) {
 	env := newTestEnv(t)
 	email := "me@example.com"
-	env.repo.seed(&repository.User{
+	env.repo.seed(&model.User{
 		ID:           "u1",
 		Email:        &email,
 		PasswordHash: mustHash("password123"),
