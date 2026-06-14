@@ -1,14 +1,10 @@
 package server
 
 import (
-	"net/http"
-	"time"
-
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/platform"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtSigner *platform.JWTSigner) {
@@ -17,16 +13,16 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	auth := v1.Group("/auth")
 	auth.POST("/register", h.Register)
-	auth.POST("/login", h.Login, loginRateLimiter())
+	auth.POST("/login", h.Login, handler.LoginRateLimiter())
 	auth.POST("/google", h.GoogleLogin)
 	auth.POST("/otp/send", h.SendOTP)
 	auth.POST("/otp/verify", h.VerifyOTP)
 	auth.POST("/refresh", h.Refresh)
-	auth.POST("/logout", h.Logout, JWTMiddleware(svc, jwtSigner))
+	auth.POST("/logout", h.Logout, handler.JWTMiddleware(svc, jwtSigner))
 	auth.POST("/password/forgot", h.ForgotPassword)
 	auth.POST("/password/reset", h.ResetPassword)
-	auth.PATCH("/password/change", h.ChangePassword, JWTMiddleware(svc, jwtSigner))
-	auth.GET("/me", h.Me, JWTMiddleware(svc, jwtSigner))
+	auth.PATCH("/password/change", h.ChangePassword, handler.JWTMiddleware(svc, jwtSigner))
+	auth.GET("/me", h.Me, handler.JWTMiddleware(svc, jwtSigner))
 
 	// Student product routes
 	products := v1.Group("/products")
@@ -35,7 +31,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	// Admin product routes
 	admin := v1.Group("/admin")
-	admin.Use(JWTMiddleware(svc, jwtSigner))
+	admin.Use(handler.JWTMiddleware(svc, jwtSigner))
 
 	adminProducts := admin.Group("/products")
 	adminProducts.GET("", h.AdminListProducts)
@@ -62,7 +58,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	// Student order routes
 	orders := v1.Group("/orders")
-	orders.Use(JWTMiddleware(svc, jwtSigner))
+	orders.Use(handler.JWTMiddleware(svc, jwtSigner))
 	orders.POST("", h.MintCart)
 	orders.GET("", h.GetOrders)
 	orders.GET("/:id", h.GetOrder)
@@ -85,7 +81,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	// Admin order routes
 	adminOrders := admin.Group("/orders")
-	adminOrders.Use(RBACMiddleware("orders:write"))
+	adminOrders.Use(handler.RBACMiddleware("orders:write"))
 	adminOrders.GET("", h.AdminListOrders)
 	adminOrders.GET("/:id", h.AdminGetOrder)
 	adminOrders.POST("/:id/confirm", h.AdminConfirmOrder)
@@ -95,7 +91,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	// Admin promo code routes
 	adminPromos := admin.Group("/promo-codes")
-	adminPromos.Use(RBACMiddleware("promos:write"))
+	adminPromos.Use(handler.RBACMiddleware("promos:write"))
 	adminPromos.GET("", h.AdminListPromoCodes)
 	adminPromos.POST("", h.AdminCreatePromoCode)
 	adminPromos.PUT("/:id", h.AdminUpdatePromoCode)
@@ -103,42 +99,13 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	// Admin revenue and notification routes
 	adminRevenue := admin.Group("/revenue")
-	adminRevenue.Use(RBACMiddleware("revenue:read"))
+	adminRevenue.Use(handler.RBACMiddleware("revenue:read"))
 	adminRevenue.GET("", h.AdminGetRevenue)
 
 	adminNotifs := admin.Group("/notifications")
-	adminNotifs.Use(RBACMiddleware("notifications:read"))
+	adminNotifs.Use(handler.RBACMiddleware("notifications:read"))
 	adminNotifs.GET("", h.AdminListNotifications)
 	adminNotifs.PATCH("/:id/read", h.AdminMarkNotificationRead)
-}
-
-func loginRateLimiter() echo.MiddlewareFunc {
-	return middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
-		Skipper: middleware.DefaultSkipper,
-		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
-			middleware.RateLimiterMemoryStoreConfig{
-				Rate:      10,
-				Burst:     10,
-				ExpiresIn: 1 * time.Minute,
-			},
-		),
-		IdentifierExtractor: func(c echo.Context) (string, error) {
-			return c.RealIP(), nil
-		},
-		ErrorHandler: func(c echo.Context, err error) error {
-			return c.JSON(http.StatusTooManyRequests, map[string]string{
-				"code":    "rate_limited",
-				"message": "too many login attempts",
-			})
-		},
-		DenyHandler: func(c echo.Context, identifier string, err error) error {
-			c.Response().Header().Set("Retry-After", "60")
-			return c.JSON(http.StatusTooManyRequests, map[string]string{
-				"code":    "rate_limited",
-				"message": "too many login attempts",
-			})
-		},
-	})
 }
 
 // RegisterRoutesForTest is the same as registerRoutes but exported for handler tests.
