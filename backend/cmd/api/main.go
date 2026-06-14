@@ -40,10 +40,12 @@ func main() {
 	rdb := platform.NewRedis(cfg.RedisAddr, cfg.RedisPassword)
 	defer rdb.Close()
 
-	repo := repository.New(pool)
+	storeRepo := repository.New(pool)
 	jwtSigner := platform.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	otpProvider, emailProvider := newNotifyProviders(cfg)
-	svc := service.New(repo, rdb, jwtSigner, otpProvider, emailProvider, &cfg)
+	paymentClient := &platform.NoopPaymentClient{}
+	logisticsClient := &platform.NoopLogisticsClient{}
+	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, &cfg)
 	h := handler.New(svc)
 	e := server.New(h, svc, jwtSigner, cfg)
 
