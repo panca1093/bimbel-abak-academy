@@ -73,12 +73,13 @@ func (h *Handler) AdminListProducts(c echo.Context) error {
 
 func (h *Handler) AdminCreateProduct(c echo.Context) error {
 	var req struct {
-		Type        string `json:"type"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Price       int64  `json:"price"`
-		Stock       int    `json:"stock"`
-		IsVisible   bool   `json:"is_visible"`
+		Type        string   `json:"type"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Price       int64    `json:"price"`
+		Stock       int      `json:"stock"`
+		IsVisible   bool     `json:"is_visible"`
+		CourseIDs   []string `json:"course_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -103,7 +104,13 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		Status:      "draft",
 	}
 
-	product, err := h.svc.CreateProduct(c.Request().Context(), p, role)
+	var product model.Product
+	var err error
+	if len(req.CourseIDs) > 0 {
+		product, err = h.svc.CreateProductWithCourses(c.Request().Context(), p, req.CourseIDs, role)
+	} else {
+		product, err = h.svc.CreateProduct(c.Request().Context(), p, role)
+	}
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -197,4 +204,3 @@ func (h *Handler) AdminDeleteProduct(c echo.Context) error {
 
 	return c.NoContent(http.StatusNoContent)
 }
-
