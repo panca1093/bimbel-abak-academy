@@ -79,9 +79,9 @@ var _ = Product{
 	UpdatedAt:     time.Time{},
 }
 
-var _ = CourseSection{
+var _ = Section{
 	ID:        uuid.UUID{},
-	ProductID: uuid.UUID{},
+	CourseID:  uuid.UUID{},
 	Title:     "",
 	Position:  0,
 	CreatedAt: time.Time{},
@@ -97,25 +97,16 @@ var _ = Lesson{
 	CreatedAt:       time.Time{},
 }
 
-var _ = CourseEnrollment{
-	ID:         uuid.UUID{},
-	StudentID:  uuid.UUID{},
-	ProductID:  uuid.UUID{},
-	OrderID:    nil,
-	Status:     "",
-	Source:     "",
-	EnrolledAt: time.Time{},
-	RevokedAt:  nil,
-}
-
-var _ = ExamRegistration{
-	ID:        uuid.UUID{},
-	StudentID: uuid.UUID{},
-	ExamID:    uuid.UUID{},
-	OrderID:   nil,
-	Token:     "",
-	Status:    "",
-	CreatedAt: time.Time{},
+var _ = CourseSession{
+	ID:               uuid.UUID{},
+	StudentID:        uuid.UUID{},
+	CourseID:         uuid.UUID{},
+	OrderID:          nil,
+	Status:           "",
+	Source:           "",
+	EnrolledAt:       time.Time{},
+	RevokedAt:        nil,
+	CompletedLessons: nil,
 }
 
 var _ = PromoCode{
