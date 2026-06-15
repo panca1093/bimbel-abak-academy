@@ -18,9 +18,11 @@ type fakeCourseRepo struct {
 	lessons   map[string]*model.Lesson
 	courses   map[string]*model.Course
 	pcLinks   map[string][]uuid.UUID // productID -> courseIDs
+	sessions  map[string]*model.CourseSession
 	seqSec    int
 	seqLes    int
 	seqCourse int
+	seqSess   int
 }
 
 func newFakeCourseRepo() *fakeCourseRepo {
@@ -29,6 +31,7 @@ func newFakeCourseRepo() *fakeCourseRepo {
 		lessons:  make(map[string]*model.Lesson),
 		courses:  make(map[string]*model.Course),
 		pcLinks:  make(map[string][]uuid.UUID),
+		sessions: make(map[string]*model.CourseSession),
 	}
 }
 
@@ -82,6 +85,71 @@ func (f *fakeCourseRepo) GetCoursesByProductID(_ context.Context, productID uuid
 
 func (f *fakeCourseRepo) seedProductCourseLink(productID string, courseIDs []uuid.UUID) {
 	f.pcLinks[productID] = courseIDs
+}
+
+// --- Course session fakes ---
+
+func (f *fakeCourseRepo) GetActiveSession(_ context.Context, studentID, courseID uuid.UUID) (model.CourseSession, error) {
+	for _, sess := range f.sessions {
+		if sess.StudentID == studentID && sess.CourseID == courseID && sess.Status == "active" {
+			return *sess, nil
+		}
+	}
+	return model.CourseSession{}, repository.ErrNotFound
+}
+
+func (f *fakeCourseRepo) MarkLessonComplete(_ context.Context, sessionID, lessonID uuid.UUID, at time.Time) error {
+	sess, ok := f.sessions[sessionID.String()]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	// first timestamp wins
+	if _, exists := sess.CompletedLessons[lessonID]; !exists {
+		if sess.CompletedLessons == nil {
+			sess.CompletedLessons = make(map[uuid.UUID]time.Time)
+		}
+		sess.CompletedLessons[lessonID] = at
+	}
+	return nil
+}
+
+func (f *fakeCourseRepo) CountLessonsByCourse(_ context.Context, courseID uuid.UUID) (int, error) {
+	var count int
+	for _, l := range f.lessons {
+		sec, ok := f.sections[l.SectionID.String()]
+		if !ok {
+			continue
+		}
+		if sec.CourseID == courseID {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (f *fakeCourseRepo) ListActiveSessionsByStudent(_ context.Context, studentID uuid.UUID) ([]model.CourseSession, error) {
+	var result []model.CourseSession
+	for _, sess := range f.sessions {
+		if sess.StudentID == studentID && sess.Status == "active" {
+			result = append(result, *sess)
+		}
+	}
+	return result, nil
+}
+
+func (f *fakeCourseRepo) seedCourseSession(studentID, courseID uuid.UUID) *model.CourseSession {
+	f.seqSess++
+	sess := model.CourseSession{
+		ID:               uuid.New(),
+		StudentID:        studentID,
+		CourseID:         courseID,
+		Status:           "active",
+		Source:           "order",
+		EnrolledAt:       time.Now(),
+		CompletedLessons: make(map[uuid.UUID]time.Time),
+	}
+	f.sessions[sess.ID.String()] = &sess
+	return &sess
 }
 
 // --- Section CRUD fakes (keyed by course_id) ---
@@ -378,6 +446,67 @@ func (s *shimCourseService) ReorderLessons(ctx context.Context, courseID, sectio
 	}
 
 	return s.fake.ReorderLessons(ctx, sID, ids)
+}
+
+// --- Student-facing course shim ---
+
+func (s *shimCourseService) MarkLessonComplete(ctx context.Context, studentID, courseID, lessonID string, role string) error {
+	sID, err := uuid.Parse(studentID)
+	if err != nil {
+		return err
+	}
+	cID, err := uuid.Parse(courseID)
+	if err != nil {
+		return err
+	}
+	lID, err := uuid.Parse(lessonID)
+	if err != nil {
+		return err
+	}
+
+	session, err := s.fake.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNoCourseAccess
+		}
+		return err
+	}
+
+	return s.fake.MarkLessonComplete(ctx, session.ID, lID, time.Now())
+}
+
+func (s *shimCourseService) CourseProgress(ctx context.Context, studentID, courseID string) (int, int, error) {
+	sID, err := uuid.Parse(studentID)
+	if err != nil {
+		return 0, 0, err
+	}
+	cID, err := uuid.Parse(courseID)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	session, err := s.fake.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return 0, 0, ErrNoCourseAccess
+		}
+		return 0, 0, err
+	}
+
+	count := len(session.CompletedLessons)
+	total, err := s.fake.CountLessonsByCourse(ctx, cID)
+	if err != nil {
+		return 0, 0, err
+	}
+	return count, courseProgressPercent(count, total), nil
+}
+
+func (s *shimCourseService) ListLibrary(ctx context.Context, studentID string) ([]model.CourseSession, error) {
+	sID, err := uuid.Parse(studentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.fake.ListActiveSessionsByStudent(ctx, sID)
 }
 
 // --- Tests ---
@@ -699,5 +828,148 @@ func TestLesson_RejectsNonStoreRole(t *testing.T) {
 	err = svc.ReorderLessons(ctx, course.ID.String(), sec.ID.String(), []string{}, RoleStudent)
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("want ErrForbidden for student ReorderLessons, got %v", err)
+	}
+}
+
+// --- Student-facing course tests ---
+
+func TestCourseProgressPercent(t *testing.T) {
+	tests := []struct {
+		name      string
+		completed int
+		total     int
+		want      int
+	}{
+		{"zero total", 5, 0, 0},
+		{"exact 3/4", 3, 4, 75},
+		{"round down 1/3", 1, 3, 33},
+		{"round up 2/3", 2, 3, 67},
+		{"zero completed", 0, 10, 0},
+		{"all completed", 10, 10, 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := courseProgressPercent(tt.completed, tt.total)
+			if got != tt.want {
+				t.Errorf("courseProgressPercent(%d, %d) = %d, want %d", tt.completed, tt.total, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMarkLessonComplete_NoActiveSession(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+
+	studentID := uuid.New()
+	courseID := uuid.New()
+	lessonID := uuid.New()
+
+	err := svc.MarkLessonComplete(ctx, studentID.String(), courseID.String(), lessonID.String(), RoleStudent)
+	if !errors.Is(err, ErrNoCourseAccess) {
+		t.Errorf("want ErrNoCourseAccess, got %v", err)
+	}
+}
+
+func TestMarkLessonComplete_Success(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+
+	studentID := uuid.New()
+	courseID := uuid.New()
+	lessonID := uuid.New()
+
+	fake.seedCourseSession(studentID, courseID)
+
+	err := svc.MarkLessonComplete(ctx, studentID.String(), courseID.String(), lessonID.String(), RoleStudent)
+	if err != nil {
+		t.Fatalf("MarkLessonComplete: %v", err)
+	}
+
+	for _, sess := range fake.sessions {
+		if sess.StudentID == studentID && sess.CourseID == courseID {
+			if _, ok := sess.CompletedLessons[lessonID]; !ok {
+				t.Errorf("expected lesson %s in completed lessons", lessonID)
+			}
+		}
+	}
+}
+
+func TestMarkLessonComplete_ReMarkIsNoOp(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+
+	studentID := uuid.New()
+	courseID := uuid.New()
+	lessonID := uuid.New()
+
+	session := fake.seedCourseSession(studentID, courseID)
+
+	t1 := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Mark via fake directly to control timestamp
+	err := fake.MarkLessonComplete(ctx, session.ID, lessonID, t1)
+	if err != nil {
+		t.Fatalf("first MarkLessonComplete: %v", err)
+	}
+
+	if ts, ok := session.CompletedLessons[lessonID]; !ok {
+		t.Errorf("expected lesson in completed lessons")
+	} else if !ts.Equal(t1) {
+		t.Errorf("want timestamp %v, got %v", t1, ts)
+	}
+
+	// Re-mark at a later time
+	t2 := t1.Add(time.Hour)
+	err = fake.MarkLessonComplete(ctx, session.ID, lessonID, t2)
+	if err != nil {
+		t.Fatalf("second MarkLessonComplete: %v", err)
+	}
+
+	if ts, ok := session.CompletedLessons[lessonID]; !ok {
+		t.Errorf("expected lesson in completed lessons after re-mark")
+	} else if !ts.Equal(t1) {
+		t.Errorf("re-mark changed timestamp: want %v, got %v", t1, ts)
+	}
+}
+
+func TestListLibrary_ReturnsActiveSessions(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+
+	student1 := uuid.New()
+	student2 := uuid.New()
+	course1 := uuid.New()
+	course2 := uuid.New()
+	course3 := uuid.New()
+
+	// student1: 2 active sessions
+	fake.seedCourseSession(student1, course1)
+	fake.seedCourseSession(student1, course2)
+
+	// student1: 1 revoked session
+	revokedSess := fake.seedCourseSession(student1, course3)
+	revokedSess.Status = "revoked"
+
+	// student2: 1 active session
+	fake.seedCourseSession(student2, course1)
+
+	sessions, err := svc.ListLibrary(ctx, student1.String())
+	if err != nil {
+		t.Fatalf("ListLibrary student1: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Errorf("student1: want 2 sessions, got %d", len(sessions))
+	}
+
+	sessions, err = svc.ListLibrary(ctx, student2.String())
+	if err != nil {
+		t.Fatalf("ListLibrary student2: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Errorf("student2: want 1 session, got %d", len(sessions))
 	}
 }

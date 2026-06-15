@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
+	"math"
+	"time"
 
 	"github.com/google/uuid"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 )
 
 // --- Course CRUD ---
@@ -212,4 +216,74 @@ func (s *Service) ReorderLessons(ctx context.Context, courseID, sectionID string
 
 func (s *Service) listLessonsBySection(ctx context.Context, sectionID uuid.UUID) ([]model.Lesson, error) {
 	return s.storeRepo.ListLessonsBySection(ctx, sectionID)
+}
+
+// --- Student-facing course methods ---
+
+var ErrNoCourseAccess = errors.New("no active course access")
+
+func (s *Service) MarkLessonComplete(ctx context.Context, studentID, courseID, lessonID string, role string) error {
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return err
+	}
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return err
+	}
+	lID, err := parseUUID(lessonID)
+	if err != nil {
+		return err
+	}
+
+	session, err := s.storeRepo.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNoCourseAccess
+		}
+		return err
+	}
+
+	return s.storeRepo.MarkLessonComplete(ctx, session.ID, lID, time.Now())
+}
+
+func (s *Service) CourseProgress(ctx context.Context, studentID, courseID string) (int, int, error) {
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return 0, 0, err
+	}
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	session, err := s.storeRepo.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return 0, 0, ErrNoCourseAccess
+		}
+		return 0, 0, err
+	}
+
+	count := len(session.CompletedLessons)
+	total, err := s.storeRepo.CountLessonsByCourse(ctx, cID)
+	if err != nil {
+		return 0, 0, err
+	}
+	return count, courseProgressPercent(count, total), nil
+}
+
+func courseProgressPercent(completed, total int) int {
+	if total == 0 {
+		return 0
+	}
+	return int(math.Round(float64(completed) / float64(total) * 100))
+}
+
+func (s *Service) ListLibrary(ctx context.Context, studentID string) ([]model.CourseSession, error) {
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.storeRepo.ListActiveSessionsByStudent(ctx, sID)
 }
