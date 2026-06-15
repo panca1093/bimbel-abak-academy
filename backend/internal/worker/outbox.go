@@ -32,18 +32,18 @@ type outboxRepository interface {
 	MarkOutboxProcessed(context.Context, pgx.Tx, int64) error
 	GetOrderByID(context.Context, uuid.UUID) (model.Order, error)
 	SetOrderStatus(context.Context, pgx.Tx, uuid.UUID, string, string) error
-	CreateCourseEnrollment(context.Context, pgx.Tx, model.CourseEnrollment) error
-	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
+	CreateCourseSession(context.Context, pgx.Tx, model.CourseSession) error
+	GetCoursesByProductID(context.Context, uuid.UUID) ([]model.Course, error)
 	BeginTx(context.Context) (pgx.Tx, error)
 	GetExpiredPaymentOrders(context.Context, int) ([]uuid.UUID, error)
 }
 
 type Worker struct {
-	pool             *pgxpool.Pool
-	rdb              *redis.Client
-	repo             outboxRepository
-	interval         time.Duration
-	sweeperInterval  time.Duration
+	pool            *pgxpool.Pool
+	rdb             *redis.Client
+	repo            outboxRepository
+	interval        time.Duration
+	sweeperInterval time.Duration
 }
 
 func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval time.Duration) *Worker {
@@ -126,36 +126,33 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 	for _, item := range payload.Items {
 		switch item.ProductType {
 		case "course":
-			enrollment := model.CourseEnrollment{
-				ID:        uuid.New(),
-				StudentID: order.StudentID,
-				ProductID: item.ProductID,
-				OrderID:   &payload.OrderID,
-				Status:    "active",
-				Source:    "order",
-				EnrolledAt: time.Now(),
-			}
-			if err := w.repo.CreateCourseEnrollment(ctx, tx, enrollment); err != nil {
-				slog.Error("create course enrollment", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
+			courses, err := w.repo.GetCoursesByProductID(ctx, item.ProductID)
+			if err != nil {
+				slog.Error("get courses by product id", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
 				return
 			}
-		case "exam":
-			token := uuid.New().String()
-			registration := model.ExamRegistration{
-				ID:        uuid.New(),
-				StudentID: order.StudentID,
-				ExamID:    item.ProductID,
-				OrderID:   &payload.OrderID,
-				Token:     token,
-				Status:    "registered",
-				CreatedAt: time.Now(),
+			if len(courses) == 0 {
+				slog.Warn("no courses linked to product, skipping", "order_id", payload.OrderID, "product_id", item.ProductID)
+				continue
 			}
-			if err := w.repo.CreateExamRegistration(ctx, tx, registration); err != nil {
-				slog.Error("create exam registration", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
-				return
+			for _, course := range courses {
+				session := model.CourseSession{
+					StudentID:  order.StudentID,
+					CourseID:   course.ID,
+					OrderID:    &payload.OrderID,
+					Status:     "active",
+					Source:     "order",
+					EnrolledAt: time.Now(),
+				}
+				if err := w.repo.CreateCourseSession(ctx, tx, session); err != nil {
+					slog.Error("create course session", "order_id", payload.OrderID, "course_id", course.ID, "err", err)
+					return
+				}
 			}
 		case "book":
 			// no access action for books
+		default:
+			slog.Warn("unknown product type in order", "product_type", item.ProductType, "product_id", item.ProductID)
 		}
 	}
 
