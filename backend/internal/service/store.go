@@ -156,7 +156,7 @@ func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p mod
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {
+	if err := s.storeRepo.UpdateProductTx(ctx, tx, id, &p); err != nil {
 		return model.Product{}, err
 	}
 	if err := s.storeRepo.ReplaceProductCourses(ctx, tx, pID, ids); err != nil {

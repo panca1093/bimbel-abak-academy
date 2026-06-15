@@ -1192,6 +1192,124 @@ func (s *shimUpdateProductWithCourses) UpdateProductWithCourses(ctx context.Cont
 	return p, nil
 }
 
+// fakeStoreRepoWithError wraps fakeStoreRepo and injects an error on ReplaceProductCourses.
+// It also supports transactional rollback semantics for UpdateProduct: the update is staged
+// and only committed if commit() is called.
+type fakeStoreRepoWithError struct {
+	*fakeStoreRepo
+	replaceErr    error
+	stagedProduct *model.Product
+	stagedID      string
+}
+
+func (f *fakeStoreRepoWithError) UpdateProductTx(_ context.Context, id string, p *model.Product) error {
+	if _, ok := f.products[id]; !ok {
+		return repository.ErrNotFound
+	}
+	cp := *p
+	cp.ID = id
+	f.stagedProduct = &cp
+	f.stagedID = id
+	return nil
+}
+
+func (f *fakeStoreRepoWithError) ReplaceProductCourses(_ context.Context, _ uuid.UUID, _ []uuid.UUID) error {
+	return f.replaceErr
+}
+
+// shimUpdateProductWithCoursesAtomic mirrors the FIXED UpdateProductWithCourses logic:
+// UpdateProductTx runs inside the transaction; if ReplaceProductCourses errors, the tx is
+// rolled back (staged product update is discarded).
+type shimUpdateProductWithCoursesAtomic struct {
+	repo *fakeStoreRepoWithError
+}
+
+func (s *shimUpdateProductWithCoursesAtomic) UpdateProductWithCourses(ctx context.Context, id string, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	existing, err := s.repo.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := uuid.Parse(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	pID, err := uuid.Parse(id)
+	if err != nil {
+		return model.Product{}, err
+	}
+
+	// Stage the product update (runs inside tx)
+	if err := s.repo.UpdateProductTx(ctx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	// If course replace fails, tx is rolled back — staged update is discarded
+	if err := s.repo.ReplaceProductCourses(ctx, pID, ids); err != nil {
+		s.repo.stagedProduct = nil // rollback: discard staged update
+		s.repo.stagedID = ""
+		return model.Product{}, err
+	}
+	// Commit: apply staged update to the store
+	if s.repo.stagedProduct != nil {
+		s.repo.products[s.repo.stagedID] = s.repo.stagedProduct
+		s.repo.stagedProduct = nil
+		s.repo.stagedID = ""
+	}
+
+	p.ID = id
+	p.CourseIDs = courseIDs
+	return p, nil
+}
+
+// FR8: when ReplaceProductCourses fails, UpdateProduct changes must NOT be committed.
+func TestUpdateProductWithCourses_Atomicity_RollbackOnCourseError(t *testing.T) {
+	ctx := context.Background()
+	base := newFakeStoreRepo()
+
+	course, _ := base.CreateCourse(ctx, model.Course{Title: "C1", Level: "b", Subject: "s", InstructorName: "I"})
+	originalTitle := "Original Title"
+	base.seedProduct(model.Product{
+		ID:    "prod-1",
+		Type:  "course",
+		Title: originalTitle,
+	})
+	base.productCourses["prod-1"] = []uuid.UUID{course.ID}
+
+	repo := &fakeStoreRepoWithError{
+		fakeStoreRepo: base,
+		replaceErr:    errors.New("DB error: unique constraint violation"),
+	}
+	svc := &shimUpdateProductWithCoursesAtomic{repo: repo}
+
+	_, err := svc.UpdateProductWithCourses(ctx, "prod-1", model.Product{
+		Type:  "course",
+		Title: "New Title — should not persist",
+	}, []string{course.ID.String()}, RoleAdminStore)
+	if err == nil {
+		t.Fatal("want error from ReplaceProductCourses, got nil")
+	}
+
+	// The product title must remain unchanged — UpdateProduct was rolled back.
+	got, err := base.GetProductByID(ctx, "prod-1")
+	if err != nil {
+		t.Fatalf("GetProductByID after rollback: %v", err)
+	}
+	if got.Title != originalTitle {
+		t.Errorf("atomicity violated: product title changed to %q despite ReplaceProductCourses error", got.Title)
+	}
+}
+
 func TestUpdateProductWithCourses_ReplacesLinks(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()

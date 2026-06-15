@@ -124,6 +124,16 @@ func (r *Repository) UpdateProduct(ctx context.Context, id string, p *model.Prod
 	return err
 }
 
+func (r *Repository) UpdateProductTx(ctx context.Context, tx pgx.Tx, id string, p *model.Product) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE product
+		SET type = $1, title = $2, description = $3, price = $4, stock = $5, status = $6, is_visible = $7, weight_grams = $8, cover_image_url = $9, updated_at = now()
+		WHERE id = $10`,
+		p.Type, p.Title, p.Description, p.Price, p.Stock, p.Status, p.IsVisible, p.WeightGrams, p.CoverImageURL, id,
+	)
+	return err
+}
+
 func (r *Repository) PublishProduct(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE product SET status = 'published', updated_at = now() WHERE id = $1 AND status = 'draft'`,
