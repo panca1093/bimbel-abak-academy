@@ -54,6 +54,19 @@ func (f *fakeCourseRepo) ListCourses(_ context.Context) ([]model.Course, error) 
 	return out, nil
 }
 
+func (f *fakeCourseRepo) GetCourseByID(_ context.Context, id uuid.UUID) (model.Course, error) {
+	c, ok := f.courses[id.String()]
+	if !ok {
+		return model.Course{}, repository.ErrNotFound
+	}
+	return *c, nil
+}
+
+func (f *fakeCourseRepo) DeleteCourse(_ context.Context, id uuid.UUID) error {
+	delete(f.courses, id.String())
+	return nil
+}
+
 func (f *fakeCourseRepo) UpdateCourse(_ context.Context, id uuid.UUID, c model.Course) (model.Course, error) {
 	existing, ok := f.courses[id.String()]
 	if !ok {
@@ -450,7 +463,7 @@ func (s *shimCourseService) ReorderLessons(ctx context.Context, courseID, sectio
 
 // --- Student-facing course shim ---
 
-func (s *shimCourseService) MarkLessonComplete(ctx context.Context, studentID, courseID, lessonID string, role string) error {
+func (s *shimCourseService) MarkLessonComplete(ctx context.Context, studentID, courseID, lessonID string) error {
 	sID, err := uuid.Parse(studentID)
 	if err != nil {
 		return err
@@ -475,30 +488,30 @@ func (s *shimCourseService) MarkLessonComplete(ctx context.Context, studentID, c
 	return s.fake.MarkLessonComplete(ctx, session.ID, lID, time.Now())
 }
 
-func (s *shimCourseService) CourseProgress(ctx context.Context, studentID, courseID string) (int, int, error) {
+func (s *shimCourseService) CourseProgress(ctx context.Context, studentID, courseID string) (int, int, float64, error) {
 	sID, err := uuid.Parse(studentID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	cID, err := uuid.Parse(courseID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	session, err := s.fake.GetActiveSession(ctx, sID, cID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return 0, 0, ErrNoCourseAccess
+			return 0, 0, 0, ErrNoCourseAccess
 		}
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
-	count := len(session.CompletedLessons)
+	completed := len(session.CompletedLessons)
 	total, err := s.fake.CountLessonsByCourse(ctx, cID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
-	return count, courseProgressPercent(count, total), nil
+	return completed, total, courseProgressPct(completed, total), nil
 }
 
 func (s *shimCourseService) ListLibrary(ctx context.Context, studentID string) ([]model.CourseSession, error) {
@@ -507,6 +520,115 @@ func (s *shimCourseService) ListLibrary(ctx context.Context, studentID string) (
 		return nil, err
 	}
 	return s.fake.ListActiveSessionsByStudent(ctx, sID)
+}
+
+// shimCourseServiceV2 extends shimCourseService with new methods.
+// Uses embedded fake to avoid duplicating all methods.
+type shimGetDeleteCourse struct {
+	fake *fakeCourseRepo
+}
+
+func (s *shimGetDeleteCourse) GetCourse(ctx context.Context, id string) (model.Course, int, int, error) {
+	cID, err := uuid.Parse(id)
+	if err != nil {
+		return model.Course{}, 0, 0, err
+	}
+	c, err := s.fake.GetCourseByID(ctx, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Course{}, 0, 0, ErrCourseNotFound
+		}
+		return model.Course{}, 0, 0, err
+	}
+	sections, err := s.fake.ListSections(ctx, cID)
+	if err != nil {
+		return model.Course{}, 0, 0, err
+	}
+	total, err := s.fake.CountLessonsByCourse(ctx, cID)
+	if err != nil {
+		return model.Course{}, 0, 0, err
+	}
+	return c, len(sections), total, nil
+}
+
+func (s *shimGetDeleteCourse) DeleteCourse(ctx context.Context, id, role string) error {
+	if role != RoleAdminStore {
+		return ErrForbidden
+	}
+	cID, err := uuid.Parse(id)
+	if err != nil {
+		return err
+	}
+	_, err = s.fake.GetCourseByID(ctx, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrCourseNotFound
+		}
+		return err
+	}
+	return s.fake.DeleteCourse(ctx, cID)
+}
+
+// shimStudentCourse supports GetCourseWithProgress via fake.
+type shimStudentCourse struct {
+	fake *fakeCourseRepo
+}
+
+func (s *shimStudentCourse) GetCourseWithProgress(ctx context.Context, studentID, courseID string) (CourseWithProgress, error) {
+	sID, err := uuid.Parse(studentID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+	cID, err := uuid.Parse(courseID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+
+	session, err := s.fake.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return CourseWithProgress{}, ErrNoCourseAccess
+		}
+		return CourseWithProgress{}, err
+	}
+
+	course, err := s.fake.GetCourseByID(ctx, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return CourseWithProgress{}, ErrCourseNotFound
+		}
+		return CourseWithProgress{}, err
+	}
+
+	sections, err := s.fake.ListSections(ctx, cID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+
+	var sectionsWithLessons []SectionWithLessons
+	for _, sec := range sections {
+		lessons, err := s.fake.ListLessonsBySection(ctx, sec.ID)
+		if err != nil {
+			return CourseWithProgress{}, err
+		}
+		var lessonsWithCompletion []LessonWithCompletion
+		for _, l := range lessons {
+			_, completed := session.CompletedLessons[l.ID]
+			lessonsWithCompletion = append(lessonsWithCompletion, LessonWithCompletion{
+				Lesson:    l,
+				Completed: completed,
+			})
+		}
+		sectionsWithLessons = append(sectionsWithLessons, SectionWithLessons{
+			Section: sec,
+			Lessons: lessonsWithCompletion,
+		})
+	}
+
+	return CourseWithProgress{
+		Course:   course,
+		Sections: sectionsWithLessons,
+	}, nil
 }
 
 // --- Tests ---
@@ -833,25 +955,25 @@ func TestLesson_RejectsNonStoreRole(t *testing.T) {
 
 // --- Student-facing course tests ---
 
-func TestCourseProgressPercent(t *testing.T) {
+func TestCourseProgressPct(t *testing.T) {
 	tests := []struct {
 		name      string
 		completed int
 		total     int
-		want      int
+		want      float64
 	}{
 		{"zero total", 5, 0, 0},
 		{"exact 3/4", 3, 4, 75},
-		{"round down 1/3", 1, 3, 33},
-		{"round up 2/3", 2, 3, 67},
+		{"round down 1/3", 1, 3, 33.33},
+		{"round up 2/3", 2, 3, 66.67},
 		{"zero completed", 0, 10, 0},
 		{"all completed", 10, 10, 100},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := courseProgressPercent(tt.completed, tt.total)
+			got := courseProgressPct(tt.completed, tt.total)
 			if got != tt.want {
-				t.Errorf("courseProgressPercent(%d, %d) = %d, want %d", tt.completed, tt.total, got, tt.want)
+				t.Errorf("courseProgressPct(%d, %d) = %v, want %v", tt.completed, tt.total, got, tt.want)
 			}
 		})
 	}
@@ -866,7 +988,7 @@ func TestMarkLessonComplete_NoActiveSession(t *testing.T) {
 	courseID := uuid.New()
 	lessonID := uuid.New()
 
-	err := svc.MarkLessonComplete(ctx, studentID.String(), courseID.String(), lessonID.String(), RoleStudent)
+	err := svc.MarkLessonComplete(ctx, studentID.String(), courseID.String(), lessonID.String())
 	if !errors.Is(err, ErrNoCourseAccess) {
 		t.Errorf("want ErrNoCourseAccess, got %v", err)
 	}
@@ -883,7 +1005,7 @@ func TestMarkLessonComplete_Success(t *testing.T) {
 
 	fake.seedCourseSession(studentID, courseID)
 
-	err := svc.MarkLessonComplete(ctx, studentID.String(), courseID.String(), lessonID.String(), RoleStudent)
+	err := svc.MarkLessonComplete(ctx, studentID.String(), courseID.String(), lessonID.String())
 	if err != nil {
 		t.Fatalf("MarkLessonComplete: %v", err)
 	}
@@ -971,5 +1093,220 @@ func TestListLibrary_ReturnsActiveSessions(t *testing.T) {
 	}
 	if len(sessions) != 1 {
 		t.Errorf("student2: want 1 session, got %d", len(sessions))
+	}
+}
+
+// FR3: GetCourse returns course detail with section_count and lesson_count.
+func TestGetCourse_ReturnsSectionAndLessonCount(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+	gdSvc := &shimGetDeleteCourse{fake: fake}
+
+	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateCourse: %v", err)
+	}
+
+	sec, err := svc.CreateSection(ctx, course.ID.String(), "Intro", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateSection: %v", err)
+	}
+	_, err = svc.CreateLesson(ctx, course.ID.String(), sec.ID.String(), "L1", "", 0, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateLesson 1: %v", err)
+	}
+	_, err = svc.CreateLesson(ctx, course.ID.String(), sec.ID.String(), "L2", "", 0, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateLesson 2: %v", err)
+	}
+
+	got, sectionCount, lessonCount, err := gdSvc.GetCourse(ctx, course.ID.String())
+	if err != nil {
+		t.Fatalf("GetCourse: %v", err)
+	}
+	if got.Title != "Math" {
+		t.Errorf("want title Math, got %s", got.Title)
+	}
+	if sectionCount != 1 {
+		t.Errorf("want 1 section, got %d", sectionCount)
+	}
+	if lessonCount != 2 {
+		t.Errorf("want 2 lessons, got %d", lessonCount)
+	}
+}
+
+// FR3: GetCourse returns ErrCourseNotFound for unknown id.
+func TestGetCourse_NotFound(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	gdSvc := &shimGetDeleteCourse{fake: fake}
+
+	_, _, _, err := gdSvc.GetCourse(ctx, uuid.New().String())
+	if !errors.Is(err, ErrCourseNotFound) {
+		t.Errorf("want ErrCourseNotFound, got %v", err)
+	}
+}
+
+// FR5: DeleteCourse removes the course; non-store role is rejected.
+func TestDeleteCourse_RBACAndDelete(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+	gdSvc := &shimGetDeleteCourse{fake: fake}
+
+	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateCourse: %v", err)
+	}
+
+	// Non-store role is rejected
+	if err := gdSvc.DeleteCourse(ctx, course.ID.String(), RoleAdminExam); !errors.Is(err, ErrForbidden) {
+		t.Errorf("want ErrForbidden for admin_exam, got %v", err)
+	}
+
+	// Admin store can delete
+	if err := gdSvc.DeleteCourse(ctx, course.ID.String(), RoleAdminStore); err != nil {
+		t.Fatalf("DeleteCourse: %v", err)
+	}
+
+	// Course is gone
+	_, _, _, err = gdSvc.GetCourse(ctx, course.ID.String())
+	if !errors.Is(err, ErrCourseNotFound) {
+		t.Errorf("want ErrCourseNotFound after delete, got %v", err)
+	}
+}
+
+// FR20: GetCourseWithProgress returns sections, lessons, per-lesson completion.
+func TestGetCourseWithProgress_ReturnsCompletionState(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+	studentSvc := &shimStudentCourse{fake: fake}
+
+	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateCourse: %v", err)
+	}
+
+	sec, err := svc.CreateSection(ctx, course.ID.String(), "Intro", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateSection: %v", err)
+	}
+
+	l1, err := svc.CreateLesson(ctx, course.ID.String(), sec.ID.String(), "L1", "", 0, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateLesson 1: %v", err)
+	}
+	_, err = svc.CreateLesson(ctx, course.ID.String(), sec.ID.String(), "L2", "", 0, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateLesson 2: %v", err)
+	}
+
+	studentID := uuid.New()
+	sess := fake.seedCourseSession(studentID, course.ID)
+
+	// Mark l1 complete
+	if err := fake.MarkLessonComplete(ctx, sess.ID, l1.ID, time.Now()); err != nil {
+		t.Fatalf("MarkLessonComplete: %v", err)
+	}
+
+	result, err := studentSvc.GetCourseWithProgress(ctx, studentID.String(), course.ID.String())
+	if err != nil {
+		t.Fatalf("GetCourseWithProgress: %v", err)
+	}
+
+	if result.Title != "Math" {
+		t.Errorf("want title Math, got %s", result.Title)
+	}
+	if len(result.Sections) != 1 {
+		t.Fatalf("want 1 section, got %d", len(result.Sections))
+	}
+	if len(result.Sections[0].Lessons) != 2 {
+		t.Fatalf("want 2 lessons, got %d", len(result.Sections[0].Lessons))
+	}
+
+	// Check completion flags
+	completedCount := 0
+	for _, l := range result.Sections[0].Lessons {
+		if l.Completed {
+			completedCount++
+		}
+	}
+	if completedCount != 1 {
+		t.Errorf("want 1 completed lesson, got %d", completedCount)
+	}
+}
+
+// FR20: GetCourseWithProgress returns ErrNoCourseAccess when no active session.
+func TestGetCourseWithProgress_NoSession(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+	studentSvc := &shimStudentCourse{fake: fake}
+
+	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateCourse: %v", err)
+	}
+
+	studentID := uuid.New()
+	_, err = studentSvc.GetCourseWithProgress(ctx, studentID.String(), course.ID.String())
+	if !errors.Is(err, ErrNoCourseAccess) {
+		t.Errorf("want ErrNoCourseAccess, got %v", err)
+	}
+}
+
+// FR21: MarkLessonComplete no longer takes a role parameter.
+func TestMarkLessonComplete_NoRoleParam(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+
+	studentID := uuid.New()
+	courseID := uuid.New()
+	lessonID := uuid.New()
+	fake.seedCourseSession(studentID, courseID)
+
+	// Should compile and run without role parameter
+	if err := svc.MarkLessonComplete(ctx, studentID.String(), courseID.String(), lessonID.String()); err != nil {
+		t.Fatalf("MarkLessonComplete: %v", err)
+	}
+}
+
+// FR22: CourseProgress returns (completed, total, pct float64).
+func TestCourseProgress_ReturnsCompletedTotalPct(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+
+	studentID := uuid.New()
+	courseID := uuid.New()
+	sess := fake.seedCourseSession(studentID, courseID)
+
+	// Seed a section + 4 lessons under courseID
+	secID := uuid.New()
+	fake.sections[secID.String()] = &model.Section{ID: secID, CourseID: courseID}
+	for i := 0; i < 4; i++ {
+		lID := uuid.New()
+		fake.lessons[lID.String()] = &model.Lesson{ID: lID, SectionID: secID}
+		if i < 3 {
+			sess.CompletedLessons[lID] = time.Now()
+		}
+	}
+
+	completed, total, pct, err := svc.CourseProgress(ctx, studentID.String(), courseID.String())
+	if err != nil {
+		t.Fatalf("CourseProgress: %v", err)
+	}
+	if completed != 3 {
+		t.Errorf("want completed=3, got %d", completed)
+	}
+	if total != 4 {
+		t.Errorf("want total=4, got %d", total)
+	}
+	// 3/4 = 75.00
+	if pct != 75.0 {
+		t.Errorf("want pct=75.0, got %v", pct)
 	}
 }

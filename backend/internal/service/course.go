@@ -28,8 +28,49 @@ func (s *Service) CreateCourse(ctx context.Context, title, level, subject, instr
 	return s.storeRepo.CreateCourse(ctx, c)
 }
 
-func (s *Service) ListCourses(ctx context.Context, role string) ([]model.Course, error) {
-	return s.storeRepo.ListCourses(ctx)
+func (s *Service) ListCourses(ctx context.Context, limit int, cursor string) ([]model.Course, string, error) {
+	return s.storeRepo.ListCourses(ctx, limit, cursor)
+}
+
+func (s *Service) GetCourse(ctx context.Context, id string) (model.Course, int, int, error) {
+	cID, err := parseUUID(id)
+	if err != nil {
+		return model.Course{}, 0, 0, err
+	}
+	c, err := s.storeRepo.GetCourseByID(ctx, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Course{}, 0, 0, ErrCourseNotFound
+		}
+		return model.Course{}, 0, 0, err
+	}
+	sections, err := s.storeRepo.ListSections(ctx, cID)
+	if err != nil {
+		return model.Course{}, 0, 0, err
+	}
+	total, err := s.storeRepo.CountLessonsByCourse(ctx, cID)
+	if err != nil {
+		return model.Course{}, 0, 0, err
+	}
+	return c, len(sections), total, nil
+}
+
+func (s *Service) DeleteCourse(ctx context.Context, id, role string) error {
+	if role != RoleAdminStore {
+		return ErrForbidden
+	}
+	cID, err := parseUUID(id)
+	if err != nil {
+		return err
+	}
+	_, err = s.storeRepo.GetCourseByID(ctx, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrCourseNotFound
+		}
+		return err
+	}
+	return s.storeRepo.DeleteCourse(ctx, cID)
 }
 
 func (s *Service) UpdateCourse(ctx context.Context, id, title, level, subject, instructorName, role string) (model.Course, error) {
@@ -218,11 +259,84 @@ func (s *Service) listLessonsBySection(ctx context.Context, sectionID uuid.UUID)
 	return s.storeRepo.ListLessonsBySection(ctx, sectionID)
 }
 
+// CourseWithProgress is the student-facing course detail: sections + lessons + per-lesson completion.
+type CourseWithProgress struct {
+	model.Course
+	Sections []SectionWithLessons `json:"sections"`
+}
+
+type SectionWithLessons struct {
+	model.Section
+	Lessons []LessonWithCompletion `json:"lessons"`
+}
+
+type LessonWithCompletion struct {
+	model.Lesson
+	Completed bool `json:"completed"`
+}
+
+func (s *Service) GetCourseWithProgress(ctx context.Context, studentID, courseID string) (CourseWithProgress, error) {
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+
+	session, err := s.storeRepo.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return CourseWithProgress{}, ErrNoCourseAccess
+		}
+		return CourseWithProgress{}, err
+	}
+
+	course, err := s.storeRepo.GetCourseByID(ctx, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return CourseWithProgress{}, ErrCourseNotFound
+		}
+		return CourseWithProgress{}, err
+	}
+
+	sections, err := s.storeRepo.ListSections(ctx, cID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+
+	var sectionsWithLessons []SectionWithLessons
+	for _, sec := range sections {
+		lessons, err := s.storeRepo.ListLessonsBySection(ctx, sec.ID)
+		if err != nil {
+			return CourseWithProgress{}, err
+		}
+		var lessonsWithCompletion []LessonWithCompletion
+		for _, l := range lessons {
+			_, completed := session.CompletedLessons[l.ID]
+			lessonsWithCompletion = append(lessonsWithCompletion, LessonWithCompletion{
+				Lesson:    l,
+				Completed: completed,
+			})
+		}
+		sectionsWithLessons = append(sectionsWithLessons, SectionWithLessons{
+			Section: sec,
+			Lessons: lessonsWithCompletion,
+		})
+	}
+
+	return CourseWithProgress{
+		Course:   course,
+		Sections: sectionsWithLessons,
+	}, nil
+}
+
 // --- Student-facing course methods ---
 
 var ErrNoCourseAccess = errors.New("no active course access")
 
-func (s *Service) MarkLessonComplete(ctx context.Context, studentID, courseID, lessonID string, role string) error {
+func (s *Service) MarkLessonComplete(ctx context.Context, studentID, courseID, lessonID string) error {
 	sID, err := parseUUID(studentID)
 	if err != nil {
 		return err
@@ -247,37 +361,38 @@ func (s *Service) MarkLessonComplete(ctx context.Context, studentID, courseID, l
 	return s.storeRepo.MarkLessonComplete(ctx, session.ID, lID, time.Now())
 }
 
-func (s *Service) CourseProgress(ctx context.Context, studentID, courseID string) (int, int, error) {
+// CourseProgress returns (completed, total, pct) where pct is a float64 in [0,100].
+func (s *Service) CourseProgress(ctx context.Context, studentID, courseID string) (int, int, float64, error) {
 	sID, err := parseUUID(studentID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	cID, err := parseUUID(courseID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	session, err := s.storeRepo.GetActiveSession(ctx, sID, cID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return 0, 0, ErrNoCourseAccess
+			return 0, 0, 0, ErrNoCourseAccess
 		}
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
-	count := len(session.CompletedLessons)
+	completed := len(session.CompletedLessons)
 	total, err := s.storeRepo.CountLessonsByCourse(ctx, cID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
-	return count, courseProgressPercent(count, total), nil
+	return completed, total, courseProgressPct(completed, total), nil
 }
 
-func courseProgressPercent(completed, total int) int {
+func courseProgressPct(completed, total int) float64 {
 	if total == 0 {
 		return 0
 	}
-	return int(math.Round(float64(completed) / float64(total) * 100))
+	return math.Round(float64(completed)/float64(total)*100*100) / 100
 }
 
 func (s *Service) ListLibrary(ctx context.Context, studentID string) ([]model.CourseSession, error) {

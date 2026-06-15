@@ -106,7 +106,7 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 
 	var product model.Product
 	var err error
-	if len(req.CourseIDs) > 0 {
+	if req.Type == "course" || len(req.CourseIDs) > 0 {
 		product, err = h.svc.CreateProductWithCourses(c.Request().Context(), p, req.CourseIDs, role)
 	} else {
 		product, err = h.svc.CreateProduct(c.Request().Context(), p, role)
@@ -137,11 +137,12 @@ func (h *Handler) AdminGetProduct(c echo.Context) error {
 func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	id := c.Param("id")
 	var req struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Price       int64  `json:"price"`
-		Stock       int    `json:"stock"`
-		IsVisible   *bool  `json:"is_visible"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Price       int64    `json:"price"`
+		Stock       int      `json:"stock"`
+		IsVisible   *bool    `json:"is_visible"`
+		CourseIDs   []string `json:"course_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -163,7 +164,13 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		p.IsVisible = *req.IsVisible
 	}
 
-	product, err := h.svc.UpdateProduct(c.Request().Context(), id, p, role)
+	var product model.Product
+	var err error
+	if req.CourseIDs != nil {
+		product, err = h.svc.UpdateProductWithCourses(c.Request().Context(), id, p, req.CourseIDs, role)
+	} else {
+		product, err = h.svc.UpdateProduct(c.Request().Context(), id, p, role)
+	}
 	if err != nil {
 		return mapServiceError(c, err)
 	}

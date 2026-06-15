@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"akademi-bimbel/internal/infra"
@@ -38,20 +39,61 @@ func (h *Handler) AdminCreateCourse(c echo.Context) error {
 }
 
 func (h *Handler) AdminListCourses(c echo.Context) error {
-	claims, _ := c.Get("claims").(*infra.Claims)
-	role := ""
-	if claims != nil {
-		role = claims.Role
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := parseInt(l); err == nil && n > 0 {
+			limit = n
+		}
 	}
+	cursor := c.QueryParam("cursor")
 
-	courses, err := h.svc.ListCourses(c.Request().Context(), role)
+	courses, nextCursor, err := h.svc.ListCourses(c.Request().Context(), limit, cursor)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"data": courses,
+		"data":        courses,
+		"next_cursor": nextCursor,
 	})
+}
+
+func parseInt(s string) (int, error) {
+	var n int
+	_, err := fmt.Sscan(s, &n)
+	return n, err
+}
+
+func (h *Handler) AdminGetCourse(c echo.Context) error {
+	courseID := c.Param("id")
+	course, sectionCount, lessonCount, err := h.svc.GetCourse(c.Request().Context(), courseID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"id":             course.ID,
+		"title":          course.Title,
+		"level":          course.Level,
+		"subject":        course.Subject,
+		"instructor_name": course.InstructorName,
+		"section_count":  sectionCount,
+		"lesson_count":   lessonCount,
+		"created_at":     course.CreatedAt,
+		"updated_at":     course.UpdatedAt,
+	})
+}
+
+func (h *Handler) AdminDeleteCourse(c echo.Context) error {
+	courseID := c.Param("id")
+	claims, _ := c.Get("claims").(*infra.Claims)
+	role := ""
+	if claims != nil {
+		role = claims.Role
+	}
+	if err := h.svc.DeleteCourse(c.Request().Context(), courseID, role); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (h *Handler) AdminUpdateCourse(c echo.Context) error {
@@ -290,6 +332,39 @@ func (h *Handler) AdminReorderLessons(c echo.Context) error {
 
 // --- Student-facing handlers ---
 
+func (h *Handler) StudentListCourses(c echo.Context) error {
+	claims, _ := c.Get("claims").(*infra.Claims)
+	studentID := ""
+	if claims != nil {
+		studentID = claims.Sub
+	}
+
+	sessions, err := h.svc.ListLibrary(c.Request().Context(), studentID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data": sessions,
+	})
+}
+
+func (h *Handler) StudentGetCourse(c echo.Context) error {
+	claims, _ := c.Get("claims").(*infra.Claims)
+	studentID := ""
+	if claims != nil {
+		studentID = claims.Sub
+	}
+
+	courseID := c.Param("id")
+	result, err := h.svc.GetCourseWithProgress(c.Request().Context(), studentID, courseID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
 func (h *Handler) StudentListLibrary(c echo.Context) error {
 	claims, _ := c.Get("claims").(*infra.Claims)
 	studentID := ""
@@ -317,13 +392,19 @@ func (h *Handler) StudentMarkLessonComplete(c echo.Context) error {
 	courseID := c.Param("id")
 	lessonID := c.Param("lId")
 
-	err := h.svc.MarkLessonComplete(c.Request().Context(), studentID, courseID, lessonID, "")
+	if err := h.svc.MarkLessonComplete(c.Request().Context(), studentID, courseID, lessonID); err != nil {
+		return mapServiceError(c, err)
+	}
+
+	completed, total, pct, err := h.svc.CourseProgress(c.Request().Context(), studentID, courseID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{
-		"message": "lesson marked complete",
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"completed": completed,
+		"total":     total,
+		"pct":       pct,
 	})
 }
 
@@ -336,13 +417,14 @@ func (h *Handler) StudentCourseProgress(c echo.Context) error {
 
 	courseID := c.Param("id")
 
-	count, percent, err := h.svc.CourseProgress(c.Request().Context(), studentID, courseID)
+	completed, total, pct, err := h.svc.CourseProgress(c.Request().Context(), studentID, courseID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"count":   count,
-		"percent": percent,
+		"completed": completed,
+		"total":     total,
+		"pct":       pct,
 	})
 }

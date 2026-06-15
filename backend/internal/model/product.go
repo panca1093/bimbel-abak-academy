@@ -13,6 +13,7 @@ type Product struct {
 	IsVisible     bool
 	WeightGrams   int
 	CoverImageURL string
+	CourseIDs     []string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }

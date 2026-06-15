@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 
@@ -20,14 +21,28 @@ func (r *Repository) CreateCourse(ctx context.Context, c model.Course) (model.Co
 	return c, err
 }
 
-func (r *Repository) ListCourses(ctx context.Context) ([]model.Course, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, title, level, subject, instructor_name, created_at, updated_at
-		FROM course
-		ORDER BY created_at DESC`,
-	)
+func (r *Repository) ListCourses(ctx context.Context, limit int, cursor string) ([]model.Course, string, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	query := `SELECT id, title, level, subject, instructor_name, created_at, updated_at
+		FROM course WHERE 1=1`
+	args := []interface{}{}
+	argIdx := 1
+
+	if cursor != "" {
+		query += fmt.Sprintf(` AND id > $%d`, argIdx)
+		args = append(args, cursor)
+		argIdx++
+	}
+
+	query += fmt.Sprintf(` ORDER BY id LIMIT $%d`, argIdx)
+	args = append(args, limit+1)
+
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer rows.Close()
 
@@ -36,11 +51,41 @@ func (r *Repository) ListCourses(ctx context.Context) ([]model.Course, error) {
 		var c model.Course
 		err := rows.Scan(&c.ID, &c.Title, &c.Level, &c.Subject, &c.InstructorName, &c.CreatedAt, &c.UpdatedAt)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		courses = append(courses, c)
 	}
-	return courses, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+
+	var nextCursor string
+	if len(courses) > limit {
+		nextCursor = courses[limit].ID.String()
+		courses = courses[:limit]
+	}
+	return courses, nextCursor, nil
+}
+
+func (r *Repository) GetCourseByID(ctx context.Context, id uuid.UUID) (model.Course, error) {
+	c := model.Course{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, title, level, subject, instructor_name, created_at, updated_at
+		FROM course WHERE id = $1`,
+		id,
+	).Scan(&c.ID, &c.Title, &c.Level, &c.Subject, &c.InstructorName, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		if isNotFound(err) {
+			return model.Course{}, ErrNotFound
+		}
+		return model.Course{}, err
+	}
+	return c, nil
+}
+
+func (r *Repository) DeleteCourse(ctx context.Context, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM course WHERE id = $1`, id)
+	return err
 }
 
 func (r *Repository) UpdateCourse(ctx context.Context, id uuid.UUID, c model.Course) (model.Course, error) {

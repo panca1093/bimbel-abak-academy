@@ -45,7 +45,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminCourses := admin.Group("/courses")
 	adminCourses.GET("", h.AdminListCourses)
 	adminCourses.POST("", h.AdminCreateCourse)
+	adminCourses.GET("/:id", h.AdminGetCourse)
 	adminCourses.PATCH("/:id", h.AdminUpdateCourse)
+	adminCourses.DELETE("/:id", h.AdminDeleteCourse)
 
 	// Admin section routes (re-keyed from product to course)
 	adminSections := admin.Group("/courses/:id/sections")
@@ -88,6 +90,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Student course routes
 	studentCourses := v1.Group("/courses")
 	studentCourses.Use(handler.JWTMiddleware(svc, jwtSigner))
+	studentCourses.GET("", h.StudentListCourses)
+	studentCourses.GET("/:id", h.StudentGetCourse)
 	studentCourses.GET("/library", h.StudentListLibrary)
 	studentCourses.POST("/:id/lessons/:lId/complete", h.StudentMarkLessonComplete)
 	studentCourses.GET("/:id/progress", h.StudentCourseProgress)

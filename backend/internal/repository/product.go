@@ -148,6 +148,24 @@ func (r *Repository) ArchiveProduct(ctx context.Context, id string) error {
 	return err
 }
 
+// ReplaceProductCourses atomically replaces all product_course links for a product.
+func (r *Repository) ReplaceProductCourses(ctx context.Context, tx pgx.Tx, productID uuid.UUID, courseIDs []uuid.UUID) error {
+	_, err := tx.Exec(ctx, `DELETE FROM product_course WHERE product_id = $1`, productID)
+	if err != nil {
+		return err
+	}
+	for _, courseID := range courseIDs {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO product_course (product_id, course_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+			productID, courseID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // CreateProductWithCourses inserts a product and its product_course links in one transaction.
 func (r *Repository) CreateProductWithCourses(ctx context.Context, tx pgx.Tx, p *model.Product, courseIDs []uuid.UUID) error {
 	err := tx.QueryRow(ctx,

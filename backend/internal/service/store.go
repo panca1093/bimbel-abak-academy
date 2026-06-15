@@ -15,6 +15,7 @@ import (
 var (
 	ErrForbidden         = errors.New("forbidden")
 	ErrProductNotFound   = errors.New("product not found")
+	ErrCourseNotFound    = errors.New("course not found")
 	ErrInvalidPromo      = errors.New("invalid or expired promo code")
 	ErrPromoMinOrder     = errors.New("order subtotal below promo minimum")
 	ErrOutOfStock        = errors.New("product out of stock")
@@ -64,6 +65,17 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 			return model.Product{}, ErrProductNotFound
 		}
 	}
+	if p.Type == "course" {
+		pID, err := parseUUID(p.ID)
+		if err == nil {
+			courses, err := s.storeRepo.GetCoursesByProductID(ctx, pID)
+			if err == nil {
+				for _, c := range courses {
+					p.CourseIDs = append(p.CourseIDs, c.ID.String())
+				}
+			}
+		}
+	}
 	return *p, nil
 }
 
@@ -109,6 +121,54 @@ func (s *Service) CreateProductWithCourses(ctx context.Context, p model.Product,
 		return model.Product{}, err
 	}
 
+	return p, nil
+}
+
+func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	existing, err := s.storeRepo.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := parseUUID(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	pID, err := parseUUID(id)
+	if err != nil {
+		return model.Product{}, err
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Product{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	if err := s.storeRepo.ReplaceProductCourses(ctx, tx, pID, ids); err != nil {
+		return model.Product{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.Product{}, err
+	}
+
+	p.ID = id
+	p.CourseIDs = courseIDs
 	return p, nil
 }
 

@@ -133,6 +133,19 @@ func (f *fakeStoreRepo) ListCourses(_ context.Context) ([]model.Course, error) {
 	return out, nil
 }
 
+func (f *fakeStoreRepo) GetCourseByID(_ context.Context, id uuid.UUID) (model.Course, error) {
+	c, ok := f.courses[id.String()]
+	if !ok {
+		return model.Course{}, repository.ErrNotFound
+	}
+	return *c, nil
+}
+
+func (f *fakeStoreRepo) DeleteCourse(_ context.Context, id uuid.UUID) error {
+	delete(f.courses, id.String())
+	return nil
+}
+
 func (f *fakeStoreRepo) UpdateCourse(_ context.Context, id uuid.UUID, c model.Course) (model.Course, error) {
 	existing, ok := f.courses[id.String()]
 	if !ok {
@@ -157,6 +170,11 @@ func (f *fakeStoreRepo) GetCoursesByProductID(_ context.Context, productID uuid.
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeStoreRepo) ReplaceProductCourses(_ context.Context, productID uuid.UUID, courseIDs []uuid.UUID) error {
+	f.productCourses[productID.String()] = courseIDs
+	return nil
 }
 
 func (f *fakeStoreRepo) CreateProductWithCourses(_ context.Context, p *model.Product, courseIDs []uuid.UUID) error {
@@ -232,6 +250,17 @@ func (s *shimService) GetProduct(ctx context.Context, id string, role string) (m
 	if role == RoleStudent || role == "" {
 		if p.Status != "published" || !p.IsVisible {
 			return model.Product{}, ErrProductNotFound
+		}
+	}
+	if p.Type == "course" {
+		pID, err := uuid.Parse(p.ID)
+		if err == nil {
+			courses, err := s.fake.GetCoursesByProductID(ctx, pID)
+			if err == nil {
+				for _, c := range courses {
+					p.CourseIDs = append(p.CourseIDs, c.ID.String())
+				}
+			}
 		}
 	}
 	return *p, nil
@@ -1069,5 +1098,134 @@ func TestCreateProductWithCourses_RBAC(t *testing.T) {
 	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "C1"}, []string{course.ID.String()}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("admin_store creating course: %v", err)
+	}
+}
+
+// FR6: CreateProductWithCourses with type=course and empty/nil course_ids returns ErrCourseLinkRequired.
+func TestCreateProduct_CourseType_EmptyCourseIDs_RequiresCourseLink(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	// nil slice
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "Bundle"}, nil, RoleAdminStore)
+	if !errors.Is(err, ErrCourseLinkRequired) {
+		t.Errorf("nil courseIDs: want ErrCourseLinkRequired, got %v", err)
+	}
+
+	// empty slice
+	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "Bundle"}, []string{}, RoleAdminStore)
+	if !errors.Is(err, ErrCourseLinkRequired) {
+		t.Errorf("empty courseIDs: want ErrCourseLinkRequired, got %v", err)
+	}
+}
+
+// FR9: GetProduct for course type returns CourseIDs populated.
+func TestGetProduct_CourseType_PopulatesCourseIDs(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	course, _ := fake.CreateCourse(ctx, model.Course{
+		Title: "Math", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "course", Title: "Math Bundle", Price: 50000, Status: "published", IsVisible: true,
+	}, []string{course.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses: %v", err)
+	}
+
+	got, err := svc.GetProduct(ctx, product.ID, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("GetProduct: %v", err)
+	}
+	if len(got.CourseIDs) != 1 {
+		t.Errorf("want 1 course_id, got %d: %v", len(got.CourseIDs), got.CourseIDs)
+	}
+	if got.CourseIDs[0] != course.ID.String() {
+		t.Errorf("want course_id %s, got %s", course.ID.String(), got.CourseIDs[0])
+	}
+}
+
+// FR8: shimService UpdateProductWithCourses replaces course links atomically.
+type shimUpdateProductWithCourses struct {
+	fake *fakeStoreRepo
+}
+
+func (s *shimUpdateProductWithCourses) UpdateProductWithCourses(ctx context.Context, id string, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	existing, err := s.fake.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := uuid.Parse(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	pID, err := uuid.Parse(id)
+	if err != nil {
+		return model.Product{}, err
+	}
+
+	if err := s.fake.UpdateProduct(ctx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	if err := s.fake.ReplaceProductCourses(ctx, pID, ids); err != nil {
+		return model.Product{}, err
+	}
+
+	p.ID = id
+	p.CourseIDs = courseIDs
+	return p, nil
+}
+
+func TestUpdateProductWithCourses_ReplacesLinks(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+	updSvc := &shimUpdateProductWithCourses{fake: fake}
+
+	course1, _ := fake.CreateCourse(ctx, model.Course{Title: "C1", Level: "b", Subject: "s", InstructorName: "I"})
+	course2, _ := fake.CreateCourse(ctx, model.Course{Title: "C2", Level: "b", Subject: "s", InstructorName: "I"})
+
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "course", Title: "Bundle", Price: 50000,
+	}, []string{course1.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses: %v", err)
+	}
+
+	// Replace with course2 only
+	updated, err := updSvc.UpdateProductWithCourses(ctx, product.ID, model.Product{
+		Type: "course", Title: "Bundle Updated",
+	}, []string{course2.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("UpdateProductWithCourses: %v", err)
+	}
+	if len(updated.CourseIDs) != 1 || updated.CourseIDs[0] != course2.ID.String() {
+		t.Errorf("want [%s], got %v", course2.ID.String(), updated.CourseIDs)
+	}
+
+	// Verify via GetCoursesByProductID
+	pID, _ := uuid.Parse(product.ID)
+	linked, err := fake.GetCoursesByProductID(ctx, pID)
+	if err != nil {
+		t.Fatalf("GetCoursesByProductID: %v", err)
+	}
+	if len(linked) != 1 || linked[0].ID != course2.ID {
+		t.Errorf("want [%s] linked, got %v", course2.ID.String(), linked)
 	}
 }
