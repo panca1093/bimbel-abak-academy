@@ -3,6 +3,9 @@ package repository
 import (
 	"context"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"akademi-bimbel/internal/model"
 )
 
@@ -15,4 +18,5 @@ var _ interface {
 	PublishProduct(context.Context, string) error
 	DeleteProduct(context.Context, string) error
 	ArchiveProduct(context.Context, string) error
+	CreateProductWithCourses(context.Context, pgx.Tx, *model.Product, []uuid.UUID) error
 } = (*Repository)(nil)

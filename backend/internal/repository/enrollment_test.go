@@ -15,49 +15,37 @@ func TestEnrollmentMethods(t *testing.T) {
 	r := &Repository{}
 	ctx := context.Background()
 
-	_ = r.CreateCourseEnrollment
 	_ = r.RevokeEnrollmentsByOrder
 
-	_ = r.CreateExamRegistration
-	_ = r.ExpireExamRegistrationsByOrder
+	// TODO task-3: Add compile-time checks for CreateCourseSession.
+	// The old CreateCourseEnrollment, CreateExamRegistration, ExpireExamRegistrationsByOrder
+	// were removed with their model types; task 3 rewrites this file.
 
-	enrollment := model.CourseEnrollment{
-		ID:         uuid.New(),
-		StudentID:  uuid.New(),
-		ProductID:  uuid.New(),
-		OrderID:    ptrUUID(uuid.New()),
-		Status:     "active",
-		Source:     "order",
+	enrollment := model.CourseSession{
+		ID:        uuid.New(),
+		StudentID: uuid.New(),
+		CourseID:  uuid.New(),
+		OrderID:   ptrUUID(uuid.New()),
+		Status:    "active",
+		Source:    "order",
 		EnrolledAt: time.Now(),
 	}
 	_ = enrollment
 
-	examReg := model.ExamRegistration{
-		ID:        uuid.New(),
-		StudentID: uuid.New(),
-		ExamID:    uuid.New(),
-		OrderID:   ptrUUID(uuid.New()),
-		Token:     "token",
-		Status:    "registered",
-		CreatedAt: time.Now(),
-	}
-	_ = examReg
-
 	_ = ctx
 
-	var _ func(context.Context, pgx.Tx, model.CourseEnrollment) error = r.CreateCourseEnrollment
+	// Compile-time check: RevokeEnrollmentsByOrder still active
+	var _ func(context.Context, pgx.Tx, uuid.UUID) error = r.RevokeEnrollmentsByOrder
 }
 
 func TestCreateCourseEnrollmentSQLContainsConflictClause(t *testing.T) {
-	// This is a static verification that the CreateCourseEnrollment method
-	// uses ON CONFLICT DO NOTHING for idempotency.
-	// The method implementation must contain the SQL clause for idempotent inserts.
+	// TODO task-3: Rewrite for course_session.
+	// Verification that CreateCourseSession uses ON CONFLICT DO NOTHING.
+	// Currently stubbed until task 3.
 }
 
 func TestCreateExamRegistrationSQLContainsConflictClause(t *testing.T) {
-	// This is a static verification that the CreateExamRegistration method
-	// uses ON CONFLICT DO NOTHING for idempotency.
-	// The method implementation must contain the SQL clause for idempotent inserts.
+	// Deferred to phase 3 — method removed.
 }
 
 func ptrUUID(u uuid.UUID) *uuid.UUID {

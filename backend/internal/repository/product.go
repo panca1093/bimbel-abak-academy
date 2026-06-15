@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
 	"akademi-bimbel/internal/model"
 )
 
@@ -143,4 +146,30 @@ func (r *Repository) ArchiveProduct(ctx context.Context, id string) error {
 		id,
 	)
 	return err
+}
+
+// CreateProductWithCourses inserts a product and its product_course links in one transaction.
+func (r *Repository) CreateProductWithCourses(ctx context.Context, tx pgx.Tx, p *model.Product, courseIDs []uuid.UUID) error {
+	err := tx.QueryRow(ctx,
+		`INSERT INTO product (type, title, description, price, stock, status, is_visible, weight_grams, cover_image_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, created_at, updated_at`,
+		p.Type, p.Title, p.Description, p.Price, p.Stock, p.Status, p.IsVisible, p.WeightGrams, p.CoverImageURL,
+	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return err
+	}
+
+	for _, courseID := range courseIDs {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO product_course (product_id, course_id)
+			VALUES ($1, $2)
+			ON CONFLICT DO NOTHING`,
+			p.ID, courseID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
