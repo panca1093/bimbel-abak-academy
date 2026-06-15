@@ -22,6 +22,7 @@ var (
 	ErrOrderNotEditable  = errors.New("order not editable")
 	ErrOrderNotFound     = errors.New("order not found")
 	ErrInvalidSignature  = errors.New("invalid signature")
+	ErrCourseLinkRequired = errors.New("course product requires at least one linked course")
 )
 
 type PromoValidation struct {
@@ -73,6 +74,41 @@ func (s *Service) CreateProduct(ctx context.Context, p model.Product, role strin
 	if err := s.storeRepo.CreateProduct(ctx, &p); err != nil {
 		return model.Product{}, err
 	}
+	return p, nil
+}
+
+func (s *Service) CreateProductWithCourses(ctx context.Context, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	if err := checkTypeRBAC(role, p.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	if p.Type == "course" && len(courseIDs) < 1 {
+		return model.Product{}, ErrCourseLinkRequired
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := parseUUID(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Product{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.CreateProductWithCourses(ctx, tx, &p, ids); err != nil {
+		return model.Product{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.Product{}, err
+	}
+
 	return p, nil
 }
 
@@ -647,11 +683,6 @@ func (s *Service) AdminRefundOrder(ctx context.Context, orderID string) error {
 	if err := s.storeRepo.RevokeEnrollmentsByOrder(ctx, tx, id); err != nil {
 		return err
 	}
-
-	if err := s.storeRepo.ExpireExamRegistrationsByOrder(ctx, tx, id); err != nil {
-		return err
-	}
-
 	if err := s.storeRepo.ClearOrderTracking(ctx, tx, id); err != nil {
 		return err
 	}

@@ -16,15 +16,19 @@ import (
 
 // fakeStoreRepo is an in-memory stub for repository.Repository store methods.
 type fakeStoreRepo struct {
-	products map[string]*model.Product
-	promos   map[string]model.PromoCode
-	seq      int
+	products       map[string]*model.Product
+	promos         map[string]model.PromoCode
+	courses        map[string]*model.Course
+	productCourses map[string][]uuid.UUID // productID -> courseIDs
+	seq            int
 }
 
 func newFakeStoreRepo() *fakeStoreRepo {
 	return &fakeStoreRepo{
-		products: map[string]*model.Product{},
-		promos:   map[string]model.PromoCode{},
+		products:       map[string]*model.Product{},
+		promos:         map[string]model.PromoCode{},
+		courses:        map[string]*model.Course{},
+		productCourses: map[string][]uuid.UUID{},
 	}
 }
 
@@ -112,6 +116,56 @@ func (f *fakeStoreRepo) seedPromo(p model.PromoCode) {
 	f.promos[p.Code] = p
 }
 
+// --- Course CRUD fakes ---
+
+func (f *fakeStoreRepo) CreateCourse(_ context.Context, c model.Course) (model.Course, error) {
+	f.seq++
+	c.ID = uuid.New()
+	f.courses[c.ID.String()] = &c
+	return c, nil
+}
+
+func (f *fakeStoreRepo) ListCourses(_ context.Context) ([]model.Course, error) {
+	var out []model.Course
+	for _, c := range f.courses {
+		out = append(out, *c)
+	}
+	return out, nil
+}
+
+func (f *fakeStoreRepo) UpdateCourse(_ context.Context, id uuid.UUID, c model.Course) (model.Course, error) {
+	existing, ok := f.courses[id.String()]
+	if !ok {
+		return model.Course{}, repository.ErrNotFound
+	}
+	existing.Title = c.Title
+	existing.Level = c.Level
+	existing.Subject = c.Subject
+	existing.InstructorName = c.InstructorName
+	return *existing, nil
+}
+
+func (f *fakeStoreRepo) GetCoursesByProductID(_ context.Context, productID uuid.UUID) ([]model.Course, error) {
+	ids, ok := f.productCourses[productID.String()]
+	if !ok || len(ids) == 0 {
+		return nil, nil
+	}
+	var out []model.Course
+	for _, cid := range ids {
+		if c, exists := f.courses[cid.String()]; exists {
+			out = append(out, *c)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStoreRepo) CreateProductWithCourses(_ context.Context, p *model.Product, courseIDs []uuid.UUID) error {
+	p.ID = uuid.New().String()
+	f.products[p.ID] = p
+	f.productCourses[p.ID] = courseIDs
+	return nil
+}
+
 // storeRepoAdapter wraps fakeStoreRepo behind a thin interface so Service can call it.
 // We achieve this by embedding a Service with storeRepo set to nil and injecting via
 // a wrapper type that satisfies the same call surface used in store.go.
@@ -188,6 +242,31 @@ func (s *shimService) CreateProduct(ctx context.Context, p model.Product, role s
 		return model.Product{}, err
 	}
 	if err := s.fake.CreateProduct(ctx, &p); err != nil {
+		return model.Product{}, err
+	}
+	return p, nil
+}
+
+func (s *shimService) CreateProductWithCourses(ctx context.Context, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	if err := checkTypeRBAC(role, p.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	if p.Type == "course" && len(courseIDs) < 1 {
+		return model.Product{}, ErrCourseLinkRequired
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := uuid.Parse(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	// In-memory fake: no transaction needed, CreateProductWithCourses is atomic
+	if err := s.fake.CreateProductWithCourses(ctx, &p, ids); err != nil {
 		return model.Product{}, err
 	}
 	return p, nil
@@ -865,5 +944,130 @@ func TestAdminConfirmOrder_Idempotency_SecondCallWithSameKey(t *testing.T) {
 	}
 	if cached == "" {
 		t.Error("want cached value")
+	}
+}
+
+// --- CreateProductWithCourses tests ---
+
+// Test: CreateProductWithCourses for course type with zero links returns ErrCourseLinkRequired
+func TestCreateProductWithCourses_CourseType_ZeroLinks_ReturnsErrCourseLinkRequired(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	// Seed a course so the course exists
+	course, _ := fake.CreateCourse(ctx, model.Course{
+		Title: "Math 101", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+	if course.ID == uuid.Nil {
+		t.Fatal("expected course to be created")
+	}
+
+	// Course product with empty courseIDs
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "course", Title: "Math Bundle", Price: 50000,
+	}, []string{}, RoleAdminStore)
+	if !errors.Is(err, ErrCourseLinkRequired) {
+		t.Errorf("want ErrCourseLinkRequired, got %v", err)
+	}
+
+	// Verify no product was written
+	products, _, _ := fake.ListProducts(ctx, repository.ProductFilter{})
+	if len(products) != 0 {
+		t.Errorf("want 0 products written on error, got %d", len(products))
+	}
+}
+
+// Test: CreateProductWithCourses for course type with links writes product + link rows
+func TestCreateProductWithCourses_CourseType_WithLinks_WritesProductAndLinks(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	course1, err := fake.CreateCourse(ctx, model.Course{
+		Title: "Math 101", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+	if err != nil {
+		t.Fatalf("CreateCourse 1: %v", err)
+	}
+	course2, err := fake.CreateCourse(ctx, model.Course{
+		Title: "Science 101", Level: "beginner", Subject: "science", InstructorName: "Ms. B",
+	})
+	if err != nil {
+		t.Fatalf("CreateCourse 2: %v", err)
+	}
+
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "course", Title: "STEM Bundle", Price: 100000,
+	}, []string{course1.ID.String(), course2.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses: %v", err)
+	}
+	if product.ID == "" {
+		t.Fatal("want non-empty product ID")
+	}
+
+	// Verify link rows via GetCoursesByProductID
+	linked, err := fake.GetCoursesByProductID(ctx, uuid.MustParse(product.ID))
+	if err != nil {
+		t.Fatalf("GetCoursesByProductID: %v", err)
+	}
+	if len(linked) != 2 {
+		t.Errorf("want 2 linked courses, got %d", len(linked))
+	}
+}
+
+// Test: CreateProductWithCourses for book type is not gated by course links
+func TestCreateProductWithCourses_BookType_NotGated(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	// Book product with zero courseIDs — should NOT return ErrCourseLinkRequired
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "book", Title: "Math Book", Price: 50000,
+	}, []string{}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses for book: %v", err)
+	}
+	if product.ID == "" {
+		t.Fatal("want non-empty product ID")
+	}
+}
+
+// Test: CreateProduct (existing path) for book is not gated
+func TestCreateProduct_BookType_NotGated(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Title: "Book 1"}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProduct book: %v", err)
+	}
+	if p.ID == "" {
+		t.Error("want non-empty ID")
+	}
+}
+
+// Test: CreateProductWithCourses respects RBAC
+func TestCreateProductWithCourses_RBAC(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	// admin_exam creating course → ErrForbidden
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "C1"}, nil, RoleAdminExam)
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("want ErrForbidden for admin_exam creating course, got %v", err)
+	}
+
+	// admin_store creating course with links → ok
+	course, _ := fake.CreateCourse(ctx, model.Course{
+		Title: "Math", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "C1"}, []string{course.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("admin_store creating course: %v", err)
 	}
 }

@@ -2,85 +2,99 @@ package service
 
 import (
 	"context"
-	"errors"
 
 	"github.com/google/uuid"
 
 	"akademi-bimbel/internal/model"
-	"akademi-bimbel/internal/repository"
 )
 
-var ErrNotCourse = errors.New("product is not a course")
+// --- Course CRUD ---
 
-func (s *Service) ListSections(ctx context.Context, productID string) ([]model.CourseSection, error) {
-	pID, err := parseUUID(productID)
-	if err != nil {
-		return nil, err
+func (s *Service) CreateCourse(ctx context.Context, title, level, subject, instructorName, role string) (model.Course, error) {
+	if role != RoleAdminStore {
+		return model.Course{}, ErrForbidden
 	}
 
-	product, err := s.storeRepo.GetProductByID(ctx, pID.String())
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrProductNotFound
-		}
-		return nil, err
+	c := model.Course{
+		Title:          title,
+		Level:          level,
+		Subject:        subject,
+		InstructorName: instructorName,
 	}
-	if product.Type != "course" {
-		return nil, ErrNotCourse
-	}
-
-	return s.storeRepo.ListSections(ctx, pID)
+	return s.storeRepo.CreateCourse(ctx, c)
 }
 
-func (s *Service) CreateSection(ctx context.Context, productID string, title string, role string) (model.CourseSection, error) {
+func (s *Service) ListCourses(ctx context.Context, role string) ([]model.Course, error) {
+	return s.storeRepo.ListCourses(ctx)
+}
+
+func (s *Service) UpdateCourse(ctx context.Context, id, title, level, subject, instructorName, role string) (model.Course, error) {
 	if role != RoleAdminStore {
-		return model.CourseSection{}, ErrForbidden
+		return model.Course{}, ErrForbidden
 	}
 
-	pID, err := parseUUID(productID)
+	courseID, err := parseUUID(id)
 	if err != nil {
-		return model.CourseSection{}, err
+		return model.Course{}, err
 	}
 
-	product, err := s.storeRepo.GetProductByID(ctx, pID.String())
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return model.CourseSection{}, ErrProductNotFound
-		}
-		return model.CourseSection{}, err
+	c := model.Course{
+		Title:          title,
+		Level:          level,
+		Subject:        subject,
+		InstructorName: instructorName,
 	}
-	if product.Type != "course" {
-		return model.CourseSection{}, ErrNotCourse
+	return s.storeRepo.UpdateCourse(ctx, courseID, c)
+}
+
+// --- Section CRUD (re-keyed to course_id) ---
+
+func (s *Service) ListSections(ctx context.Context, courseID string) ([]model.Section, error) {
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return nil, err
+	}
+	return s.storeRepo.ListSections(ctx, cID)
+}
+
+func (s *Service) CreateSection(ctx context.Context, courseID string, title string, role string) (model.Section, error) {
+	if role != RoleAdminStore {
+		return model.Section{}, ErrForbidden
 	}
 
-	sections, err := s.storeRepo.ListSections(ctx, pID)
+	cID, err := parseUUID(courseID)
 	if err != nil {
-		return model.CourseSection{}, err
+		return model.Section{}, err
+	}
+
+	sections, err := s.storeRepo.ListSections(ctx, cID)
+	if err != nil {
+		return model.Section{}, err
 	}
 
 	position := len(sections)
-	sec := model.CourseSection{
-		ProductID: pID,
-		Title:     title,
-		Position:  position,
+	sec := model.Section{
+		CourseID: cID,
+		Title:    title,
+		Position: position,
 	}
 	return s.storeRepo.CreateSection(ctx, sec)
 }
 
-func (s *Service) UpdateSection(ctx context.Context, productID, sectionID string, title string, role string) (model.CourseSection, error) {
+func (s *Service) UpdateSection(ctx context.Context, courseID, sectionID string, title string, role string) (model.Section, error) {
 	if role != RoleAdminStore {
-		return model.CourseSection{}, ErrForbidden
+		return model.Section{}, ErrForbidden
 	}
 
 	sID, err := parseUUID(sectionID)
 	if err != nil {
-		return model.CourseSection{}, err
+		return model.Section{}, err
 	}
 
 	return s.storeRepo.UpdateSection(ctx, sID, title)
 }
 
-func (s *Service) DeleteSection(ctx context.Context, productID, sectionID string, role string) error {
+func (s *Service) DeleteSection(ctx context.Context, courseID, sectionID string, role string) error {
 	if role != RoleAdminStore {
 		return ErrForbidden
 	}
@@ -93,12 +107,12 @@ func (s *Service) DeleteSection(ctx context.Context, productID, sectionID string
 	return s.storeRepo.DeleteSection(ctx, sID)
 }
 
-func (s *Service) ReorderSections(ctx context.Context, productID string, orderedIDs []string, role string) error {
+func (s *Service) ReorderSections(ctx context.Context, courseID string, orderedIDs []string, role string) error {
 	if role != RoleAdminStore {
 		return ErrForbidden
 	}
 
-	pID, err := parseUUID(productID)
+	cID, err := parseUUID(courseID)
 	if err != nil {
 		return err
 	}
@@ -112,10 +126,12 @@ func (s *Service) ReorderSections(ctx context.Context, productID string, ordered
 		ids = append(ids, parsed)
 	}
 
-	return s.storeRepo.ReorderSections(ctx, pID, ids)
+	return s.storeRepo.ReorderSections(ctx, cID, ids)
 }
 
-func (s *Service) CreateLesson(ctx context.Context, productID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
+// --- Lesson CRUD (re-keyed to course_id, unchanged child of section) ---
+
+func (s *Service) CreateLesson(ctx context.Context, courseID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
 	if role != RoleAdminStore {
 		return model.Lesson{}, ErrForbidden
 	}
@@ -141,7 +157,7 @@ func (s *Service) CreateLesson(ctx context.Context, productID, sectionID string,
 	return s.storeRepo.CreateLesson(ctx, lesson)
 }
 
-func (s *Service) UpdateLesson(ctx context.Context, productID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
+func (s *Service) UpdateLesson(ctx context.Context, courseID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
 	if role != RoleAdminStore {
 		return model.Lesson{}, ErrForbidden
 	}
@@ -159,7 +175,7 @@ func (s *Service) UpdateLesson(ctx context.Context, productID, sectionID, lesson
 	return s.storeRepo.UpdateLesson(ctx, lID, lesson)
 }
 
-func (s *Service) DeleteLesson(ctx context.Context, productID, sectionID, lessonID string, role string) error {
+func (s *Service) DeleteLesson(ctx context.Context, courseID, sectionID, lessonID string, role string) error {
 	if role != RoleAdminStore {
 		return ErrForbidden
 	}
@@ -172,7 +188,7 @@ func (s *Service) DeleteLesson(ctx context.Context, productID, sectionID, lesson
 	return s.storeRepo.DeleteLesson(ctx, lID)
 }
 
-func (s *Service) ReorderLessons(ctx context.Context, productID, sectionID string, orderedIDs []string, role string) error {
+func (s *Service) ReorderLessons(ctx context.Context, courseID, sectionID string, orderedIDs []string, role string) error {
 	if role != RoleAdminStore {
 		return ErrForbidden
 	}
