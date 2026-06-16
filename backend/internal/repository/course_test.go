@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"akademi-bimbel/internal/model"
 )
@@ -91,4 +92,35 @@ func TestGetCoursesByProductIDReturnsEmptySliceOnNoLinks(t *testing.T) {
 func TestCreateSectionSQLUsesSectionTable(t *testing.T) {
 	// Static verification that CreateSection uses the section table (not course_section).
 	// SQL correctness is verified at integration-test level.
+}
+
+func TestCourseSessionMethods(t *testing.T) {
+	r := &Repository{}
+	ctx := context.Background()
+
+	var _ func(context.Context, pgx.Tx, model.CourseSession) error = r.CreateCourseSession
+	var _ func(context.Context, pgx.Tx, uuid.UUID) error = r.RevokeEnrollmentsByOrder
+	var _ func(context.Context, uuid.UUID, uuid.UUID, time.Time) error = r.MarkLessonComplete
+	_ = r.GetActiveSession
+	_ = r.ListActiveSessionsByStudent
+
+	_ = ctx
+
+	session := model.CourseSession{
+		ID:        uuid.New(),
+		StudentID: uuid.New(),
+		CourseID:  uuid.New(),
+		OrderID:   ptrUUID(uuid.New()),
+		Status:    "active",
+		Source:    "order",
+		EnrolledAt: time.Now(),
+		CompletedLessons: map[uuid.UUID]time.Time{
+			uuid.New(): time.Now().UTC(),
+		},
+	}
+	_ = session
+}
+
+func ptrUUID(u uuid.UUID) *uuid.UUID {
+	return &u
 }
