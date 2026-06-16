@@ -7,11 +7,12 @@ import (
 )
 
 type OutboxEvent struct {
-	ID          int64
-	AggregateID uuid.UUID
-	EventType   string
-	Payload     json.RawMessage
-	CreatedAt   string
-	Attempts    int
-	LastError   *string
+	ID            int64
+	AggregateType string
+	AggregateID   uuid.UUID
+	EventType     string
+	Payload       json.RawMessage
+	CreatedAt     string
+	Attempts      int
+	LastError     *string
 }

@@ -23,8 +23,8 @@ func TestNoopPaymentClient_CreatePayment(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if resp.PaymentRef == "" {
-		t.Error("expected non-empty PaymentRef")
+	if resp.GatewayRef == "" {
+		t.Error("expected non-empty GatewayRef")
 	}
 
 	if resp.PaymentURL == "" {

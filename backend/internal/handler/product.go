@@ -74,18 +74,17 @@ func (h *Handler) AdminListProducts(c echo.Context) error {
 func (h *Handler) AdminCreateProduct(c echo.Context) error {
 	var req struct {
 		Type        string   `json:"type"`
-		Title       string   `json:"title"`
+		Name        string   `json:"name"`
 		Description string   `json:"description"`
 		Price       int64    `json:"price"`
 		Stock       int      `json:"stock"`
-		IsVisible   bool     `json:"is_visible"`
 		CourseIDs   []string `json:"course_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	if req.Type == "" || req.Title == "" {
-		return badRequest(c, "type and title are required")
+	if req.Type == "" || req.Name == "" {
+		return badRequest(c, "type and name are required")
 	}
 
 	claims, _ := c.Get("claims").(*infra.Claims)
@@ -96,11 +95,10 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 
 	p := model.Product{
 		Type:        req.Type,
-		Title:       req.Title,
+		Name:        req.Name,
 		Description: req.Description,
 		Price:       req.Price,
 		Stock:       req.Stock,
-		IsVisible:   req.IsVisible,
 		Status:      "draft",
 	}
 
@@ -137,11 +135,11 @@ func (h *Handler) AdminGetProduct(c echo.Context) error {
 func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	id := c.Param("id")
 	var req struct {
-		Title       string   `json:"title"`
+		Name        string   `json:"name"`
 		Description string   `json:"description"`
 		Price       int64    `json:"price"`
 		Stock       int      `json:"stock"`
-		IsVisible   *bool    `json:"is_visible"`
+		Status      string   `json:"status"` // published ↔ hidden visibility flip only
 		CourseIDs   []string `json:"course_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
@@ -155,13 +153,11 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	}
 
 	p := model.Product{
-		Title:       req.Title,
+		Name:        req.Name,
 		Description: req.Description,
 		Price:       req.Price,
 		Stock:       req.Stock,
-	}
-	if req.IsVisible != nil {
-		p.IsVisible = *req.IsVisible
+		Status:      req.Status,
 	}
 
 	var product model.Product

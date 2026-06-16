@@ -41,7 +41,7 @@ func (f *fakeStoreRepo) ListProducts(_ context.Context, filter repository.Produc
 		if filter.Status != "" && p.Status != filter.Status {
 			continue
 		}
-		if filter.IsVisibleOnly && !p.IsVisible {
+		if filter.VisibleOnly && p.Status != "published" {
 			continue
 		}
 		cp := *p
@@ -233,7 +233,7 @@ func (s *shimService) ListProducts(ctx context.Context, filter repository.Produc
 		}
 		filter.Type = "exam"
 	default:
-		filter.IsVisibleOnly = true
+		filter.VisibleOnly = true
 		filter.Status = "published"
 	}
 	return s.fake.ListProducts(ctx, filter)
@@ -248,7 +248,7 @@ func (s *shimService) GetProduct(ctx context.Context, id string, role string) (m
 		return model.Product{}, err
 	}
 	if role == RoleStudent || role == "" {
-		if p.Status != "published" || !p.IsVisible {
+		if p.Status != "published" {
 			return model.Product{}, ErrProductNotFound
 		}
 	}
@@ -312,7 +312,7 @@ func (s *shimService) ValidatePromo(ctx context.Context, code string, subtotal f
 	if promo.ExpiresAt != nil && promo.ExpiresAt.Before(time.Now()) {
 		return PromoValidation{}, ErrInvalidPromo
 	}
-	if promo.MaxUses != nil && promo.Uses >= *promo.MaxUses {
+	if promo.MaxUses != nil && promo.UsedCount >= *promo.MaxUses {
 		return PromoValidation{}, ErrInvalidPromo
 	}
 	if promo.MinOrderAmount != nil && subtotal < *promo.MinOrderAmount {
@@ -349,9 +349,9 @@ func intptr(i int) *int             { return &i }
 func TestListProducts_StudentSeesOnlyPublished(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "published", IsVisible: true})
-	fake.seedProduct(model.Product{ID: "p2", Type: "book", Status: "draft", IsVisible: true})
-	fake.seedProduct(model.Product{ID: "p3", Type: "book", Status: "published", IsVisible: false})
+	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "published"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "book", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p3", Type: "book", Status: "hidden"})
 
 	svc := newShim(fake)
 	products, _, err := svc.ListProducts(ctx, repository.ProductFilter{}, RoleStudent)
@@ -369,7 +369,7 @@ func TestListProducts_StudentSeesOnlyPublished(t *testing.T) {
 func TestListProducts_AdminStoreExamReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	fake.seedProduct(model.Product{ID: "p1", Type: "exam", Status: "published", IsVisible: true})
+	fake.seedProduct(model.Product{ID: "p1", Type: "exam", Status: "published"})
 
 	svc := newShim(fake)
 	products, _, err := svc.ListProducts(ctx, repository.ProductFilter{Type: "exam"}, RoleAdminStore)
@@ -387,19 +387,19 @@ func TestCreateProduct_TypeRBAC(t *testing.T) {
 	svc := newShim(fake)
 
 	// admin_store creating exam type → ErrForbidden
-	_, err := svc.CreateProduct(ctx, model.Product{Type: "exam", Title: "Exam 1"}, RoleAdminStore)
+	_, err := svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleAdminStore)
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("want ErrForbidden for admin_store creating exam, got %v", err)
 	}
 
 	// admin_exam creating book type → ErrForbidden
-	_, err = svc.CreateProduct(ctx, model.Product{Type: "book", Title: "Book 1"}, RoleAdminExam)
+	_, err = svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminExam)
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("want ErrForbidden for admin_exam creating book, got %v", err)
 	}
 
 	// admin_store creating book → ok
-	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Title: "Book 1"}, RoleAdminStore)
+	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("admin_store creating book: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestCreateProduct_TypeRBAC(t *testing.T) {
 	}
 
 	// super_admin creating any type → ok
-	_, err = svc.CreateProduct(ctx, model.Product{Type: "exam", Title: "Exam 1"}, RoleSuperAdmin)
+	_, err = svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleSuperAdmin)
 	if err != nil {
 		t.Fatalf("super_admin creating exam: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestAddItem_OutOfStock(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Title: "Book 1",
+		Name: "Book 1",
 		Stock: 0,
 		Price: 10000,
 	})
@@ -608,7 +608,7 @@ func TestAddItem_OrderNotCart(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Title: "Book 1",
+		Name: "Book 1",
 		Stock: 10,
 		Price: 10000,
 	})
@@ -701,7 +701,7 @@ func (s *shimOrderService) AddItem(ctx context.Context, studentID, orderID, prod
 		OrderID:     oID,
 		ProductID:   pID,
 		ProductType: product.Type,
-		Title:       product.Title,
+		Name:        product.Name,
 		UnitPrice:   float64(product.Price) / 100,
 		Qty:         qty,
 	}
@@ -725,7 +725,7 @@ func (s *shimOrderService) PatchCart(ctx context.Context, studentID, orderID str
 	}
 
 	order.ShippingAddress = patch.ShippingAddress
-	order.Courier = patch.Courier
+	order.SelectedCourier = patch.Courier
 	return nil
 }
 
@@ -758,7 +758,7 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Title: "Book 1",
+		Name: "Book 1",
 		Stock: 100,
 		Price: 10000,
 	})
@@ -775,7 +775,7 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 		OrderID:     oid,
 		ProductID:   pid,
 		ProductType: "book",
-		Title:       "Book 1",
+		Name:        "Book 1",
 		UnitPrice:   100,
 		Qty:         1,
 	})
@@ -786,7 +786,7 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 	if err != nil {
 		t.Fatalf("First checkout: %v", err)
 	}
-	if result1.PaymentRef == "" {
+	if result1.GatewayRef == "" {
 		t.Error("want non-empty payment_ref")
 	}
 
@@ -796,8 +796,8 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 		t.Fatalf("Second checkout: %v", err)
 	}
 
-	if result1.PaymentRef != result2.PaymentRef {
-		t.Errorf("want same payment_ref, got %s vs %s", result1.PaymentRef, result2.PaymentRef)
+	if result1.GatewayRef != result2.GatewayRef {
+		t.Errorf("want same payment_ref, got %s vs %s", result1.GatewayRef, result2.GatewayRef)
 	}
 
 	// Verify order status is payment_pending
@@ -822,7 +822,7 @@ func (s *shimCheckoutService) Checkout(ctx context.Context, studentID, orderID, 
 	cacheKey := "idempotency:checkout:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
-		return CheckoutResult{PaymentRef: cached}, nil
+		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
 	order, ok := s.fake.orders[oID.String()]
@@ -839,11 +839,11 @@ func (s *shimCheckoutService) Checkout(ctx context.Context, studentID, orderID, 
 	// Mark order as payment_pending
 	order.Status = "payment_pending"
 	paymentRef := "pay_" + oID.String()[:8]
-	order.PaymentRef = paymentRef
+	order.GatewayRef = paymentRef
 	order.PaymentExpiresAt = &(time.Time{})
 
 	result := CheckoutResult{
-		PaymentRef:       paymentRef,
+		GatewayRef:       paymentRef,
 		PaymentExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 
@@ -994,7 +994,7 @@ func TestCreateProductWithCourses_CourseType_ZeroLinks_ReturnsErrCourseLinkRequi
 
 	// Course product with empty courseIDs
 	_, err := svc.CreateProductWithCourses(ctx, model.Product{
-		Type: "course", Title: "Math Bundle", Price: 50000,
+		Type: "course", Name: "Math Bundle", Price: 50000,
 	}, []string{}, RoleAdminStore)
 	if !errors.Is(err, ErrCourseLinkRequired) {
 		t.Errorf("want ErrCourseLinkRequired, got %v", err)
@@ -1027,7 +1027,7 @@ func TestCreateProductWithCourses_CourseType_WithLinks_WritesProductAndLinks(t *
 	}
 
 	product, err := svc.CreateProductWithCourses(ctx, model.Product{
-		Type: "course", Title: "STEM Bundle", Price: 100000,
+		Type: "course", Name: "STEM Bundle", Price: 100000,
 	}, []string{course1.ID.String(), course2.ID.String()}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("CreateProductWithCourses: %v", err)
@@ -1054,7 +1054,7 @@ func TestCreateProductWithCourses_BookType_NotGated(t *testing.T) {
 
 	// Book product with zero courseIDs — should NOT return ErrCourseLinkRequired
 	product, err := svc.CreateProductWithCourses(ctx, model.Product{
-		Type: "book", Title: "Math Book", Price: 50000,
+		Type: "book", Name: "Math Book", Price: 50000,
 	}, []string{}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("CreateProductWithCourses for book: %v", err)
@@ -1070,7 +1070,7 @@ func TestCreateProduct_BookType_NotGated(t *testing.T) {
 	fake := newFakeStoreRepo()
 	svc := newShim(fake)
 
-	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Title: "Book 1"}, RoleAdminStore)
+	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("CreateProduct book: %v", err)
 	}
@@ -1086,7 +1086,7 @@ func TestCreateProductWithCourses_RBAC(t *testing.T) {
 	svc := newShim(fake)
 
 	// admin_exam creating course → ErrForbidden
-	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "C1"}, nil, RoleAdminExam)
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, nil, RoleAdminExam)
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("want ErrForbidden for admin_exam creating course, got %v", err)
 	}
@@ -1095,7 +1095,7 @@ func TestCreateProductWithCourses_RBAC(t *testing.T) {
 	course, _ := fake.CreateCourse(ctx, model.Course{
 		Title: "Math", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
 	})
-	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "C1"}, []string{course.ID.String()}, RoleAdminStore)
+	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, []string{course.ID.String()}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("admin_store creating course: %v", err)
 	}
@@ -1108,13 +1108,13 @@ func TestCreateProduct_CourseType_EmptyCourseIDs_RequiresCourseLink(t *testing.T
 	svc := newShim(fake)
 
 	// nil slice
-	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "Bundle"}, nil, RoleAdminStore)
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "Bundle"}, nil, RoleAdminStore)
 	if !errors.Is(err, ErrCourseLinkRequired) {
 		t.Errorf("nil courseIDs: want ErrCourseLinkRequired, got %v", err)
 	}
 
 	// empty slice
-	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Title: "Bundle"}, []string{}, RoleAdminStore)
+	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "Bundle"}, []string{}, RoleAdminStore)
 	if !errors.Is(err, ErrCourseLinkRequired) {
 		t.Errorf("empty courseIDs: want ErrCourseLinkRequired, got %v", err)
 	}
@@ -1131,7 +1131,7 @@ func TestGetProduct_CourseType_PopulatesCourseIDs(t *testing.T) {
 	})
 
 	product, err := svc.CreateProductWithCourses(ctx, model.Product{
-		Type: "course", Title: "Math Bundle", Price: 50000, Status: "published", IsVisible: true,
+		Type: "course", Name: "Math Bundle", Price: 50000, Status: "published",
 	}, []string{course.ID.String()}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("CreateProductWithCourses: %v", err)
@@ -1282,7 +1282,7 @@ func TestUpdateProductWithCourses_Atomicity_RollbackOnCourseError(t *testing.T) 
 	base.seedProduct(model.Product{
 		ID:    "prod-1",
 		Type:  "course",
-		Title: originalTitle,
+		Name: originalTitle,
 	})
 	base.productCourses["prod-1"] = []uuid.UUID{course.ID}
 
@@ -1294,7 +1294,7 @@ func TestUpdateProductWithCourses_Atomicity_RollbackOnCourseError(t *testing.T) 
 
 	_, err := svc.UpdateProductWithCourses(ctx, "prod-1", model.Product{
 		Type:  "course",
-		Title: "New Title — should not persist",
+		Name: "New Title — should not persist",
 	}, []string{course.ID.String()}, RoleAdminStore)
 	if err == nil {
 		t.Fatal("want error from ReplaceProductCourses, got nil")
@@ -1305,8 +1305,8 @@ func TestUpdateProductWithCourses_Atomicity_RollbackOnCourseError(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetProductByID after rollback: %v", err)
 	}
-	if got.Title != originalTitle {
-		t.Errorf("atomicity violated: product title changed to %q despite ReplaceProductCourses error", got.Title)
+	if got.Name != originalTitle {
+		t.Errorf("atomicity violated: product title changed to %q despite ReplaceProductCourses error", got.Name)
 	}
 }
 
@@ -1320,7 +1320,7 @@ func TestUpdateProductWithCourses_ReplacesLinks(t *testing.T) {
 	course2, _ := fake.CreateCourse(ctx, model.Course{Title: "C2", Level: "b", Subject: "s", InstructorName: "I"})
 
 	product, err := svc.CreateProductWithCourses(ctx, model.Product{
-		Type: "course", Title: "Bundle", Price: 50000,
+		Type: "course", Name: "Bundle", Price: 50000,
 	}, []string{course1.ID.String()}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("CreateProductWithCourses: %v", err)
@@ -1328,7 +1328,7 @@ func TestUpdateProductWithCourses_ReplacesLinks(t *testing.T) {
 
 	// Replace with course2 only
 	updated, err := updSvc.UpdateProductWithCourses(ctx, product.ID, model.Product{
-		Type: "course", Title: "Bundle Updated",
+		Type: "course", Name: "Bundle Updated",
 	}, []string{course2.ID.String()}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("UpdateProductWithCourses: %v", err)

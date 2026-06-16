@@ -46,7 +46,7 @@ func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFil
 		}
 		filter.Type = "exam"
 	default: // student or ""
-		filter.IsVisibleOnly = true
+		filter.VisibleOnly = true
 		filter.Status = "published"
 	}
 	return s.storeRepo.ListProducts(ctx, filter)
@@ -61,7 +61,7 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 		return model.Product{}, err
 	}
 	if role == RoleStudent || role == "" {
-		if p.Status != "published" || !p.IsVisible {
+		if p.Status != "published" {
 			return model.Product{}, ErrProductNotFound
 		}
 	}
@@ -232,7 +232,7 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 	if promo.ExpiresAt != nil && promo.ExpiresAt.Before(time.Now()) {
 		return PromoValidation{}, ErrInvalidPromo
 	}
-	if promo.MaxUses != nil && promo.Uses >= *promo.MaxUses {
+	if promo.MaxUses != nil && promo.UsedCount >= *promo.MaxUses {
 		return PromoValidation{}, ErrInvalidPromo
 	}
 	if promo.MinOrderAmount != nil && subtotal < *promo.MinOrderAmount {
@@ -302,16 +302,17 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	if product == nil {
 		return ErrProductNotFound
 	}
-	if product.Stock == 0 {
+	if product.Type == "book" && product.Stock == 0 {
 		return ErrOutOfStock
 	}
 
 	item := model.OrderItem{
 		ProductID:   pID,
 		ProductType: product.Type,
-		Title:       product.Title,
+		Name:        product.Name,
 		UnitPrice:   float64(product.Price) / 100,
 		Qty:         qty,
+		WeightGrams: product.WeightGrams,
 	}
 	return s.storeRepo.AddItem(ctx, oID, item)
 }
@@ -376,9 +377,9 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 
 	repoPatch := repository.OrderPatch{
 		ShippingAddress: patch.ShippingAddress,
-		Courier:         patch.Courier,
+		SelectedCourier: patch.Courier,
 		Discount:        order.Discount,
-		ShippingAmount:  order.ShippingAmount,
+		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,
 	}
 
@@ -395,7 +396,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 }
 
 type CheckoutResult struct {
-	PaymentRef      string
+	GatewayRef       string
 	PaymentExpiresAt time.Time
 }
 
@@ -411,7 +412,7 @@ type OrderPaidPayloadItem struct {
 }
 
 type PaymentWebhookPayload struct {
-	PaymentRef string `json:"payment_ref"`
+	GatewayRef string `json:"gateway_ref"`
 	OrderID    string `json:"order_id"`
 }
 
@@ -428,7 +429,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	cacheKey := "idempotency:checkout:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
-		return CheckoutResult{PaymentRef: cached}, nil
+		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
 	order, err := s.storeRepo.GetOrderByID(ctx, oID)
@@ -471,16 +472,16 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.PaymentRef, paymentResp.ExpiresAt); err != nil {
+	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
 		return CheckoutResult{}, err
 	}
 
 	result := CheckoutResult{
-		PaymentRef:       paymentResp.PaymentRef,
+		GatewayRef:       paymentResp.GatewayRef,
 		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
-	if err := s.rdb.Set(ctx, cacheKey, paymentResp.PaymentRef, 24*time.Hour).Err(); err != nil {
+	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -500,7 +501,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	cacheKey := "idempotency:retry:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
-		return CheckoutResult{PaymentRef: cached}, nil
+		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
 	order, err := s.storeRepo.GetOrderByID(ctx, oID)
@@ -513,7 +514,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	if order.StudentID != sID {
 		return CheckoutResult{}, ErrOrderNotFound
 	}
-	if order.Status != "payment_expired" && order.Status != "payment_failed" {
+	if order.Status != "payment_expired" {
 		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
@@ -532,7 +533,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.PaymentRef, paymentResp.ExpiresAt); err != nil {
+	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -545,11 +546,11 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	}
 
 	result := CheckoutResult{
-		PaymentRef:       paymentResp.PaymentRef,
+		GatewayRef:       paymentResp.GatewayRef,
 		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
-	if err := s.rdb.Set(ctx, cacheKey, paymentResp.PaymentRef, 24*time.Hour).Err(); err != nil {
+	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -857,7 +858,7 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, webhook.PaymentRef); err != nil {
+	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, webhook.GatewayRef); err != nil {
 		return err
 	}
 

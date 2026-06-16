@@ -365,23 +365,6 @@ func (h *Handler) StudentGetCourse(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-func (h *Handler) StudentListLibrary(c echo.Context) error {
-	claims, _ := c.Get("claims").(*infra.Claims)
-	studentID := ""
-	if claims != nil {
-		studentID = claims.Sub
-	}
-
-	sessions, err := h.svc.ListLibrary(c.Request().Context(), studentID)
-	if err != nil {
-		return mapServiceError(c, err)
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"data": sessions,
-	})
-}
-
 func (h *Handler) StudentMarkLessonComplete(c echo.Context) error {
 	claims, _ := c.Get("claims").(*infra.Claims)
 	var studentID string

@@ -24,46 +24,85 @@ type OrderFilter struct {
 
 type OrderPatch struct {
 	ShippingAddress []byte
-	Courier         string
+	SelectedCourier string
 	PromoCodeID     *uuid.UUID
 	Discount        float64
-	ShippingAmount  float64
+	ShippingCost    float64
 	Total           float64
+}
+
+const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost, total,
+	promo_code_id, shipping_address, selected_courier, tracking_number, shipped_at,
+	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
+	estimated_delivery_days, checked_out_at, completed_at, cancelled_at, cancellation_reason,
+	created_at, updated_at`
+
+func scanOrder(row interface {
+	Scan(dest ...any) error
+}, order *model.Order) error {
+	return row.Scan(
+		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
+		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
+		&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
+		&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
+		&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
+		&order.CreatedAt, &order.UpdatedAt,
+	)
+}
+
+func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model.OrderItem, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, fulfilled_at, created_at
+		 FROM order_item
+		 WHERE order_id = $1
+		 ORDER BY created_at`,
+		orderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.OrderItem
+	for rows.Next() {
+		item := model.OrderItem{}
+		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
+			&item.Name, &item.UnitPrice, &item.Qty, &item.Jumlah, &item.WeightGrams, &item.FulfilledAt, &item.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.Order, bool, error) {
 	order := model.Order{}
-	// Try to INSERT; ON CONFLICT DO NOTHING returns nothing if conflict
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_amount, total)
+		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total)
 		 VALUES ($1, 'cart', 0, 0, 0, 0)
 		 ON CONFLICT (student_id) WHERE status = 'cart' DO NOTHING
-		 RETURNING id, student_id, status, subtotal, discount, shipping_amount, total,
-		           promo_code_id, shipping_address, courier, tracking_number, shipped_at,
-		           payment_ref, payment_expires_at, cancellation_reason, created_at, updated_at`,
+		 RETURNING `+orderColumns,
 		studentID,
 	).Scan(
 		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-		&order.ShippingAmount, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&order.Courier, &order.TrackingNumber, &order.ShippedAt,
-		&order.PaymentRef, &order.PaymentExpiresAt, &order.CancellationReason,
+		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
+		&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
+		&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
+		&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
 		&order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		if isNotFound(err) {
-			// INSERT hit conflict; fetch existing cart
 			err = r.pool.QueryRow(ctx,
-				`SELECT id, student_id, status, subtotal, discount, shipping_amount, total,
-				        promo_code_id, shipping_address, courier, tracking_number, shipped_at,
-				        payment_ref, payment_expires_at, cancellation_reason, created_at, updated_at
-				 FROM orders
-				 WHERE student_id = $1 AND status = 'cart'`,
+				`SELECT `+orderColumns+` FROM orders WHERE student_id = $1 AND status = 'cart'`,
 				studentID,
 			).Scan(
 				&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-				&order.ShippingAmount, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-				&order.Courier, &order.TrackingNumber, &order.ShippedAt,
-				&order.PaymentRef, &order.PaymentExpiresAt, &order.CancellationReason,
+				&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
+				&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
+				&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
+				&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
 				&order.CreatedAt, &order.UpdatedAt,
 			)
 			if err != nil {
@@ -79,17 +118,14 @@ func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.O
 func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID) (model.Order, error) {
 	order := model.Order{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, student_id, status, subtotal, discount, shipping_amount, total,
-		        promo_code_id, shipping_address, courier, tracking_number, shipped_at,
-		        payment_ref, payment_expires_at, cancellation_reason, created_at, updated_at
-		 FROM orders
-		 WHERE student_id = $1 AND status = 'cart'`,
+		`SELECT `+orderColumns+` FROM orders WHERE student_id = $1 AND status = 'cart'`,
 		studentID,
 	).Scan(
 		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-		&order.ShippingAmount, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&order.Courier, &order.TrackingNumber, &order.ShippedAt,
-		&order.PaymentRef, &order.PaymentExpiresAt, &order.CancellationReason,
+		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
+		&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
+		&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
+		&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
 		&order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
@@ -99,33 +135,10 @@ func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID
 		return model.Order{}, err
 	}
 
-	items := []model.OrderItem{}
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, title, unit_price, qty, fulfilled_at, created_at
-		 FROM order_item
-		 WHERE order_id = $1
-		 ORDER BY created_at`,
-		order.ID,
-	)
+	items, err := r.fetchItems(ctx, order.ID)
 	if err != nil {
 		return model.Order{}, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		item := model.OrderItem{}
-		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
-			&item.Title, &item.UnitPrice, &item.Qty, &item.FulfilledAt, &item.CreatedAt)
-		if err != nil {
-			return model.Order{}, err
-		}
-		items = append(items, item)
-	}
-
-	if err = rows.Err(); err != nil {
-		return model.Order{}, err
-	}
-
 	order.Items = items
 	return order, nil
 }
@@ -133,17 +146,14 @@ func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID
 func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Order, error) {
 	order := model.Order{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, student_id, status, subtotal, discount, shipping_amount, total,
-		        promo_code_id, shipping_address, courier, tracking_number, shipped_at,
-		        payment_ref, payment_expires_at, cancellation_reason, created_at, updated_at
-		 FROM orders
-		 WHERE id = $1`,
+		`SELECT `+orderColumns+` FROM orders WHERE id = $1`,
 		id,
 	).Scan(
 		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-		&order.ShippingAmount, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&order.Courier, &order.TrackingNumber, &order.ShippedAt,
-		&order.PaymentRef, &order.PaymentExpiresAt, &order.CancellationReason,
+		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
+		&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
+		&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
+		&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
 		&order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
@@ -153,33 +163,10 @@ func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Orde
 		return model.Order{}, err
 	}
 
-	items := []model.OrderItem{}
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, title, unit_price, qty, fulfilled_at, created_at
-		 FROM order_item
-		 WHERE order_id = $1
-		 ORDER BY created_at`,
-		order.ID,
-	)
+	items, err := r.fetchItems(ctx, order.ID)
 	if err != nil {
 		return model.Order{}, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		item := model.OrderItem{}
-		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
-			&item.Title, &item.UnitPrice, &item.Qty, &item.FulfilledAt, &item.CreatedAt)
-		if err != nil {
-			return model.Order{}, err
-		}
-		items = append(items, item)
-	}
-
-	if err = rows.Err(); err != nil {
-		return model.Order{}, err
-	}
-
 	order.Items = items
 	return order, nil
 }
@@ -192,12 +179,7 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		filter.Limit = 100
 	}
 
-	query := `SELECT id, student_id, status, subtotal, discount, shipping_amount, total,
-	                 promo_code_id, shipping_address, courier, tracking_number, shipped_at,
-	                 payment_ref, payment_expires_at, cancellation_reason, created_at, updated_at
-	          FROM orders
-	          WHERE 1=1`
-
+	query := `SELECT ` + orderColumns + ` FROM orders WHERE 1=1`
 	args := []interface{}{}
 	argNum := 1
 
@@ -206,19 +188,16 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		args = append(args, *filter.StudentID)
 		argNum++
 	}
-
 	if filter.Status != "" {
 		query += fmt.Sprintf(` AND status = $%d`, argNum)
 		args = append(args, filter.Status)
 		argNum++
 	}
-
 	if filter.ProductType != "" {
 		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $%d)`, argNum)
 		args = append(args, filter.ProductType)
 		argNum++
 	}
-
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND id > $%d`, argNum)
 		args = append(args, filter.Cursor)
@@ -241,9 +220,10 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		order := model.Order{}
 		err := rows.Scan(
 			&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-			&order.ShippingAmount, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-			&order.Courier, &order.TrackingNumber, &order.ShippedAt,
-			&order.PaymentRef, &order.PaymentExpiresAt, &order.CancellationReason,
+			&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
+			&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
+			&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
+			&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
 			&order.CreatedAt, &order.UpdatedAt,
 		)
 		if err != nil {
@@ -267,10 +247,11 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.OrderItem) error {
 	item.ID = uuid.New()
 	item.OrderID = orderID
+	jumlah := item.UnitPrice * float64(item.Qty)
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO order_item (id, order_id, product_id, product_type, title, unit_price, qty, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, now())`,
-		item.ID, item.OrderID, item.ProductID, item.ProductType, item.Title, item.UnitPrice, item.Qty,
+		`INSERT INTO order_item (id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
+		item.ID, item.OrderID, item.ProductID, item.ProductType, item.Name, item.UnitPrice, item.Qty, jumlah, item.WeightGrams,
 	)
 	return err
 }
@@ -286,11 +267,11 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) 
 func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch OrderPatch) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders
-		 SET shipping_address = $1, courier = $2, promo_code_id = $3,
-		     discount = $4, shipping_amount = $5, total = $6, updated_at = now()
+		 SET shipping_address = $1, selected_courier = $2, promo_code_id = $3,
+		     discount = $4, shipping_cost = $5, total = $6, updated_at = now()
 		 WHERE id = $7`,
-		patch.ShippingAddress, patch.Courier, patch.PromoCodeID,
-		patch.Discount, patch.ShippingAmount, patch.Total, orderID,
+		patch.ShippingAddress, patch.SelectedCourier, patch.PromoCodeID,
+		patch.Discount, patch.ShippingCost, patch.Total, orderID,
 	)
 	return err
 }
@@ -299,16 +280,12 @@ func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid
 	var err error
 	if tx != nil {
 		_, err = tx.Exec(ctx,
-			`UPDATE orders
-			 SET status = $1, cancellation_reason = $2, updated_at = now()
-			 WHERE id = $3`,
+			`UPDATE orders SET status = $1, cancellation_reason = $2, updated_at = now() WHERE id = $3`,
 			status, reason, orderID,
 		)
 	} else {
 		_, err = r.pool.Exec(ctx,
-			`UPDATE orders
-			 SET status = $1, cancellation_reason = $2, updated_at = now()
-			 WHERE id = $3`,
+			`UPDATE orders SET status = $1, cancellation_reason = $2, updated_at = now() WHERE id = $3`,
 			status, reason, orderID,
 		)
 	}
@@ -317,9 +294,7 @@ func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid
 
 func (r *Repository) SetShipped(ctx context.Context, orderID uuid.UUID, trackingNumber string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE orders
-		 SET tracking_number = $1, shipped_at = now(), updated_at = now()
-		 WHERE id = $2`,
+		`UPDATE orders SET tracking_number = $1, shipped_at = now(), updated_at = now() WHERE id = $2`,
 		trackingNumber, orderID,
 	)
 	return err
@@ -327,9 +302,7 @@ func (r *Repository) SetShipped(ctx context.Context, orderID uuid.UUID, tracking
 
 func (r *Repository) SetPaymentRef(ctx context.Context, orderID uuid.UUID, ref string, expiresAt time.Time) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE orders
-		 SET payment_ref = $1, payment_expires_at = $2, updated_at = now()
-		 WHERE id = $3`,
+		`UPDATE orders SET gateway_ref = $1, payment_expires_at = $2, checked_out_at = now(), updated_at = now() WHERE id = $3`,
 		ref, expiresAt, orderID,
 	)
 	return err
@@ -362,11 +335,9 @@ func (r *Repository) GetExpiredPaymentOrders(ctx context.Context, limit int) ([]
 }
 
 func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
-	// Fetch order items
 	rows, err := tx.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, title, unit_price, qty, fulfilled_at, created_at
-		 FROM order_item
-		 WHERE order_id = $1`,
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, fulfilled_at, created_at
+		 FROM order_item WHERE order_id = $1`,
 		orderID,
 	)
 	if err != nil {
@@ -374,23 +345,25 @@ func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.
 	}
 	defer rows.Close()
 
-	items := []model.OrderItem{}
+	var items []model.OrderItem
 	for rows.Next() {
 		item := model.OrderItem{}
 		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
-			&item.Title, &item.UnitPrice, &item.Qty, &item.FulfilledAt, &item.CreatedAt)
+			&item.Name, &item.UnitPrice, &item.Qty, &item.Jumlah, &item.WeightGrams, &item.FulfilledAt, &item.CreatedAt)
 		if err != nil {
 			return err
 		}
 		items = append(items, item)
 	}
-
 	if err = rows.Err(); err != nil {
 		return err
 	}
 
-	// For each item, SELECT product FOR UPDATE and decrement stock
+	// Only enforce stock for books; course and exam products have no inventory constraint.
 	for _, item := range items {
+		if item.ProductType != "book" {
+			continue
+		}
 		var currentStock int
 		err := tx.QueryRow(ctx,
 			`SELECT stock FROM product WHERE id = $1 FOR UPDATE`,
@@ -399,36 +372,29 @@ func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.
 		if err != nil {
 			return err
 		}
-
 		if currentStock < item.Qty {
 			return ErrInsufficientStock
 		}
-		newStock := currentStock - item.Qty
-
 		_, err = tx.Exec(ctx,
 			`UPDATE product SET stock = $1, updated_at = now() WHERE id = $2`,
-			newStock, item.ProductID,
+			currentStock-item.Qty, item.ProductID,
 		)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Set order status to payment_pending
 	_, err = tx.Exec(ctx,
-		`UPDATE orders
-		 SET status = 'payment_pending', updated_at = now()
-		 WHERE id = $1`,
+		`UPDATE orders SET status = 'payment_pending', updated_at = now() WHERE id = $1`,
 		orderID,
 	)
 	return err
 }
 
-func (r *Repository) InsertWebhookLog(ctx context.Context, tx pgx.Tx, eventType string, payload []byte, paymentRef string) error {
+func (r *Repository) InsertWebhookLog(ctx context.Context, tx pgx.Tx, eventType string, payload []byte, gatewayRef string) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO webhook_log (event_type, payload, payment_ref)
-		 VALUES ($1, $2, $3)`,
-		eventType, payload, paymentRef,
+		`INSERT INTO webhook_log (event_type, payload, gateway_ref) VALUES ($1, $2, $3)`,
+		eventType, payload, gatewayRef,
 	)
 	return err
 }
@@ -437,14 +403,12 @@ func (r *Repository) InsertAuditLog(ctx context.Context, tx pgx.Tx, actorID, tar
 	var err error
 	if tx != nil {
 		_, err = tx.Exec(ctx,
-			`INSERT INTO audit_log (actor_id, target_type, target_id, action)
-			 VALUES ($1, $2, $3, $4)`,
+			`INSERT INTO audit_log (actor_id, target_type, target_id, action) VALUES ($1, $2, $3, $4)`,
 			actorID, targetType, targetID, action,
 		)
 	} else {
 		_, err = r.pool.Exec(ctx,
-			`INSERT INTO audit_log (actor_id, target_type, target_id, action)
-			 VALUES ($1, $2, $3, $4)`,
+			`INSERT INTO audit_log (actor_id, target_type, target_id, action) VALUES ($1, $2, $3, $4)`,
 			actorID, targetType, targetID, action,
 		)
 	}
@@ -453,9 +417,7 @@ func (r *Repository) InsertAuditLog(ctx context.Context, tx pgx.Tx, actorID, tar
 
 func (r *Repository) ClearOrderTracking(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
 	_, err := tx.Exec(ctx,
-		`UPDATE orders
-		 SET tracking_number = '', shipped_at = NULL, updated_at = now()
-		 WHERE id = $1`,
+		`UPDATE orders SET tracking_number = '', shipped_at = NULL, updated_at = now() WHERE id = $1`,
 		orderID,
 	)
 	return err
@@ -466,7 +428,7 @@ func (r *Repository) GetRevenue(ctx context.Context, from, to time.Time) (map[st
 		SELECT COALESCE(SUM(o.total), 0) as total, oi.product_type, COUNT(*) as count
 		FROM orders o
 		JOIN order_item oi ON o.id = oi.order_id
-		WHERE o.status IN ('paid', 'processing', 'shipped')
+		WHERE o.status IN ('paid', 'processing', 'completed')
 		  AND o.created_at BETWEEN $1 AND $2
 		GROUP BY oi.product_type
 	`, from, to)

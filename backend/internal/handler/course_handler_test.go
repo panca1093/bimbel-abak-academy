@@ -96,7 +96,7 @@ func TestAdminCreateProduct_CourseType_EmptyCourseIDs_Returns422CourseRequired(t
 
 	body := map[string]interface{}{
 		"type":       "course",
-		"title":      "Math Bundle",
+		"name":       "Math Bundle",
 		"price":      50000,
 		"course_ids": []string{},
 	}
@@ -125,7 +125,7 @@ func TestAdminCreateProduct_CourseType_NoCourseIDs_Returns422(t *testing.T) {
 
 	body := map[string]interface{}{
 		"type":  "course",
-		"title": "Math Bundle",
+		"name":  "Math Bundle",
 		"price": 50000,
 		// course_ids absent
 	}

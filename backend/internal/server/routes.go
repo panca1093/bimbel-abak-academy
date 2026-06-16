@@ -92,7 +92,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	studentCourses.Use(handler.JWTMiddleware(svc, jwtSigner))
 	studentCourses.GET("", h.StudentListCourses)
 	studentCourses.GET("/:id", h.StudentGetCourse)
-	studentCourses.GET("/library", h.StudentListLibrary)
 	studentCourses.POST("/:id/lessons/:lId/complete", h.StudentMarkLessonComplete)
 	studentCourses.GET("/:id/progress", h.StudentCourseProgress)
 
