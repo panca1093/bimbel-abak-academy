@@ -45,6 +45,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error(), Details: "password must be at least 8 characters"}
 	case errors.Is(err, service.ErrProductNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "product_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrCourseNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "course_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrForbidden):
 		status, apiErr = http.StatusForbidden, APIError{Code: "forbidden", Message: err.Error()}
 	case errors.Is(err, service.ErrOutOfStock):
@@ -61,6 +63,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_order", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidSignature):
 		status, apiErr = http.StatusUnauthorized, APIError{Code: "invalid_signature", Message: err.Error()}
+	case errors.Is(err, service.ErrCourseLinkRequired):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "course_required", Message: err.Error()}
+	case errors.Is(err, service.ErrNoCourseAccess):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_course_access", Message: err.Error()}
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}

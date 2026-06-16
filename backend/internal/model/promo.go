@@ -14,7 +14,7 @@ type PromoCode struct {
 	MinOrderAmount    *float64
 	MaxDiscountAmount *float64
 	MaxUses           *int
-	Uses              int
+	UsedCount         int
 	ExpiresAt         *time.Time
 	CreatedAt         time.Time
 }

@@ -12,12 +12,12 @@ import (
 func (r *Repository) GetPromoByCode(ctx context.Context, code string) (model.PromoCode, error) {
 	p := model.PromoCode{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, uses, expires_at, created_at
+		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at
 		FROM promo_code
 		WHERE code = $1`,
 		code,
 	).Scan(
-		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.Uses, &p.ExpiresAt, &p.CreatedAt,
+		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -30,12 +30,12 @@ func (r *Repository) GetPromoByCode(ctx context.Context, code string) (model.Pro
 
 func (r *Repository) CreatePromoCode(ctx context.Context, p model.PromoCode) (model.PromoCode, error) {
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO promo_code (code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, uses, expires_at)
+		`INSERT INTO promo_code (code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, uses, expires_at, created_at`,
-		p.Code, p.DiscountPercent, p.DiscountAmount, p.MinOrderAmount, p.MaxDiscountAmount, p.MaxUses, p.Uses, p.ExpiresAt,
+		RETURNING id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at`,
+		p.Code, p.DiscountPercent, p.DiscountAmount, p.MinOrderAmount, p.MaxDiscountAmount, p.MaxUses, p.UsedCount, p.ExpiresAt,
 	).Scan(
-		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.Uses, &p.ExpiresAt, &p.CreatedAt,
+		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt,
 	)
 	return p, err
 }
@@ -58,7 +58,7 @@ func (r *Repository) DeletePromoCode(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) ListPromoCodes(ctx context.Context) ([]model.PromoCode, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, uses, expires_at, created_at
+		`SELECT id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at
 		FROM promo_code
 		ORDER BY created_at DESC`,
 	)
@@ -71,7 +71,7 @@ func (r *Repository) ListPromoCodes(ctx context.Context) ([]model.PromoCode, err
 	for rows.Next() {
 		p := model.PromoCode{}
 		err := rows.Scan(
-			&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.Uses, &p.ExpiresAt, &p.CreatedAt,
+			&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -83,7 +83,7 @@ func (r *Repository) ListPromoCodes(ctx context.Context) ([]model.PromoCode, err
 
 func (r *Repository) IncrementPromoUses(ctx context.Context, id uuid.UUID) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE promo_code SET uses = uses + 1 WHERE id = $1`,
+		`UPDATE promo_code SET used_count = used_count + 1 WHERE id = $1`,
 		id,
 	)
 	return err

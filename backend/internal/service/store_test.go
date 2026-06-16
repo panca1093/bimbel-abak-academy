@@ -16,15 +16,19 @@ import (
 
 // fakeStoreRepo is an in-memory stub for repository.Repository store methods.
 type fakeStoreRepo struct {
-	products map[string]*model.Product
-	promos   map[string]model.PromoCode
-	seq      int
+	products       map[string]*model.Product
+	promos         map[string]model.PromoCode
+	courses        map[string]*model.Course
+	productCourses map[string][]uuid.UUID // productID -> courseIDs
+	seq            int
 }
 
 func newFakeStoreRepo() *fakeStoreRepo {
 	return &fakeStoreRepo{
-		products: map[string]*model.Product{},
-		promos:   map[string]model.PromoCode{},
+		products:       map[string]*model.Product{},
+		promos:         map[string]model.PromoCode{},
+		courses:        map[string]*model.Course{},
+		productCourses: map[string][]uuid.UUID{},
 	}
 }
 
@@ -37,7 +41,7 @@ func (f *fakeStoreRepo) ListProducts(_ context.Context, filter repository.Produc
 		if filter.Status != "" && p.Status != filter.Status {
 			continue
 		}
-		if filter.IsVisibleOnly && !p.IsVisible {
+		if filter.VisibleOnly && p.Status != "published" {
 			continue
 		}
 		cp := *p
@@ -112,6 +116,74 @@ func (f *fakeStoreRepo) seedPromo(p model.PromoCode) {
 	f.promos[p.Code] = p
 }
 
+// --- Course CRUD fakes ---
+
+func (f *fakeStoreRepo) CreateCourse(_ context.Context, c model.Course) (model.Course, error) {
+	f.seq++
+	c.ID = uuid.New()
+	f.courses[c.ID.String()] = &c
+	return c, nil
+}
+
+func (f *fakeStoreRepo) ListCourses(_ context.Context) ([]model.Course, error) {
+	var out []model.Course
+	for _, c := range f.courses {
+		out = append(out, *c)
+	}
+	return out, nil
+}
+
+func (f *fakeStoreRepo) GetCourseByID(_ context.Context, id uuid.UUID) (model.Course, error) {
+	c, ok := f.courses[id.String()]
+	if !ok {
+		return model.Course{}, repository.ErrNotFound
+	}
+	return *c, nil
+}
+
+func (f *fakeStoreRepo) DeleteCourse(_ context.Context, id uuid.UUID) error {
+	delete(f.courses, id.String())
+	return nil
+}
+
+func (f *fakeStoreRepo) UpdateCourse(_ context.Context, id uuid.UUID, c model.Course) (model.Course, error) {
+	existing, ok := f.courses[id.String()]
+	if !ok {
+		return model.Course{}, repository.ErrNotFound
+	}
+	existing.Title = c.Title
+	existing.Level = c.Level
+	existing.Subject = c.Subject
+	existing.InstructorName = c.InstructorName
+	return *existing, nil
+}
+
+func (f *fakeStoreRepo) GetCoursesByProductID(_ context.Context, productID uuid.UUID) ([]model.Course, error) {
+	ids, ok := f.productCourses[productID.String()]
+	if !ok || len(ids) == 0 {
+		return nil, nil
+	}
+	var out []model.Course
+	for _, cid := range ids {
+		if c, exists := f.courses[cid.String()]; exists {
+			out = append(out, *c)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStoreRepo) ReplaceProductCourses(_ context.Context, productID uuid.UUID, courseIDs []uuid.UUID) error {
+	f.productCourses[productID.String()] = courseIDs
+	return nil
+}
+
+func (f *fakeStoreRepo) CreateProductWithCourses(_ context.Context, p *model.Product, courseIDs []uuid.UUID) error {
+	p.ID = uuid.New().String()
+	f.products[p.ID] = p
+	f.productCourses[p.ID] = courseIDs
+	return nil
+}
+
 // storeRepoAdapter wraps fakeStoreRepo behind a thin interface so Service can call it.
 // We achieve this by embedding a Service with storeRepo set to nil and injecting via
 // a wrapper type that satisfies the same call surface used in store.go.
@@ -161,7 +233,7 @@ func (s *shimService) ListProducts(ctx context.Context, filter repository.Produc
 		}
 		filter.Type = "exam"
 	default:
-		filter.IsVisibleOnly = true
+		filter.VisibleOnly = true
 		filter.Status = "published"
 	}
 	return s.fake.ListProducts(ctx, filter)
@@ -176,8 +248,19 @@ func (s *shimService) GetProduct(ctx context.Context, id string, role string) (m
 		return model.Product{}, err
 	}
 	if role == RoleStudent || role == "" {
-		if p.Status != "published" || !p.IsVisible {
+		if p.Status != "published" {
 			return model.Product{}, ErrProductNotFound
+		}
+	}
+	if p.Type == "course" {
+		pID, err := uuid.Parse(p.ID)
+		if err == nil {
+			courses, err := s.fake.GetCoursesByProductID(ctx, pID)
+			if err == nil {
+				for _, c := range courses {
+					p.CourseIDs = append(p.CourseIDs, c.ID.String())
+				}
+			}
 		}
 	}
 	return *p, nil
@@ -188,6 +271,31 @@ func (s *shimService) CreateProduct(ctx context.Context, p model.Product, role s
 		return model.Product{}, err
 	}
 	if err := s.fake.CreateProduct(ctx, &p); err != nil {
+		return model.Product{}, err
+	}
+	return p, nil
+}
+
+func (s *shimService) CreateProductWithCourses(ctx context.Context, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	if err := checkTypeRBAC(role, p.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	if p.Type == "course" && len(courseIDs) < 1 {
+		return model.Product{}, ErrCourseLinkRequired
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := uuid.Parse(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	// In-memory fake: no transaction needed, CreateProductWithCourses is atomic
+	if err := s.fake.CreateProductWithCourses(ctx, &p, ids); err != nil {
 		return model.Product{}, err
 	}
 	return p, nil
@@ -204,7 +312,7 @@ func (s *shimService) ValidatePromo(ctx context.Context, code string, subtotal f
 	if promo.ExpiresAt != nil && promo.ExpiresAt.Before(time.Now()) {
 		return PromoValidation{}, ErrInvalidPromo
 	}
-	if promo.MaxUses != nil && promo.Uses >= *promo.MaxUses {
+	if promo.MaxUses != nil && promo.UsedCount >= *promo.MaxUses {
 		return PromoValidation{}, ErrInvalidPromo
 	}
 	if promo.MinOrderAmount != nil && subtotal < *promo.MinOrderAmount {
@@ -241,9 +349,9 @@ func intptr(i int) *int             { return &i }
 func TestListProducts_StudentSeesOnlyPublished(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "published", IsVisible: true})
-	fake.seedProduct(model.Product{ID: "p2", Type: "book", Status: "draft", IsVisible: true})
-	fake.seedProduct(model.Product{ID: "p3", Type: "book", Status: "published", IsVisible: false})
+	fake.seedProduct(model.Product{ID: "p1", Type: "book", Status: "published"})
+	fake.seedProduct(model.Product{ID: "p2", Type: "book", Status: "draft"})
+	fake.seedProduct(model.Product{ID: "p3", Type: "book", Status: "hidden"})
 
 	svc := newShim(fake)
 	products, _, err := svc.ListProducts(ctx, repository.ProductFilter{}, RoleStudent)
@@ -261,7 +369,7 @@ func TestListProducts_StudentSeesOnlyPublished(t *testing.T) {
 func TestListProducts_AdminStoreExamReturnsEmpty(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
-	fake.seedProduct(model.Product{ID: "p1", Type: "exam", Status: "published", IsVisible: true})
+	fake.seedProduct(model.Product{ID: "p1", Type: "exam", Status: "published"})
 
 	svc := newShim(fake)
 	products, _, err := svc.ListProducts(ctx, repository.ProductFilter{Type: "exam"}, RoleAdminStore)
@@ -279,19 +387,19 @@ func TestCreateProduct_TypeRBAC(t *testing.T) {
 	svc := newShim(fake)
 
 	// admin_store creating exam type → ErrForbidden
-	_, err := svc.CreateProduct(ctx, model.Product{Type: "exam", Title: "Exam 1"}, RoleAdminStore)
+	_, err := svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleAdminStore)
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("want ErrForbidden for admin_store creating exam, got %v", err)
 	}
 
 	// admin_exam creating book type → ErrForbidden
-	_, err = svc.CreateProduct(ctx, model.Product{Type: "book", Title: "Book 1"}, RoleAdminExam)
+	_, err = svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminExam)
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("want ErrForbidden for admin_exam creating book, got %v", err)
 	}
 
 	// admin_store creating book → ok
-	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Title: "Book 1"}, RoleAdminStore)
+	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminStore)
 	if err != nil {
 		t.Fatalf("admin_store creating book: %v", err)
 	}
@@ -300,7 +408,7 @@ func TestCreateProduct_TypeRBAC(t *testing.T) {
 	}
 
 	// super_admin creating any type → ok
-	_, err = svc.CreateProduct(ctx, model.Product{Type: "exam", Title: "Exam 1"}, RoleSuperAdmin)
+	_, err = svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleSuperAdmin)
 	if err != nil {
 		t.Fatalf("super_admin creating exam: %v", err)
 	}
@@ -469,7 +577,7 @@ func TestAddItem_OutOfStock(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Title: "Book 1",
+		Name: "Book 1",
 		Stock: 0,
 		Price: 10000,
 	})
@@ -500,7 +608,7 @@ func TestAddItem_OrderNotCart(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Title: "Book 1",
+		Name: "Book 1",
 		Stock: 10,
 		Price: 10000,
 	})
@@ -593,7 +701,7 @@ func (s *shimOrderService) AddItem(ctx context.Context, studentID, orderID, prod
 		OrderID:     oID,
 		ProductID:   pID,
 		ProductType: product.Type,
-		Title:       product.Title,
+		Name:        product.Name,
 		UnitPrice:   float64(product.Price) / 100,
 		Qty:         qty,
 	}
@@ -617,7 +725,7 @@ func (s *shimOrderService) PatchCart(ctx context.Context, studentID, orderID str
 	}
 
 	order.ShippingAddress = patch.ShippingAddress
-	order.Courier = patch.Courier
+	order.SelectedCourier = patch.Courier
 	return nil
 }
 
@@ -650,7 +758,7 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 	fake.seedProduct(model.Product{
 		ID:    productID,
 		Type:  "book",
-		Title: "Book 1",
+		Name: "Book 1",
 		Stock: 100,
 		Price: 10000,
 	})
@@ -667,7 +775,7 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 		OrderID:     oid,
 		ProductID:   pid,
 		ProductType: "book",
-		Title:       "Book 1",
+		Name:        "Book 1",
 		UnitPrice:   100,
 		Qty:         1,
 	})
@@ -678,7 +786,7 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 	if err != nil {
 		t.Fatalf("First checkout: %v", err)
 	}
-	if result1.PaymentRef == "" {
+	if result1.GatewayRef == "" {
 		t.Error("want non-empty payment_ref")
 	}
 
@@ -688,8 +796,8 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 		t.Fatalf("Second checkout: %v", err)
 	}
 
-	if result1.PaymentRef != result2.PaymentRef {
-		t.Errorf("want same payment_ref, got %s vs %s", result1.PaymentRef, result2.PaymentRef)
+	if result1.GatewayRef != result2.GatewayRef {
+		t.Errorf("want same payment_ref, got %s vs %s", result1.GatewayRef, result2.GatewayRef)
 	}
 
 	// Verify order status is payment_pending
@@ -714,7 +822,7 @@ func (s *shimCheckoutService) Checkout(ctx context.Context, studentID, orderID, 
 	cacheKey := "idempotency:checkout:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
-		return CheckoutResult{PaymentRef: cached}, nil
+		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
 	order, ok := s.fake.orders[oID.String()]
@@ -731,11 +839,11 @@ func (s *shimCheckoutService) Checkout(ctx context.Context, studentID, orderID, 
 	// Mark order as payment_pending
 	order.Status = "payment_pending"
 	paymentRef := "pay_" + oID.String()[:8]
-	order.PaymentRef = paymentRef
+	order.GatewayRef = paymentRef
 	order.PaymentExpiresAt = &(time.Time{})
 
 	result := CheckoutResult{
-		PaymentRef:       paymentRef,
+		GatewayRef:       paymentRef,
 		PaymentExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 
@@ -865,5 +973,377 @@ func TestAdminConfirmOrder_Idempotency_SecondCallWithSameKey(t *testing.T) {
 	}
 	if cached == "" {
 		t.Error("want cached value")
+	}
+}
+
+// --- CreateProductWithCourses tests ---
+
+// Test: CreateProductWithCourses for course type with zero links returns ErrCourseLinkRequired
+func TestCreateProductWithCourses_CourseType_ZeroLinks_ReturnsErrCourseLinkRequired(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	// Seed a course so the course exists
+	course, _ := fake.CreateCourse(ctx, model.Course{
+		Title: "Math 101", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+	if course.ID == uuid.Nil {
+		t.Fatal("expected course to be created")
+	}
+
+	// Course product with empty courseIDs
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "course", Name: "Math Bundle", Price: 50000,
+	}, []string{}, RoleAdminStore)
+	if !errors.Is(err, ErrCourseLinkRequired) {
+		t.Errorf("want ErrCourseLinkRequired, got %v", err)
+	}
+
+	// Verify no product was written
+	products, _, _ := fake.ListProducts(ctx, repository.ProductFilter{})
+	if len(products) != 0 {
+		t.Errorf("want 0 products written on error, got %d", len(products))
+	}
+}
+
+// Test: CreateProductWithCourses for course type with links writes product + link rows
+func TestCreateProductWithCourses_CourseType_WithLinks_WritesProductAndLinks(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	course1, err := fake.CreateCourse(ctx, model.Course{
+		Title: "Math 101", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+	if err != nil {
+		t.Fatalf("CreateCourse 1: %v", err)
+	}
+	course2, err := fake.CreateCourse(ctx, model.Course{
+		Title: "Science 101", Level: "beginner", Subject: "science", InstructorName: "Ms. B",
+	})
+	if err != nil {
+		t.Fatalf("CreateCourse 2: %v", err)
+	}
+
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "course", Name: "STEM Bundle", Price: 100000,
+	}, []string{course1.ID.String(), course2.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses: %v", err)
+	}
+	if product.ID == "" {
+		t.Fatal("want non-empty product ID")
+	}
+
+	// Verify link rows via GetCoursesByProductID
+	linked, err := fake.GetCoursesByProductID(ctx, uuid.MustParse(product.ID))
+	if err != nil {
+		t.Fatalf("GetCoursesByProductID: %v", err)
+	}
+	if len(linked) != 2 {
+		t.Errorf("want 2 linked courses, got %d", len(linked))
+	}
+}
+
+// Test: CreateProductWithCourses for book type is not gated by course links
+func TestCreateProductWithCourses_BookType_NotGated(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	// Book product with zero courseIDs — should NOT return ErrCourseLinkRequired
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "book", Name: "Math Book", Price: 50000,
+	}, []string{}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses for book: %v", err)
+	}
+	if product.ID == "" {
+		t.Fatal("want non-empty product ID")
+	}
+}
+
+// Test: CreateProduct (existing path) for book is not gated
+func TestCreateProduct_BookType_NotGated(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	p, err := svc.CreateProduct(ctx, model.Product{Type: "book", Name: "Book 1"}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProduct book: %v", err)
+	}
+	if p.ID == "" {
+		t.Error("want non-empty ID")
+	}
+}
+
+// Test: CreateProductWithCourses respects RBAC
+func TestCreateProductWithCourses_RBAC(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	// admin_exam creating course → ErrForbidden
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, nil, RoleAdminExam)
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("want ErrForbidden for admin_exam creating course, got %v", err)
+	}
+
+	// admin_store creating course with links → ok
+	course, _ := fake.CreateCourse(ctx, model.Course{
+		Title: "Math", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "C1"}, []string{course.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("admin_store creating course: %v", err)
+	}
+}
+
+// FR6: CreateProductWithCourses with type=course and empty/nil course_ids returns ErrCourseLinkRequired.
+func TestCreateProduct_CourseType_EmptyCourseIDs_RequiresCourseLink(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	// nil slice
+	_, err := svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "Bundle"}, nil, RoleAdminStore)
+	if !errors.Is(err, ErrCourseLinkRequired) {
+		t.Errorf("nil courseIDs: want ErrCourseLinkRequired, got %v", err)
+	}
+
+	// empty slice
+	_, err = svc.CreateProductWithCourses(ctx, model.Product{Type: "course", Name: "Bundle"}, []string{}, RoleAdminStore)
+	if !errors.Is(err, ErrCourseLinkRequired) {
+		t.Errorf("empty courseIDs: want ErrCourseLinkRequired, got %v", err)
+	}
+}
+
+// FR9: GetProduct for course type returns CourseIDs populated.
+func TestGetProduct_CourseType_PopulatesCourseIDs(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	course, _ := fake.CreateCourse(ctx, model.Course{
+		Title: "Math", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "course", Name: "Math Bundle", Price: 50000, Status: "published",
+	}, []string{course.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses: %v", err)
+	}
+
+	got, err := svc.GetProduct(ctx, product.ID, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("GetProduct: %v", err)
+	}
+	if len(got.CourseIDs) != 1 {
+		t.Errorf("want 1 course_id, got %d: %v", len(got.CourseIDs), got.CourseIDs)
+	}
+	if got.CourseIDs[0] != course.ID.String() {
+		t.Errorf("want course_id %s, got %s", course.ID.String(), got.CourseIDs[0])
+	}
+}
+
+// FR8: shimService UpdateProductWithCourses replaces course links atomically.
+type shimUpdateProductWithCourses struct {
+	fake *fakeStoreRepo
+}
+
+func (s *shimUpdateProductWithCourses) UpdateProductWithCourses(ctx context.Context, id string, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	existing, err := s.fake.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := uuid.Parse(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	pID, err := uuid.Parse(id)
+	if err != nil {
+		return model.Product{}, err
+	}
+
+	if err := s.fake.UpdateProduct(ctx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	if err := s.fake.ReplaceProductCourses(ctx, pID, ids); err != nil {
+		return model.Product{}, err
+	}
+
+	p.ID = id
+	p.CourseIDs = courseIDs
+	return p, nil
+}
+
+// fakeStoreRepoWithError wraps fakeStoreRepo and injects an error on ReplaceProductCourses.
+// It also supports transactional rollback semantics for UpdateProduct: the update is staged
+// and only committed if commit() is called.
+type fakeStoreRepoWithError struct {
+	*fakeStoreRepo
+	replaceErr    error
+	stagedProduct *model.Product
+	stagedID      string
+}
+
+func (f *fakeStoreRepoWithError) UpdateProductTx(_ context.Context, id string, p *model.Product) error {
+	if _, ok := f.products[id]; !ok {
+		return repository.ErrNotFound
+	}
+	cp := *p
+	cp.ID = id
+	f.stagedProduct = &cp
+	f.stagedID = id
+	return nil
+}
+
+func (f *fakeStoreRepoWithError) ReplaceProductCourses(_ context.Context, _ uuid.UUID, _ []uuid.UUID) error {
+	return f.replaceErr
+}
+
+// shimUpdateProductWithCoursesAtomic mirrors the FIXED UpdateProductWithCourses logic:
+// UpdateProductTx runs inside the transaction; if ReplaceProductCourses errors, the tx is
+// rolled back (staged product update is discarded).
+type shimUpdateProductWithCoursesAtomic struct {
+	repo *fakeStoreRepoWithError
+}
+
+func (s *shimUpdateProductWithCoursesAtomic) UpdateProductWithCourses(ctx context.Context, id string, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	existing, err := s.repo.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := uuid.Parse(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	pID, err := uuid.Parse(id)
+	if err != nil {
+		return model.Product{}, err
+	}
+
+	// Stage the product update (runs inside tx)
+	if err := s.repo.UpdateProductTx(ctx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	// If course replace fails, tx is rolled back — staged update is discarded
+	if err := s.repo.ReplaceProductCourses(ctx, pID, ids); err != nil {
+		s.repo.stagedProduct = nil // rollback: discard staged update
+		s.repo.stagedID = ""
+		return model.Product{}, err
+	}
+	// Commit: apply staged update to the store
+	if s.repo.stagedProduct != nil {
+		s.repo.products[s.repo.stagedID] = s.repo.stagedProduct
+		s.repo.stagedProduct = nil
+		s.repo.stagedID = ""
+	}
+
+	p.ID = id
+	p.CourseIDs = courseIDs
+	return p, nil
+}
+
+// FR8: when ReplaceProductCourses fails, UpdateProduct changes must NOT be committed.
+func TestUpdateProductWithCourses_Atomicity_RollbackOnCourseError(t *testing.T) {
+	ctx := context.Background()
+	base := newFakeStoreRepo()
+
+	course, _ := base.CreateCourse(ctx, model.Course{Title: "C1", Level: "b", Subject: "s", InstructorName: "I"})
+	originalTitle := "Original Title"
+	base.seedProduct(model.Product{
+		ID:    "prod-1",
+		Type:  "course",
+		Name: originalTitle,
+	})
+	base.productCourses["prod-1"] = []uuid.UUID{course.ID}
+
+	repo := &fakeStoreRepoWithError{
+		fakeStoreRepo: base,
+		replaceErr:    errors.New("DB error: unique constraint violation"),
+	}
+	svc := &shimUpdateProductWithCoursesAtomic{repo: repo}
+
+	_, err := svc.UpdateProductWithCourses(ctx, "prod-1", model.Product{
+		Type:  "course",
+		Name: "New Title — should not persist",
+	}, []string{course.ID.String()}, RoleAdminStore)
+	if err == nil {
+		t.Fatal("want error from ReplaceProductCourses, got nil")
+	}
+
+	// The product title must remain unchanged — UpdateProduct was rolled back.
+	got, err := base.GetProductByID(ctx, "prod-1")
+	if err != nil {
+		t.Fatalf("GetProductByID after rollback: %v", err)
+	}
+	if got.Name != originalTitle {
+		t.Errorf("atomicity violated: product title changed to %q despite ReplaceProductCourses error", got.Name)
+	}
+}
+
+func TestUpdateProductWithCourses_ReplacesLinks(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+	updSvc := &shimUpdateProductWithCourses{fake: fake}
+
+	course1, _ := fake.CreateCourse(ctx, model.Course{Title: "C1", Level: "b", Subject: "s", InstructorName: "I"})
+	course2, _ := fake.CreateCourse(ctx, model.Course{Title: "C2", Level: "b", Subject: "s", InstructorName: "I"})
+
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type: "course", Name: "Bundle", Price: 50000,
+	}, []string{course1.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses: %v", err)
+	}
+
+	// Replace with course2 only
+	updated, err := updSvc.UpdateProductWithCourses(ctx, product.ID, model.Product{
+		Type: "course", Name: "Bundle Updated",
+	}, []string{course2.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("UpdateProductWithCourses: %v", err)
+	}
+	if len(updated.CourseIDs) != 1 || updated.CourseIDs[0] != course2.ID.String() {
+		t.Errorf("want [%s], got %v", course2.ID.String(), updated.CourseIDs)
+	}
+
+	// Verify via GetCoursesByProductID
+	pID, _ := uuid.Parse(product.ID)
+	linked, err := fake.GetCoursesByProductID(ctx, pID)
+	if err != nil {
+		t.Fatalf("GetCoursesByProductID: %v", err)
+	}
+	if len(linked) != 1 || linked[0].ID != course2.ID {
+		t.Errorf("want [%s] linked, got %v", course2.ID.String(), linked)
 	}
 }

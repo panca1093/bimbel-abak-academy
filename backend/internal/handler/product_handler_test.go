@@ -58,8 +58,8 @@ func TestAdminCreateProduct_AdminExamToken_BookType_Returns403(t *testing.T) {
 	rdb.Set(context.Background(), "session:access:"+jti, "admin_exam_user", 15*time.Minute)
 
 	body := map[string]interface{}{
-		"type":  "book",
-		"title": "Test Book",
+		"type": "book",
+		"name": "Test Book",
 	}
 	bodyBytes, _ := json.Marshal(body)
 

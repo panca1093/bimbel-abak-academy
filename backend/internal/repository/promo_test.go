@@ -25,7 +25,7 @@ func TestPromoCodeMethods(t *testing.T) {
 		ID:              uuid.New(),
 		Code:            "TEST",
 		DiscountPercent: ptrFloat64(10.0),
-		Uses:            0,
+		UsedCount:       0,
 		CreatedAt:       time.Now(),
 	}
 	_ = promo

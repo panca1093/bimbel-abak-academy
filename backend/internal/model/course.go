@@ -6,9 +6,19 @@ import (
 	"github.com/google/uuid"
 )
 
-type CourseSection struct {
+type Course struct {
+	ID             uuid.UUID
+	Title          string
+	Level          string
+	Subject        string
+	InstructorName string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type Section struct {
 	ID        uuid.UUID
-	ProductID uuid.UUID
+	CourseID  uuid.UUID
 	Title     string
 	Position  int
 	CreatedAt time.Time

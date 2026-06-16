@@ -8,6 +8,22 @@ import (
 	"akademi-bimbel/internal/infra"
 )
 
+// tamperPayload replaces the last character of the JWT's payload segment,
+// guaranteeing a signature mismatch regardless of base64url encoding.
+func tamperPayload(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return token[:len(token)-1] + "X"
+	}
+	b := []byte(parts[1])
+	if len(b) == 0 {
+		return token[:len(token)-1] + "X"
+	}
+	b[len(b)-1] ^= 0x01 // flip one bit
+	parts[1] = string(b)
+	return strings.Join(parts, ".")
+}
+
 func TestJWT_RoundTrip(t *testing.T) {
 	signer := infra.NewJWTSigner("supersecret", 15*time.Minute)
 	schoolID := "school-1"
@@ -44,8 +60,8 @@ func TestJWT_TamperedToken(t *testing.T) {
 		t.Fatalf("SignAccess: %v", err)
 	}
 
-	// flip the last character of the signature
-	tampered := token[:len(token)-1] + "X"
+	// tamper the payload segment, guaranteeing a signature mismatch
+	tampered := tamperPayload(token)
 	if _, err := signer.ParseAccess(tampered); err == nil {
 		t.Fatal("expected error for tampered token, got nil")
 	}

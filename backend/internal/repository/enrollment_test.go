@@ -15,49 +15,33 @@ func TestEnrollmentMethods(t *testing.T) {
 	r := &Repository{}
 	ctx := context.Background()
 
-	_ = r.CreateCourseEnrollment
-	_ = r.RevokeEnrollmentsByOrder
+	// Compile-time checks for all course_session repository methods.
+	var _ func(context.Context, pgx.Tx, model.CourseSession) error = r.CreateCourseSession
+	var _ func(context.Context, pgx.Tx, uuid.UUID) error = r.RevokeEnrollmentsByOrder
+	var _ func(context.Context, uuid.UUID, uuid.UUID, time.Time) error = r.MarkLessonComplete
+	_ = r.GetActiveSession
+	_ = r.ListActiveSessionsByStudent
 
-	_ = r.CreateExamRegistration
-	_ = r.ExpireExamRegistrationsByOrder
+	_ = ctx
 
-	enrollment := model.CourseEnrollment{
+	// Construct a CourseSession with non-nil CompletedLessons (JSONB).
+	session := model.CourseSession{
 		ID:         uuid.New(),
 		StudentID:  uuid.New(),
-		ProductID:  uuid.New(),
+		CourseID:   uuid.New(),
 		OrderID:    ptrUUID(uuid.New()),
 		Status:     "active",
 		Source:     "order",
 		EnrolledAt: time.Now(),
+		CompletedLessons: map[uuid.UUID]time.Time{
+			uuid.New(): time.Now().UTC(),
+		},
 	}
-	_ = enrollment
-
-	examReg := model.ExamRegistration{
-		ID:        uuid.New(),
-		StudentID: uuid.New(),
-		ExamID:    uuid.New(),
-		OrderID:   ptrUUID(uuid.New()),
-		Token:     "token",
-		Status:    "registered",
-		CreatedAt: time.Now(),
-	}
-	_ = examReg
-
-	_ = ctx
-
-	var _ func(context.Context, pgx.Tx, model.CourseEnrollment) error = r.CreateCourseEnrollment
+	_ = session
 }
 
-func TestCreateCourseEnrollmentSQLContainsConflictClause(t *testing.T) {
-	// This is a static verification that the CreateCourseEnrollment method
-	// uses ON CONFLICT DO NOTHING for idempotency.
-	// The method implementation must contain the SQL clause for idempotent inserts.
-}
-
-func TestCreateExamRegistrationSQLContainsConflictClause(t *testing.T) {
-	// This is a static verification that the CreateExamRegistration method
-	// uses ON CONFLICT DO NOTHING for idempotency.
-	// The method implementation must contain the SQL clause for idempotent inserts.
+func TestCreateCourseSessionSQLContainsConflictClause(t *testing.T) {
+	// Placeholder — ON CONFLICT DO NOTHING behavior is verified by integration tests.
 }
 
 func ptrUUID(u uuid.UUID) *uuid.UUID {

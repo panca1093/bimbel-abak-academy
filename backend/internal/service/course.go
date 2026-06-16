@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -10,77 +12,134 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-var ErrNotCourse = errors.New("product is not a course")
+// --- Course CRUD ---
 
-func (s *Service) ListSections(ctx context.Context, productID string) ([]model.CourseSection, error) {
-	pID, err := parseUUID(productID)
-	if err != nil {
-		return nil, err
+func (s *Service) CreateCourse(ctx context.Context, title, level, subject, instructorName, role string) (model.Course, error) {
+	if role != RoleAdminStore {
+		return model.Course{}, ErrForbidden
 	}
 
-	product, err := s.storeRepo.GetProductByID(ctx, pID.String())
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrProductNotFound
-		}
-		return nil, err
+	c := model.Course{
+		Title:          title,
+		Level:          level,
+		Subject:        subject,
+		InstructorName: instructorName,
 	}
-	if product.Type != "course" {
-		return nil, ErrNotCourse
-	}
-
-	return s.storeRepo.ListSections(ctx, pID)
+	return s.storeRepo.CreateCourse(ctx, c)
 }
 
-func (s *Service) CreateSection(ctx context.Context, productID string, title string, role string) (model.CourseSection, error) {
-	if role != RoleAdminStore {
-		return model.CourseSection{}, ErrForbidden
-	}
+func (s *Service) ListCourses(ctx context.Context, limit int, cursor string) ([]model.Course, string, error) {
+	return s.storeRepo.ListCourses(ctx, limit, cursor)
+}
 
-	pID, err := parseUUID(productID)
+func (s *Service) GetCourse(ctx context.Context, id string) (model.Course, int, int, error) {
+	cID, err := parseUUID(id)
 	if err != nil {
-		return model.CourseSection{}, err
+		return model.Course{}, 0, 0, err
 	}
-
-	product, err := s.storeRepo.GetProductByID(ctx, pID.String())
+	c, err := s.storeRepo.GetCourseByID(ctx, cID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return model.CourseSection{}, ErrProductNotFound
+			return model.Course{}, 0, 0, ErrCourseNotFound
 		}
-		return model.CourseSection{}, err
+		return model.Course{}, 0, 0, err
 	}
-	if product.Type != "course" {
-		return model.CourseSection{}, ErrNotCourse
+	sections, err := s.storeRepo.ListSections(ctx, cID)
+	if err != nil {
+		return model.Course{}, 0, 0, err
+	}
+	total, err := s.storeRepo.CountLessonsByCourse(ctx, cID)
+	if err != nil {
+		return model.Course{}, 0, 0, err
+	}
+	return c, len(sections), total, nil
+}
+
+func (s *Service) DeleteCourse(ctx context.Context, id, role string) error {
+	if role != RoleAdminStore {
+		return ErrForbidden
+	}
+	cID, err := parseUUID(id)
+	if err != nil {
+		return err
+	}
+	_, err = s.storeRepo.GetCourseByID(ctx, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrCourseNotFound
+		}
+		return err
+	}
+	return s.storeRepo.DeleteCourse(ctx, cID)
+}
+
+func (s *Service) UpdateCourse(ctx context.Context, id, title, level, subject, instructorName, role string) (model.Course, error) {
+	if role != RoleAdminStore {
+		return model.Course{}, ErrForbidden
 	}
 
-	sections, err := s.storeRepo.ListSections(ctx, pID)
+	courseID, err := parseUUID(id)
 	if err != nil {
-		return model.CourseSection{}, err
+		return model.Course{}, err
+	}
+
+	c := model.Course{
+		Title:          title,
+		Level:          level,
+		Subject:        subject,
+		InstructorName: instructorName,
+	}
+	return s.storeRepo.UpdateCourse(ctx, courseID, c)
+}
+
+// --- Section CRUD (re-keyed to course_id) ---
+
+func (s *Service) ListSections(ctx context.Context, courseID string) ([]model.Section, error) {
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return nil, err
+	}
+	return s.storeRepo.ListSections(ctx, cID)
+}
+
+func (s *Service) CreateSection(ctx context.Context, courseID string, title string, role string) (model.Section, error) {
+	if role != RoleAdminStore {
+		return model.Section{}, ErrForbidden
+	}
+
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return model.Section{}, err
+	}
+
+	sections, err := s.storeRepo.ListSections(ctx, cID)
+	if err != nil {
+		return model.Section{}, err
 	}
 
 	position := len(sections)
-	sec := model.CourseSection{
-		ProductID: pID,
-		Title:     title,
-		Position:  position,
+	sec := model.Section{
+		CourseID: cID,
+		Title:    title,
+		Position: position,
 	}
 	return s.storeRepo.CreateSection(ctx, sec)
 }
 
-func (s *Service) UpdateSection(ctx context.Context, productID, sectionID string, title string, role string) (model.CourseSection, error) {
+func (s *Service) UpdateSection(ctx context.Context, courseID, sectionID string, title string, role string) (model.Section, error) {
 	if role != RoleAdminStore {
-		return model.CourseSection{}, ErrForbidden
+		return model.Section{}, ErrForbidden
 	}
 
 	sID, err := parseUUID(sectionID)
 	if err != nil {
-		return model.CourseSection{}, err
+		return model.Section{}, err
 	}
 
 	return s.storeRepo.UpdateSection(ctx, sID, title)
 }
 
-func (s *Service) DeleteSection(ctx context.Context, productID, sectionID string, role string) error {
+func (s *Service) DeleteSection(ctx context.Context, courseID, sectionID string, role string) error {
 	if role != RoleAdminStore {
 		return ErrForbidden
 	}
@@ -93,12 +152,12 @@ func (s *Service) DeleteSection(ctx context.Context, productID, sectionID string
 	return s.storeRepo.DeleteSection(ctx, sID)
 }
 
-func (s *Service) ReorderSections(ctx context.Context, productID string, orderedIDs []string, role string) error {
+func (s *Service) ReorderSections(ctx context.Context, courseID string, orderedIDs []string, role string) error {
 	if role != RoleAdminStore {
 		return ErrForbidden
 	}
 
-	pID, err := parseUUID(productID)
+	cID, err := parseUUID(courseID)
 	if err != nil {
 		return err
 	}
@@ -112,10 +171,12 @@ func (s *Service) ReorderSections(ctx context.Context, productID string, ordered
 		ids = append(ids, parsed)
 	}
 
-	return s.storeRepo.ReorderSections(ctx, pID, ids)
+	return s.storeRepo.ReorderSections(ctx, cID, ids)
 }
 
-func (s *Service) CreateLesson(ctx context.Context, productID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
+// --- Lesson CRUD (re-keyed to course_id, unchanged child of section) ---
+
+func (s *Service) CreateLesson(ctx context.Context, courseID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
 	if role != RoleAdminStore {
 		return model.Lesson{}, ErrForbidden
 	}
@@ -141,7 +202,7 @@ func (s *Service) CreateLesson(ctx context.Context, productID, sectionID string,
 	return s.storeRepo.CreateLesson(ctx, lesson)
 }
 
-func (s *Service) UpdateLesson(ctx context.Context, productID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
+func (s *Service) UpdateLesson(ctx context.Context, courseID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
 	if role != RoleAdminStore {
 		return model.Lesson{}, ErrForbidden
 	}
@@ -159,7 +220,7 @@ func (s *Service) UpdateLesson(ctx context.Context, productID, sectionID, lesson
 	return s.storeRepo.UpdateLesson(ctx, lID, lesson)
 }
 
-func (s *Service) DeleteLesson(ctx context.Context, productID, sectionID, lessonID string, role string) error {
+func (s *Service) DeleteLesson(ctx context.Context, courseID, sectionID, lessonID string, role string) error {
 	if role != RoleAdminStore {
 		return ErrForbidden
 	}
@@ -172,7 +233,7 @@ func (s *Service) DeleteLesson(ctx context.Context, productID, sectionID, lesson
 	return s.storeRepo.DeleteLesson(ctx, lID)
 }
 
-func (s *Service) ReorderLessons(ctx context.Context, productID, sectionID string, orderedIDs []string, role string) error {
+func (s *Service) ReorderLessons(ctx context.Context, courseID, sectionID string, orderedIDs []string, role string) error {
 	if role != RoleAdminStore {
 		return ErrForbidden
 	}
@@ -196,4 +257,148 @@ func (s *Service) ReorderLessons(ctx context.Context, productID, sectionID strin
 
 func (s *Service) listLessonsBySection(ctx context.Context, sectionID uuid.UUID) ([]model.Lesson, error) {
 	return s.storeRepo.ListLessonsBySection(ctx, sectionID)
+}
+
+// CourseWithProgress is the student-facing course detail: sections + lessons + per-lesson completion.
+type CourseWithProgress struct {
+	model.Course
+	Sections []SectionWithLessons `json:"sections"`
+}
+
+type SectionWithLessons struct {
+	model.Section
+	Lessons []LessonWithCompletion `json:"lessons"`
+}
+
+type LessonWithCompletion struct {
+	model.Lesson
+	Completed bool `json:"completed"`
+}
+
+func (s *Service) GetCourseWithProgress(ctx context.Context, studentID, courseID string) (CourseWithProgress, error) {
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+
+	session, err := s.storeRepo.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return CourseWithProgress{}, ErrNoCourseAccess
+		}
+		return CourseWithProgress{}, err
+	}
+
+	course, err := s.storeRepo.GetCourseByID(ctx, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return CourseWithProgress{}, ErrCourseNotFound
+		}
+		return CourseWithProgress{}, err
+	}
+
+	sections, err := s.storeRepo.ListSections(ctx, cID)
+	if err != nil {
+		return CourseWithProgress{}, err
+	}
+
+	var sectionsWithLessons []SectionWithLessons
+	for _, sec := range sections {
+		lessons, err := s.storeRepo.ListLessonsBySection(ctx, sec.ID)
+		if err != nil {
+			return CourseWithProgress{}, err
+		}
+		var lessonsWithCompletion []LessonWithCompletion
+		for _, l := range lessons {
+			_, completed := session.CompletedLessons[l.ID]
+			lessonsWithCompletion = append(lessonsWithCompletion, LessonWithCompletion{
+				Lesson:    l,
+				Completed: completed,
+			})
+		}
+		sectionsWithLessons = append(sectionsWithLessons, SectionWithLessons{
+			Section: sec,
+			Lessons: lessonsWithCompletion,
+		})
+	}
+
+	return CourseWithProgress{
+		Course:   course,
+		Sections: sectionsWithLessons,
+	}, nil
+}
+
+// --- Student-facing course methods ---
+
+var ErrNoCourseAccess = errors.New("no active course access")
+
+func (s *Service) MarkLessonComplete(ctx context.Context, studentID, courseID, lessonID string) error {
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return err
+	}
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return err
+	}
+	lID, err := parseUUID(lessonID)
+	if err != nil {
+		return err
+	}
+
+	session, err := s.storeRepo.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNoCourseAccess
+		}
+		return err
+	}
+
+	return s.storeRepo.MarkLessonComplete(ctx, session.ID, lID, time.Now())
+}
+
+// CourseProgress returns (completed, total, pct) where pct is a float64 in [0,100].
+func (s *Service) CourseProgress(ctx context.Context, studentID, courseID string) (int, int, float64, error) {
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	cID, err := parseUUID(courseID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	session, err := s.storeRepo.GetActiveSession(ctx, sID, cID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return 0, 0, 0, ErrNoCourseAccess
+		}
+		return 0, 0, 0, err
+	}
+
+	completed := len(session.CompletedLessons)
+	total, err := s.storeRepo.CountLessonsByCourse(ctx, cID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return completed, total, courseProgressPct(completed, total), nil
+}
+
+func courseProgressPct(completed, total int) float64 {
+	if total == 0 {
+		return 0
+	}
+	return math.Round(float64(completed)/float64(total)*100*100) / 100
+}
+
+func (s *Service) ListLibrary(ctx context.Context, studentID string) ([]model.CourseSession, error) {
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return nil, err
+	}
+	return s.storeRepo.ListActiveSessionsByStudent(ctx, sID)
 }

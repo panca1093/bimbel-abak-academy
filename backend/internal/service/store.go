@@ -15,6 +15,7 @@ import (
 var (
 	ErrForbidden         = errors.New("forbidden")
 	ErrProductNotFound   = errors.New("product not found")
+	ErrCourseNotFound    = errors.New("course not found")
 	ErrInvalidPromo      = errors.New("invalid or expired promo code")
 	ErrPromoMinOrder     = errors.New("order subtotal below promo minimum")
 	ErrOutOfStock        = errors.New("product out of stock")
@@ -22,6 +23,7 @@ var (
 	ErrOrderNotEditable  = errors.New("order not editable")
 	ErrOrderNotFound     = errors.New("order not found")
 	ErrInvalidSignature  = errors.New("invalid signature")
+	ErrCourseLinkRequired = errors.New("course product requires at least one linked course")
 )
 
 type PromoValidation struct {
@@ -44,7 +46,7 @@ func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFil
 		}
 		filter.Type = "exam"
 	default: // student or ""
-		filter.IsVisibleOnly = true
+		filter.VisibleOnly = true
 		filter.Status = "published"
 	}
 	return s.storeRepo.ListProducts(ctx, filter)
@@ -59,8 +61,19 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 		return model.Product{}, err
 	}
 	if role == RoleStudent || role == "" {
-		if p.Status != "published" || !p.IsVisible {
+		if p.Status != "published" {
 			return model.Product{}, ErrProductNotFound
+		}
+	}
+	if p.Type == "course" {
+		pID, err := parseUUID(p.ID)
+		if err == nil {
+			courses, err := s.storeRepo.GetCoursesByProductID(ctx, pID)
+			if err == nil {
+				for _, c := range courses {
+					p.CourseIDs = append(p.CourseIDs, c.ID.String())
+				}
+			}
 		}
 	}
 	return *p, nil
@@ -73,6 +86,89 @@ func (s *Service) CreateProduct(ctx context.Context, p model.Product, role strin
 	if err := s.storeRepo.CreateProduct(ctx, &p); err != nil {
 		return model.Product{}, err
 	}
+	return p, nil
+}
+
+func (s *Service) CreateProductWithCourses(ctx context.Context, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	if err := checkTypeRBAC(role, p.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	if p.Type == "course" && len(courseIDs) < 1 {
+		return model.Product{}, ErrCourseLinkRequired
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := parseUUID(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Product{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.CreateProductWithCourses(ctx, tx, &p, ids); err != nil {
+		return model.Product{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.Product{}, err
+	}
+
+	return p, nil
+}
+
+func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p model.Product, courseIDs []string, role string) (model.Product, error) {
+	existing, err := s.storeRepo.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	var ids []uuid.UUID
+	for _, cid := range courseIDs {
+		parsed, err := parseUUID(cid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	pID, err := parseUUID(id)
+	if err != nil {
+		return model.Product{}, err
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Product{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.UpdateProductTx(ctx, tx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	if err := s.storeRepo.ReplaceProductCourses(ctx, tx, pID, ids); err != nil {
+		return model.Product{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.Product{}, err
+	}
+
+	p.ID = id
+	p.CourseIDs = courseIDs
 	return p, nil
 }
 
@@ -136,7 +232,7 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 	if promo.ExpiresAt != nil && promo.ExpiresAt.Before(time.Now()) {
 		return PromoValidation{}, ErrInvalidPromo
 	}
-	if promo.MaxUses != nil && promo.Uses >= *promo.MaxUses {
+	if promo.MaxUses != nil && promo.UsedCount >= *promo.MaxUses {
 		return PromoValidation{}, ErrInvalidPromo
 	}
 	if promo.MinOrderAmount != nil && subtotal < *promo.MinOrderAmount {
@@ -206,16 +302,17 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	if product == nil {
 		return ErrProductNotFound
 	}
-	if product.Stock == 0 {
+	if product.Type == "book" && product.Stock == 0 {
 		return ErrOutOfStock
 	}
 
 	item := model.OrderItem{
 		ProductID:   pID,
 		ProductType: product.Type,
-		Title:       product.Title,
+		Name:        product.Name,
 		UnitPrice:   float64(product.Price) / 100,
 		Qty:         qty,
+		WeightGrams: product.WeightGrams,
 	}
 	return s.storeRepo.AddItem(ctx, oID, item)
 }
@@ -280,9 +377,9 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 
 	repoPatch := repository.OrderPatch{
 		ShippingAddress: patch.ShippingAddress,
-		Courier:         patch.Courier,
+		SelectedCourier: patch.Courier,
 		Discount:        order.Discount,
-		ShippingAmount:  order.ShippingAmount,
+		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,
 	}
 
@@ -299,7 +396,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 }
 
 type CheckoutResult struct {
-	PaymentRef      string
+	GatewayRef       string
 	PaymentExpiresAt time.Time
 }
 
@@ -315,7 +412,7 @@ type OrderPaidPayloadItem struct {
 }
 
 type PaymentWebhookPayload struct {
-	PaymentRef string `json:"payment_ref"`
+	GatewayRef string `json:"gateway_ref"`
 	OrderID    string `json:"order_id"`
 }
 
@@ -332,7 +429,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	cacheKey := "idempotency:checkout:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
-		return CheckoutResult{PaymentRef: cached}, nil
+		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
 	order, err := s.storeRepo.GetOrderByID(ctx, oID)
@@ -375,16 +472,16 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.PaymentRef, paymentResp.ExpiresAt); err != nil {
+	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
 		return CheckoutResult{}, err
 	}
 
 	result := CheckoutResult{
-		PaymentRef:       paymentResp.PaymentRef,
+		GatewayRef:       paymentResp.GatewayRef,
 		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
-	if err := s.rdb.Set(ctx, cacheKey, paymentResp.PaymentRef, 24*time.Hour).Err(); err != nil {
+	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -404,7 +501,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	cacheKey := "idempotency:retry:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
-		return CheckoutResult{PaymentRef: cached}, nil
+		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
 	order, err := s.storeRepo.GetOrderByID(ctx, oID)
@@ -417,7 +514,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	if order.StudentID != sID {
 		return CheckoutResult{}, ErrOrderNotFound
 	}
-	if order.Status != "payment_expired" && order.Status != "payment_failed" {
+	if order.Status != "payment_expired" {
 		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
@@ -436,7 +533,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.PaymentRef, paymentResp.ExpiresAt); err != nil {
+	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -449,11 +546,11 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	}
 
 	result := CheckoutResult{
-		PaymentRef:       paymentResp.PaymentRef,
+		GatewayRef:       paymentResp.GatewayRef,
 		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
-	if err := s.rdb.Set(ctx, cacheKey, paymentResp.PaymentRef, 24*time.Hour).Err(); err != nil {
+	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
 	}
 
@@ -647,11 +744,6 @@ func (s *Service) AdminRefundOrder(ctx context.Context, orderID string) error {
 	if err := s.storeRepo.RevokeEnrollmentsByOrder(ctx, tx, id); err != nil {
 		return err
 	}
-
-	if err := s.storeRepo.ExpireExamRegistrationsByOrder(ctx, tx, id); err != nil {
-		return err
-	}
-
 	if err := s.storeRepo.ClearOrderTracking(ctx, tx, id); err != nil {
 		return err
 	}
@@ -766,7 +858,7 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, webhook.PaymentRef); err != nil {
+	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, webhook.GatewayRef); err != nil {
 		return err
 	}
 

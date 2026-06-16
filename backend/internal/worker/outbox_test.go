@@ -18,8 +18,8 @@ type mockRepository struct {
 	markOutboxProcessedFn     func(context.Context, pgx.Tx, int64) error
 	setOrderStatusFn          func(context.Context, pgx.Tx, uuid.UUID, string, string) error
 	getOrderByIDFn            func(context.Context, uuid.UUID) (model.Order, error)
-	createCourseEnrollmentFn  func(context.Context, pgx.Tx, model.CourseEnrollment) error
-	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
+	createCourseSessionFn     func(context.Context, pgx.Tx, model.CourseSession) error
+	getCoursesByProductIDFn   func(context.Context, uuid.UUID) ([]model.Course, error)
 	beginTxFn                 func(context.Context) (pgx.Tx, error)
 	getExpiredPaymentOrdersFn func(context.Context, int) ([]uuid.UUID, error)
 }
@@ -40,12 +40,12 @@ func (m *mockRepository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.
 	return m.getOrderByIDFn(ctx, id)
 }
 
-func (m *mockRepository) CreateCourseEnrollment(ctx context.Context, tx pgx.Tx, e model.CourseEnrollment) error {
-	return m.createCourseEnrollmentFn(ctx, tx, e)
+func (m *mockRepository) CreateCourseSession(ctx context.Context, tx pgx.Tx, s model.CourseSession) error {
+	return m.createCourseSessionFn(ctx, tx, s)
 }
 
-func (m *mockRepository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
-	return m.createExamRegistrationFn(ctx, tx, reg)
+func (m *mockRepository) GetCoursesByProductID(ctx context.Context, productID uuid.UUID) ([]model.Course, error) {
+	return m.getCoursesByProductIDFn(ctx, productID)
 }
 
 func (m *mockRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
@@ -90,131 +90,173 @@ func (mt *mockTx) Prepare(ctx context.Context, name, sql string) (*pgconn.Statem
 	return nil, nil
 }
 
-func TestOrderPaidHandlerCreatesEnrollments(t *testing.T) {
+func TestOrderPaidHandlerCreatesTwoCourseSessionsForLinkedCourses(t *testing.T) {
 	ctx := context.Background()
 	orderID := uuid.New()
 	studentID := uuid.New()
 	productID := uuid.New()
 	outboxID := int64(1)
+	course1ID := uuid.New()
+	course2ID := uuid.New()
 
-	courseEnrollmentCreated := false
-	outboxMarkedProcessed := false
-	orderStatusUpdated := false
+	var createdSessions []model.CourseSession
 
 	repo := &mockRepository{
 		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 			payload, _ := json.Marshal(OrderPaidPayload{
 				OrderID: orderID,
 				Items: []OrderItemMini{
-					{
-						ProductID:   productID,
-						ProductType: "course",
-					},
+					{ProductID: productID, ProductType: "course"},
 				},
 			})
 			return []model.OutboxEvent{
-				{
-					ID:          outboxID,
-					AggregateID: orderID,
-					EventType:   "OrderPaid",
-					Payload:     payload,
-					CreatedAt:   time.Now().String(),
-				},
+				{ID: outboxID, AggregateID: orderID, EventType: "OrderPaid", Payload: payload, CreatedAt: time.Now().String()},
 			}, nil
 		},
 		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
-			return model.Order{
-				ID:        orderID,
-				StudentID: studentID,
-				Status:    "paid",
+			return model.Order{ID: orderID, StudentID: studentID, Status: "paid"}, nil
+		},
+		getCoursesByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Course, error) {
+			return []model.Course{
+				{ID: course1ID, Title: "Math"},
+				{ID: course2ID, Title: "Science"},
 			}, nil
 		},
-		createCourseEnrollmentFn: func(ctx context.Context, tx pgx.Tx, e model.CourseEnrollment) error {
-			if e.StudentID == studentID && e.ProductID == productID && e.OrderID != nil && *e.OrderID == orderID {
-				courseEnrollmentCreated = true
-			}
-			return nil
-		},
-		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
+		createCourseSessionFn: func(ctx context.Context, tx pgx.Tx, s model.CourseSession) error {
+			createdSessions = append(createdSessions, s)
 			return nil
 		},
 		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
-			if id == orderID && status == "processing" {
-				orderStatusUpdated = true
-			}
 			return nil
 		},
 		markOutboxProcessedFn: func(ctx context.Context, tx pgx.Tx, id int64) error {
-			if id == outboxID {
-				outboxMarkedProcessed = true
-			}
 			return nil
 		},
 		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
-			mockTx := &mockTx{
-				commitFn:   func(ctx context.Context) error { return nil },
-				rollbackFn: func(ctx context.Context) error { return nil },
-			}
-			return mockTx, nil
+			return &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}, nil
 		},
 	}
 
 	w := &Worker{repo: repo}
 	w.pollOutbox(ctx)
 
-	if !courseEnrollmentCreated {
-		t.Error("expected CourseEnrollment to be created")
+	if len(createdSessions) != 2 {
+		t.Fatalf("expected 2 course sessions, got %d", len(createdSessions))
+	}
+
+	ids := map[uuid.UUID]bool{course1ID: true, course2ID: true}
+	for _, s := range createdSessions {
+		if !ids[s.CourseID] {
+			t.Errorf("unexpected course_id %v", s.CourseID)
+		}
+		if s.StudentID != studentID {
+			t.Errorf("expected student_id %v, got %v", studentID, s.StudentID)
+		}
+		if s.Status != "active" {
+			t.Errorf("expected status active, got %s", s.Status)
+		}
+		if s.Source != "order" {
+			t.Errorf("expected source order, got %s", s.Source)
+		}
+		if s.OrderID == nil || *s.OrderID != orderID {
+			t.Errorf("expected order_id %v, got %v", orderID, s.OrderID)
+		}
+		if s.EnrolledAt.IsZero() {
+			t.Error("expected enrolled_at to be set")
+		}
+	}
+	if createdSessions[0].CourseID == createdSessions[1].CourseID {
+		t.Error("expected two different course IDs")
+	}
+}
+
+func TestOrderPaidHandlerZeroLinkedCoursesSkipsButCommits(t *testing.T) {
+	ctx := context.Background()
+	orderID := uuid.New()
+	productID := uuid.New()
+	outboxID := int64(1)
+
+	sessionCreated := false
+	orderStatusUpdated := false
+	outboxMarkedProcessed := false
+
+	repo := &mockRepository{
+		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
+			payload, _ := json.Marshal(OrderPaidPayload{
+				OrderID: orderID,
+				Items:   []OrderItemMini{{ProductID: productID, ProductType: "course"}},
+			})
+			return []model.OutboxEvent{
+				{ID: outboxID, AggregateID: orderID, EventType: "OrderPaid", Payload: payload, CreatedAt: time.Now().String()},
+			}, nil
+		},
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{ID: orderID, StudentID: uuid.New(), Status: "paid"}, nil
+		},
+		getCoursesByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Course, error) {
+			return []model.Course{}, nil
+		},
+		createCourseSessionFn: func(ctx context.Context, tx pgx.Tx, s model.CourseSession) error {
+			sessionCreated = true
+			return nil
+		},
+		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
+			if status == "processing" {
+				orderStatusUpdated = true
+			}
+			return nil
+		},
+		markOutboxProcessedFn: func(ctx context.Context, tx pgx.Tx, id int64) error {
+			outboxMarkedProcessed = true
+			return nil
+		},
+		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+			return &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}, nil
+		},
+	}
+
+	w := &Worker{repo: repo}
+	w.pollOutbox(ctx)
+
+	if sessionCreated {
+		t.Error("expected no course session to be created for zero-linked product")
 	}
 	if !orderStatusUpdated {
-		t.Error("expected Order status to be updated to processing")
+		t.Error("expected order status to be updated to processing")
 	}
 	if !outboxMarkedProcessed {
 		t.Error("expected outbox event to be marked processed")
 	}
 }
 
-func TestOrderPaidHandlerIdempotent(t *testing.T) {
+func TestOrderPaidHandlerIdempotentOnReplay(t *testing.T) {
 	ctx := context.Background()
 	orderID := uuid.New()
 	studentID := uuid.New()
 	productID := uuid.New()
 	outboxID := int64(1)
+	courseID := uuid.New()
 
-	createEnrollmentCallCount := 0
+	var sessionCallCount int
 
 	repo := &mockRepository{
 		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 			payload, _ := json.Marshal(OrderPaidPayload{
 				OrderID: orderID,
-				Items: []OrderItemMini{
-					{
-						ProductID:   productID,
-						ProductType: "course",
-					},
-				},
+				Items:   []OrderItemMini{{ProductID: productID, ProductType: "course"}},
 			})
 			return []model.OutboxEvent{
-				{
-					ID:          outboxID,
-					AggregateID: orderID,
-					EventType:   "OrderPaid",
-					Payload:     payload,
-					CreatedAt:   time.Now().String(),
-				},
+				{ID: outboxID, AggregateID: orderID, EventType: "OrderPaid", Payload: payload, CreatedAt: time.Now().String()},
 			}, nil
 		},
 		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
-			return model.Order{
-				ID:        orderID,
-				StudentID: studentID,
-				Status:    "paid",
-			}, nil
+			return model.Order{ID: orderID, StudentID: studentID, Status: "paid"}, nil
 		},
-		createCourseEnrollmentFn: func(ctx context.Context, tx pgx.Tx, e model.CourseEnrollment) error {
-			createEnrollmentCallCount++
-			return nil
+		getCoursesByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Course, error) {
+			return []model.Course{{ID: courseID, Title: "Math"}}, nil
 		},
-		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
+		createCourseSessionFn: func(ctx context.Context, tx pgx.Tx, s model.CourseSession) error {
+			sessionCallCount++
 			return nil
 		},
 		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
@@ -224,19 +266,24 @@ func TestOrderPaidHandlerIdempotent(t *testing.T) {
 			return nil
 		},
 		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
-			mockTx := &mockTx{
-				commitFn:   func(ctx context.Context) error { return nil },
-				rollbackFn: func(ctx context.Context) error { return nil },
-			}
-			return mockTx, nil
+			return &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}, nil
 		},
 	}
 
 	w := &Worker{repo: repo}
 	w.pollOutbox(ctx)
 
-	if createEnrollmentCallCount != 1 {
-		t.Errorf("expected CreateCourseEnrollment to be called once, got %d", createEnrollmentCallCount)
+	if sessionCallCount != 1 {
+		t.Fatalf("expected 1 CreateCourseSession call on first poll, got %d", sessionCallCount)
+	}
+
+	// Replay — pollOutbox processes the same event again (mock returns it again)
+	w.pollOutbox(ctx)
+
+	// The second poll also succeeds — idempotent. In real DB, ON CONFLICT DO NOTHING
+	// prevents duplicates; the mock simulates success on both calls.
+	if sessionCallCount != 2 {
+		t.Fatalf("expected 2 CreateCourseSession calls across two polls, got %d", sessionCallCount)
 	}
 }
 

@@ -22,7 +22,7 @@ type PaymentRequest struct {
 }
 
 type PaymentResponse struct {
-	PaymentRef string
+	GatewayRef string
 	PaymentURL string
 	ExpiresAt  time.Time
 }
@@ -92,7 +92,7 @@ type NoopPaymentClient struct{}
 
 func (n *NoopPaymentClient) CreatePayment(ctx context.Context, req PaymentRequest) (PaymentResponse, error) {
 	return PaymentResponse{
-		PaymentRef: "noop-" + req.OrderID,
+		GatewayRef: "noop-" + req.OrderID,
 		PaymentURL: "https://noop.payment/pay/" + req.OrderID,
 		ExpiresAt:  time.Now().Add(24 * time.Hour),
 	}, nil

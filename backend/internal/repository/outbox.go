@@ -16,15 +16,15 @@ func (r *Repository) InsertOutboxEvent(ctx context.Context, tx pgx.Tx, aggregate
 		return err
 	}
 	_, err = tx.Exec(ctx,
-		`INSERT INTO outbox (aggregate_id, event_type, payload) VALUES ($1, $2, $3)`,
-		aggregateID, eventType, b,
+		`INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload) VALUES ($1, $2, $3, $4)`,
+		"order", aggregateID, eventType, b,
 	)
 	return err
 }
 
 func (r *Repository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, aggregate_id, event_type, payload, created_at, attempts, last_error
+		`SELECT id, aggregate_type, aggregate_id, event_type, payload, created_at, attempts, last_error
 		 FROM outbox
 		 WHERE processed_at IS NULL
 		 ORDER BY created_at
@@ -40,7 +40,7 @@ func (r *Repository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.
 	var events []model.OutboxEvent
 	for rows.Next() {
 		var e model.OutboxEvent
-		if err := rows.Scan(&e.ID, &e.AggregateID, &e.EventType, &e.Payload, &e.CreatedAt, &e.Attempts, &e.LastError); err != nil {
+		if err := rows.Scan(&e.ID, &e.AggregateType, &e.AggregateID, &e.EventType, &e.Payload, &e.CreatedAt, &e.Attempts, &e.LastError); err != nil {
 			return nil, err
 		}
 		events = append(events, e)

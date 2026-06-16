@@ -41,16 +41,24 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminProducts.POST("/:id/publish", h.AdminPublishProduct)
 	adminProducts.DELETE("/:id", h.AdminDeleteProduct)
 
-	// Admin course routes
-	adminCourses := admin.Group("/products/:id/sections")
-	adminCourses.GET("", h.AdminListSections)
-	adminCourses.POST("", h.AdminCreateSection)
-	adminCourses.PUT("/:sId", h.AdminUpdateSection)
-	adminCourses.DELETE("/:sId", h.AdminDeleteSection)
-	adminCourses.PATCH("/reorder", h.AdminReorderSections)
+	// Admin course CRUD
+	adminCourses := admin.Group("/courses")
+	adminCourses.GET("", h.AdminListCourses)
+	adminCourses.POST("", h.AdminCreateCourse)
+	adminCourses.GET("/:id", h.AdminGetCourse)
+	adminCourses.PATCH("/:id", h.AdminUpdateCourse)
+	adminCourses.DELETE("/:id", h.AdminDeleteCourse)
 
-	// Admin lesson routes
-	adminLessons := admin.Group("/products/:id/sections/:sId/lessons")
+	// Admin section routes (re-keyed from product to course)
+	adminSections := admin.Group("/courses/:id/sections")
+	adminSections.GET("", h.AdminListSections)
+	adminSections.POST("", h.AdminCreateSection)
+	adminSections.PUT("/:sId", h.AdminUpdateSection)
+	adminSections.DELETE("/:sId", h.AdminDeleteSection)
+	adminSections.PATCH("/reorder", h.AdminReorderSections)
+
+	// Admin lesson routes (re-keyed from product to course)
+	adminLessons := admin.Group("/courses/:id/sections/:sId/lessons")
 	adminLessons.POST("", h.AdminCreateLesson)
 	adminLessons.PUT("/:lId", h.AdminUpdateLesson)
 	adminLessons.DELETE("/:lId", h.AdminDeleteLesson)
@@ -78,6 +86,14 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Payment webhook route (no auth, uses HMAC signature)
 	webhooks := v1.Group("/webhooks")
 	webhooks.POST("/payment", h.HandlePaymentWebhook)
+
+	// Student course routes
+	studentCourses := v1.Group("/courses")
+	studentCourses.Use(handler.JWTMiddleware(svc, jwtSigner))
+	studentCourses.GET("", h.StudentListCourses)
+	studentCourses.GET("/:id", h.StudentGetCourse)
+	studentCourses.POST("/:id/lessons/:lId/complete", h.StudentMarkLessonComplete)
+	studentCourses.GET("/:id/progress", h.StudentCourseProgress)
 
 	// Admin order routes
 	adminOrders := admin.Group("/orders")

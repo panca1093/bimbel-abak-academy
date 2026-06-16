@@ -11,7 +11,7 @@ type NoopPaymentClient struct{}
 
 func (n *NoopPaymentClient) CreatePayment(ctx context.Context, req service.PaymentRequest) (service.PaymentResponse, error) {
 	return service.PaymentResponse{
-		PaymentRef: "noop-" + req.OrderID,
+		GatewayRef: "noop-" + req.OrderID,
 		PaymentURL: "https://noop.payment/pay/" + req.OrderID,
 		ExpiresAt:  time.Now().Add(24 * time.Hour),
 	}, nil
