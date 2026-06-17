@@ -3,7 +3,6 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -14,18 +13,6 @@ import (
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/worker"
 )
-
-// workerOutboxPayload matches the JSON the worker's json.Unmarshal reads.
-// worker.OrderPaidPayload has no JSON tags, so Go uses PascalCase field names.
-type workerOutboxPayload struct {
-	OrderID uuid.UUID              `json:"OrderID"`
-	Items   []workerOutboxItemMini `json:"Items"`
-}
-
-type workerOutboxItemMini struct {
-	ProductID   uuid.UUID `json:"ProductID"`
-	ProductType string    `json:"ProductType"`
-}
 
 // seedPaidOrder inserts an order row with status='paid' and returns its ID.
 func seedPaidOrder(t *testing.T, env *testEnv, studentID, productID string, productType string) string {
@@ -49,7 +36,7 @@ func seedPaidOrder(t *testing.T, env *testEnv, studentID, productID string, prod
 }
 
 // seedOutboxOrderPaid inserts an unprocessed OrderPaid outbox row for the given order.
-// Uses the worker's expected JSON format (PascalCase, no JSON tags).
+// Uses worker.OrderPaidPayload (snake_case JSON tags) to match the payload the service writes.
 func seedOutboxOrderPaid(t *testing.T, env *testEnv, orderID string, productID string, productType string) {
 	t.Helper()
 	ctx := context.Background()
@@ -59,9 +46,9 @@ func seedOutboxOrderPaid(t *testing.T, env *testEnv, orderID string, productID s
 	pID, err := uuid.Parse(productID)
 	require.NoError(t, err)
 
-	payload := workerOutboxPayload{
+	payload := worker.OrderPaidPayload{
 		OrderID: oID,
-		Items: []workerOutboxItemMini{
+		Items: []worker.OrderItemMini{
 			{ProductID: pID, ProductType: productType},
 		},
 	}
@@ -198,8 +185,8 @@ func TestWorkerFanout(t *testing.T) {
 		// Session count must still be 1 (ON CONFLICT DO NOTHING).
 		var sessionCount int
 		require.NoError(t, env.pool.QueryRow(ctx,
-			fmt.Sprintf(`SELECT COUNT(*) FROM course_session WHERE student_id='%s' AND course_id='%s' AND status='active'`,
-				studentID, courseID),
+			`SELECT COUNT(*) FROM course_session WHERE student_id=$1 AND course_id=$2 AND status='active'`,
+			studentID, courseID,
 		).Scan(&sessionCount))
 		assert.Equal(t, 1, sessionCount, "ON CONFLICT DO NOTHING must prevent duplicate sessions")
 	})
