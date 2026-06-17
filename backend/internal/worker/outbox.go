@@ -14,16 +14,16 @@ import (
 	"akademi-bimbel/internal/model"
 )
 
-// OrderPaidPayload unmarshals from the outbox event payload
+// OrderPaidPayload unmarshals from the outbox event payload written by service.OrderPaidPayload
 type OrderPaidPayload struct {
-	OrderID uuid.UUID
-	Items   []OrderItemMini
+	OrderID uuid.UUID      `json:"order_id"`
+	Items   []OrderItemMini `json:"items"`
 }
 
 // OrderItemMini contains minimal item info for access provisioning
 type OrderItemMini struct {
-	ProductID   uuid.UUID
-	ProductType string
+	ProductID   uuid.UUID `json:"product_id"`
+	ProductType string    `json:"product_type"`
 }
 
 // outboxRepository interface defines the methods needed from the repository

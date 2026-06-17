@@ -308,7 +308,7 @@ func (r *Repository) RevokeEnrollmentsByOrder(ctx context.Context, tx pgx.Tx, or
 func (r *Repository) MarkLessonComplete(ctx context.Context, sessionID uuid.UUID, lessonID uuid.UUID, at time.Time) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE course_session
-		SET completed_lessons = completed_lessons || jsonb_build_object($2, $3)
+		SET completed_lessons = completed_lessons || jsonb_build_object($2, $3::text)
 		WHERE id = $1 AND NOT (completed_lessons ? $2)`,
 		sessionID, lessonID.String(), at.Format(time.RFC3339Nano),
 	)
