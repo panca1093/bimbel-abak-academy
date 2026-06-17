@@ -24,7 +24,7 @@ func (r *Repository) InsertOutboxEvent(ctx context.Context, tx pgx.Tx, aggregate
 
 func (r *Repository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, aggregate_type, aggregate_id, event_type, payload, created_at, attempts, last_error
+		`SELECT id, aggregate_type, aggregate_id, event_type, payload, created_at::text, attempts, last_error
 		 FROM outbox
 		 WHERE processed_at IS NULL
 		 ORDER BY created_at
