@@ -1,0 +1,135 @@
+package integration_test
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestConcurrency(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	t.Run("FR-INT-17 idempotent checkout retry returns same gateway_ref, no second stock decrement", func(t *testing.T) {
+		userID := seedUser(t, env, "student", "active", false)
+		token := authToken(t, env, userID, "student")
+		productID := seedProduct(t, env, "book", "Buku Idempotency", 50000)
+
+		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		body := decodeBody(t, resp)
+		orderID := body["ID"].(string)
+
+		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		idempKey := fmt.Sprintf("idemp-%d", time.Now().UnixNano())
+
+		// First checkout.
+		co1 := checkoutWithKey(t, env, orderID, token, idempKey)
+		body1 := decodeBody(t, co1)
+		require.Equal(t, http.StatusOK, co1.StatusCode, "first checkout failed: %v", body1)
+		gatewayRef1, _ := body1["gateway_ref"].(string)
+		require.NotEmpty(t, gatewayRef1)
+
+		var stockAfterFirst int
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT stock FROM product WHERE id=$1`, productID,
+		).Scan(&stockAfterFirst))
+
+		// Second checkout with same Idempotency-Key.
+		co2 := checkoutWithKey(t, env, orderID, token, idempKey)
+		body2 := decodeBody(t, co2)
+		require.Equal(t, http.StatusOK, co2.StatusCode, "second checkout failed: %v", body2)
+		gatewayRef2, _ := body2["gateway_ref"].(string)
+
+		assert.Equal(t, gatewayRef1, gatewayRef2, "second call must return the same gateway_ref (Redis cache hit)")
+
+		var stockAfterSecond int
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT stock FROM product WHERE id=$1`, productID,
+		).Scan(&stockAfterSecond))
+		assert.Equal(t, stockAfterFirst, stockAfterSecond, "stock must not be decremented a second time on idempotent retry")
+	})
+
+	t.Run("FR-INT-18 concurrent checkout stock=1: one 200 one 409, final stock=0", func(t *testing.T) {
+		// Seed a product with stock=1.
+		productID := seedProduct(t, env, "book", "Buku Satu Stok", 50000)
+		_, err := env.pool.Exec(ctx, `UPDATE product SET stock=1 WHERE id=$1`, productID)
+		require.NoError(t, err)
+
+		// Two separate students, each with their own cart holding the same product.
+		userA := seedUser(t, env, "student", "active", false)
+		tokenA := authToken(t, env, userA, "student")
+
+		userB := seedUser(t, env, "student", "active", false)
+		tokenB := authToken(t, env, userB, "student")
+
+		setupCart := func(token string) string {
+			resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+			b := decodeBody(t, resp)
+			orderID := b["ID"].(string)
+			drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+				map[string]any{"product_id": productID, "qty": 1}, token))
+			return orderID
+		}
+
+		orderA := setupCart(tokenA)
+		orderB := setupCart(tokenB)
+
+		type result struct {
+			status int
+		}
+		results := make([]result, 2)
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			key := fmt.Sprintf("conc-a-%d", time.Now().UnixNano())
+			resp := checkoutWithKey(t, env, orderA, tokenA, key)
+			drainClose(resp)
+			results[0] = result{status: resp.StatusCode}
+		}()
+		go func() {
+			defer wg.Done()
+			key := fmt.Sprintf("conc-b-%d", time.Now().UnixNano())
+			resp := checkoutWithKey(t, env, orderB, tokenB, key)
+			drainClose(resp)
+			results[1] = result{status: resp.StatusCode}
+		}()
+		wg.Wait()
+
+		statusA := results[0].status
+		statusB := results[1].status
+
+		// Exactly one 200 and one 409.
+		assert.True(t,
+			(statusA == http.StatusOK && statusB == http.StatusConflict) ||
+				(statusA == http.StatusConflict && statusB == http.StatusOK),
+			"one checkout must succeed (200) and the other must fail (409); got %d and %d", statusA, statusB,
+		)
+
+		var finalStock int
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT stock FROM product WHERE id=$1`, productID,
+		).Scan(&finalStock))
+		assert.Equal(t, 0, finalStock, "final stock must be 0 after one successful checkout")
+	})
+
+	t.Run("FR-INT-19 duplicate gateway_ref rejected by DB UNIQUE constraint", func(t *testing.T) {
+		// FA-1: there is no UNIQUE constraint on orders.gateway_ref in the current schema.
+		// Migration 0009 renames payment_ref → gateway_ref but adds no UNIQUE index.
+		// This test asserts the invariant and is skipped until the constraint is added.
+		t.Skip("KNOWN GAP (FA-1): orders.gateway_ref has no UNIQUE constraint in the current schema. " +
+			"Add a migration with `CREATE UNIQUE INDEX idx_orders_gateway_ref ON orders(gateway_ref) WHERE gateway_ref IS NOT NULL;` " +
+			"then remove this skip.")
+	})
+}
