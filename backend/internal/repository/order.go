@@ -40,14 +40,42 @@ const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost,
 func scanOrder(row interface {
 	Scan(dest ...any) error
 }, order *model.Order) error {
-	return row.Scan(
+	// Nullable TEXT columns must be scanned into *string so pgx v5 can set nil for SQL NULL.
+	var selectedCourier, trackingNumber, gatewayRef, paymentMethod, invoiceURL,
+		estimatedDeliveryDays, cancellationReason *string
+	err := row.Scan(
 		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
 		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
-		&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
-		&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
+		&selectedCourier, &trackingNumber, &order.ShippedAt,
+		&gatewayRef, &paymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &invoiceURL,
+		&estimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
 		&order.CreatedAt, &order.UpdatedAt,
 	)
+	if err != nil {
+		return err
+	}
+	if selectedCourier != nil {
+		order.SelectedCourier = *selectedCourier
+	}
+	if trackingNumber != nil {
+		order.TrackingNumber = *trackingNumber
+	}
+	if gatewayRef != nil {
+		order.GatewayRef = *gatewayRef
+	}
+	if paymentMethod != nil {
+		order.PaymentMethod = *paymentMethod
+	}
+	if invoiceURL != nil {
+		order.InvoiceURL = *invoiceURL
+	}
+	if estimatedDeliveryDays != nil {
+		order.EstimatedDeliveryDays = *estimatedDeliveryDays
+	}
+	if cancellationReason != nil {
+		order.CancellationReason = *cancellationReason
+	}
+	return nil
 }
 
 func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model.OrderItem, error) {
@@ -78,33 +106,19 @@ func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model
 
 func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.Order, bool, error) {
 	order := model.Order{}
-	err := r.pool.QueryRow(ctx,
+	err := scanOrder(r.pool.QueryRow(ctx,
 		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total)
 		 VALUES ($1, 'cart', 0, 0, 0, 0)
 		 ON CONFLICT (student_id) WHERE status = 'cart' DO NOTHING
 		 RETURNING `+orderColumns,
 		studentID,
-	).Scan(
-		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
-		&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
-		&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
-		&order.CreatedAt, &order.UpdatedAt,
-	)
+	), &order)
 	if err != nil {
 		if isNotFound(err) {
-			err = r.pool.QueryRow(ctx,
+			err = scanOrder(r.pool.QueryRow(ctx,
 				`SELECT `+orderColumns+` FROM orders WHERE student_id = $1 AND status = 'cart'`,
 				studentID,
-			).Scan(
-				&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-				&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-				&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
-				&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
-				&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
-				&order.CreatedAt, &order.UpdatedAt,
-			)
+			), &order)
 			if err != nil {
 				return model.Order{}, false, err
 			}
@@ -117,17 +131,10 @@ func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.O
 
 func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID) (model.Order, error) {
 	order := model.Order{}
-	err := r.pool.QueryRow(ctx,
+	err := scanOrder(r.pool.QueryRow(ctx,
 		`SELECT `+orderColumns+` FROM orders WHERE student_id = $1 AND status = 'cart'`,
 		studentID,
-	).Scan(
-		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
-		&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
-		&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
-		&order.CreatedAt, &order.UpdatedAt,
-	)
+	), &order)
 	if err != nil {
 		if isNotFound(err) {
 			return model.Order{}, nil
@@ -145,17 +152,10 @@ func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID
 
 func (r *Repository) GetOrderByID(ctx context.Context, id uuid.UUID) (model.Order, error) {
 	order := model.Order{}
-	err := r.pool.QueryRow(ctx,
+	err := scanOrder(r.pool.QueryRow(ctx,
 		`SELECT `+orderColumns+` FROM orders WHERE id = $1`,
 		id,
-	).Scan(
-		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
-		&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
-		&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
-		&order.CreatedAt, &order.UpdatedAt,
-	)
+	), &order)
 	if err != nil {
 		if isNotFound(err) {
 			return model.Order{}, nil
@@ -218,18 +218,9 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 
 	for rows.Next() {
 		order := model.Order{}
-		err := rows.Scan(
-			&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
-			&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-			&order.SelectedCourier, &order.TrackingNumber, &order.ShippedAt,
-			&order.GatewayRef, &order.PaymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &order.InvoiceURL,
-			&order.EstimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &order.CancellationReason,
-			&order.CreatedAt, &order.UpdatedAt,
-		)
-		if err != nil {
+		if err := scanOrder(rows, &order); err != nil {
 			return nil, "", err
 		}
-
 		if len(orders) < filter.Limit {
 			orders = append(orders, order)
 		} else {

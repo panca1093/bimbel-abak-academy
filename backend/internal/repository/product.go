@@ -13,6 +13,30 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+// scanProduct scans a product row, handling nullable TEXT/INT columns that pgx v5 cannot
+// scan directly into non-pointer Go types.
+func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) error {
+	var description, imageURL *string
+	var weightGrams *int
+	err := row.Scan(
+		&p.ID, &p.Type, &p.Name, &description, &p.Price, &p.Stock, &p.Status,
+		&weightGrams, &imageURL, &p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		return err
+	}
+	if description != nil {
+		p.Description = *description
+	}
+	if imageURL != nil {
+		p.ImageURL = *imageURL
+	}
+	if weightGrams != nil {
+		p.WeightGrams = *weightGrams
+	}
+	return nil
+}
+
 type ProductFilter struct {
 	Type       string
 	Status     string
@@ -33,14 +57,12 @@ func (r *Repository) CreateProduct(ctx context.Context, p *model.Product) error 
 
 func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Product, error) {
 	p := &model.Product{}
-	err := r.pool.QueryRow(ctx,
+	err := scanProduct(r.pool.QueryRow(ctx,
 		`SELECT id, type, name, description, price, stock, status, weight_grams, image_url, created_at, updated_at
 		FROM product
 		WHERE id = $1`,
 		id,
-	).Scan(
-		&p.ID, &p.Type, &p.Name, &p.Description, &p.Price, &p.Stock, &p.Status, &p.WeightGrams, &p.ImageURL, &p.CreatedAt, &p.UpdatedAt,
-	)
+	), p)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, ErrNotFound
@@ -92,10 +114,7 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 
 	for rows.Next() {
 		p := model.Product{}
-		err := rows.Scan(
-			&p.ID, &p.Type, &p.Name, &p.Description, &p.Price, &p.Stock, &p.Status, &p.WeightGrams, &p.ImageURL, &p.CreatedAt, &p.UpdatedAt,
-		)
-		if err != nil {
+		if err := scanProduct(rows, &p); err != nil {
 			return nil, "", err
 		}
 		products = append(products, p)
