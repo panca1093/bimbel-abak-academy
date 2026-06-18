@@ -24,6 +24,7 @@ type PaymentRequest struct {
 type PaymentResponse struct {
 	GatewayRef string
 	PaymentURL string
+	SnapToken  string
 	ExpiresAt  time.Time
 }
 

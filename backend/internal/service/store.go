@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -397,6 +398,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 
 type CheckoutResult struct {
 	GatewayRef       string
+	SnapToken        string
 	PaymentExpiresAt time.Time
 }
 
@@ -411,9 +413,13 @@ type OrderPaidPayloadItem struct {
 	Qty         int    `json:"qty"`
 }
 
-type PaymentWebhookPayload struct {
-	GatewayRef string `json:"gateway_ref"`
-	OrderID    string `json:"order_id"`
+type MidtransNotification struct {
+	TransactionStatus string `json:"transaction_status"`
+	OrderID           string `json:"order_id"`
+	TransactionID     string `json:"transaction_id"`
+	GrossAmount       string `json:"gross_amount"`
+	StatusCode        string `json:"status_code"`
+	SignatureKey      string `json:"signature_key"`
 }
 
 func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
@@ -465,7 +471,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 
 	paymentResp, err := s.payment.CreatePayment(ctx, PaymentRequest{
 		OrderID:   oID.String(),
-		Amount:    int64(order.Total * 100),
+		Amount:    int64(order.Total),
 		ExpiresIn: 24 * time.Hour,
 	})
 	if err != nil {
@@ -478,6 +484,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 
 	result := CheckoutResult{
 		GatewayRef:       paymentResp.GatewayRef,
+		SnapToken:        paymentResp.SnapToken,
 		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
@@ -520,7 +527,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 
 	paymentResp, err := s.payment.CreatePayment(ctx, PaymentRequest{
 		OrderID:   oID.String(),
-		Amount:    int64(order.Total * 100),
+		Amount:    int64(order.Total),
 		ExpiresIn: 24 * time.Hour,
 	})
 	if err != nil {
@@ -547,6 +554,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 
 	result := CheckoutResult{
 		GatewayRef:       paymentResp.GatewayRef,
+		SnapToken:        paymentResp.SnapToken,
 		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
@@ -834,12 +842,20 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		return nil
 	}
 
-	var webhook PaymentWebhookPayload
-	if err := json.Unmarshal(payload, &webhook); err != nil {
+	var notif MidtransNotification
+	if err := json.Unmarshal(payload, &notif); err != nil {
 		return err
 	}
 
-	orderID, err := parseUUID(webhook.OrderID)
+	switch notif.TransactionStatus {
+	case "settlement", "capture":
+		// existing paid flow
+	default:
+		slog.Info("midtrans webhook ignored", "transaction_status", notif.TransactionStatus, "order_id", notif.OrderID)
+		return nil
+	}
+
+	orderID, err := parseUUID(notif.OrderID)
 	if err != nil {
 		return err
 	}
@@ -858,7 +874,7 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, webhook.GatewayRef); err != nil {
+	if err := s.storeRepo.InsertWebhookLog(ctx, tx, "payment_success", payload, notif.OrderID); err != nil {
 		return err
 	}
 

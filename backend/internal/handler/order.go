@@ -159,6 +159,7 @@ func (h *Handler) Checkout(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"gateway_ref":        result.GatewayRef,
+		"snap_token":         result.SnapToken,
 		"payment_expires_at": result.PaymentExpiresAt,
 	})
 }
@@ -182,6 +183,7 @@ func (h *Handler) RetryPayment(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"gateway_ref":        result.GatewayRef,
+		"snap_token":         result.SnapToken,
 		"payment_expires_at": result.PaymentExpiresAt,
 	})
 }
