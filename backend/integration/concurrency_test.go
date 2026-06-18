@@ -125,11 +125,22 @@ func TestConcurrency(t *testing.T) {
 	})
 
 	t.Run("FR-INT-19 duplicate gateway_ref rejected by DB UNIQUE constraint", func(t *testing.T) {
-		// FA-1: there is no UNIQUE constraint on orders.gateway_ref in the current schema.
-		// Migration 0009 renames payment_ref → gateway_ref but adds no UNIQUE index.
-		// This test asserts the invariant and is skipped until the constraint is added.
-		t.Skip("KNOWN GAP (FA-1): orders.gateway_ref has no UNIQUE constraint in the current schema. " +
-			"Add a migration with `CREATE UNIQUE INDEX idx_orders_gateway_ref ON orders(gateway_ref) WHERE gateway_ref IS NOT NULL;` " +
-			"then remove this skip.")
+		userA := seedUser(t, env, "student", "active", false)
+		userB := seedUser(t, env, "student", "active", false)
+
+		var orderA, orderB string
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`INSERT INTO orders (student_id, status, subtotal, total) VALUES ($1, 'cart', 50000, 50000) RETURNING id`, userA,
+		).Scan(&orderA))
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`INSERT INTO orders (student_id, status, subtotal, total) VALUES ($1, 'cart', 50000, 50000) RETURNING id`, userB,
+		).Scan(&orderB))
+
+		_, err := env.pool.Exec(ctx, `UPDATE orders SET gateway_ref='dup-ref-fr19' WHERE id=$1`, orderA)
+		require.NoError(t, err)
+
+		_, err = env.pool.Exec(ctx, `UPDATE orders SET gateway_ref='dup-ref-fr19' WHERE id=$1`, orderB)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unique")
 	})
 }
