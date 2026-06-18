@@ -62,3 +62,58 @@
 body {
   font-family: var(--font-sans);
 }
+
+/* shadcn semantic-token bridge: map shadcn --primary/--background/etc. to
+   the brand tokens above so generated primitives render with brand styling.
+   shadcn init normally writes this; Task 1 deferred it to avoid clobbering
+   the font wiring in layout.tsx. */
+:root {
+  --background: var(--color-surface);
+  --foreground: var(--color-ink-900);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink-900);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-ink-900);
+  --primary: var(--color-brand-600);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-brand-50);
+  --secondary-foreground: var(--color-brand-700);
+  --muted: var(--color-line-2);
+  --muted-foreground: var(--color-ink-500);
+  --accent: var(--color-brand-50);
+  --accent-foreground: var(--color-brand-700);
+  --destructive: var(--color-danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--color-line);
+  --input: var(--color-line);
+  --ring: var(--color-brand-600);
+  --radius: var(--r-md);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Map Tailwind radius utilities to the brand --r-* scale. */
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+}
