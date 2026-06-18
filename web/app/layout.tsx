@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Public_Sans, Source_Serif_4, Spline_Sans_Mono } from "next/font/google";
 import "./globals.css";
+import { Providers } from "./providers";
 
 const publicSans = Public_Sans({ subsets: ["latin"], variable: "--font-public-sans" });
 const sourceSerif = Source_Serif_4({ subsets: ["latin"], variable: "--font-source-serif" });
@@ -17,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body
         className={`${publicSans.variable} ${sourceSerif.variable} ${splineMono.variable} antialiased`}
       >
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
