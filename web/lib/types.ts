@@ -1,0 +1,160 @@
+export type ProductType = "book" | "course" | "package";
+
+export type OrderStatus =
+  | "cart"
+  | "payment_pending"
+  | "paid"
+  | "processing"
+  | "completed"
+  | "payment_expired"
+  | "cancelled";
+
+export interface User {
+  id: string;
+  email?: string;
+  username?: string;
+  name?: string;
+  role?: string;
+  school_id?: string;
+  status?: string;
+  otp_enabled?: boolean;
+}
+
+export interface LoginResponse {
+  access_token?: string;
+  refresh_token?: string;
+  user?: User;
+  otp_required?: boolean;
+  pending_token?: string;
+}
+
+export interface Product {
+  id: string;
+  type: ProductType;
+  name: string;
+  description?: string;
+  price: number;
+  stock?: number;
+  status?: string;
+  weight_grams?: number;
+  image_url?: string;
+  course_ids?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id: string;
+  product_type: string;
+  name: string;
+  unit_price: number;
+  qty: number;
+  jumlah: number;
+  weight_grams?: number;
+  fulfilled_at?: string;
+  created_at?: string;
+}
+
+export interface Order {
+  id: string;
+  student_id: string;
+  status: OrderStatus;
+  subtotal: number;
+  discount: number;
+  shipping_cost: number;
+  total: number;
+  promo_code_id?: string;
+  shipping_address?: string;
+  selected_courier?: string;
+  tracking_number?: string;
+  shipped_at?: string;
+  gateway_ref?: string;
+  payment_method?: string;
+  payment_expires_at?: string;
+  paid_at?: string;
+  invoice_url?: string;
+  estimated_delivery_days?: string;
+  checked_out_at?: string;
+  completed_at?: string;
+  cancelled_at?: string;
+  cancellation_reason?: string;
+  created_at?: string;
+  updated_at?: string;
+  items?: OrderItem[];
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  level?: string;
+  subject?: string;
+  instructor_name?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CourseSection {
+  id: string;
+  course_id: string;
+  title: string;
+  position?: number;
+  created_at?: string;
+}
+
+export interface Lesson {
+  id: string;
+  section_id: string;
+  title: string;
+  video_url?: string;
+  duration_seconds?: number;
+  position?: number;
+  created_at?: string;
+}
+
+export interface CourseSession {
+  id: string;
+  student_id: string;
+  course_id: string;
+  order_id?: string;
+  status?: string;
+  source?: string;
+  enrolled_at?: string;
+  revoked_at?: string;
+  completed_lessons?: Record<string, string>;
+}
+
+export interface PromoValidation {
+  code: string;
+  discount: number;
+  final_total: number;
+}
+
+export interface CheckoutResult {
+  snap_token: string;
+  order_id: string | number;
+  gateway_ref?: string;
+  payment_expires_at?: string;
+}
+
+export interface DashboardCourseSummary {
+  id: string;
+  title: string;
+  progress: number;
+  total_lessons: number;
+  done_lessons: number;
+  cover?: string;
+}
+
+export interface DashboardPendingOrder {
+  id: string;
+  product?: string;
+  amount: number;
+}
+
+export interface Dashboard {
+  greeting?: string;
+  enrolled_courses: DashboardCourseSummary[];
+  pending_order?: DashboardPendingOrder;
+}
