@@ -7,9 +7,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"akademi-bimbel/config"
+	"akademi-bimbel/internal/handler"
+	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/server"
+	"akademi-bimbel/internal/service"
+
+	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,27 +34,71 @@ func checkoutWithKey(t *testing.T, env *testEnv, orderID, token, idempKey string
 	return resp
 }
 
-// sendWebhook POSTs to /api/v1/webhooks/payment. Pass signature="" to omit X-Signature.
-func sendWebhook(t *testing.T, env *testEnv, gatewayRef, orderID, idempKey, signature string) *http.Response {
+// sendWebhook POSTs to /api/v1/webhooks/payment with a Midtrans notification body.
+// Pass signature="" to omit signature_key from the JSON body.
+func sendWebhook(t *testing.T, env *testEnv, orderID, idempKey, signature, grossAmount string) *http.Response {
 	t.Helper()
-	payload, err := json.Marshal(map[string]string{
-		"gateway_ref": gatewayRef,
-		"order_id":    orderID,
-	})
+	return sendWebhookToURL(t, env.server.URL, orderID, idempKey, signature, grossAmount)
+}
+
+// sendWebhookToURL builds and POSTs a Midtrans notification to the given base URL.
+func sendWebhookToURL(t *testing.T, baseURL, orderID, idempKey, signature, grossAmount string) *http.Response {
+	t.Helper()
+	body := map[string]string{
+		"transaction_status": "settlement",
+		"order_id":           orderID,
+		"transaction_id":     fmt.Sprintf("tx-%d", time.Now().UnixNano()),
+		"gross_amount":       grossAmount,
+		"status_code":        "200",
+	}
+	if signature != "" {
+		body["signature_key"] = signature
+	}
+
+	payload, err := json.Marshal(body)
 	require.NoError(t, err)
 
 	req, err := http.NewRequest(http.MethodPost,
-		env.server.URL+"/api/v1/webhooks/payment",
+		baseURL+"/api/v1/webhooks/payment",
 		bytes.NewReader(payload))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", idempKey)
-	if signature != "" {
-		req.Header.Set("X-Signature", signature)
-	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	return resp
+}
+
+// strictPaymentClient rejects empty signatures, so a missing signature_key fails verification.
+type strictPaymentClient struct{}
+
+func (strictPaymentClient) CreatePayment(ctx context.Context, req service.PaymentRequest) (service.PaymentResponse, error) {
+	return service.PaymentResponse{}, nil
+}
+
+func (strictPaymentClient) QueryStatus(ctx context.Context, reference string) (service.PaymentStatus, error) {
+	return service.PaymentStatus{}, nil
+}
+
+func (strictPaymentClient) VerifySignature(payload []byte, signature string) bool {
+	return signature != ""
+}
+
+// webhookServer returns a test server wired with a strict payment client for signature verification tests.
+func webhookServer(t *testing.T, env *testEnv, payment service.PaymentClient) *httptest.Server {
+	t.Helper()
+	repo := repository.New(env.pool)
+	cfg := &config.Config{CORSOrigins: []string{"*"}}
+	svc := service.NewWithStore(repo, repo, env.rdb, env.signer,
+		&service.NoopOTPProvider{}, &service.NoopEmailProvider{}, payment,
+		&service.NoopLogisticsClient{}, cfg)
+	h := handler.New(svc)
+	e := echo.New()
+	e.HideBanner = true
+	server.RegisterRoutesForTest(e, h, svc, env.signer)
+	ts := httptest.NewServer(e)
+	t.Cleanup(ts.Close)
+	return ts
 }
 
 // drainClose discards and closes a response body.
@@ -200,12 +252,10 @@ func TestCheckout(t *testing.T) {
 
 		coResp := checkoutWithKey(t, env, orderID, token,
 			fmt.Sprintf("co-%d", time.Now().UnixNano()))
-		coBody := decodeBody(t, coResp)
-		require.Equal(t, http.StatusOK, coResp.StatusCode)
-		gatewayRef := coBody["gateway_ref"].(string)
+		require.Equal(t, http.StatusOK, coResp.StatusCode, "checkout failed: %v", decodeBody(t, coResp))
 
 		webhookKey := fmt.Sprintf("wh-%d", time.Now().UnixNano())
-		whResp := sendWebhook(t, env, gatewayRef, orderID, webhookKey, "any-sig")
+		whResp := sendWebhook(t, env, orderID, webhookKey, "any-sig", fmt.Sprintf("%.2f", float64(25000)))
 		whBody := decodeBody(t, whResp)
 		require.Equal(t, http.StatusOK, whResp.StatusCode, "webhook failed: %v", whBody)
 
@@ -223,18 +273,18 @@ func TestCheckout(t *testing.T) {
 
 		var logCount int
 		require.NoError(t, env.pool.QueryRow(ctx,
-			`SELECT COUNT(*) FROM webhook_log WHERE gateway_ref=$1`, gatewayRef,
+			`SELECT COUNT(*) FROM webhook_log WHERE gateway_ref=$1`, orderID,
 		).Scan(&logCount))
 		assert.Equal(t, 1, logCount, "webhook_log row must exist")
 	})
 
-	t.Run("FR-INT-12 webhook missing X-Signature returns 401 invalid_signature", func(t *testing.T) {
-		// Any payload — we don't reach order lookup when sig is missing
-		whResp := sendWebhook(t, env,
-			"any-ref",
+	t.Run("FR-INT-12 webhook missing signature_key returns 401 invalid_signature", func(t *testing.T) {
+		strict := webhookServer(t, env, strictPaymentClient{})
+		whResp := sendWebhookToURL(t, strict.URL,
 			"00000000-0000-0000-0000-000000000000",
 			fmt.Sprintf("key-%d", time.Now().UnixNano()),
-			"" /* omit X-Signature */)
+			"" /* omit signature_key */,
+			"0.00")
 		whBody := decodeBody(t, whResp)
 		require.Equal(t, http.StatusUnauthorized, whResp.StatusCode)
 		assert.Equal(t, "invalid_signature", whBody["code"])
@@ -255,17 +305,15 @@ func TestCheckout(t *testing.T) {
 
 		coResp := checkoutWithKey(t, env, orderID, token,
 			fmt.Sprintf("co-%d", time.Now().UnixNano()))
-		coBody := decodeBody(t, coResp)
-		require.Equal(t, http.StatusOK, coResp.StatusCode)
-		gatewayRef := coBody["gateway_ref"].(string)
+		require.Equal(t, http.StatusOK, coResp.StatusCode, "checkout failed: %v", decodeBody(t, coResp))
 
 		webhookKey := fmt.Sprintf("dedup-%d", time.Now().UnixNano())
 
-		wh1 := sendWebhook(t, env, gatewayRef, orderID, webhookKey, "sig1")
+		wh1 := sendWebhook(t, env, orderID, webhookKey, "sig1", fmt.Sprintf("%.2f", float64(20000)))
 		wh1Body := decodeBody(t, wh1)
 		require.Equal(t, http.StatusOK, wh1.StatusCode, "first delivery: %v", wh1Body)
 
-		wh2 := sendWebhook(t, env, gatewayRef, orderID, webhookKey, "sig2")
+		wh2 := sendWebhook(t, env, orderID, webhookKey, "sig2", fmt.Sprintf("%.2f", float64(20000)))
 		wh2Body := decodeBody(t, wh2)
 		require.Equal(t, http.StatusOK, wh2.StatusCode, "second delivery: %v", wh2Body)
 

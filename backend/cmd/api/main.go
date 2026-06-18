@@ -44,7 +44,7 @@ func main() {
 	storeRepo := repository.New(pool)
 	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	otpProvider, emailProvider := newNotifyProviders(cfg)
-	paymentClient := &adapter.NoopPaymentClient{}
+	paymentClient := newPaymentClient(cfg)
 	logisticsClient := &adapter.NoopLogisticsClient{}
 	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, &cfg)
 	h := handler.New(svc)
@@ -80,4 +80,11 @@ func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailPr
 		BaseURL:     cfg.FazpassBaseURL,
 	})
 	return fz, fz
+}
+
+func newPaymentClient(cfg config.Config) service.PaymentClient {
+	if cfg.MidtransServerKey != "" {
+		return adapter.NewMidtransClient(cfg.MidtransServerKey, cfg.MidtransClientKey, cfg.MidtransEnv)
+	}
+	return &adapter.NoopPaymentClient{}
 }

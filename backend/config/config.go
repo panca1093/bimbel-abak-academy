@@ -23,6 +23,9 @@ type Config struct {
 	FazpassMerchantKey  string
 	FazpassAPIKey       string
 	FazpassBaseURL      string
+	MidtransServerKey   string
+	MidtransClientKey   string
+	MidtransEnv         string
 }
 
 func Load() Config {
@@ -44,6 +47,9 @@ func Load() Config {
 		FazpassMerchantKey: env("FAZPASS_MERCHANT_KEY", ""),
 		FazpassAPIKey:      env("FAZPASS_API_KEY", ""),
 		FazpassBaseURL:     env("FAZPASS_BASE_URL", "https://api.fazpass.com"),
+		MidtransServerKey:  env("MIDTRANS_SERVER_KEY", ""),
+		MidtransClientKey:  env("MIDTRANS_CLIENT_KEY", ""),
+		MidtransEnv:        env("MIDTRANS_ENV", "sandbox"),
 	}
 }
 
