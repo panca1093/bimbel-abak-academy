@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { Course, CourseSection, Lesson } from "@/lib/types";
+import type { Course, CourseSection, CourseSession, Lesson } from "@/lib/types";
 
 export interface CourseDetail extends Course {
   sections?: (CourseSection & { lessons?: Lesson[] })[];
@@ -17,7 +17,10 @@ export const coursesKeys = {
 export function useMyCourses() {
   return useQuery({
     queryKey: coursesKeys.list(),
-    queryFn: () => authFetch<CourseDetail[]>(`/courses`),
+    queryFn: async () => {
+      const res = await authFetch<{ data: CourseSession[] }>(`/courses`);
+      return res.data ?? [];
+    },
   });
 }
 

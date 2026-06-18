@@ -110,6 +110,7 @@ export interface Lesson {
   video_url?: string;
   duration_seconds?: number;
   position?: number;
+  completed?: boolean;
   created_at?: string;
 }
 
