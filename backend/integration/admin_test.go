@@ -142,11 +142,7 @@ func TestAdmin(t *testing.T) {
 		body := decodeBody(t, resp)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 
-		promoID, ok := body["ID"].(string)
-		if !ok {
-			// Try lowercase variant
-			promoID, ok = body["id"].(string)
-		}
+		promoID, ok := body["id"].(string)
 		require.True(t, ok, "response must contain promo id, got: %v", body)
 		require.NotEmpty(t, promoID)
 
@@ -168,7 +164,7 @@ func TestAdmin(t *testing.T) {
 
 		orderResp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		require.Equal(t, http.StatusCreated, orderResp.StatusCode)
-		orderID := decodeBody(t, orderResp)["ID"].(string)
+		orderID := decodeBody(t, orderResp)["id"].(string)
 
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))

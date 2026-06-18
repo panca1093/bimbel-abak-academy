@@ -118,15 +118,15 @@ func TestCheckout(t *testing.T) {
 		resp1 := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		body1 := decodeBody(t, resp1)
 		require.Equal(t, http.StatusCreated, resp1.StatusCode)
-		orderID1, ok := body1["ID"].(string)
-		require.True(t, ok, "body must contain 'ID' field, got: %v", body1)
+		orderID1, ok := body1["id"].(string)
+		require.True(t, ok, "body must contain 'id' field, got: %v", body1)
 		require.NotEmpty(t, orderID1)
 
 		resp2 := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		body2 := decodeBody(t, resp2)
 		require.Equal(t, http.StatusOK, resp2.StatusCode)
-		orderID2, ok := body2["ID"].(string)
-		require.True(t, ok, "body must contain 'ID' field, got: %v", body2)
+		orderID2, ok := body2["id"].(string)
+		require.True(t, ok, "body must contain 'id' field, got: %v", body2)
 
 		assert.Equal(t, orderID1, orderID2, "second MintCart must return same order id")
 
@@ -146,7 +146,7 @@ func TestCheckout(t *testing.T) {
 		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		body := decodeBody(t, resp)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
-		orderID := body["ID"].(string)
+		orderID := body["id"].(string)
 
 		resp2 := env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token)
@@ -170,7 +170,7 @@ func TestCheckout(t *testing.T) {
 		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		body := decodeBody(t, resp)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
-		orderID := body["ID"].(string)
+		orderID := body["id"].(string)
 
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
@@ -203,7 +203,7 @@ func TestCheckout(t *testing.T) {
 		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		body := decodeBody(t, resp)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
-		orderID := body["ID"].(string)
+		orderID := body["id"].(string)
 
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
@@ -245,7 +245,7 @@ func TestCheckout(t *testing.T) {
 		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		body := decodeBody(t, resp)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
-		orderID := body["ID"].(string)
+		orderID := body["id"].(string)
 
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
@@ -298,7 +298,7 @@ func TestCheckout(t *testing.T) {
 		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		body := decodeBody(t, resp)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
-		orderID := body["ID"].(string)
+		orderID := body["id"].(string)
 
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))

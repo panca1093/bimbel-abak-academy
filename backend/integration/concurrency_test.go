@@ -24,7 +24,7 @@ func TestConcurrency(t *testing.T) {
 		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 		body := decodeBody(t, resp)
-		orderID := body["ID"].(string)
+		orderID := body["id"].(string)
 
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
@@ -75,7 +75,7 @@ func TestConcurrency(t *testing.T) {
 			resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
 			require.Equal(t, http.StatusCreated, resp.StatusCode)
 			b := decodeBody(t, resp)
-			orderID := b["ID"].(string)
+			orderID := b["id"].(string)
 			drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 				map[string]any{"product_id": productID, "qty": 1}, token))
 			return orderID
