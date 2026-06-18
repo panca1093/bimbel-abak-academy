@@ -3,12 +3,57 @@
 /* Brand tokens — see design-app-abak/source/styles.css (CSS vars are named
    --green-* upstream but the actual palette is indigo/violet). */
 @theme {
-  --color-brand-50: #eef0fe;
+  /* ---- Brand: indigo / violet ---- */
+  --color-brand-50:  #eef0fe;
+  --color-brand-100: #e0e4fd;
+  --color-brand-200: #c4cafb;
+  --color-brand-300: #9ca6f6;
+  --color-brand-400: #6e7cee;
   --color-brand-500: #5161e8;
   --color-brand-600: #3d4ddb;
   --color-brand-700: #2e3bb8;
+  --color-brand-800: #232c8c;
   --color-brand-900: #1a2168;
 
+  /* ---- Neutrals: cool lavender-gray ---- */
+  --color-paper:    #f4f5fd;
+  --color-surface:  #ffffff;
+  --color-surface-2: #fafafe;
+  --color-ink-900: #15183a;
+  --color-ink-700: #353a60;
+  --color-ink-600: #565c84;
+  --color-ink-500: #767da2;
+  --color-ink-400: #9da3c2;
+  --color-line:   #e7e9f5;
+  --color-line-2: #f0f1fa;
+
+  /* ---- Status ---- */
+  --color-info:       #2563d8;
+  --color-info-bg:    #e7eefb;
+  --color-warn:       #c2680a;
+  --color-warn-bg:    #fbf1e2;
+  --color-danger:     #d33a2e;
+  --color-danger-bg:  #fbeae8;
+  --color-success:    #1f9e63;
+  --color-success-bg: #e5f5ec;
+  --color-violet:     #7c4ddb;
+  --color-violet-bg:  #efe9fb;
+  --color-gold:       #b08612;
+  --color-gold-bg:    #f8f1dd;
+
+  /* ---- Radius ---- */
+  --r-sm: 9px;
+  --r-md: 13px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+
+  /* ---- Shadow ---- */
+  --sh-sm: 0 1px 2px rgba(40, 46, 110, .06), 0 1px 3px rgba(40, 46, 110, .05);
+  --sh-md: 0 6px 18px rgba(40, 46, 110, .08), 0 2px 5px rgba(40, 46, 110, .05);
+  --sh-lg: 0 16px 40px rgba(30, 36, 100, .14), 0 5px 12px rgba(30, 36, 100, .07);
+  --sh-pop: 0 22px 56px rgba(26, 33, 104, .24);
+
+  /* ---- Type ---- */
   --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-source-serif), ui-serif, Georgia, serif;
   --font-mono: var(--font-spline-mono), ui-monospace, monospace;
