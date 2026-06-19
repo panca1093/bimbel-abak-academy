@@ -1,5 +1,5 @@
 {
   "status": "DONE",
-  "summary": "Built Content Manager Course Builder: admin courses list with create at /admin/courses, course builder at /admin/courses/[id] editing metadata and curriculum via sections/lessons CRUD and up/down reorder endpoints. Added lib/hooks/admin-courses.ts with TanStack Query hooks, components/admin/SectionEditor.tsx and LessonModal.tsx, extended lib/types.ts. All 52 tests pass; npm run build green.",
-  "commit": "2ed8ed6"
+  "summary": "Wired every not-ready admin nav item to a real ComingSoon route. Created 12 page.tsx files under app/(admin)/admin/ for notifications, all admin_exam items (banks/tryouts/analytics/schedules), all admin_school items (students/classes/reports), and super-admin System items (accounts/schools/config/audit), each rendering the shared ComingSoon component. Added a single parameterized test file (coming-soon-routes.test.tsx) verifying each route renders ComingSoon plus nav-config flag assertions for admin_exam/admin_school/super_admin/system/notifications and that live Content Manager items are not flagged. Nav-config already correctly marks coming-soon items via the cs() helper; no changes needed. Full test suite 104/104 green; npm run build green (all 12 new routes appear in the static route table).",
+  "commit": "fa5357b"
 }
