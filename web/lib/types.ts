@@ -1,5 +1,7 @@
 export type ProductType = "book" | "course" | "package";
 
+export type ProductStatus = "draft" | "published" | "hidden" | "archived";
+
 export type OrderStatus =
   | "cart"
   | "payment_pending"
@@ -42,12 +44,30 @@ export interface Product {
   description?: string;
   price: number;
   stock?: number;
-  status?: string;
+  status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
   course_ids?: string[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface AdminCreateProductInput {
+  type: ProductType;
+  name: string;
+  description?: string;
+  price: number;
+  stock?: number;
+  course_ids?: string[];
+}
+
+export interface AdminUpdateProductInput {
+  name?: string;
+  description?: string;
+  price?: number;
+  stock?: number;
+  status?: ProductStatus;
+  course_ids?: string[];
 }
 
 export interface OrderItem {
