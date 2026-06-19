@@ -25,6 +25,19 @@ interface ProductModalProps {
 const PRODUCT_TYPES: ProductType[] = ["book", "course", "package"];
 const PRODUCT_STATUSES: ProductStatus[] = ["draft", "published", "hidden", "archived"];
 
+const TYPE_LABELS: Record<ProductType, string> = {
+  book: "Buku",
+  course: "Kursus",
+  package: "Paket",
+};
+
+const STATUS_LABELS: Record<ProductStatus, string> = {
+  draft: "Draft",
+  published: "Dipublikasikan",
+  hidden: "Disembunyikan",
+  archived: "Diarsipkan",
+};
+
 export function ProductModal({ open, onOpenChange, product, onSubmit, isPending }: ProductModalProps) {
   const isEdit = Boolean(product);
   const [name, setName] = useState("");
@@ -91,27 +104,27 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "Edit product" : "Create product"}</DialogTitle>
+            <DialogTitle>{isEdit ? "Edit produk" : "Buat produk"}</DialogTitle>
             <DialogDescription>
-              {isEdit ? "Update product metadata." : "Add a new product to the catalog."}
+              {isEdit ? "Perbarui metadata produk." : "Tambahkan produk baru ke katalog."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="product-name">Name</Label>
+              <Label htmlFor="product-name">Nama</Label>
               <Input
                 id="product-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Product name"
+                placeholder="Nama produk"
                 disabled={isPending}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="product-type">Type</Label>
+                <Label htmlFor="product-type">Jenis</Label>
                 <select
                   id="product-type"
                   value={type}
@@ -119,17 +132,17 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                   disabled={isEdit || isPending}
                   className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
                 >
-                  <option value="" disabled>Select type</option>
+                  <option value="" disabled>Pilih jenis</option>
                   {PRODUCT_TYPES.map((t) => (
                     <option key={t} value={t}>
-                      {t}
+                      {TYPE_LABELS[t]}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="product-price">Price (IDR)</Label>
+                <Label htmlFor="product-price">Harga (IDR)</Label>
                 <Input
                   id="product-price"
                   type="number"
@@ -154,7 +167,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                 >
                   {PRODUCT_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s}
+                      {STATUS_LABELS[s]}
                     </option>
                   ))}
                 </select>
@@ -163,7 +176,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
 
             {showStock && (
               <div className="grid gap-2">
-                <Label htmlFor="product-stock">Stock</Label>
+                <Label htmlFor="product-stock">Stok</Label>
                 <Input
                   id="product-stock"
                   type="number"
@@ -177,12 +190,12 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
             )}
 
             <div className="grid gap-2">
-              <Label htmlFor="product-description">Description</Label>
+              <Label htmlFor="product-description">Deskripsi</Label>
               <textarea
                 id="product-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Short description"
+                placeholder="Deskripsi singkat"
                 disabled={isPending}
                 rows={3}
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
@@ -197,10 +210,10 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              Batal
             </Button>
             <Button type="submit" disabled={!canSubmit || isPending}>
-              {isPending ? "Saving..." : "Save"}
+              {isPending ? "Menyimpan..." : "Simpan"}
             </Button>
           </DialogFooter>
         </form>

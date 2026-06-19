@@ -42,7 +42,7 @@ export default function RevenuePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Revenue</h1>
+        <h1 className="text-2xl font-semibold">Pendapatan</h1>
       </div>
 
       {isLoading && (
@@ -64,7 +64,7 @@ export default function RevenuePage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total revenue</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total pendapatan</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{formatRupiah(revenue.total)}</div>
@@ -73,7 +73,7 @@ export default function RevenuePage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Orders</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Pesanan</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{orderCount(revenue)}</div>
@@ -82,7 +82,7 @@ export default function RevenuePage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Average order value</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Rata-rata nilai pesanan</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{formatRupiah(averageOrderValue(revenue))}</div>
@@ -92,11 +92,11 @@ export default function RevenuePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Revenue by type</CardTitle>
+              <CardTitle className="text-base">Pendapatan berdasarkan jenis</CardTitle>
             </CardHeader>
             <CardContent>
               {entries.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No revenue data available.</div>
+                <div className="text-sm text-muted-foreground">Belum ada data pendapatan.</div>
               ) : (
                 <div className="space-y-4">
                   {entries.map(([type, item]) => {
@@ -106,7 +106,7 @@ export default function RevenuePage() {
                         <div className="flex items-center justify-between text-sm">
                           <span className="capitalize font-medium">{type}</span>
                           <span className="text-muted-foreground">
-                            {formatRupiah(item.total)} · {item.count} orders
+                            {formatRupiah(item.total)} · {item.count} pesanan
                           </span>
                         </div>
                         <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
@@ -126,22 +126,22 @@ export default function RevenuePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Top products</CardTitle>
+              <CardTitle className="text-base">Produk terlaris</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium">Product</th>
-                      <th className="px-4 py-3 text-left font-medium">Orders</th>
-                      <th className="px-4 py-3 text-right font-medium">Revenue</th>
+                      <th className="px-4 py-3 text-left font-medium">Produk</th>
+                      <th className="px-4 py-3 text-left font-medium">Pesanan</th>
+                      <th className="px-4 py-3 text-right font-medium">Pendapatan</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
+                    <tr className="border-t">
                       <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
-                        Top product data is not available from the revenue API in this release.
+                        Belum ada data produk terlaris untuk periode ini.
                       </td>
                     </tr>
                   </tbody>

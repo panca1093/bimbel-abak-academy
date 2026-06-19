@@ -19,11 +19,11 @@ import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "failed", "refunded"];
 
 const FILTER_LABELS: Record<AdminOrderFilterStatus, string> = {
-  all: "All",
-  pending: "Pending",
-  paid: "Paid",
-  failed: "Failed",
-  refunded: "Refunded",
+  all: "Semua",
+  pending: "Menunggu",
+  paid: "Dibayar",
+  failed: "Gagal",
+  refunded: "Refund",
 };
 
 function errorMessage(error: unknown): string {
@@ -126,7 +126,7 @@ export default function OrdersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Orders</h1>
+        <h1 className="text-2xl font-semibold">Pesanan</h1>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -161,18 +161,21 @@ export default function OrdersPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Order</th>
-                <th className="px-4 py-3 text-left font-medium">Buyer</th>
-                <th className="px-4 py-3 text-left font-medium">Product</th>
-                <th className="px-4 py-3 text-left font-medium">Amount</th>
-                <th className="px-4 py-3 text-left font-medium">Payment</th>
-                <th className="px-4 py-3 text-left font-medium">Shipping</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
+                <th className="px-4 py-3 text-left font-medium">Pesanan</th>
+                <th className="px-4 py-3 text-left font-medium">Pembeli</th>
+                <th className="px-4 py-3 text-left font-medium">Produk</th>
+                <th className="px-4 py-3 text-left font-medium">Total</th>
+                <th className="px-4 py-3 text-left font-medium">Pembayaran</th>
+                <th className="px-4 py-3 text-left font-medium">Pengiriman</th>
+                <th className="px-4 py-3 text-right font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((order) => (
-                <tr key={order.id} className="border-t">
+                <tr
+                  key={order.id}
+                  className="border-t transition-colors hover:bg-muted/40"
+                >
                   <td className="px-4 py-3 font-mono font-medium">{orderNumber(order)}</td>
                   <td className="px-4 py-3">{order.student_id}</td>
                   <td className="px-4 py-3 max-w-xs truncate">{productSummary(order)}</td>
@@ -190,7 +193,7 @@ export default function OrdersPage() {
                           onClick={() => handleConfirm(order.id)}
                           disabled={confirm.isPending}
                         >
-                          Confirm
+                          Konfirmasi
                         </Button>
                       )}
                       {actionAllowed(order.status, "ship") && (
@@ -200,7 +203,7 @@ export default function OrdersPage() {
                           onClick={() => handleShip(order.id)}
                           disabled={ship.isPending}
                         >
-                          Ship
+                          Kirim
                         </Button>
                       )}
                       {actionAllowed(order.status, "refund") && (
@@ -220,7 +223,7 @@ export default function OrdersPage() {
                           onClick={() => handleReconcile(order.id)}
                           disabled={reconcile.isPending}
                         >
-                          Reconcile
+                          Rekonsiliasi
                         </Button>
                       )}
                     </div>

@@ -91,33 +91,33 @@ export default function CourseBuilderPage() {
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => router.push("/admin/courses")}>
           <ArrowLeft className="mr-1 size-4" />
-          Back
+          Kembali
         </Button>
-        <h1 className="text-2xl font-semibold">Edit course</h1>
+        <h1 className="text-2xl font-semibold">Edit kursus</h1>
       </div>
 
       <form onSubmit={handleSaveMetadata} className="rounded-lg border bg-card p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-medium">Course metadata</h2>
+          <h2 className="text-lg font-medium">Metadata kursus</h2>
           <Button type="submit" disabled={!dirty || !title.trim() || update.isPending}>
-            {update.isPending ? "Saving..." : "Save metadata"}
+            {update.isPending ? "Menyimpan..." : "Simpan metadata"}
           </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2">
-            <Label htmlFor="course-title">Title</Label>
+            <Label htmlFor="course-title">Judul</Label>
             <Input
               id="course-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Course title"
+              placeholder="Judul kursus"
               disabled={update.isPending}
             />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="course-level">Level</Label>
+            <Label htmlFor="course-level">Jenjang</Label>
             <Input
               id="course-level"
               value={level}
@@ -128,7 +128,7 @@ export default function CourseBuilderPage() {
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="course-subject">Subject</Label>
+            <Label htmlFor="course-subject">Mapel</Label>
             <Input
               id="course-subject"
               value={subject}
@@ -139,12 +139,12 @@ export default function CourseBuilderPage() {
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="course-instructor">Instructor</Label>
+            <Label htmlFor="course-instructor">Pengajar</Label>
             <Input
               id="course-instructor"
               value={instructorName}
               onChange={(e) => setInstructorName(e.target.value)}
-              placeholder="Instructor name"
+              placeholder="Nama pengajar"
               disabled={update.isPending}
             />
           </div>
@@ -152,7 +152,7 @@ export default function CourseBuilderPage() {
       </form>
 
       <div className="rounded-lg border bg-card p-6">
-        <h2 className="mb-4 text-lg font-medium">Curriculum</h2>
+        <h2 className="mb-4 text-lg font-medium">Kurikulum</h2>
         <SectionEditor courseId={courseId} />
       </div>
     </div>

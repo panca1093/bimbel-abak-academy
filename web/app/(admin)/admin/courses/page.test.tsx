@@ -86,17 +86,17 @@ describe("CoursesPage", () => {
 
     await waitFor(() => expect(screen.getByText("Matematika Dasar")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /create course/i }));
+    fireEvent.click(screen.getByRole("button", { name: /buat kursus/i }));
 
-    expect(screen.getByRole("dialog", { name: /create course/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /buat kursus/i })).toBeInTheDocument();
 
-    const nameInput = screen.getByLabelText(/title/i);
+    const nameInput = screen.getByLabelText(/judul/i);
     fireEvent.input(nameInput, { target: { value: "Kimia SMA" } });
 
-    const levelInput = screen.getByLabelText(/level/i);
+    const levelInput = screen.getByLabelText(/jenjang/i);
     fireEvent.input(levelInput, { target: { value: "SMA" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(

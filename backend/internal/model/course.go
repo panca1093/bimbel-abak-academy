@@ -21,6 +21,7 @@ type Section struct {
 	CourseID  uuid.UUID `json:"course_id"`
 	Title     string    `json:"title"`
 	Position  int       `json:"position"`
+	Lessons   []Lesson  `json:"lessons"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

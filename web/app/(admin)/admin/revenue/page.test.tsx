@@ -48,19 +48,19 @@ describe("RevenuePage", () => {
       expect(screen.getByText(/course/i)).toBeInTheDocument();
     });
 
-    expect(screen.getByText((_, node) => node?.textContent === "Rp1.000.000 · 10 orders")).toBeInTheDocument();
-    expect(screen.getByText((_, node) => node?.textContent === "Rp1.500.000 · 3 orders")).toBeInTheDocument();
+    expect(screen.getByText((_, node) => node?.textContent === "Rp1.000.000 · 10 pesanan")).toBeInTheDocument();
+    expect(screen.getByText((_, node) => node?.textContent === "Rp1.500.000 · 3 pesanan")).toBeInTheDocument();
   });
 
   it("renders top products table headers", async () => {
     render(<RevenuePage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Top products")).toBeInTheDocument();
+      expect(screen.getByText("Produk terlaris")).toBeInTheDocument();
     });
 
     const headers = screen.getAllByRole("columnheader");
-    expect(headers.map((h) => h.textContent)).toEqual(expect.arrayContaining(["Product", "Orders", "Revenue"]));
+    expect(headers.map((h) => h.textContent)).toEqual(expect.arrayContaining(["Produk", "Pesanan", "Pendapatan"]));
   });
 
   it("shows loading skeletons while loading", () => {

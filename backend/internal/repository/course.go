@@ -148,10 +148,26 @@ func (r *Repository) CountLessonsByCourse(ctx context.Context, courseID uuid.UUI
 
 func (r *Repository) ListSections(ctx context.Context, courseID uuid.UUID) ([]model.Section, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, course_id, title, position, created_at
-		FROM section
-		WHERE course_id = $1
-		ORDER BY position ASC`,
+		`SELECT s.id, s.course_id, s.title, s.position, s.created_at,
+			COALESCE(
+				jsonb_agg(
+					jsonb_build_object(
+						'id', l.id,
+						'section_id', l.section_id,
+						'title', l.title,
+						'video_url', l.video_url,
+						'duration_seconds', l.duration_seconds,
+						'position', l.position,
+						'created_at', l.created_at
+					) ORDER BY l.position
+				) FILTER (WHERE l.id IS NOT NULL),
+				'[]'::jsonb
+			) AS lessons
+		FROM section s
+		LEFT JOIN lesson l ON l.section_id = s.id
+		WHERE s.course_id = $1
+		GROUP BY s.id, s.course_id, s.title, s.position, s.created_at
+		ORDER BY s.position ASC`,
 		courseID,
 	)
 	if err != nil {
@@ -162,9 +178,18 @@ func (r *Repository) ListSections(ctx context.Context, courseID uuid.UUID) ([]mo
 	var sections []model.Section
 	for rows.Next() {
 		s := model.Section{}
-		err := rows.Scan(&s.ID, &s.CourseID, &s.Title, &s.Position, &s.CreatedAt)
+		var lessonBytes []byte
+		err := rows.Scan(&s.ID, &s.CourseID, &s.Title, &s.Position, &s.CreatedAt, &lessonBytes)
 		if err != nil {
 			return nil, err
+		}
+		if len(lessonBytes) > 0 {
+			if err := json.Unmarshal(lessonBytes, &s.Lessons); err != nil {
+				return nil, err
+			}
+		}
+		if s.Lessons == nil {
+			s.Lessons = []model.Lesson{}
 		}
 		sections = append(sections, s)
 	}

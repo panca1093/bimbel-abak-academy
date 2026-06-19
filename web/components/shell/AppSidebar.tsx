@@ -49,7 +49,12 @@ function NavItemLink({ item, active }: { item: NavItem; active: boolean }) {
       />
       <span className="truncate">{item.label}</span>
       {item.comingSoon && (
-        <span className="ml-auto text-[10px] uppercase text-ink-400">cs</span>
+        <Badge
+          variant="outline"
+          className="ml-auto px-1.5 py-0 text-[10px] font-normal text-ink-400"
+        >
+          Akan datang
+        </Badge>
       )}
     </Link>
   );

@@ -55,7 +55,7 @@ function SectionLessons({
   async function handleCreate(input: AdminCreateLessonInput | AdminUpdateLessonInput) {
     try {
       await createLesson.mutateAsync(input as AdminCreateLessonInput);
-      toast.success("Lesson ditambahkan.");
+      toast.success("Materi ditambahkan.");
       setCreateOpen(false);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -66,7 +66,7 @@ function SectionLessons({
     if (!editLesson) return;
     try {
       await updateLesson.mutateAsync({ lessonId: editLesson.id, input: input as AdminUpdateLessonInput });
-      toast.success("Lesson diperbarui.");
+      toast.success("Materi diperbarui.");
       setEditLesson(null);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -74,10 +74,10 @@ function SectionLessons({
   }
 
   async function handleDelete(lessonId: string) {
-    if (!confirm("Hapus lesson ini?")) return;
+    if (!confirm("Hapus materi ini?")) return;
     try {
       await deleteLesson.mutateAsync(lessonId);
-      toast.success("Lesson dihapus.");
+      toast.success("Materi dihapus.");
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -112,7 +112,7 @@ function SectionLessons({
   return (
     <>
       {lessons.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Belum ada lesson.</p>
+        <p className="text-sm text-muted-foreground">Belum ada materi.</p>
       ) : (
         <ul className="space-y-2">
           {lessons.map((lesson, index) => (
@@ -148,7 +148,7 @@ function SectionLessons({
 
       <Button variant="outline" size="sm" className="mt-4" onClick={() => setCreateOpen(true)} disabled={createLesson.isPending}>
         <Plus className="mr-1 size-4" />
-        Add lesson
+        Tambah materi
       </Button>
 
       <LessonModal open={createOpen} onOpenChange={setCreateOpen} isPending={createLesson.isPending} onSubmit={handleCreate} />
@@ -183,7 +183,7 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
     if (!title) return;
     try {
       await createSection.mutateAsync({ title });
-      toast.success("Section ditambahkan.");
+      toast.success("Bab ditambahkan.");
       setNewSectionTitle("");
     } catch (e) {
       toast.error(errorMessage(e));
@@ -205,7 +205,7 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
     if (!title) return;
     try {
       await updateSection.mutateAsync({ sectionId, input: { title } });
-      toast.success("Section diperbarui.");
+      toast.success("Bab diperbarui.");
       setEditingSectionId(null);
       setEditingSectionTitle("");
     } catch (e) {
@@ -214,10 +214,10 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
   }
 
   async function handleDeleteSection(sectionId: string) {
-    if (!confirm("Hapus section ini beserta lesson-nya?")) return;
+    if (!confirm("Hapus bab ini beserta materi-nya?")) return;
     try {
       await deleteSection.mutateAsync(sectionId);
-      toast.success("Section dihapus.");
+      toast.success("Bab dihapus.");
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -274,25 +274,25 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
       <form onSubmit={handleAddSection} className="flex items-end gap-2">
         <div className="flex-1">
           <label htmlFor="new-section-title" className="mb-1 block text-sm font-medium">
-            New section
+            Bab baru
           </label>
           <Input
             id="new-section-title"
             value={newSectionTitle}
             onChange={(e) => setNewSectionTitle(e.target.value)}
-            placeholder="Section title"
+            placeholder="Judul bab"
             disabled={createSection.isPending}
           />
         </div>
         <Button type="submit" disabled={!newSectionTitle.trim() || createSection.isPending}>
           <Plus className="mr-1 size-4" />
-          Add section
+          Tambah bab
         </Button>
       </form>
 
       {sectionList.length === 0 && (
         <div className="rounded-lg border p-8 text-center text-muted-foreground">
-          Belum ada section. Tambahkan section pertama di atas.
+          Belum ada bab. Tambahkan bab pertama di atas.
         </div>
       )}
 

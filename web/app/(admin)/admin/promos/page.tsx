@@ -87,7 +87,7 @@ export default function PromosPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Hapus kode promo ini? Tindakan tidak dapat dibatalkan.")) return;
+    if (!confirm("Hapus kode promo ini? Tindakan ini tidak dapat dibatalkan.")) return;
     try {
       await remove.mutateAsync(id);
       toast.success("Kode promo dihapus.");
@@ -99,8 +99,8 @@ export default function PromosPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Promos</h1>
-        <Button onClick={openCreate}>Create promo code</Button>
+        <h1 className="text-2xl font-semibold">Promo</h1>
+        <Button onClick={openCreate}>Buat kode promo</Button>
       </div>
 
       {isLoading && (
@@ -122,16 +122,16 @@ export default function PromosPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Code</th>
-                <th className="px-4 py-3 text-left font-medium">Discount</th>
-                <th className="px-4 py-3 text-left font-medium">Used / Max</th>
-                <th className="px-4 py-3 text-left font-medium">Expires</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
+                <th className="px-4 py-3 text-left font-medium">Kode</th>
+                <th className="px-4 py-3 text-left font-medium">Diskon</th>
+                <th className="px-4 py-3 text-left font-medium">Digunakan / Maks</th>
+                <th className="px-4 py-3 text-left font-medium">Kadaluarsa</th>
+                <th className="px-4 py-3 text-right font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {promos?.map((promo) => (
-                <tr key={promo.id} className="border-t">
+                <tr key={promo.id} className="border-t hover:bg-muted/40">
                   <td className="px-4 py-3 font-medium">{promo.code}</td>
                   <td className="px-4 py-3">{discountLabel(promo)}</td>
                   <td className="px-4 py-3">{usageText(promo)}</td>
@@ -147,7 +147,7 @@ export default function PromosPage() {
                         onClick={() => handleDelete(promo.id)}
                         disabled={remove.isPending}
                       >
-                        Delete
+                        Hapus
                       </Button>
                     </div>
                   </td>
@@ -156,7 +156,7 @@ export default function PromosPage() {
               {(promos?.length ?? 0) === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                    Tidak ada kode promo.
+                    Belum ada kode promo.
                   </td>
                 </tr>
               )}

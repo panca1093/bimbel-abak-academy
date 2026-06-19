@@ -18,6 +18,13 @@ import type { Product, ProductType, AdminCreateProductInput, AdminUpdateProductI
 
 const FILTER_TYPES: (ProductType | "all")[] = ["all", "book", "course", "package"];
 
+const FILTER_LABELS: Record<ProductType | "all", string> = {
+  all: "Semua",
+  book: "Buku",
+  course: "Kursus",
+  package: "Paket",
+};
+
 function typeBadgeClass(type: ProductType): string {
   switch (type) {
     case "book":
@@ -128,8 +135,8 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Products</h1>
-        <Button onClick={openCreate}>Create product</Button>
+        <h1 className="text-2xl font-semibold">Produk</h1>
+        <Button onClick={openCreate}>Buat produk</Button>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -140,7 +147,7 @@ export default function ProductsPage() {
             size="sm"
             onClick={() => setFilter(t)}
           >
-            {t}
+            {FILTER_LABELS[t]}
           </Button>
         ))}
       </div>
@@ -164,20 +171,23 @@ export default function ProductsPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Name</th>
-                <th className="px-4 py-3 text-left font-medium">Type</th>
-                <th className="px-4 py-3 text-left font-medium">Price</th>
-                <th className="px-4 py-3 text-left font-medium">Stock</th>
+                <th className="px-4 py-3 text-left font-medium">Nama</th>
+                <th className="px-4 py-3 text-left font-medium">Jenis</th>
+                <th className="px-4 py-3 text-left font-medium">Harga</th>
+                <th className="px-4 py-3 text-left font-medium">Stok</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
+                <th className="px-4 py-3 text-right font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((product) => (
-                <tr key={product.id} className="border-t">
+                <tr
+                  key={product.id}
+                  className="border-t transition-colors hover:bg-muted/40"
+                >
                   <td className="px-4 py-3 font-medium">{product.name}</td>
                   <td className="px-4 py-3">
-                    <Badge className={typeBadgeClass(product.type)}>{product.type}</Badge>
+                    <Badge className={typeBadgeClass(product.type)}>{FILTER_LABELS[product.type]}</Badge>
                   </td>
                   <td className="px-4 py-3">{formatRupiah(product.price)}</td>
                   <td className="px-4 py-3">{product.type === "book" ? (product.stock ?? "-") : "-"}</td>
@@ -193,7 +203,7 @@ export default function ProductsPage() {
                           onClick={() => handlePublish(product.id)}
                           disabled={publish.isPending}
                         >
-                          Publish
+                          Publikasikan
                         </Button>
                       )}
                       <Button size="sm" variant="outline" onClick={() => openEdit(product)}>
@@ -205,7 +215,7 @@ export default function ProductsPage() {
                         onClick={() => handleDelete(product.id)}
                         disabled={remove.isPending}
                       >
-                        Delete
+                        Hapus
                       </Button>
                     </div>
                   </td>

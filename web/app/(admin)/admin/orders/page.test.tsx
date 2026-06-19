@@ -109,9 +109,9 @@ describe("OrdersPage", () => {
 
     const row = screen.getByText(/Buku A/).closest("tr");
     expect(row).toBeTruthy();
-    expect(within(row!).queryByRole("button", { name: /confirm/i })).toBeInTheDocument();
-    expect(within(row!).queryByRole("button", { name: /reconcile/i })).toBeInTheDocument();
-    expect(within(row!).queryByRole("button", { name: /ship/i })).not.toBeInTheDocument();
+    expect(within(row!).queryByRole("button", { name: /konfirmasi/i })).toBeInTheDocument();
+    expect(within(row!).queryByRole("button", { name: /rekonsiliasi/i })).toBeInTheDocument();
+    expect(within(row!).queryByRole("button", { name: /kirim/i })).not.toBeInTheDocument();
     expect(within(row!).queryByRole("button", { name: /refund/i })).not.toBeInTheDocument();
   });
 
@@ -123,7 +123,7 @@ describe("OrdersPage", () => {
     await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
 
     const row = screen.getByText(/Buku A/).closest("tr");
-    const confirmButton = within(row!).getByRole("button", { name: /confirm/i });
+    const confirmButton = within(row!).getByRole("button", { name: /konfirmasi/i });
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
@@ -141,7 +141,7 @@ describe("OrdersPage", () => {
     await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
     const row = screen.getByText(/Buku Shipped/).closest("tr");
-    const shipButton = within(row!).getByRole("button", { name: /ship/i });
+    const shipButton = within(row!).getByRole("button", { name: /kirim/i });
     fireEvent.click(shipButton);
 
     await waitFor(() => {
@@ -182,7 +182,7 @@ describe("OrdersPage", () => {
 
     await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
-    const paidChip = screen.getByRole("button", { name: /^paid$/i });
+    const paidChip = screen.getByRole("button", { name: /^dibayar$/i });
     fireEvent.click(paidChip);
 
     expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument();

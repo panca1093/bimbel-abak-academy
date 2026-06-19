@@ -55,25 +55,25 @@ function CreateCourseModal({
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Create course</DialogTitle>
-            <DialogDescription>Add a new course to the catalog.</DialogDescription>
+            <DialogTitle>Buat kursus</DialogTitle>
+            <DialogDescription>Tambahkan kursus baru ke katalog.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="course-title">Title</Label>
+              <Label htmlFor="course-title">Judul</Label>
               <Input
                 id="course-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Course title"
+                placeholder="Judul kursus"
                 disabled={isPending}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="course-level">Level</Label>
+                <Label htmlFor="course-level">Jenjang</Label>
                 <Input
                   id="course-level"
                   value={level}
@@ -84,7 +84,7 @@ function CreateCourseModal({
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="course-subject">Subject</Label>
+                <Label htmlFor="course-subject">Mapel</Label>
                 <Input
                   id="course-subject"
                   value={subject}
@@ -96,12 +96,12 @@ function CreateCourseModal({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="course-instructor">Instructor</Label>
+              <Label htmlFor="course-instructor">Pengajar</Label>
               <Input
                 id="course-instructor"
                 value={instructorName}
                 onChange={(e) => setInstructorName(e.target.value)}
-                placeholder="Instructor name"
+                placeholder="Nama pengajar"
                 disabled={isPending}
               />
             </div>
@@ -109,10 +109,10 @@ function CreateCourseModal({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-              Cancel
+              Batal
             </Button>
             <Button type="submit" disabled={!title.trim() || isPending}>
-              {isPending ? "Saving..." : "Save"}
+              {isPending ? "Menyimpan..." : "Simpan"}
             </Button>
           </DialogFooter>
         </form>
@@ -144,8 +144,8 @@ export default function CoursesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Course Builder</h1>
-        <Button onClick={() => setModalOpen(true)}>Create course</Button>
+        <h1 className="text-2xl font-semibold">Kursus</h1>
+        <Button onClick={() => setModalOpen(true)}>Buat kursus</Button>
       </div>
 
       {isLoading && (
@@ -167,17 +167,17 @@ export default function CoursesPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Title</th>
-                <th className="px-4 py-3 text-left font-medium">Level</th>
-                <th className="px-4 py-3 text-left font-medium">Subject</th>
-                <th className="px-4 py-3 text-left font-medium">Instructor</th>
+                <th className="px-4 py-3 text-left font-medium">Judul</th>
+                <th className="px-4 py-3 text-left font-medium">Jenjang</th>
+                <th className="px-4 py-3 text-left font-medium">Mapel</th>
+                <th className="px-4 py-3 text-left font-medium">Pengajar</th>
               </tr>
             </thead>
             <tbody>
               {(courses ?? []).map((course) => (
                 <tr
                   key={course.id}
-                  className="border-t cursor-pointer hover:bg-muted/50"
+                  className="border-t cursor-pointer transition-colors hover:bg-muted/40"
                   onClick={() => openCourse(course)}
                 >
                   <td className="px-4 py-3 font-medium">{course.title}</td>

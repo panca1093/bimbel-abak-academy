@@ -85,10 +85,10 @@ describe("CourseBuilderPage", () => {
 
     await waitFor(() => expect(screen.getByDisplayValue("Matematika Dasar")).toBeInTheDocument());
 
-    const titleInput = screen.getByLabelText(/title/i);
+    const titleInput = screen.getByLabelText(/judul/i);
     fireEvent.input(titleInput, { target: { value: "Matematika Lanjut" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /save metadata/i }));
+    fireEvent.click(screen.getByRole("button", { name: /simpan metadata/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(

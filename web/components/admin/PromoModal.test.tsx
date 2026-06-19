@@ -22,9 +22,9 @@ describe("PromoModal", () => {
       />
     );
 
-    expect(screen.getByRole("dialog", { name: /create promo code/i })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/e\.g\. diskon10/i)).toHaveValue("");
-    expect(screen.getByLabelText(/discount type/i)).toHaveValue("percent");
+    expect(screen.getByRole("dialog", { name: /buat kode promo/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/contoh: diskon10/i)).toHaveValue("");
+    expect(screen.getByLabelText(/jenis diskon/i)).toHaveValue("percent");
   });
 
   it("renders edit modal prefilled with promo data", () => {
@@ -49,7 +49,7 @@ describe("PromoModal", () => {
       />
     );
 
-    expect(screen.getByRole("dialog", { name: /edit promo code/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /edit kode promo/i })).toBeInTheDocument();
     expect(screen.getByDisplayValue("DISKON10")).toBeInTheDocument();
     expect(screen.getByDisplayValue("10")).toBeInTheDocument();
     expect(screen.getByDisplayValue("100")).toBeInTheDocument();
@@ -65,11 +65,11 @@ describe("PromoModal", () => {
       />
     );
 
-    fireEvent.input(screen.getByPlaceholderText(/e\.g\. diskon10/i), { target: { value: "DISKON15" } });
-    fireEvent.input(screen.getByLabelText(/discount value/i), { target: { value: "15" } });
-    fireEvent.input(screen.getByLabelText(/max uses/i), { target: { value: "50" } });
+    fireEvent.input(screen.getByPlaceholderText(/contoh: diskon10/i), { target: { value: "DISKON15" } });
+    fireEvent.input(screen.getByLabelText(/nilai diskon/i), { target: { value: "15" } });
+    fireEvent.input(screen.getByLabelText(/maksimal penggunaan/i), { target: { value: "50" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
       expect(mockOnSubmit).toHaveBeenCalledWith(
@@ -92,15 +92,15 @@ describe("PromoModal", () => {
       />
     );
 
-    fireEvent.input(screen.getByPlaceholderText(/e\.g\. diskon10/i), { target: { value: "CASHBACK20K" } });
+    fireEvent.input(screen.getByPlaceholderText(/contoh: diskon10/i), { target: { value: "CASHBACK20K" } });
 
-    const typeSelect = screen.getByLabelText(/discount type/i);
+    const typeSelect = screen.getByLabelText(/jenis diskon/i);
     fireEvent.change(typeSelect, { target: { value: "fixed" } });
 
-    fireEvent.input(screen.getByLabelText(/discount value/i), { target: { value: "20000" } });
-    fireEvent.input(screen.getByLabelText(/min order amount/i), { target: { value: "50000" } });
+    fireEvent.input(screen.getByLabelText(/nilai diskon/i), { target: { value: "20000" } });
+    fireEvent.input(screen.getByLabelText(/minimal pembelian/i), { target: { value: "50000" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
       expect(mockOnSubmit).toHaveBeenCalledWith(
@@ -132,15 +132,15 @@ describe("PromoModal", () => {
       />
     );
 
-    fireEvent.input(screen.getByLabelText(/max uses/i), { target: { value: "200" } });
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    fireEvent.input(screen.getByLabelText(/maksimal penggunaan/i), { target: { value: "200" } });
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
       expect(mockOnSubmit).toHaveBeenCalledWith({ max_uses: 200 });
     });
   });
 
-  it("disables save when code or discount value is empty", () => {
+  it("disables save when code or nilai diskon is empty", () => {
     render(
       <PromoModal
         open={true}
@@ -150,7 +150,7 @@ describe("PromoModal", () => {
       />
     );
 
-    const saveButton = screen.getByRole("button", { name: /^save$/i });
+    const saveButton = screen.getByRole("button", { name: /^simpan$/i });
     expect(saveButton).toBeDisabled();
   });
 });

@@ -79,14 +79,14 @@ describe("ProductsPage", () => {
 
     await waitFor(() => expect(screen.getByText("Buku Matematika")).toBeInTheDocument());
 
-    const courseChip = screen.getByRole("button", { name: /course/i });
+    const courseChip = screen.getByRole("button", { name: /^kursus$/i });
     fireEvent.click(courseChip);
 
     expect(screen.queryByText("Buku Matematika")).not.toBeInTheDocument();
     expect(screen.getByText("Kursus Fisika")).toBeInTheDocument();
     expect(screen.queryByText("Paket UTBK")).not.toBeInTheDocument();
 
-    const allChip = screen.getByRole("button", { name: /^all$/i });
+    const allChip = screen.getByRole("button", { name: /^semua$/i });
     fireEvent.click(allChip);
 
     expect(screen.getByText("Buku Matematika")).toBeInTheDocument();
@@ -101,20 +101,20 @@ describe("ProductsPage", () => {
 
     await waitFor(() => expect(screen.getByText("Buku Matematika")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /create product/i }));
+    fireEvent.click(screen.getByRole("button", { name: /buat produk/i }));
 
-    expect(screen.getByRole("dialog", { name: /create product/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /buat produk/i })).toBeInTheDocument();
 
-    const nameInput = screen.getByLabelText(/name/i);
+    const nameInput = screen.getByLabelText(/nama/i);
     fireEvent.input(nameInput, { target: { value: "Buku Baru" } });
 
-    const priceInput = screen.getByLabelText(/price/i);
+    const priceInput = screen.getByLabelText(/harga/i);
     fireEvent.input(priceInput, { target: { value: "10000" } });
 
-    const typeSelect = screen.getByLabelText(/type/i);
+    const typeSelect = screen.getByLabelText(/jenis/i);
     fireEvent.change(typeSelect, { target: { value: "book" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
@@ -133,16 +133,16 @@ describe("ProductsPage", () => {
 
     const row = screen.getByText("Buku Matematika").closest("tr");
     expect(row).toBeTruthy();
-    const editButton = within(row!).getByRole("button", { name: /edit/i });
+    const editButton = within(row!).getByRole("button", { name: /^edit$/i });
     fireEvent.click(editButton);
 
-    expect(screen.getByRole("dialog", { name: /edit product/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /edit produk/i })).toBeInTheDocument();
     expect(screen.getByDisplayValue("Buku Matematika")).toBeInTheDocument();
 
-    const nameInput = screen.getByLabelText(/name/i);
+    const nameInput = screen.getByLabelText(/nama/i);
     fireEvent.input(nameInput, { target: { value: "Buku Edit" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
@@ -161,7 +161,7 @@ describe("ProductsPage", () => {
 
     const row = screen.getByText("Kursus Fisika").closest("tr");
     expect(row).toBeTruthy();
-    const publishButton = within(row!).getByRole("button", { name: /publish/i });
+    const publishButton = within(row!).getByRole("button", { name: /publikasikan/i });
     fireEvent.click(publishButton);
 
     await waitFor(() => {
@@ -180,7 +180,7 @@ describe("ProductsPage", () => {
 
     const row = screen.getByText("Paket UTBK").closest("tr");
     expect(row).toBeTruthy();
-    const deleteButton = within(row!).getByRole("button", { name: /delete/i });
+    const deleteButton = within(row!).getByRole("button", { name: /hapus/i });
     fireEvent.click(deleteButton);
 
     await waitFor(() => {

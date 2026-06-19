@@ -110,7 +110,7 @@ describe("PromosPage", () => {
 
     await waitFor(() => expect(screen.getByText("DISKON10")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /create promo code/i }));
+    fireEvent.click(screen.getByRole("button", { name: /buat kode promo/i }));
     fireEvent.click(screen.getByTestId("modal-save"));
 
     await waitFor(() => {
@@ -153,7 +153,7 @@ describe("PromosPage", () => {
 
     const row = screen.getByText("CASHBACK20K").closest("tr");
     expect(row).toBeTruthy();
-    const deleteButton = within(row!).getByRole("button", { name: /delete/i });
+    const deleteButton = within(row!).getByRole("button", { name: /hapus/i });
     fireEvent.click(deleteButton);
 
     await waitFor(() => {

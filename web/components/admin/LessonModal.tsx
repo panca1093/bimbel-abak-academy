@@ -71,26 +71,26 @@ export function LessonModal({ open, onOpenChange, lesson, onSubmit, isPending }:
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "Edit lesson" : "Create lesson"}</DialogTitle>
+            <DialogTitle>{isEdit ? "Edit materi" : "Tambah materi"}</DialogTitle>
             <DialogDescription>
-              {isEdit ? "Update lesson details." : "Add a new lesson to this section."}
+              {isEdit ? "Perbarui detail materi." : "Tambahkan materi baru ke bab ini."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="lesson-title">Title</Label>
+              <Label htmlFor="lesson-title">Judul</Label>
               <Input
                 id="lesson-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Lesson title"
+                placeholder="Judul materi"
                 disabled={isPending}
               />
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="lesson-video">Video URL</Label>
+              <Label htmlFor="lesson-video">URL Video</Label>
               <Input
                 id="lesson-video"
                 value={videoUrl}
@@ -101,7 +101,7 @@ export function LessonModal({ open, onOpenChange, lesson, onSubmit, isPending }:
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="lesson-duration">Duration (seconds)</Label>
+              <Label htmlFor="lesson-duration">Durasi (detik)</Label>
               <Input
                 id="lesson-duration"
                 type="number"
@@ -121,10 +121,10 @@ export function LessonModal({ open, onOpenChange, lesson, onSubmit, isPending }:
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              Batal
             </Button>
             <Button type="submit" disabled={!canSubmit || isPending}>
-              {isPending ? "Saving..." : "Save"}
+              {isPending ? "Menyimpan..." : "Simpan"}
             </Button>
           </DialogFooter>
         </form>

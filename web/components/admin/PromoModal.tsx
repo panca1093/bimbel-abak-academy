@@ -115,29 +115,29 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "Edit promo code" : "Create promo code"}</DialogTitle>
+            <DialogTitle>{isEdit ? "Edit kode promo" : "Buat kode promo"}</DialogTitle>
             <DialogDescription>
               {isEdit
-                ? "Update promo code limits and expiry."
-                : "Add a new promo code to the catalog."}
+                ? "Perbarui batas penggunaan dan tanggal kadaluarsa kode promo."
+                : "Tambahkan kode promo baru ke katalog."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="promo-code">Code</Label>
+              <Label htmlFor="promo-code">Kode</Label>
               <Input
                 id="promo-code"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. DISKON10"
+                placeholder="contoh: DISKON10"
                 disabled={isEdit || isPending}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="promo-discount-type">Discount type</Label>
+                <Label htmlFor="promo-discount-type">Jenis diskon</Label>
                 <select
                   id="promo-discount-type"
                   value={discountType}
@@ -145,13 +145,13 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
                   disabled={isEdit || isPending}
                   className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
                 >
-                  <option value="percent">Percent</option>
-                  <option value="fixed">Fixed amount</option>
+                  <option value="percent">Persen</option>
+                  <option value="fixed">Nominal tetap</option>
                 </select>
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="promo-discount-value">Discount value</Label>
+                <Label htmlFor="promo-discount-value">Nilai diskon</Label>
                 <Input
                   id="promo-discount-value"
                   type="number"
@@ -167,7 +167,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
 
             {discountType === "percent" && !isEdit && (
               <div className="grid gap-2">
-                <Label htmlFor="promo-max-discount">Max discount amount (IDR)</Label>
+                <Label htmlFor="promo-max-discount">Maksimal potongan (IDR)</Label>
                 <Input
                   id="promo-max-discount"
                   type="number"
@@ -182,7 +182,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
 
             {!isEdit && (
               <div className="grid gap-2">
-                <Label htmlFor="promo-min-order">Min order amount (IDR)</Label>
+                <Label htmlFor="promo-min-order">Minimal pembelian (IDR)</Label>
                 <Input
                   id="promo-min-order"
                   type="number"
@@ -197,20 +197,20 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="promo-max-uses">Max uses</Label>
+                <Label htmlFor="promo-max-uses">Maksimal penggunaan</Label>
                 <Input
                   id="promo-max-uses"
                   type="number"
                   min={0}
                   value={maxUses}
                   onChange={(e) => setMaxUses(e.target.value)}
-                  placeholder="Unlimited"
+                  placeholder="Tanpa batas"
                   disabled={isPending}
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="promo-expires">Expires at</Label>
+                <Label htmlFor="promo-expires">Kadaluarsa</Label>
                 <Input
                   id="promo-expires"
                   type="date"
@@ -229,10 +229,10 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
               onClick={() => onOpenChange(false)}
               disabled={isPending}
             >
-              Cancel
+              Batal
             </Button>
             <Button type="submit" disabled={!canSubmit || isPending}>
-              {isPending ? "Saving..." : "Save"}
+              {isPending ? "Menyimpan..." : "Simpan"}
             </Button>
           </DialogFooter>
         </form>
