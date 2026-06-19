@@ -40,19 +40,12 @@ func (h *Handler) Login(c echo.Context) error {
 	if req.Identifier == "" || req.Password == "" {
 		return badRequest(c, "identifier and password are required")
 	}
-	pending, otpRequired, access, refresh, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
+	access, refresh, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	if otpRequired {
-		return c.JSON(http.StatusOK, map[string]any{
-			"otp_required":  true,
-			"pending_token": pending,
-		})
-	}
 	claims, _ := h.svc.ParseAccess(access)
 	return c.JSON(http.StatusOK, map[string]any{
-		"otp_required":  false,
 		"access_token":  access,
 		"refresh_token": refresh,
 		"user":          userPayload(claims.Sub, claims.Role, ""),
@@ -69,19 +62,12 @@ func (h *Handler) GoogleLogin(c echo.Context) error {
 	if req.IDToken == "" {
 		return badRequest(c, "id_token is required")
 	}
-	pending, otpRequired, access, refresh, err := h.svc.GoogleLogin(c.Request().Context(), req.IDToken)
+	access, refresh, err := h.svc.GoogleLogin(c.Request().Context(), req.IDToken)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	if otpRequired {
-		return c.JSON(http.StatusOK, map[string]any{
-			"otp_required":  true,
-			"pending_token": pending,
-		})
-	}
 	claims, _ := h.svc.ParseAccess(access)
 	return c.JSON(http.StatusOK, map[string]any{
-		"otp_required":  false,
 		"access_token":  access,
 		"refresh_token": refresh,
 		"user":          userPayload(claims.Sub, claims.Role, ""),

@@ -17,19 +17,19 @@ type googleTokenInfo struct {
 	Name          string `json:"name"`
 }
 
-func (s *Service) GoogleLogin(ctx context.Context, idToken string) (pendingToken string, otpRequired bool, accessToken string, refreshToken string, err error) {
+func (s *Service) GoogleLogin(ctx context.Context, idToken string) (accessToken string, refreshToken string, err error) {
 	info, err := s.verifyGoogleToken(ctx, idToken)
 	if err != nil {
-		return "", false, "", "", err
+		return "", "", err
 	}
 	if info.Aud != s.cfg.GoogleClientID || info.EmailVerified != "true" {
-		return "", false, "", "", ErrInvalidToken
+		return "", "", ErrInvalidToken
 	}
 
 	email := normalizeEmail(info.Email)
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return "", false, "", "", err
+		return "", "", err
 	}
 
 	if user == nil {
@@ -41,26 +41,14 @@ func (s *Service) GoogleLogin(ctx context.Context, idToken string) (pendingToken
 			OTPEnabled: false,
 		}
 		if err := s.repo.CreateUser(ctx, newUser); err != nil {
-			return "", false, "", "", err
+			return "", "", err
 		}
 		user = newUser
 	} else if user.Status != "active" {
-		return "", false, "", "", ErrAccountDeactivated
+		return "", "", ErrAccountDeactivated
 	}
 
-	if !user.OTPEnabled {
-		access, refresh, err := s.mintSession(ctx, user)
-		if err != nil {
-			return "", false, "", "", err
-		}
-		return "", false, access, refresh, nil
-	}
-
-	pending, err := s.startOTPChallenge(ctx, user)
-	if err != nil {
-		return "", false, "", "", err
-	}
-	return pending, true, "", "", nil
+	return s.mintSession(ctx, user)
 }
 
 func (s *Service) verifyGoogleToken(ctx context.Context, idToken string) (*googleTokenInfo, error) {

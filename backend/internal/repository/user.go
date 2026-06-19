@@ -110,6 +110,15 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, userID, hash string
 	return err
 }
 
+// DisableOTP sets otp_enabled=false after the user verifies their registration.
+func (r *Repository) DisableOTP(ctx context.Context, userID string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET otp_enabled = false, updated_at = now() WHERE id = $1`,
+		userID,
+	)
+	return err
+}
+
 // UpdateUserProfile patches the editable profile fields. nil args leave the
 // column unchanged via COALESCE. Email normalization is the caller's job.
 func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username *string) error {

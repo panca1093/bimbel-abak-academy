@@ -100,6 +100,15 @@ func (f *fakeRepo) UpdateUserProfile(_ context.Context, userID string, name, ema
 	return nil
 }
 
+func (f *fakeRepo) DisableOTP(_ context.Context, userID string) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return fmt.Errorf("not found")
+	}
+	u.OTPEnabled = false
+	return nil
+}
+
 func (f *fakeRepo) TombstoneUser(_ context.Context, userID string) error {
 	u, ok := f.byID[userID]
 	if !ok {
@@ -249,18 +258,17 @@ func TestRegisterHandler_DuplicateEmail(t *testing.T) {
 	}
 }
 
-func TestLoginHandler_OTPEnabled(t *testing.T) {
+func TestLoginHandler_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
 	env.repo.seed(&model.User{
 		ID:           "u1",
-		Email:        strptr("otp@example.com"),
+		Email:        strptr("user@example.com"),
 		PasswordHash: mustHash("password123"),
 		Role:         service.RoleStudent,
 		Status:       "active",
-		OTPEnabled:   true,
 	})
 	rec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
-		"identifier": "otp@example.com",
+		"identifier": "user@example.com",
 		"password":   "password123",
 	})
 	if rec.Code != http.StatusOK {
@@ -268,36 +276,36 @@ func TestLoginHandler_OTPEnabled(t *testing.T) {
 	}
 	var resp map[string]any
 	json.NewDecoder(rec.Body).Decode(&resp)
-	if resp["otp_required"] != true {
-		t.Errorf("want otp_required=true, got %v", resp["otp_required"])
+	if resp["access_token"] == "" || resp["access_token"] == nil {
+		t.Error("want access_token")
 	}
-	if resp["pending_token"] == "" || resp["pending_token"] == nil {
-		t.Error("want non-empty pending_token")
+	if resp["refresh_token"] == "" || resp["refresh_token"] == nil {
+		t.Error("want refresh_token")
 	}
 }
 
 func TestVerifyOTPHandler_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
-	env.repo.seed(&model.User{
-		ID:           "u1",
-		Email:        strptr("otp@example.com"),
-		PasswordHash: mustHash("password123"),
-		Role:         service.RoleStudent,
-		Status:       "active",
-		OTPEnabled:   true,
-	})
 
-	// Login to get pending_token
-	loginRec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
-		"identifier": "otp@example.com",
-		"password":   "password123",
+	// Register to create an OTP challenge.
+	regRec := postJSON(t, env.e, "/api/v1/auth/register", map[string]string{
+		"email":    "otp@example.com",
+		"password": "password123",
+		"name":     "OTP User",
 	})
-	var loginResp map[string]any
-	json.NewDecoder(loginRec.Body).Decode(&loginResp)
-	pendingToken := loginResp["pending_token"].(string)
+	if regRec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d body=%s", regRec.Code, regRec.Body.String())
+	}
+	var regResp map[string]any
+	json.NewDecoder(regRec.Body).Decode(&regResp)
+	pendingToken := regResp["pending_token"].(string)
 
-	// Get OTP from miniredis
-	otpCode, _ := env.mr.Get("otp:u1")
+	// Resolve userID from pending token and read OTP from miniredis.
+	userID, _ := env.mr.Get("pending:" + pendingToken)
+	if userID == "" {
+		t.Fatal("pending token not stored in redis")
+	}
+	otpCode, _ := env.mr.Get("otp:" + userID)
 	if otpCode == "" {
 		t.Fatal("otp not stored in redis")
 	}
