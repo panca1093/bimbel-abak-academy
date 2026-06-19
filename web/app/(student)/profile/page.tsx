@@ -19,6 +19,35 @@ function initials(name?: string): string {
   return (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "");
 }
 
+function LockedField({
+  id,
+  label,
+  value,
+  isLoading,
+}: {
+  id: string;
+  label: string;
+  value?: string;
+  isLoading: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      {isLoading ? (
+        <Skeleton className="h-9 w-full rounded-md" />
+      ) : (
+        <Input
+          id={id}
+          value={value ?? ""}
+          placeholder="—"
+          disabled
+          readOnly
+        />
+      )}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { data: profile, isLoading, isError, error, refetch } = useProfile();
   const updateUser = useAuthStore((s) => s.user);
@@ -143,6 +172,14 @@ export default function ProfilePage() {
                     disabled={isLoading || updateProfile.isPending}
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <LockedField id="phone" label="Nomor telepon" value={profile?.phone} isLoading={isLoading} />
+                <LockedField id="nis" label="NIS" value={profile?.nis} isLoading={isLoading} />
+                <LockedField id="grade" label="Kelas / Grade" value={profile?.grade} isLoading={isLoading} />
+                <LockedField id="target_exam" label="Target ujian" value={profile?.target_exam} isLoading={isLoading} />
+                <LockedField id="alamat_domisili" label="Alamat domisili" value={profile?.alamat_domisili} isLoading={isLoading} />
               </div>
 
               <div className="pt-2">

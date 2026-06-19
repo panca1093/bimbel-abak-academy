@@ -28,6 +28,13 @@ export interface UpdateProfileInput {
   name?: string;
   email?: string;
   username?: string;
+  phone?: string;
+  nis?: string;
+  grade?: string;
+  target_exam?: string;
+  alamat_domisili?: string;
+  dob?: string;
+  gender?: string;
 }
 
 export function useUpdateProfile() {

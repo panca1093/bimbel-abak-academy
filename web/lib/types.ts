@@ -18,6 +18,13 @@ export interface User {
   school_id?: string;
   status?: string;
   otp_enabled?: boolean;
+  phone?: string;
+  nis?: string;
+  grade?: string;
+  target_exam?: string;
+  alamat_domisili?: string;
+  dob?: string;
+  gender?: string;
 }
 
 export interface LoginResponse {

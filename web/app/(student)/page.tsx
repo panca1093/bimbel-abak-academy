@@ -1,13 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, ChevronRight, Plus } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronRight,
+  Plus,
+  Trophy,
+  Clock,
+  Target,
+  Construction,
+} from "lucide-react";
 import { useDashboard } from "@/lib/hooks/students";
 import { useAuthStore } from "@/stores/auth";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { PendingBanner } from "@/components/dashboard/PendingBanner";
 
 const COURSE_GRADIENTS = [
@@ -77,6 +86,52 @@ export default function DashboardPage() {
               amount={data.pending_order.amount}
             />
           )}
+
+          <section className="mb-8">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <DashboardStubCard
+                title="Peringkat saya"
+                icon={Trophy}
+                placeholder="Total peringkat akan tersedia setelah ujian pertama."
+              />
+              <DashboardStubCard
+                title="Total jam belajar"
+                icon={Clock}
+                placeholder="Ringkasan waktu belajar akan hadir di sini."
+              >
+                <div className="mx-auto my-2 size-28 rounded-full border-8 border-brand-100 border-t-brand-600" />
+              </DashboardStubCard>
+              <DashboardStubCard
+                title="Progress ujian"
+                icon={Target}
+                placeholder="Statistik progress ujian sedang disiapkan."
+              >
+                <div className="my-2 space-y-3">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-ink-500">
+                      <span>Tryout 1</span>
+                      <span>—</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-ink-100" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-ink-500">
+                      <span>Tryout 2</span>
+                      <span>—</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-ink-100" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-ink-500">
+                      <span>Tryout 3</span>
+                      <span>—</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-ink-100" />
+                  </div>
+                </div>
+              </DashboardStubCard>
+            </div>
+          </section>
 
           <section className="mb-8">
             <div className="mb-4 flex items-center justify-between">
@@ -182,6 +237,39 @@ function EmptyCourses() {
       <Button asChild size="sm" className="mt-2">
         <Link href="/catalog">Buka katalog</Link>
       </Button>
+    </Card>
+  );
+}
+
+function DashboardStubCard({
+  title,
+  icon: Icon,
+  placeholder,
+  children,
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  placeholder: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <Card className="flex flex-col border-line px-5 py-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="flex size-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+            <Icon className="size-4" />
+          </div>
+          <h3 className="font-serif text-base font-semibold text-ink-900">{title}</h3>
+        </div>
+        <Badge variant="outline" className="text-[10px] font-medium">
+          <Construction className="mr-1 size-3" />
+          Akan datang
+        </Badge>
+      </div>
+      <div className="flex flex-1 flex-col justify-center">
+        {children}
+      </div>
+      <p className="mt-3 text-xs text-ink-500">{placeholder}</p>
     </Card>
   );
 }
