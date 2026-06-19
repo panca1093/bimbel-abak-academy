@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { User, Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
 import { useLogin } from "@/lib/hooks/auth";
+import { redirectForRole } from "@/lib/auth-redirect";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,7 @@ export default function LoginPage() {
         router.push(`/otp?id=${encodeURIComponent(identifier)}`);
         return;
       }
-      router.push("/");
+      router.push(redirectForRole(data.user?.role));
     } catch (err) {
       const msg =
         err instanceof ApiError ? err.message : "Gagal masuk. Coba lagi.";

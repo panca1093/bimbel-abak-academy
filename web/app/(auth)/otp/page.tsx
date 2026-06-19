@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ShieldCheck, Loader2, AlertCircle } from "lucide-react";
 
 import { useVerifyOtp } from "@/lib/hooks/auth";
+import { redirectForRole } from "@/lib/auth-redirect";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { OtpInput } from "@/components/auth/OtpInput";
@@ -38,9 +39,9 @@ function OtpForm() {
     try {
       const pending_token =
         typeof window !== "undefined" ? sessionStorage.getItem("abak-pending-token") ?? "" : "";
-      await verify.mutateAsync({ identifier, code, pending_token });
+      const data = await verify.mutateAsync({ identifier, code, pending_token });
       if (typeof window !== "undefined") sessionStorage.removeItem("abak-pending-token");
-      router.push("/");
+      router.push(redirectForRole(data.user?.role));
     } catch (err) {
       const msg =
         err instanceof ApiError ? err.message : "Kode OTP tidak valid atau kedaluwarsa.";

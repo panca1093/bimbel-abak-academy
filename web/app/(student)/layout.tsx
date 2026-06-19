@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { useAuthStore } from "@/stores/auth";
-import { Header } from "@/components/shell/Header";
-import { BottomNav } from "@/components/shell/BottomNav";
+import { AppShell } from "@/components/shell/AppShell";
+import { ADMIN_ROLES } from "@/lib/nav-config";
+import type { UserRole } from "@/lib/nav-config";
 
 const SNAP_SRC =
   process.env.NEXT_PUBLIC_MIDTRANS_SNAP_URL ??
@@ -18,26 +19,29 @@ export default function StudentLayout({
   children: React.ReactNode;
 }) {
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
+
+  const role = user?.role as UserRole | undefined;
 
   useEffect(() => {
     setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (hydrated && !token) {
+    if (!hydrated) return;
+    if (!token) {
       router.replace("/login");
+      return;
     }
-  }, [hydrated, token, router]);
+    if (role && ADMIN_ROLES.includes(role)) {
+      router.replace("/admin");
+    }
+  }, [hydrated, token, role, router]);
 
-  if (!hydrated) {
-    return null;
-  }
-
-  if (!token) {
-    return null;
-  }
+  if (!hydrated || !token) return null;
+  if (role && ADMIN_ROLES.includes(role)) return null;
 
   return (
     <>
@@ -47,11 +51,7 @@ export default function StudentLayout({
         strategy="afterInteractive"
         data-client-key={SNAP_CLIENT_KEY}
       />
-      <div className="flex min-h-screen flex-col bg-paper">
-        <Header />
-        <main className="flex-1 pb-20 md:pb-0">{children}</main>
-        <BottomNav />
-      </div>
+      <AppShell role="student">{children}</AppShell>
     </>
   );
 }

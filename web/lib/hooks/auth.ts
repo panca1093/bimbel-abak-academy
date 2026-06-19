@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiFetch, authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import type { LoginResponse, User } from "@/lib/types";
@@ -71,5 +71,14 @@ export function useLogout() {
     onSettled: () => {
       clear();
     },
+  });
+}
+
+export function useMe(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: () => authFetch<User>(`/auth/me`),
+    enabled: options?.enabled ?? true,
+    staleTime: 5 * 60 * 1000,
   });
 }
