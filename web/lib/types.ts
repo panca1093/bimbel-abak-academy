@@ -203,6 +203,44 @@ export interface CourseSession {
   completed_lessons?: Record<string, string>;
 }
 
+export interface PromoCode {
+  id: string;
+  code: string;
+  discount_percent?: number;
+  discount_amount?: number;
+  min_order_amount?: number;
+  max_discount_amount?: number;
+  max_uses?: number;
+  used_count: number;
+  expires_at?: string;
+  created_at?: string;
+}
+
+export interface AdminCreatePromoCodeInput {
+  code: string;
+  discount_percent?: number;
+  discount_amount?: number;
+  max_discount_amount?: number;
+  min_order_amount?: number;
+  max_uses?: number;
+  expires_at?: string;
+}
+
+export interface AdminUpdatePromoCodeInput {
+  max_uses?: number;
+  expires_at?: string;
+}
+
+export interface RevenueByTypeItem {
+  total: number;
+  count: number;
+}
+
+export interface AdminRevenue {
+  total: number;
+  by_type: Record<string, RevenueByTypeItem>;
+}
+
 export interface PromoValidation {
   code: string;
   discount: number;
