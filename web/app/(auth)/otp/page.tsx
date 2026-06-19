@@ -36,7 +36,10 @@ function OtpForm() {
     }
     setError(null);
     try {
-      await verify.mutateAsync({ identifier, code });
+      const pending_token =
+        typeof window !== "undefined" ? sessionStorage.getItem("abak-pending-token") ?? "" : "";
+      await verify.mutateAsync({ identifier, code, pending_token });
+      if (typeof window !== "undefined") sessionStorage.removeItem("abak-pending-token");
       router.push("/");
     } catch (err) {
       const msg =

@@ -24,6 +24,9 @@ export default function LoginPage() {
     try {
       const data = await login.mutateAsync({ identifier, password });
       if (data.otp_required) {
+        if (data.pending_token && typeof window !== "undefined") {
+          sessionStorage.setItem("abak-pending-token", data.pending_token);
+        }
         router.push(`/otp?id=${encodeURIComponent(identifier)}`);
         return;
       }

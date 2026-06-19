@@ -13,9 +13,10 @@ export const productsKeys = {
 export function useProducts(type?: ProductType) {
   return useQuery({
     queryKey: productsKeys.list(type),
-    queryFn: () => {
+    queryFn: async () => {
       const qs = type ? `?type=${encodeURIComponent(type)}` : "";
-      return apiFetch<Product[]>(`/products${qs}`);
+      const res = await apiFetch<{ data: Product[]; next_cursor?: string }>(`/products${qs}`);
+      return res.data;
     },
   });
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, ShoppingCart, X } from "lucide-react";
 import { useCart, useRemoveCartItem, useValidatePromo } from "@/lib/hooks/orders";
 import { formatRupiah } from "@/lib/format";
-import type { Order, OrderItem } from "@/lib/types";
+import type { OrderItem } from "@/lib/types";
 import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoInput } from "@/components/cart/PromoInput";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
@@ -14,11 +14,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 
 export default function CartPage() {
-  const { data: carts, isLoading, isError, error, refetch } = useCart();
+  const { data: cart, isLoading, isError, error, refetch } = useCart();
   const removeItem = useRemoveCartItem();
   const validatePromo = useValidatePromo();
 
-  const cart: Order | undefined = carts?.[0];
   const items: OrderItem[] = cart?.items ?? [];
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
   const discount = cart?.discount ?? 0;

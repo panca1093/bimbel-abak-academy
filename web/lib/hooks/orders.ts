@@ -14,7 +14,10 @@ export const ordersKeys = {
 export function useOrders() {
   return useQuery({
     queryKey: ordersKeys.list(),
-    queryFn: () => authFetch<Order[]>(`/orders`),
+    queryFn: async () => {
+      const res = await authFetch<{ data: Order[]; next_cursor?: string }>(`/orders`);
+      return res.data;
+    },
   });
 }
 
@@ -29,7 +32,7 @@ export function useOrder(id: string) {
 export function useCart() {
   return useQuery({
     queryKey: ordersKeys.cart(),
-    queryFn: () => authFetch<Order[]>(`/orders?status=cart`),
+    queryFn: () => authFetch<Order>(`/orders`, { method: "POST" }),
   });
 }
 
@@ -109,6 +112,7 @@ export function useCheckout() {
     mutationFn: (orderId: string) =>
       authFetch<CheckoutResult>(`/orders/${encodeURIComponent(orderId)}/checkout`, {
         method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ordersKeys.cart() });
@@ -123,6 +127,7 @@ export function useRetryPayment() {
     mutationFn: (orderId: string) =>
       authFetch<CheckoutResult>(`/orders/${encodeURIComponent(orderId)}/retry`, {
         method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
       }),
     onSuccess: (data, orderId) => {
       qc.invalidateQueries({ queryKey: ordersKeys.detail(orderId) });

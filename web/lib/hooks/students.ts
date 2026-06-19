@@ -45,7 +45,7 @@ export function useUpdateProfile() {
 }
 
 export interface ChangePasswordInput {
-  old_password: string;
+  current_password: string;
   new_password: string;
 }
 

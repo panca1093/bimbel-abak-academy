@@ -43,7 +43,7 @@ export function ChangePasswordForm() {
     if (Object.keys(next).length > 0) return;
 
     mutation.mutate(
-      { old_password: oldPassword, new_password: newPassword },
+      { current_password: oldPassword, new_password: newPassword },
       {
         onSuccess: () => {
           toast.success("Kata sandi berhasil diperbarui.");

@@ -134,7 +134,6 @@ export interface PromoValidation {
 
 export interface CheckoutResult {
   snap_token: string;
-  order_id: string | number;
   gateway_ref?: string;
   payment_expires_at?: string;
 }

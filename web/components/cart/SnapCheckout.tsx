@@ -31,12 +31,12 @@ export function SnapCheckout({ orderId, disabled }: SnapCheckoutProps) {
           onSuccess: () => {
             qc.invalidateQueries({ queryKey: ordersKeys.cart() });
             qc.invalidateQueries({ queryKey: ordersKeys.list() });
-            router.push(`/orders/${data.order_id}`);
+            router.push(`/orders/${orderId}`);
           },
           onPending: () => {
             qc.invalidateQueries({ queryKey: ordersKeys.cart() });
             qc.invalidateQueries({ queryKey: ordersKeys.list() });
-            router.push(`/orders/${data.order_id}`);
+            router.push(`/orders/${orderId}`);
           },
           onError: () => {
             toast.error("Pembayaran gagal. Coba metode lain atau ulangi sebentar lagi.");
