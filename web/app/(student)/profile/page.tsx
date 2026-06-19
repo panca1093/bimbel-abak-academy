@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, UserRound } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useAuthStore } from "@/stores/auth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -10,7 +10,6 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChangePasswordForm } from "@/components/profile/ChangePasswordForm";
 import { toast } from "sonner";
 
 function initials(name?: string): string {
@@ -50,7 +49,9 @@ function LockedField({
 
 export default function ProfilePage() {
   const { data: profile, isLoading, isError, error, refetch } = useProfile();
-  const updateUser = useAuthStore((s) => s.user);
+  const authUser = useAuthStore((s) => s.user);
+  const setSession = useAuthStore((s) => s.setSession);
+  const token = useAuthStore((s) => s.token);
   const updateProfile = useUpdateProfile();
 
   const [name, setName] = useState("");
@@ -75,6 +76,9 @@ export default function ProfilePage() {
       {
         onSuccess: (updated) => {
           toast.success("Profil tersimpan.");
+          if (updated && token) {
+            setSession(token, updated);
+          }
           if (updated) {
             setName(updated.name ?? name);
             setEmail(updated.email ?? email);
@@ -91,7 +95,7 @@ export default function ProfilePage() {
     );
   }
 
-  const displayName = profile?.name ?? updateUser?.name ?? "";
+  const displayName = profile?.name ?? authUser?.name ?? "";
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10">
@@ -100,7 +104,7 @@ export default function ProfilePage() {
           Profil
         </h1>
         <p className="mt-2 text-sm text-ink-500">
-          Kelola nama, email, dan kata sandi akun Anda.
+          Kelola nama dan email akun Anda.
         </p>
       </header>
 
@@ -118,91 +122,76 @@ export default function ProfilePage() {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
-          <Card className="px-6 py-6">
-            <div className="mb-6 flex items-center gap-4">
+        <Card className="px-6 py-6">
+          <div className="mb-6 flex items-center gap-4">
+            {isLoading ? (
+              <Skeleton className="size-16 rounded-full" />
+            ) : (
+              <Avatar className="size-16 rounded-full">
+                <AvatarFallback className="size-16 rounded-full bg-brand-100 text-brand-700 font-semibold">
+                  {initials(displayName) || "?"}
+                </AvatarFallback>
+              </Avatar>
+            )}
+            <div className="min-w-0">
               {isLoading ? (
-                <Skeleton className="size-16 rounded-full" />
+                <Skeleton className="h-5 w-40" />
               ) : (
-                <Avatar className="size-16 rounded-full">
-                  <AvatarFallback className="size-16 rounded-full bg-brand-100 text-brand-700 font-semibold">
-                    {initials(displayName) || "?"}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="font-serif text-xl font-semibold text-ink-900">
+                  {displayName || "Tanpa nama"}
+                </div>
               )}
-              <div className="min-w-0">
-                {isLoading ? (
-                  <Skeleton className="h-5 w-40" />
-                ) : (
-                  <div className="font-serif text-xl font-semibold text-ink-900">
-                    {displayName || "Tanpa nama"}
-                  </div>
-                )}
-                {isLoading ? (
-                  <Skeleton className="mt-2 h-4 w-56" />
-                ) : (
-                  <div className="truncate text-sm text-ink-500">
-                    {profile?.username ? `${profile.username} · ` : ""}
-                    {profile?.email ?? ""}
-                  </div>
-                )}
+              {isLoading ? (
+                <Skeleton className="mt-2 h-4 w-56" />
+              ) : (
+                <div className="truncate text-sm text-ink-500">
+                  {profile?.username ? `${profile.username} · ` : ""}
+                  {profile?.email ?? ""}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <form onSubmit={handleSave} className="flex flex-col gap-4" noValidate>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="name">Nama lengkap</Label>
+                <Input
+                  id="name"
+                  value={hydrated ? name : ""}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nama lengkap"
+                  disabled={isLoading || updateProfile.isPending}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={hydrated ? email : ""}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="email@contoh.com"
+                  disabled={isLoading || updateProfile.isPending}
+                />
               </div>
             </div>
 
-            <form onSubmit={handleSave} className="flex flex-col gap-4" noValidate>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="name">Nama lengkap</Label>
-                  <Input
-                    id="name"
-                    value={hydrated ? name : ""}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Nama lengkap"
-                    disabled={isLoading || updateProfile.isPending}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={hydrated ? email : ""}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="email@contoh.com"
-                    disabled={isLoading || updateProfile.isPending}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <LockedField id="phone" label="Nomor telepon" value={profile?.phone} isLoading={isLoading} />
-                <LockedField id="nis" label="NIS" value={profile?.nis} isLoading={isLoading} />
-                <LockedField id="grade" label="Kelas / Grade" value={profile?.grade} isLoading={isLoading} />
-                <LockedField id="target_exam" label="Target ujian" value={profile?.target_exam} isLoading={isLoading} />
-                <LockedField id="alamat_domisili" label="Alamat domisili" value={profile?.alamat_domisili} isLoading={isLoading} />
-              </div>
-
-              <div className="pt-2">
-                <Button type="submit" disabled={updateProfile.isPending || isLoading}>
-                  {updateProfile.isPending ? "Menyimpan…" : "Simpan perubahan"}
-                </Button>
-              </div>
-            </form>
-          </Card>
-
-          <Card className="px-6 py-6">
-            <div className="mb-4 flex items-center gap-2">
-              <UserRound className="size-5 text-brand-600" />
-              <h2 className="font-serif text-lg font-semibold text-ink-900">
-                Keamanan
-              </h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <LockedField id="phone" label="Nomor telepon" value={profile?.phone} isLoading={isLoading} />
+              <LockedField id="nis" label="NIS" value={profile?.nis} isLoading={isLoading} />
+              <LockedField id="grade" label="Kelas / Grade" value={profile?.grade} isLoading={isLoading} />
+              <LockedField id="target_exam" label="Target ujian" value={profile?.target_exam} isLoading={isLoading} />
+              <LockedField id="alamat_domisili" label="Alamat domisili" value={profile?.alamat_domisili} isLoading={isLoading} />
             </div>
-            <p className="mb-4 text-sm text-ink-500">
-              Kata sandi baru minimal 8 karakter.
-            </p>
-            <ChangePasswordForm />
-          </Card>
-        </div>
+
+            <div className="pt-2">
+              <Button type="submit" disabled={updateProfile.isPending || isLoading}>
+                {updateProfile.isPending ? "Menyimpan…" : "Simpan perubahan"}
+              </Button>
+            </div>
+          </form>
+        </Card>
       )}
     </div>
   );

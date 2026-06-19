@@ -39,9 +39,6 @@ vi.mock("@/lib/hooks/students", () => ({
   useChangePassword: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
-vi.mock("@/components/profile/ChangePasswordForm", () => ({
-  ChangePasswordForm: () => <div data-testid="change-password-form">ChangePasswordForm</div>,
-}));
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
