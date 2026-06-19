@@ -29,6 +29,7 @@ export interface User {
   alamat_domisili?: string;
   dob?: string;
   gender?: string;
+  photo_url?: string;
 }
 
 export interface LoginResponse {

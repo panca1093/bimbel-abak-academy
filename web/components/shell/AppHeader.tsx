@@ -1,19 +1,22 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Menu,
   Search,
-  Globe,
   Moon,
+  Sun,
   Bell,
   LogOut,
+  UserCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
+import { useUIStore, type Lang } from "@/stores/ui";
 import { useLogout } from "@/lib/hooks/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -34,6 +37,11 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useLogout();
+
+  const theme = useUIStore((s) => s.theme);
+  const lang = useUIStore((s) => s.lang);
+  const toggleTheme = useUIStore((s) => s.toggleTheme);
+  const setLang = useUIStore((s) => s.setLang);
 
   const initial = (user?.name ?? user?.email ?? user?.username ?? "A")
     .trim()
@@ -71,22 +79,37 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
       </div>
 
       <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Ganti bahasa"
-          className="hidden sm:flex"
-        >
-          <Globe className="size-5 text-ink-600" />
-        </Button>
+        {/* ID / EN segmented language toggle */}
+        <div className="hidden overflow-hidden rounded-lg border border-line bg-surface sm:flex">
+          {(["id", "en"] as Lang[]).map((l) => (
+            <button
+              key={l}
+              onClick={() => setLang(l)}
+              className={cn(
+                "cursor-pointer border-0 px-3 py-[7px] text-[12.5px] font-bold uppercase transition-colors",
+                lang === l
+                  ? "bg-brand-600 text-white"
+                  : "bg-transparent text-ink-500 hover:text-ink-700"
+              )}
+            >
+              {l.toUpperCase()}
+            </button>
+          ))}
+        </div>
 
+        {/* Dark / light mode toggle */}
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Mode gelap"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Mode terang" : "Mode gelap"}
           className="hidden sm:flex"
         >
-          <Moon className="size-5 text-ink-600" />
+          {theme === "dark" ? (
+            <Sun className="size-5 text-ink-600" />
+          ) : (
+            <Moon className="size-5 text-ink-600" />
+          )}
         </Button>
 
         <Button
@@ -103,12 +126,13 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className={cn(
-                "flex items-center gap-2 px-2",
-                "hidden md:flex"
-              )}
+              className="hidden items-center gap-2 px-2 md:flex"
             >
               <Avatar size="sm">
+                <AvatarImage
+                  src={user?.photo_url ?? undefined}
+                  alt={user?.name ?? "User"}
+                />
                 <AvatarFallback className="bg-brand-600 text-xs font-semibold text-white">
                   {initial}
                 </AvatarFallback>
@@ -116,18 +140,27 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
               <span className="max-w-[120px] truncate text-sm font-medium text-ink-900">
                 {user?.name ?? "Akun"}
               </span>
-              <Badge
-                variant="secondary"
-                className="text-[10px] font-normal"
-              >
+              <Badge variant="secondary" className="text-[10px] font-normal">
                 {roleLabel}
               </Badge>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel className="truncate text-ink-900">
-              {user?.name ?? "Akun"}
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuLabel className="text-ink-900">
+              <div className="truncate font-medium">
+                {user?.name ?? "Akun"}
+              </div>
+              <div className="text-[11px] font-normal text-ink-500">
+                {roleLabel}
+              </div>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/profile" className="flex items-center">
+                <UserCircle className="size-4" />
+                <span className="ml-2">Profil</span>
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="size-4" />

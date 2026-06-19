@@ -61,6 +61,42 @@
 
 body {
   font-family: var(--font-sans);
+  font-size: 15px;
+}
+
+/* Dark mode — mirrors design-app-abak/source/styles.css :root[data-theme="dark"] */
+html[data-theme="dark"] {
+  --color-paper:     #0e1020;
+  --color-surface:   #181b30;
+  --color-surface-2: #1f2238;
+  --color-ink-900: #eceefa;
+  --color-ink-700: #ccd0e6;
+  --color-ink-600: #a6abcc;
+  --color-ink-500: #868cb0;
+  --color-ink-400: #686e92;
+  --color-line:    #2c3050;
+  --color-line-2:  #242843;
+
+  /* brighter brand on dark surfaces */
+  --color-brand-50:  rgba(81, 97, 232, .18);
+  --color-brand-100: rgba(81, 97, 232, .28);
+  --color-brand-200: rgba(81, 97, 232, .42);
+  --color-brand-600: #6e7cee;
+  --color-brand-700: #9ca6f6;
+
+  /* status: dark tints + brighter foregrounds */
+  --color-info:       #6ba0f0;
+  --color-info-bg:    rgba(37, 99, 216, .22);
+  --color-warn:       #e0974a;
+  --color-warn-bg:    rgba(194, 104, 10, .22);
+  --color-danger:     #e68479;
+  --color-danger-bg:  rgba(211, 58, 46, .24);
+  --color-success:    #4fc78d;
+  --color-success-bg: rgba(31, 158, 99, .22);
+  --color-violet:     #a98fe6;
+  --color-violet-bg:  rgba(124, 77, 219, .26);
+  --color-gold:       #d6bb5e;
+  --color-gold-bg:    rgba(176, 134, 18, .24);
 }
 
 /* shadcn semantic-token bridge: map shadcn --primary/--background/etc. to
