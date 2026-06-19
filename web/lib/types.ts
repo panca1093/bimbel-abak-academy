@@ -127,6 +127,7 @@ export interface CourseSection {
   course_id: string;
   title: string;
   position?: number;
+  lessons?: Lesson[];
   created_at?: string;
 }
 
@@ -139,6 +140,53 @@ export interface Lesson {
   position?: number;
   completed?: boolean;
   created_at?: string;
+}
+
+export interface AdminCourseDetail extends Course {
+  section_count?: number;
+  lesson_count?: number;
+}
+
+export interface AdminCreateCourseInput {
+  title: string;
+  level?: string;
+  subject?: string;
+  instructor_name?: string;
+}
+
+export interface AdminUpdateCourseInput {
+  title?: string;
+  level?: string;
+  subject?: string;
+  instructor_name?: string;
+}
+
+export interface AdminCreateSectionInput {
+  title: string;
+}
+
+export interface AdminUpdateSectionInput {
+  title: string;
+}
+
+export interface AdminCreateLessonInput {
+  title: string;
+  video_url?: string;
+  duration?: number;
+}
+
+export interface AdminUpdateLessonInput {
+  title?: string;
+  video_url?: string;
+  duration?: number;
+}
+
+export interface AdminReorderSectionsInput {
+  section_ids: string[];
+}
+
+export interface AdminReorderLessonsInput {
+  lesson_ids: string[];
 }
 
 export interface CourseSession {

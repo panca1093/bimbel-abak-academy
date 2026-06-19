@@ -1,0 +1,5 @@
+{
+  "status": "DONE",
+  "summary": "Built Content Manager Course Builder: admin courses list with create at /admin/courses, course builder at /admin/courses/[id] editing metadata and curriculum via sections/lessons CRUD and up/down reorder endpoints. Added lib/hooks/admin-courses.ts with TanStack Query hooks, components/admin/SectionEditor.tsx and LessonModal.tsx, extended lib/types.ts. All 52 tests pass; npm run build green.",
+  "commit": "2ed8ed6"
+}
