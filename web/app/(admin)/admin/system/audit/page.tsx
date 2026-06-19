@@ -3,5 +3,5 @@
 import { ComingSoon } from "@/components/shell/ComingSoon";
 
 export default function SystemAuditPage() {
-  return <ComingSoon title="Audit" />;
+  return <ComingSoon title="Audit Log" />;
 }

@@ -3,5 +3,5 @@
 import { ComingSoon } from "@/components/shell/ComingSoon";
 
 export default function ExamBanksPage() {
-  return <ComingSoon title="Question Banks" />;
+  return <ComingSoon title="Bank Soal" />;
 }

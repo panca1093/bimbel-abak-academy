@@ -3,5 +3,5 @@
 import { ComingSoon } from "@/components/shell/ComingSoon";
 
 export default function SystemConfigPage() {
-  return <ComingSoon title="Config" />;
+  return <ComingSoon title="Pengaturan" />;
 }

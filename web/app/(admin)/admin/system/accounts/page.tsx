@@ -3,5 +3,5 @@
 import { ComingSoon } from "@/components/shell/ComingSoon";
 
 export default function SystemAccountsPage() {
-  return <ComingSoon title="Accounts" />;
+  return <ComingSoon title="Akun" />;
 }

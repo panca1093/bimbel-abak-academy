@@ -3,5 +3,5 @@
 import { ComingSoon } from "@/components/shell/ComingSoon";
 
 export default function ExamSchedulesPage() {
-  return <ComingSoon title="Schedules" />;
+  return <ComingSoon title="Jadwal" />;
 }
