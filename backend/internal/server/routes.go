@@ -95,6 +95,13 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	studentCourses.POST("/:id/lessons/:lId/complete", h.StudentMarkLessonComplete)
 	studentCourses.GET("/:id/progress", h.StudentCourseProgress)
 
+	// Student profile/dashboard routes
+	students := v1.Group("/students")
+	students.Use(handler.JWTMiddleware(svc, jwtSigner))
+	students.GET("/dashboard", h.StudentDashboard)
+	students.GET("/profile", h.StudentProfile)
+	students.PATCH("/profile", h.StudentUpdateProfile)
+
 	// Admin order routes
 	adminOrders := admin.Group("/orders")
 	adminOrders.Use(handler.RBACMiddleware("orders:write"))

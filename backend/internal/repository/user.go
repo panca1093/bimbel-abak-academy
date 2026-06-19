@@ -110,6 +110,21 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, userID, hash string
 	return err
 }
 
+// UpdateUserProfile patches the editable profile fields. nil args leave the
+// column unchanged via COALESCE. Email normalization is the caller's job.
+func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username *string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users
+		SET name = COALESCE($1, name),
+		    email = COALESCE($2, email),
+		    username = COALESCE($3, username),
+		    updated_at = now()
+		WHERE id = $4`,
+		name, email, username, userID,
+	)
+	return err
+}
+
 func (r *Repository) TombstoneUser(ctx context.Context, userID string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users

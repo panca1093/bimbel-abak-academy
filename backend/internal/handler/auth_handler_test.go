@@ -83,6 +83,23 @@ func (f *fakeRepo) UpdatePasswordHash(_ context.Context, userID, hash string) er
 	return nil
 }
 
+func (f *fakeRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username *string) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return fmt.Errorf("not found")
+	}
+	if name != nil {
+		u.Name = *name
+	}
+	if email != nil {
+		u.Email = email
+	}
+	if username != nil {
+		u.Username = username
+	}
+	return nil
+}
+
 func (f *fakeRepo) TombstoneUser(_ context.Context, userID string) error {
 	u, ok := f.byID[userID]
 	if !ok {

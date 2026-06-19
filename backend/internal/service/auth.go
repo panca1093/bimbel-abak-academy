@@ -22,6 +22,7 @@ type UserRepository interface {
 	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
 	GetUserByID(ctx context.Context, id string) (*model.User, error)
 	UpdatePasswordHash(ctx context.Context, userID, hash string) error
+	UpdateUserProfile(ctx context.Context, userID string, name, email, username *string) error
 	TombstoneUser(ctx context.Context, userID string) error
 }
 
