@@ -11,6 +11,8 @@ export type OrderStatus =
   | "payment_expired"
   | "cancelled";
 
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "failed" | "refunded";
+
 export interface User {
   id: string;
   email?: string;
