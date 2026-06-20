@@ -36,6 +36,9 @@ import { toast } from "sonner";
 
 const GRADES = ["7", "8", "9", "10", "11", "12"];
 
+const PROFILE_INPUT_CLASS =
+  "h-11 w-full rounded-md border border-line bg-surface px-3.5 text-sm text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-400 focus-visible:border-brand-400 focus-visible:ring-[3px] focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-500 read-only:bg-surface-2/60";
+
 function initials(name?: string): string {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -78,9 +81,11 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id} className="text-xs font-semibold text-ink-600">
+        {label}
+      </Label>
       {isLoading ? (
-        <Skeleton className="h-9 w-full rounded-md" />
+        <Skeleton className="h-11 w-full rounded-md" />
       ) : (
         <Input
           id={id}
@@ -90,7 +95,7 @@ function Field({
           disabled={locked || !onChange}
           readOnly={locked || !onChange}
           onChange={onChange ? (e) => onChange(e.target.value) : undefined}
-          className={locked ? "bg-surface-2/60" : undefined}
+          className={PROFILE_INPUT_CLASS}
         />
       )}
       {hint && <div className="text-xs text-ink-400">{hint}</div>}
@@ -257,7 +262,7 @@ export default function ProfilePage() {
       setPhone(profile.phone ?? "");
       setAddress(profile.alamat_domisili ?? "");
       setTargetExam(profile.target_exam ?? "");
-      setGrade(profile.grade ?? "");
+      setGrade(profile.grade != null ? String(profile.grade) : "");
       setSchoolId(profile.school_id ?? "");
       setWaNotif(!!profile.phone);
     }
@@ -286,13 +291,18 @@ export default function ProfilePage() {
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    const gradeNum = grade ? parseInt(grade, 10) : undefined;
+    if (gradeNum !== undefined && Number.isNaN(gradeNum)) {
+      toast.error("Kelas tidak valid.");
+      return;
+    }
     updateProfile.mutate(
       {
         name: name || undefined,
         phone: phone || undefined,
         address: address || undefined,
         target_exam: targetExam || undefined,
-        grade: grade || undefined,
+        grade: gradeNum,
         school_id: schoolId || undefined,
       },
       {
@@ -384,37 +394,39 @@ export default function ProfilePage() {
                 {isLoading ? (
                   <Skeleton className="size-20 rounded-full" />
                 ) : (
-                  <Avatar
-                    size="lg"
-                    className={`size-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-brand-700 ring-4 ring-surface shadow-sm ${
-                      photoUploading ? "animate-pulse" : ""
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={photoUploading}
+                    aria-label={t("upload_photo")}
+                    className="relative flex size-20 cursor-pointer items-center justify-center rounded-full border-0 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {profile?.photo_url ? (
-                      <AvatarImage
-                        src={profile.photo_url}
-                        alt={displayName}
-                        className="object-cover"
-                      />
-                    ) : null}
-                    <AvatarFallback className="rounded-full bg-transparent text-2xl font-semibold">
-                      {initials(displayName)}
-                    </AvatarFallback>
-                  </Avatar>
+                    <Avatar
+                      size="lg"
+                      className={`size-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-brand-700 ring-4 ring-surface shadow-sm ${
+                        photoUploading ? "animate-pulse" : ""
+                      }`}
+                    >
+                      {profile?.photo_url ? (
+                        <AvatarImage
+                          src={profile.photo_url}
+                          alt={displayName}
+                          className="object-cover"
+                        />
+                      ) : null}
+                      <AvatarFallback className="rounded-full bg-transparent text-2xl font-semibold">
+                        {initials(displayName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="absolute -right-1 -bottom-1 flex size-8 items-center justify-center rounded-full bg-brand-600 text-white shadow-md ring-2 ring-surface transition-transform hover:scale-110">
+                      {photoUploading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Camera className="size-4" />
+                      )}
+                    </span>
+                  </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isLoading || photoUploading}
-                  aria-label={t("upload_photo")}
-                  className="absolute -right-1 -bottom-1 flex size-8 items-center justify-center rounded-full bg-brand-600 text-white shadow-md ring-2 ring-surface transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:opacity-50"
-                >
-                  {photoUploading ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Camera className="size-4" />
-                  )}
-                </button>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -435,6 +447,14 @@ export default function ProfilePage() {
                       {displayName || t("unnamed")}
                     </div>
                     <div className="truncate text-sm text-ink-500">{metaLine}</div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={photoUploading}
+                      className="mt-2 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-60"
+                    >
+                      {photoUploading ? t("saving") : t("upload_photo")}
+                    </button>
                   </>
                 )}
               </div>
@@ -445,7 +465,7 @@ export default function ProfilePage() {
               className="flex flex-col gap-4"
               noValidate
             >
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field
                   id="name"
                   label={t("full_name")}
@@ -469,9 +489,11 @@ export default function ProfilePage() {
                   isLoading={isLoading}
                 />
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="school">{t("school")}</Label>
+                  <Label htmlFor="school" className="text-xs font-semibold text-ink-600">
+                    {t("school")}
+                  </Label>
                   {isLoading ? (
-                    <Skeleton className="h-9 w-full rounded-md" />
+                    <Skeleton className="h-11 w-full rounded-md" />
                   ) : editMode ? (
                     <Select
                       value={schoolId || "_empty_"}
@@ -480,7 +502,7 @@ export default function ProfilePage() {
                       }
                       disabled={schoolsLoading}
                     >
-                      <SelectTrigger id="school">
+                      <SelectTrigger id="school" className={PROFILE_INPUT_CLASS}>
                         <SelectValue placeholder={t("select_school")} />
                       </SelectTrigger>
                       <SelectContent>
@@ -500,20 +522,22 @@ export default function ProfilePage() {
                       value={schoolName ?? profile?.school_id ?? "—"}
                       readOnly
                       disabled
-                      className="bg-surface-2/60"
+                      className={PROFILE_INPUT_CLASS}
                     />
                   )}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="grade">{t("grade")}</Label>
+                  <Label htmlFor="grade" className="text-xs font-semibold text-ink-600">
+                    {t("grade")}
+                  </Label>
                   {isLoading ? (
-                    <Skeleton className="h-9 w-full rounded-md" />
+                    <Skeleton className="h-11 w-full rounded-md" />
                   ) : editMode ? (
                     <Select
                       value={grade || "_empty_"}
                       onValueChange={(v) => setGrade(v === "_empty_" ? "" : v)}
                     >
-                      <SelectTrigger id="grade">
+                      <SelectTrigger id="grade" className={PROFILE_INPUT_CLASS}>
                         <SelectValue placeholder={t("select_grade")} />
                       </SelectTrigger>
                       <SelectContent>
@@ -530,10 +554,10 @@ export default function ProfilePage() {
                   ) : (
                     <Input
                       id="grade"
-                      value={profile?.grade ?? "—"}
+                      value={profile?.grade != null ? String(profile.grade) : "—"}
                       readOnly
                       disabled
-                      className="bg-surface-2/60"
+                      className={PROFILE_INPUT_CLASS}
                     />
                   )}
                 </div>
@@ -607,8 +631,8 @@ export default function ProfilePage() {
             <h3 className="mb-4 text-[15px] font-semibold text-ink-900">
               {t("notif_prefs")}
             </h3>
-            <div className="flex flex-col gap-3">
-              <label className="flex items-center justify-between gap-3">
+            <div className="flex flex-col">
+              <label className="flex items-center justify-between gap-3 py-3">
                 <div>
                   <div className="text-sm text-ink-900">{t("email_notif")}</div>
                   <div className="text-xs text-ink-400">
@@ -620,8 +644,7 @@ export default function ProfilePage() {
                   onClick={() => setEmailNotif((v) => !v)}
                 />
               </label>
-              <div className="h-px bg-line" />
-              <label className="flex items-center justify-between gap-3">
+              <label className="flex items-center justify-between gap-3 py-3">
                 <div>
                   <div className="text-sm text-ink-900">{t("wa_notif")}</div>
                   <div className="text-xs text-ink-400">
@@ -630,8 +653,7 @@ export default function ProfilePage() {
                 </div>
                 <Switch on={waNotif} onClick={() => setWaNotif((v) => !v)} />
               </label>
-              <div className="h-px bg-line" />
-              <label className="flex items-center justify-between gap-3">
+              <label className="flex items-center justify-between gap-3 py-3">
                 <span className="text-sm text-ink-900">{t("push_notif")}</span>
                 <Switch
                   on={pushNotif}
