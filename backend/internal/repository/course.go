@@ -144,6 +144,21 @@ func (r *Repository) CountLessonsByCourse(ctx context.Context, courseID uuid.UUI
 	return count, err
 }
 
+// SumCompletedLessonMinutes returns the total duration_seconds for the given lesson IDs.
+func (r *Repository) SumCompletedLessonMinutes(ctx context.Context, lessonIDs []uuid.UUID) (int, error) {
+	if len(lessonIDs) == 0 {
+		return 0, nil
+	}
+	var total int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(duration_seconds), 0)
+		FROM lesson
+		WHERE id = ANY($1)`,
+		lessonIDs,
+	).Scan(&total)
+	return total, err
+}
+
 // --- Section CRUD (re-keyed to course_id) ---
 
 func (r *Repository) ListSections(ctx context.Context, courseID uuid.UUID) ([]model.Section, error) {

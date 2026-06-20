@@ -29,9 +29,30 @@ type DashboardPendingOrder struct {
 	Amount  float64 `json:"amount"`
 }
 
+type DashboardStudySummary struct {
+	VisitedLectures      int     `json:"visited_lectures"`
+	TotalLectures        int     `json:"total_lectures"`
+	EnrolledCoursesCount int     `json:"enrolled_courses_count"`
+	CompletedCourses     int     `json:"completed_courses"`
+	TotalMinutes         float64 `json:"total_minutes"`
+}
+
+// DashboardLeaderboardEntry is a placeholder — populated when ranking data exists.
+type DashboardLeaderboardEntry struct{}
+
+type DashboardRanking struct {
+	Position    *int                      `json:"position"`
+	Points      *float64                  `json:"points"`
+	Leaderboard []DashboardLeaderboardEntry `json:"leaderboard"`
+}
+
 type DashboardView struct {
 	EnrolledCourses []DashboardCourseSummary `json:"enrolled_courses"`
 	PendingOrder    *DashboardPendingOrder   `json:"pending_order,omitempty"`
+	StudySummary    DashboardStudySummary    `json:"study_summary"`
+	Ranking         DashboardRanking         `json:"ranking"`
+	ExamProgress    []interface{}            `json:"exam_progress"`
+	PopularLessons  []interface{}            `json:"popular_lessons"`
 }
 
 type PresignedUploadURL struct {
@@ -54,6 +75,12 @@ func (s *Service) GetDashboard(ctx context.Context, studentID string) (*Dashboar
 	}
 
 	courses := make([]DashboardCourseSummary, 0, len(sessions))
+
+	var visitedLectures int
+	var totalLectures int
+	var completedCourses int
+	var allCompletedLessonIDs []uuid.UUID
+
 	for _, sess := range sessions {
 		course, err := s.storeRepo.GetCourseByID(ctx, sess.CourseID)
 		if err != nil {
@@ -68,6 +95,17 @@ func (s *Service) GetDashboard(ctx context.Context, studentID string) (*Dashboar
 		if total > 0 {
 			progress = float64(done) / float64(total)
 		}
+
+		visitedLectures += done
+		totalLectures += total
+		if done >= total {
+			completedCourses++
+		}
+
+		for lessonID := range sess.CompletedLessons {
+			allCompletedLessonIDs = append(allCompletedLessonIDs, lessonID)
+		}
+
 		courses = append(courses, DashboardCourseSummary{
 			ID:           course.ID.String(),
 			Title:        course.Title,
@@ -75,6 +113,15 @@ func (s *Service) GetDashboard(ctx context.Context, studentID string) (*Dashboar
 			TotalLessons: total,
 			DoneLessons:  done,
 		})
+	}
+
+	var totalMinutes float64
+	if len(allCompletedLessonIDs) > 0 {
+		totalSeconds, err := s.storeRepo.SumCompletedLessonMinutes(ctx, allCompletedLessonIDs)
+		if err != nil {
+			return nil, err
+		}
+		totalMinutes = float64(totalSeconds) / 60.0
 	}
 
 	pending, err := s.getPendingOrder(ctx, sID)
@@ -85,6 +132,20 @@ func (s *Service) GetDashboard(ctx context.Context, studentID string) (*Dashboar
 	return &DashboardView{
 		EnrolledCourses: courses,
 		PendingOrder:    pending,
+		StudySummary: DashboardStudySummary{
+			VisitedLectures:      visitedLectures,
+			TotalLectures:        totalLectures,
+			EnrolledCoursesCount: len(sessions),
+			CompletedCourses:     completedCourses,
+			TotalMinutes:         totalMinutes,
+		},
+		Ranking: DashboardRanking{
+			Position:    nil,
+			Points:      nil,
+			Leaderboard: []DashboardLeaderboardEntry{},
+		},
+		ExamProgress:   []interface{}{},
+		PopularLessons: []interface{}{},
 	}, nil
 }
 

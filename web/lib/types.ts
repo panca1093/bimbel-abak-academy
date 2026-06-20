@@ -277,8 +277,30 @@ export interface DashboardPendingOrder {
   amount: number;
 }
 
+export interface DashboardStudySummary {
+  visited_lectures: number;
+  total_lectures: number;
+  enrolled_courses_count: number;
+  completed_courses: number;
+  total_minutes: number;
+}
+
+export interface DashboardLeaderboardEntry {
+  // Placeholder — populated when ranking data exists
+}
+
+export interface DashboardRanking {
+  position: number | null;
+  points: number | null;
+  leaderboard: DashboardLeaderboardEntry[];
+}
+
 export interface Dashboard {
   greeting?: string;
   enrolled_courses: DashboardCourseSummary[];
   pending_order?: DashboardPendingOrder;
+  study_summary: DashboardStudySummary;
+  ranking: DashboardRanking;
+  exam_progress: unknown[];
+  popular_lessons: unknown[];
 }
