@@ -83,7 +83,7 @@ func (f *fakeRepo) UpdatePasswordHash(_ context.Context, userID, hash string) er
 	return nil
 }
 
-func (f *fakeRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username *string) error {
+func (f *fakeRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username, phone, address, targetExam *string) error {
 	u, ok := f.byID[userID]
 	if !ok {
 		return fmt.Errorf("not found")
@@ -96,6 +96,15 @@ func (f *fakeRepo) UpdateUserProfile(_ context.Context, userID string, name, ema
 	}
 	if username != nil {
 		u.Username = username
+	}
+	if phone != nil {
+		u.Phone = phone
+	}
+	if address != nil {
+		u.AlamatDomisili = address
+	}
+	if targetExam != nil {
+		u.TargetExam = targetExam
 	}
 	return nil
 }

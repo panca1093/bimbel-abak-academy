@@ -107,7 +107,7 @@ func (s *Service) getPendingOrder(ctx context.Context, studentID uuid.UUID) (*Da
 	}, nil
 }
 
-func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email, username *string) (*model.User, error) {
+func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string) (*model.User, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 		normalizedEmail = &e
 	}
 
-	if err := s.repo.UpdateUserProfile(ctx, userID, name, normalizedEmail, username); err != nil {
+	if err := s.repo.UpdateUserProfile(ctx, userID, name, normalizedEmail, username, phone, address, targetExam); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return nil, ErrEmailTaken

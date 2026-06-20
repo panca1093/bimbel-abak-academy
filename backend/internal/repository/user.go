@@ -121,15 +121,18 @@ func (r *Repository) DisableOTP(ctx context.Context, userID string) error {
 
 // UpdateUserProfile patches the editable profile fields. nil args leave the
 // column unchanged via COALESCE. Email normalization is the caller's job.
-func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username *string) error {
+func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users
 		SET name = COALESCE($1, name),
 		    email = COALESCE($2, email),
 		    username = COALESCE($3, username),
+		    phone = COALESCE($4, phone),
+		    alamat_domisili = COALESCE($5, alamat_domisili),
+		    target_exam = COALESCE($6, target_exam),
 		    updated_at = now()
-		WHERE id = $4`,
-		name, email, username, userID,
+		WHERE id = $7`,
+		name, email, username, phone, address, targetExam, userID,
 	)
 	return err
 }

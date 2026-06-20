@@ -38,14 +38,17 @@ func (h *Handler) StudentUpdateProfile(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 	var req struct {
-		Name     *string `json:"name"`
-		Email    *string `json:"email"`
-		Username *string `json:"username"`
+		Name       *string `json:"name"`
+		Email      *string `json:"email"`
+		Username   *string `json:"username"`
+		Phone      *string `json:"phone"`
+		Address    *string `json:"address"`
+		TargetExam *string `json:"target_exam"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	user, err := h.svc.UpdateProfile(c.Request().Context(), claims.Sub, req.Name, req.Email, req.Username)
+	user, err := h.svc.UpdateProfile(c.Request().Context(), claims.Sub, req.Name, req.Email, req.Username, req.Phone, req.Address, req.TargetExam)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
 	"github.com/labstack/echo/v4"
 )
 
@@ -45,10 +46,14 @@ func (h *Handler) Login(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	claims, _ := h.svc.ParseAccess(access)
+	user, err := h.svc.Me(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	return c.JSON(http.StatusOK, map[string]any{
 		"access_token":  access,
 		"refresh_token": refresh,
-		"user":          userPayload(claims.Sub, claims.Role, ""),
+		"user":          userPayload(user),
 	})
 }
 
@@ -67,10 +72,14 @@ func (h *Handler) GoogleLogin(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	claims, _ := h.svc.ParseAccess(access)
+	user, err := h.svc.Me(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	return c.JSON(http.StatusOK, map[string]any{
 		"access_token":  access,
 		"refresh_token": refresh,
-		"user":          userPayload(claims.Sub, claims.Role, ""),
+		"user":          userPayload(user),
 	})
 }
 
@@ -124,10 +133,14 @@ func (h *Handler) VerifyOTP(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	claims, _ := h.svc.ParseAccess(access)
+	user, err := h.svc.Me(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	return c.JSON(http.StatusOK, map[string]any{
 		"access_token":  access,
 		"refresh_token": refresh,
-		"user":          userPayload(claims.Sub, claims.Role, ""),
+		"user":          userPayload(user),
 	})
 }
 
@@ -243,11 +256,13 @@ func (h *Handler) Me(c echo.Context) error {
 	})
 }
 
-func userPayload(id, role, name string) map[string]any {
+func userPayload(user *model.User) map[string]any {
 	return map[string]any{
-		"id":   id,
-		"role": role,
-		"name": name,
+		"id":       user.ID,
+		"role":     user.Role,
+		"name":     user.Name,
+		"email":    derefStr(user.Email),
+		"username": derefStr(user.Username),
 	}
 }
 
