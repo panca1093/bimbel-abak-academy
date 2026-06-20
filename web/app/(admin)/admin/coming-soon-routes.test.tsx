@@ -59,7 +59,7 @@ describe("nav-config coming-soon flags", () => {
   it("flags super_admin Exam, School, and System items as coming-soon", () => {
     const superAdminGroups = NAV_CONFIG.super_admin;
     for (const group of superAdminGroups) {
-      if (group.title === "Content Manager") continue;
+      if (group.titleKey === "role_admin_store") continue;
       for (const item of group.items) {
         expect(item.comingSoon).toBe(true);
       }
