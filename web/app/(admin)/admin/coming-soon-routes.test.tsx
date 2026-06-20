@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { FC } from "react";
 import NotificationsPage from "./notifications/page";
-import ExamBanksPage from "./exam/banks/page";
 import ExamTryoutsPage from "./exam/tryouts/page";
 import ExamAnalyticsPage from "./exam/analytics/page";
 import ExamSchedulesPage from "./exam/schedules/page";
@@ -25,7 +24,6 @@ vi.mock("@/components/shell/ComingSoon", () => ({
 
 const routeCases: [string, FC][] = [
   ["/admin/notifications", NotificationsPage],
-  ["/admin/exam/banks", ExamBanksPage],
   ["/admin/exam/tryouts", ExamTryoutsPage],
   ["/admin/exam/analytics", ExamAnalyticsPage],
   ["/admin/exam/schedules", ExamSchedulesPage],
