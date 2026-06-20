@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
 import type { Dashboard, School, User } from "@/lib/types";
 
 export const studentsKeys = {
@@ -76,7 +77,11 @@ export function useUpdatePhoto() {
         method: "PATCH",
         body: JSON.stringify({ photo_url }),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      const token = useAuthStore.getState().token;
+      if (token && data) {
+        useAuthStore.getState().setSession(token, data);
+      }
       qc.invalidateQueries({ queryKey: studentsKeys.profile() });
     },
   });
