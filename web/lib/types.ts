@@ -30,6 +30,7 @@ export interface User {
   dob?: string;
   gender?: string;
   photo_url?: string;
+  created_at?: string;
 }
 
 export interface LoginResponse {
