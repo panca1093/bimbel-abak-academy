@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAdminCourse, useUpdateCourse } from "@/lib/hooks/admin-courses";
+import { useTranslation } from "@/lib/i18n";
 import { SectionEditor } from "@/components/admin/SectionEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft } from "lucide-react";
 import type { AdminUpdateCourseInput } from "@/lib/types";
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Terjadi kesalahan.";
-}
-
 export default function CourseBuilderPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const courseId = typeof params.id === "string" ? params.id : "";
@@ -49,6 +46,11 @@ export default function CourseBuilderPage() {
     );
   }, [course, title, level, subject, instructorName]);
 
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return t("error_generic");
+  }
+
   async function handleSaveMetadata(e: React.FormEvent) {
     e.preventDefault();
     if (!courseId || !dirty) return;
@@ -62,7 +64,7 @@ export default function CourseBuilderPage() {
 
     try {
       await update.mutateAsync({ id: courseId, input });
-      toast.success("Metadata kursus disimpan.");
+      toast.success(t("course_metadata_saved"));
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -81,7 +83,7 @@ export default function CourseBuilderPage() {
   if (isError || !course) {
     return (
       <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-        Gagal memuat kursus: {errorMessage(error)}
+        {t("courses_load_failed")}: {errorMessage(error)}
       </div>
     );
   }
@@ -91,60 +93,60 @@ export default function CourseBuilderPage() {
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={() => router.push("/admin/courses")}>
           <ArrowLeft className="mr-1 size-4" />
-          Kembali
+          {t("course_back")}
         </Button>
-        <h1 className="text-2xl font-semibold">Edit kursus</h1>
+        <h1 className="text-2xl font-semibold">{t("courses_edit")}</h1>
       </div>
 
       <form onSubmit={handleSaveMetadata} className="rounded-lg border bg-card p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-medium">Metadata kursus</h2>
+          <h2 className="text-lg font-medium">{t("course_metadata")}</h2>
           <Button type="submit" disabled={!dirty || !title.trim() || update.isPending}>
-            {update.isPending ? "Menyimpan..." : "Simpan metadata"}
+            {update.isPending ? t("saving") : t("course_save_metadata")}
           </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2">
-            <Label htmlFor="course-title">Judul</Label>
+            <Label htmlFor="course-title">{t("th_title")}</Label>
             <Input
               id="course-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Judul kursus"
+              placeholder={t("course_title_placeholder")}
               disabled={update.isPending}
             />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="course-level">Jenjang</Label>
+            <Label htmlFor="course-level">{t("th_level")}</Label>
             <Input
               id="course-level"
               value={level}
               onChange={(e) => setLevel(e.target.value)}
-              placeholder="SMA / SMP"
+              placeholder={t("course_level_placeholder")}
               disabled={update.isPending}
             />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="course-subject">Mapel</Label>
+            <Label htmlFor="course-subject">{t("subject")}</Label>
             <Input
               id="course-subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              placeholder="Matematika"
+              placeholder={t("course_subject_placeholder")}
               disabled={update.isPending}
             />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="course-instructor">Pengajar</Label>
+            <Label htmlFor="course-instructor">{t("th_instructor")}</Label>
             <Input
               id="course-instructor"
               value={instructorName}
               onChange={(e) => setInstructorName(e.target.value)}
-              placeholder="Nama pengajar"
+              placeholder={t("course_instructor_placeholder")}
               disabled={update.isPending}
             />
           </div>
@@ -152,7 +154,7 @@ export default function CourseBuilderPage() {
       </form>
 
       <div className="rounded-lg border bg-card p-6">
-        <h2 className="mb-4 text-lg font-medium">Kurikulum</h2>
+        <h2 className="mb-4 text-lg font-medium">{t("course_curriculum")}</h2>
         <SectionEditor courseId={courseId} />
       </div>
     </div>

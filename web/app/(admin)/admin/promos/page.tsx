@@ -8,16 +8,12 @@ import {
   useUpdatePromoCode,
   useDeletePromoCode,
 } from "@/lib/hooks/admin-promos";
+import { useTranslation } from "@/lib/i18n";
 import { PromoModal } from "@/components/admin/PromoModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
 import type { PromoCode, AdminCreatePromoCodeInput, AdminUpdatePromoCodeInput } from "@/lib/types";
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Terjadi kesalahan.";
-}
 
 function discountLabel(promo: PromoCode): string {
   if (promo.discount_percent != null) return `${promo.discount_percent}%`;
@@ -38,6 +34,7 @@ function expiryText(iso?: string): string {
 }
 
 export default function PromosPage() {
+  const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<PromoCode | null>(null);
 
@@ -56,10 +53,15 @@ export default function PromosPage() {
     setModalOpen(true);
   }
 
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return t("error_generic");
+  }
+
   async function handleCreate(input: AdminCreatePromoCodeInput) {
     try {
       await create.mutateAsync(input);
-      toast.success("Kode promo dibuat.");
+      toast.success(t("promo_created"));
       setModalOpen(false);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -70,7 +72,7 @@ export default function PromosPage() {
     if (!editingPromo) return;
     try {
       await update.mutateAsync({ id: editingPromo.id, input });
-      toast.success("Perubahan disimpan.");
+      toast.success(t("changes_saved"));
       setModalOpen(false);
       setEditingPromo(null);
     } catch (e) {
@@ -87,10 +89,10 @@ export default function PromosPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Hapus kode promo ini? Tindakan ini tidak dapat dibatalkan.")) return;
+    if (!confirm(t("promo_confirm_delete"))) return;
     try {
       await remove.mutateAsync(id);
-      toast.success("Kode promo dihapus.");
+      toast.success(t("promo_deleted"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -99,8 +101,8 @@ export default function PromosPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Promo</h1>
-        <Button onClick={openCreate}>Buat kode promo</Button>
+        <h1 className="text-2xl font-semibold">{t("promos")}</h1>
+        <Button onClick={openCreate}>{t("promo_create")}</Button>
       </div>
 
       {isLoading && (
@@ -113,7 +115,7 @@ export default function PromosPage() {
 
       {isError && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-          Gagal memuat kode promo: {errorMessage(error)}
+          {t("promo_load_failed")}: {errorMessage(error)}
         </div>
       )}
 
@@ -122,11 +124,11 @@ export default function PromosPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Kode</th>
-                <th className="px-4 py-3 text-left font-medium">Diskon</th>
-                <th className="px-4 py-3 text-left font-medium">Digunakan / Maks</th>
-                <th className="px-4 py-3 text-left font-medium">Kadaluarsa</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_code")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_discount")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_usage")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_expiry")}</th>
+                <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -139,7 +141,7 @@ export default function PromosPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button size="sm" variant="outline" onClick={() => openEdit(promo)}>
-                        Edit
+                        {t("action_edit")}
                       </Button>
                       <Button
                         size="sm"
@@ -147,7 +149,7 @@ export default function PromosPage() {
                         onClick={() => handleDelete(promo.id)}
                         disabled={remove.isPending}
                       >
-                        Hapus
+                        {t("action_delete")}
                       </Button>
                     </div>
                   </td>
@@ -156,7 +158,7 @@ export default function PromosPage() {
               {(promos?.length ?? 0) === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                    Belum ada kode promo.
+                    {t("empty_promos")}
                   </td>
                 </tr>
               )}

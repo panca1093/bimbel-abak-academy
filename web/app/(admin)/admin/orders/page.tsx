@@ -9,6 +9,7 @@ import {
   useRefundOrder,
   useReconcileOrder,
 } from "@/lib/hooks/admin-orders";
+import { useTranslation } from "@/lib/i18n";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,19 +18,6 @@ import { formatRupiah } from "@/lib/format";
 import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 
 const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "failed", "refunded"];
-
-const FILTER_LABELS: Record<AdminOrderFilterStatus, string> = {
-  all: "Semua",
-  pending: "Menunggu",
-  paid: "Dibayar",
-  failed: "Gagal",
-  refunded: "Refund",
-};
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Terjadi kesalahan.";
-}
 
 function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;
@@ -50,14 +38,6 @@ function isShipped(order: Order): boolean {
   return Boolean(order.tracking_number || order.shipped_at);
 }
 
-function shippingBadge(order: Order) {
-  if (!hasBookItem(order)) return null;
-  if (isShipped(order)) {
-    return <Badge className="bg-green-100 text-green-800 border-green-200">Shipped</Badge>;
-  }
-  return <Badge variant="outline">Pending</Badge>;
-}
-
 function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "refund" | "reconcile"): boolean {
   switch (action) {
     case "confirm":
@@ -72,6 +52,7 @@ function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "refund
 }
 
 export default function OrdersPage() {
+  const { t } = useTranslation();
   const [filter, setFilter] = useState<AdminOrderFilterStatus>("all");
   const { data: orders, isLoading, isError, error } = useAdminOrders(filter);
   const confirm = useConfirmOrder();
@@ -84,31 +65,59 @@ export default function OrdersPage() {
     return orders;
   }, [orders]);
 
+  const filterLabel = (f: AdminOrderFilterStatus): string => {
+    switch (f) {
+      case "all":
+        return t("tab_all");
+      case "pending":
+        return t("filter_pending");
+      case "paid":
+        return t("filter_paid");
+      case "failed":
+        return t("filter_failed");
+      case "refunded":
+        return t("filter_refunded");
+    }
+  };
+
+  function shippingBadge(order: Order) {
+    if (!hasBookItem(order)) return null;
+    if (isShipped(order)) {
+      return <Badge className="bg-green-100 text-green-800 border-green-200">{t("status_shipped")}</Badge>;
+    }
+    return <Badge variant="outline">{t("status_pending_ship")}</Badge>;
+  }
+
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return t("error_generic");
+  }
+
   async function handleConfirm(id: string) {
     try {
       await confirm.mutateAsync(id);
-      toast.success("Pesanan dikonfirmasi.");
+      toast.success(t("orders_confirm"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
   }
 
   async function handleShip(id: string) {
-    const trackingNumber = window.prompt("Masukkan nomor resi pengiriman:");
+    const trackingNumber = window.prompt(t("orders_ship_prompt"));
     if (!trackingNumber) return;
     try {
       await ship.mutateAsync({ id, trackingNumber });
-      toast.success("Pesanan dikirim.");
+      toast.success(t("orders_shipped"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
   }
 
   async function handleRefund(id: string) {
-    if (!window.confirm("Yakin ingin mengembalikan dana pesanan ini?")) return;
+    if (!window.confirm(t("orders_refund_prompt"))) return;
     try {
       await refund.mutateAsync(id);
-      toast.success("Pesanan direfund.");
+      toast.success(t("orders_refunded"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -117,7 +126,7 @@ export default function OrdersPage() {
   async function handleReconcile(id: string) {
     try {
       await reconcile.mutateAsync(id);
-      toast.success("Status pembayaran direkonsiliasi.");
+      toast.success(t("orders_reconciled"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -126,7 +135,7 @@ export default function OrdersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Pesanan</h1>
+        <h1 className="text-2xl font-semibold">{t("orders")}</h1>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -137,7 +146,7 @@ export default function OrdersPage() {
             size="sm"
             onClick={() => setFilter(f)}
           >
-            {FILTER_LABELS[f]}
+            {filterLabel(f)}
           </Button>
         ))}
       </div>
@@ -152,7 +161,7 @@ export default function OrdersPage() {
 
       {isError && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-          Gagal memuat pesanan: {errorMessage(error)}
+          {t("orders_load_failed")}: {errorMessage(error)}
         </div>
       )}
 
@@ -161,13 +170,13 @@ export default function OrdersPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Pesanan</th>
-                <th className="px-4 py-3 text-left font-medium">Pembeli</th>
-                <th className="px-4 py-3 text-left font-medium">Produk</th>
-                <th className="px-4 py-3 text-left font-medium">Total</th>
-                <th className="px-4 py-3 text-left font-medium">Pembayaran</th>
-                <th className="px-4 py-3 text-left font-medium">Pengiriman</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                <th className="px-4 py-3 text-left font-medium">{t("orders")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_buyer")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_product")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_total")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_payment")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_shipping")}</th>
+                <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -193,7 +202,7 @@ export default function OrdersPage() {
                           onClick={() => handleConfirm(order.id)}
                           disabled={confirm.isPending}
                         >
-                          Konfirmasi
+                          {t("action_confirm")}
                         </Button>
                       )}
                       {actionAllowed(order.status, "ship") && (
@@ -203,7 +212,7 @@ export default function OrdersPage() {
                           onClick={() => handleShip(order.id)}
                           disabled={ship.isPending}
                         >
-                          Kirim
+                          {t("action_ship")}
                         </Button>
                       )}
                       {actionAllowed(order.status, "refund") && (
@@ -213,7 +222,7 @@ export default function OrdersPage() {
                           onClick={() => handleRefund(order.id)}
                           disabled={refund.isPending}
                         >
-                          Refund
+                          {t("action_refund")}
                         </Button>
                       )}
                       {actionAllowed(order.status, "reconcile") && (
@@ -223,7 +232,7 @@ export default function OrdersPage() {
                           onClick={() => handleReconcile(order.id)}
                           disabled={reconcile.isPending}
                         >
-                          Rekonsiliasi
+                          {t("action_reconcile")}
                         </Button>
                       )}
                     </div>
@@ -233,7 +242,7 @@ export default function OrdersPage() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    Tidak ada pesanan.
+                    {t("empty_orders")}
                   </td>
                 </tr>
               )}

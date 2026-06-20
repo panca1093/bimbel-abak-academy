@@ -1,15 +1,11 @@
 "use client";
 
+import { useTranslation } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminRevenue } from "@/lib/hooks/admin-revenue";
 import { formatRupiah } from "@/lib/format";
 import type { AdminRevenue, RevenueByTypeItem } from "@/lib/types";
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Terjadi kesalahan.";
-}
 
 function orderCount(revenue?: AdminRevenue): number {
   if (!revenue) return 0;
@@ -34,15 +30,21 @@ function maxTypeTotal(revenue?: AdminRevenue): number {
 }
 
 export default function RevenuePage() {
+  const { t } = useTranslation();
   const { data: revenue, isLoading, isError, error } = useAdminRevenue();
 
   const entries = typeEntries(revenue);
   const max = maxTypeTotal(revenue);
 
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return t("error_generic");
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Pendapatan</h1>
+        <h1 className="text-2xl font-semibold">{t("revenue")}</h1>
       </div>
 
       {isLoading && (
@@ -55,7 +57,7 @@ export default function RevenuePage() {
 
       {isError && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-          Gagal memuat revenue: {errorMessage(error)}
+          {t("revenue_load_failed")}: {errorMessage(error)}
         </div>
       )}
 
@@ -64,7 +66,7 @@ export default function RevenuePage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total pendapatan</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t("revenue_total")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{formatRupiah(revenue.total)}</div>
@@ -73,7 +75,7 @@ export default function RevenuePage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Pesanan</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t("orders")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{orderCount(revenue)}</div>
@@ -82,7 +84,7 @@ export default function RevenuePage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Rata-rata nilai pesanan</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t("revenue_avg_order")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">{formatRupiah(averageOrderValue(revenue))}</div>
@@ -92,11 +94,11 @@ export default function RevenuePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Pendapatan berdasarkan jenis</CardTitle>
+              <CardTitle className="text-base">{t("revenue_by_type")}</CardTitle>
             </CardHeader>
             <CardContent>
               {entries.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Belum ada data pendapatan.</div>
+                <div className="text-sm text-muted-foreground">{t("revenue_no_data")}</div>
               ) : (
                 <div className="space-y-4">
                   {entries.map(([type, item]) => {
@@ -106,7 +108,7 @@ export default function RevenuePage() {
                         <div className="flex items-center justify-between text-sm">
                           <span className="capitalize font-medium">{type}</span>
                           <span className="text-muted-foreground">
-                            {formatRupiah(item.total)} · {item.count} pesanan
+                            {formatRupiah(item.total)} · {item.count} {t("revenue_order_label")}
                           </span>
                         </div>
                         <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
@@ -126,22 +128,22 @@ export default function RevenuePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Produk terlaris</CardTitle>
+              <CardTitle className="text-base">{t("revenue_top_products")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium">Produk</th>
-                      <th className="px-4 py-3 text-left font-medium">Pesanan</th>
-                      <th className="px-4 py-3 text-right font-medium">Pendapatan</th>
+                      <th className="px-4 py-3 text-left font-medium">{t("th_product")}</th>
+                      <th className="px-4 py-3 text-left font-medium">{t("orders")}</th>
+                      <th className="px-4 py-3 text-right font-medium">{t("revenue")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr className="border-t">
                       <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
-                        Belum ada data produk terlaris untuk periode ini.
+                        {t("revenue_top_empty")}
                       </td>
                     </tr>
                   </tbody>

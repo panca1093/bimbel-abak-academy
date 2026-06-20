@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAdminCourses, useCreateCourse } from "@/lib/hooks/admin-courses";
+import { useTranslation } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -17,22 +18,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Course, AdminCreateCourseInput } from "@/lib/types";
+import type { DICT } from "@/lib/i18n";
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Terjadi kesalahan.";
-}
+type TFunc = (key: keyof (typeof DICT)["id"]) => string;
 
 function CreateCourseModal({
   open,
   onOpenChange,
   onSubmit,
   isPending,
+  t,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: AdminCreateCourseInput) => void;
   isPending: boolean;
+  t: TFunc;
 }) {
   const [title, setTitle] = useState("");
   const [level, setLevel] = useState("");
@@ -55,53 +56,53 @@ function CreateCourseModal({
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Buat kursus</DialogTitle>
-            <DialogDescription>Tambahkan kursus baru ke katalog.</DialogDescription>
+            <DialogTitle>{t("courses_create")}</DialogTitle>
+            <DialogDescription>{t("courses_create_desc")}</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="course-title">Judul</Label>
+              <Label htmlFor="course-title">{t("th_title")}</Label>
               <Input
                 id="course-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Judul kursus"
+                placeholder={t("course_title_placeholder")}
                 disabled={isPending}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="course-level">Jenjang</Label>
+                <Label htmlFor="course-level">{t("th_level")}</Label>
                 <Input
                   id="course-level"
                   value={level}
                   onChange={(e) => setLevel(e.target.value)}
-                  placeholder="SMA / SMP"
+                  placeholder={t("course_level_placeholder")}
                   disabled={isPending}
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="course-subject">Mapel</Label>
+                <Label htmlFor="course-subject">{t("subject")}</Label>
                 <Input
                   id="course-subject"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="Matematika"
+                  placeholder={t("course_subject_placeholder")}
                   disabled={isPending}
                 />
               </div>
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="course-instructor">Pengajar</Label>
+              <Label htmlFor="course-instructor">{t("th_instructor")}</Label>
               <Input
                 id="course-instructor"
                 value={instructorName}
                 onChange={(e) => setInstructorName(e.target.value)}
-                placeholder="Nama pengajar"
+                placeholder={t("course_instructor_placeholder")}
                 disabled={isPending}
               />
             </div>
@@ -109,10 +110,10 @@ function CreateCourseModal({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-              Batal
+              {t("cancel")}
             </Button>
             <Button type="submit" disabled={!title.trim() || isPending}>
-              {isPending ? "Menyimpan..." : "Simpan"}
+              {isPending ? t("saving") : t("save")}
             </Button>
           </DialogFooter>
         </form>
@@ -122,15 +123,21 @@ function CreateCourseModal({
 }
 
 export default function CoursesPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const { data: courses, isLoading, isError, error } = useAdminCourses();
   const create = useCreateCourse();
 
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return t("error_generic");
+  }
+
   async function handleCreate(input: AdminCreateCourseInput) {
     try {
       await create.mutateAsync(input);
-      toast.success("Kursus dibuat.");
+      toast.success(t("courses_created"));
       setModalOpen(false);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -144,8 +151,8 @@ export default function CoursesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Kursus</h1>
-        <Button onClick={() => setModalOpen(true)}>Buat kursus</Button>
+        <h1 className="text-2xl font-semibold">{t("courses")}</h1>
+        <Button onClick={() => setModalOpen(true)}>{t("courses_create")}</Button>
       </div>
 
       {isLoading && (
@@ -158,7 +165,7 @@ export default function CoursesPage() {
 
       {isError && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-          Gagal memuat kursus: {errorMessage(error)}
+          {t("courses_load_failed")}: {errorMessage(error)}
         </div>
       )}
 
@@ -167,10 +174,10 @@ export default function CoursesPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Judul</th>
-                <th className="px-4 py-3 text-left font-medium">Jenjang</th>
-                <th className="px-4 py-3 text-left font-medium">Mapel</th>
-                <th className="px-4 py-3 text-left font-medium">Pengajar</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_title")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_level")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("subject")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_instructor")}</th>
               </tr>
             </thead>
             <tbody>
@@ -189,7 +196,7 @@ export default function CoursesPage() {
               {(courses ?? []).length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                    Tidak ada kursus.
+                    {t("empty_courses")}
                   </td>
                 </tr>
               )}
@@ -203,6 +210,7 @@ export default function CoursesPage() {
         onOpenChange={setModalOpen}
         onSubmit={handleCreate}
         isPending={create.isPending}
+        t={t}
       />
     </div>
   );

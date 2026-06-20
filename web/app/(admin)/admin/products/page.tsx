@@ -9,6 +9,7 @@ import {
   usePublishProduct,
   useDeleteProduct,
 } from "@/lib/hooks/admin-products";
+import { useTranslation } from "@/lib/i18n";
 import { ProductModal } from "@/components/admin/ProductModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,13 +18,6 @@ import { formatRupiah } from "@/lib/format";
 import type { Product, ProductType, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 
 const FILTER_TYPES: (ProductType | "all")[] = ["all", "book", "course", "package"];
-
-const FILTER_LABELS: Record<ProductType | "all", string> = {
-  all: "Semua",
-  book: "Buku",
-  course: "Kursus",
-  package: "Paket",
-};
 
 function typeBadgeClass(type: ProductType): string {
   switch (type) {
@@ -51,12 +45,8 @@ function statusBadgeClass(status?: string): string {
   }
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Terjadi kesalahan.";
-}
-
 export default function ProductsPage() {
+  const { t } = useTranslation();
   const [filter, setFilter] = useState<ProductType | "all">("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -83,10 +73,15 @@ export default function ProductsPage() {
     setModalOpen(true);
   }
 
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return t("error_generic");
+  }
+
   async function handleCreate(input: AdminCreateProductInput) {
     try {
       await create.mutateAsync(input);
-      toast.success("Produk dibuat.");
+      toast.success(t("products_created"));
       setModalOpen(false);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -97,7 +92,7 @@ export default function ProductsPage() {
     if (!editingProduct) return;
     try {
       await update.mutateAsync({ id: editingProduct.id, input });
-      toast.success("Perubahan disimpan.");
+      toast.success(t("changes_saved"));
       setModalOpen(false);
       setEditingProduct(null);
     } catch (e) {
@@ -116,38 +111,51 @@ export default function ProductsPage() {
   async function handlePublish(id: string) {
     try {
       await publish.mutateAsync(id);
-      toast.success("Produk dipublikasikan.");
+      toast.success(t("products_published"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Hapus produk ini? Tindakan tidak dapat dibatalkan.")) return;
+    if (!confirm(t("products_confirm_delete"))) return;
     try {
       await remove.mutateAsync(id);
-      toast.success("Produk dihapus.");
+      toast.success(t("products_deleted"));
     } catch (e) {
       toast.error(errorMessage(e));
     }
   }
 
+  const filterLabel = (type: ProductType | "all"): string => {
+    switch (type) {
+      case "all":
+        return t("tab_all");
+      case "book":
+        return t("product_type_book");
+      case "course":
+        return t("product_type_course");
+      case "package":
+        return t("product_type_package");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Produk</h1>
-        <Button onClick={openCreate}>Buat produk</Button>
+        <h1 className="text-2xl font-semibold">{t("products")}</h1>
+        <Button onClick={openCreate}>{t("products_create")}</Button>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {FILTER_TYPES.map((t) => (
+        {FILTER_TYPES.map((ft) => (
           <Button
-            key={t}
-            variant={filter === t ? "default" : "outline"}
+            key={ft}
+            variant={filter === ft ? "default" : "outline"}
             size="sm"
-            onClick={() => setFilter(t)}
+            onClick={() => setFilter(ft)}
           >
-            {FILTER_LABELS[t]}
+            {filterLabel(ft)}
           </Button>
         ))}
       </div>
@@ -162,7 +170,7 @@ export default function ProductsPage() {
 
       {isError && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-          Gagal memuat produk: {errorMessage(error)}
+          {t("products_load_failed")}: {errorMessage(error)}
         </div>
       )}
 
@@ -171,12 +179,12 @@ export default function ProductsPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
-                <th className="px-4 py-3 text-left font-medium">Nama</th>
-                <th className="px-4 py-3 text-left font-medium">Jenis</th>
-                <th className="px-4 py-3 text-left font-medium">Harga</th>
-                <th className="px-4 py-3 text-left font-medium">Stok</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_name")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_type")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_price")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_stock")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_status")}</th>
+                <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -187,7 +195,7 @@ export default function ProductsPage() {
                 >
                   <td className="px-4 py-3 font-medium">{product.name}</td>
                   <td className="px-4 py-3">
-                    <Badge className={typeBadgeClass(product.type)}>{FILTER_LABELS[product.type]}</Badge>
+                    <Badge className={typeBadgeClass(product.type)}>{filterLabel(product.type)}</Badge>
                   </td>
                   <td className="px-4 py-3">{formatRupiah(product.price)}</td>
                   <td className="px-4 py-3">{product.type === "book" ? (product.stock ?? "-") : "-"}</td>
@@ -203,11 +211,11 @@ export default function ProductsPage() {
                           onClick={() => handlePublish(product.id)}
                           disabled={publish.isPending}
                         >
-                          Publikasikan
+                          {t("action_publish")}
                         </Button>
                       )}
                       <Button size="sm" variant="outline" onClick={() => openEdit(product)}>
-                        Edit
+                        {t("action_edit")}
                       </Button>
                       <Button
                         size="sm"
@@ -215,7 +223,7 @@ export default function ProductsPage() {
                         onClick={() => handleDelete(product.id)}
                         disabled={remove.isPending}
                       >
-                        Hapus
+                        {t("action_delete")}
                       </Button>
                     </div>
                   </td>
@@ -224,7 +232,7 @@ export default function ProductsPage() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    Tidak ada produk.
+                    {t("empty_products")}
                   </td>
                 </tr>
               )}
