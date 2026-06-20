@@ -136,6 +136,10 @@ export const DICT = {
     question: "Soal",
     test: "Tes",
     topic: "Topik",
+    save: "Simpan",
+    general: "Umum",
+    features: "Fitur",
+    payment: "Pembayaran",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -268,6 +272,10 @@ export const DICT = {
     question: "Question",
     test: "Test",
     topic: "Topic",
+    save: "Save",
+    general: "General",
+    features: "Features",
+    payment: "Payment",
   },
 };
 

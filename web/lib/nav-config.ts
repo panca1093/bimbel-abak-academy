@@ -100,10 +100,10 @@ const ADMIN_EXAM_NAV: RoleNavConfig = [
   {
     titleKey: "role_admin_exam",
     items: [
-      cs("question_bank", "/admin/exam/banks", FileQuestion),
-      cs("tests", "/admin/exam/tryouts", ClipboardList),
-      cs("analytics", "/admin/exam/analytics", BarChart),
-      cs("schedules", "/admin/exam/schedules", Calendar),
+      { labelKey: "question_bank", href: "/admin/exam/banks", icon: FileQuestion },
+      { labelKey: "tests", href: "/admin/exam/tryouts", icon: ClipboardList },
+      { labelKey: "analytics", href: "/admin/exam/analytics", icon: BarChart },
+      { labelKey: "schedules", href: "/admin/exam/schedules", icon: Calendar },
     ],
   },
 ];
@@ -112,9 +112,9 @@ const ADMIN_SCHOOL_NAV: RoleNavConfig = [
   {
     titleKey: "role_admin_school",
     items: [
-      cs("students", "/admin/school/students", Users),
-      cs("classes", "/admin/school/classes", School),
-      cs("reports", "/admin/school/reports", FileText),
+      { labelKey: "students", href: "/admin/school/students", icon: Users },
+      { labelKey: "classes", href: "/admin/school/classes", icon: School },
+      { labelKey: "reports", href: "/admin/school/reports", icon: FileText },
     ],
   },
 ];
@@ -126,10 +126,10 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   {
     titleKey: "system",
     items: [
-      cs("accounts", "/admin/system/accounts", Users),
-      cs("schools", "/admin/system/schools", Building),
-      cs("config", "/admin/system/config", Settings),
-      cs("audit", "/admin/system/audit", ShieldCheck),
+      { labelKey: "accounts", href: "/admin/system/accounts", icon: Users },
+      { labelKey: "schools", href: "/admin/system/schools", icon: Building },
+      { labelKey: "config", href: "/admin/system/config", icon: Settings },
+      { labelKey: "audit", href: "/admin/system/audit", icon: ShieldCheck },
     ],
   },
 ];
