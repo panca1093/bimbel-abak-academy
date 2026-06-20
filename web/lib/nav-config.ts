@@ -91,7 +91,7 @@ const CONTENT_MANAGER_NAV: RoleNavConfig = [
       { labelKey: "nav_billing", href: "/admin/orders", icon: Receipt },
       { labelKey: "promos", href: "/admin/promos", icon: Tag },
       { labelKey: "revenue", href: "/admin/revenue", icon: BarChart3 },
-      cs("notifications", "/admin/notifications", Bell),
+      { labelKey: "notifications", href: "/admin/notifications", icon: Bell },
     ],
   },
 ];
