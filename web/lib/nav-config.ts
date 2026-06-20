@@ -72,7 +72,7 @@ const STUDENT_NAV: RoleNavConfig = [
   {
     items: [
       { labelKey: "nav_dashboard", href: "/", icon: LayoutDashboard, exact: true },
-      cs("nav_competition", "/competition", Trophy),
+      { labelKey: "nav_competition", href: "/competition", icon: Trophy },
       { labelKey: "nav_courses", href: "/courses", icon: BookOpen },
       { labelKey: "nav_store", href: "/catalog", icon: ShoppingBag },
       { labelKey: "nav_billing", href: "/orders", icon: Receipt },
