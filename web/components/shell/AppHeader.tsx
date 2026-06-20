@@ -14,6 +14,8 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { useUIStore, type Lang } from "@/stores/ui";
 import { useLogout } from "@/lib/hooks/auth";
+import { useTranslation } from "@/lib/i18n";
+import { roleLabelKey } from "@/lib/nav-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -26,7 +28,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { roleDisplayName } from "@/lib/nav-config";
 import { cn } from "@/lib/utils";
 
 interface AppHeaderProps {
@@ -37,6 +38,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useLogout();
+  const { t } = useTranslation();
 
   const theme = useUIStore((s) => s.theme);
   const lang = useUIStore((s) => s.lang);
@@ -47,7 +49,9 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
     .trim()
     .charAt(0)
     .toUpperCase();
-  const roleLabel = roleDisplayName(user?.role);
+
+  const roleKey = roleLabelKey(user?.role);
+  const roleLabel = roleKey ? t(roleKey) : t("account");
 
   function handleLogout() {
     logout.mutate(undefined, {
@@ -69,13 +73,15 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
         <Menu className="size-5 text-ink-600" />
       </Button>
 
-      <div className="flex flex-1 items-center gap-2">
-        <Search className="size-4 shrink-0 text-ink-400" />
-        <Input
-          type="search"
-          placeholder="Cari menu atau materi..."
-          className="h-9 w-full max-w-md"
-        />
+      <div className="flex flex-1 items-center">
+        <div className="flex h-[38px] w-full max-w-md items-center gap-2 rounded-lg border border-line bg-surface px-3">
+          <Search className="size-4 shrink-0 text-ink-400" />
+          <Input
+            type="search"
+            placeholder={t("search")}
+            className="h-full border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+          />
+        </div>
       </div>
 
       <div className="flex items-center gap-1">
@@ -102,13 +108,13 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
           variant="ghost"
           size="icon"
           onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Mode terang" : "Mode gelap"}
+          aria-label={theme === "dark" ? t("light_mode") : t("dark_mode")}
           className="hidden sm:flex"
         >
           {theme === "dark" ? (
-            <Sun className="size-5 text-ink-600" />
+            <Sun className="size-[18px] text-ink-600" />
           ) : (
-            <Moon className="size-5 text-ink-600" />
+            <Moon className="size-[18px] text-ink-600" />
           )}
         </Button>
 
@@ -118,7 +124,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
           className="relative"
           aria-label="Notifikasi"
         >
-          <Bell className="size-5 text-ink-600" />
+          <Bell className="size-[18px] text-ink-600" />
           <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger" />
         </Button>
 
@@ -138,7 +144,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
                 </AvatarFallback>
               </Avatar>
               <span className="max-w-[120px] truncate text-sm font-medium text-ink-900">
-                {user?.name ?? "Akun"}
+                {user?.name ?? t("account")}
               </span>
               <Badge variant="secondary" className="text-[10px] font-normal">
                 {roleLabel}
@@ -148,7 +154,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel className="text-ink-900">
               <div className="truncate font-medium">
-                {user?.name ?? "Akun"}
+                {user?.name ?? t("account")}
               </div>
               <div className="text-[11px] font-normal text-ink-500">
                 {roleLabel}
@@ -158,13 +164,13 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             <DropdownMenuItem asChild>
               <Link href="/profile" className="flex items-center">
                 <UserCircle className="size-4" />
-                <span className="ml-2">Profil</span>
+                <span className="ml-2">{t("nav_profile")}</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="size-4" />
-              <span className="ml-2">Keluar</span>
+              <span className="ml-2">{t("logout")}</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

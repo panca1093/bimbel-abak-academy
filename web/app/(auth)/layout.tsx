@@ -13,7 +13,13 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     if (token) router.replace("/");
   }, [token, router]);
 
-  if (token) return null;
+  if (token) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-ink-500">
+        Memuat…
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen">

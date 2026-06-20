@@ -40,8 +40,13 @@ export default function StudentLayout({
     }
   }, [hydrated, token, role, router]);
 
-  if (!hydrated || !token) return null;
-  if (role && ADMIN_ROLES.includes(role)) return null;
+  if (!hydrated || !token || (role && ADMIN_ROLES.includes(role))) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-ink-500">
+        Memuat…
+      </div>
+    );
+  }
 
   return (
     <>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ role, children }: AppShellProps) {
+  const pathname = usePathname();
   const [expanded, setExpanded] = useState(false);
   const isLg = useIsLg();
   const collapsed = !isLg && !expanded;
@@ -59,7 +61,10 @@ export function AppShell({ role, children }: AppShellProps) {
       >
         <AppHeader onMenuClick={toggleSidebar} />
         <main className="flex-1">
-          <div className="mx-auto w-full max-w-[1340px] px-7 py-7 lg:px-8 lg:py-8">
+          <div
+            key={pathname}
+            className="fade-in mx-auto w-full max-w-[1340px] px-7 py-7 lg:px-8 lg:py-8"
+          >
             {children}
           </div>
         </main>

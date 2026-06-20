@@ -31,7 +31,7 @@ export type UserRole =
   | "super_admin";
 
 export interface NavItem {
-  label: string;
+  labelKey: keyof (typeof import("./i18n").DICT)["id"];
   href: string;
   icon: LucideIcon;
   exact?: boolean;
@@ -39,18 +39,18 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  title: string;
+  titleKey?: keyof (typeof import("./i18n").DICT)["id"];
   items: NavItem[];
 }
 
 export type RoleNavConfig = NavGroup[];
 
-export const ROLE_LABELS: Record<UserRole, string> = {
-  student: "Student",
-  admin_store: "Content Manager",
-  admin_exam: "Admin Exam",
-  admin_school: "School Operator",
-  super_admin: "Super Admin",
+export const ROLE_LABEL_KEYS: Record<UserRole, keyof (typeof import("./i18n").DICT)["id"]> = {
+  student: "role_student",
+  admin_store: "role_admin_store",
+  admin_exam: "role_admin_exam",
+  admin_school: "role_admin_school",
+  super_admin: "role_super_admin",
 };
 
 export const ADMIN_ROLES: UserRole[] = [
@@ -60,58 +60,61 @@ export const ADMIN_ROLES: UserRole[] = [
   "super_admin",
 ];
 
-function cs(label: string, href: string, icon: LucideIcon): NavItem {
-  return { label, href, icon, comingSoon: true };
+function cs(
+  labelKey: keyof (typeof import("./i18n").DICT)["id"],
+  href: string,
+  icon: LucideIcon
+): NavItem {
+  return { labelKey, href, icon, comingSoon: true };
 }
 
 const STUDENT_NAV: RoleNavConfig = [
   {
-    title: "",
     items: [
-      { label: "Dashboard", href: "/", icon: LayoutDashboard, exact: true },
-      cs("Competition", "/competition", Trophy),
-      { label: "Courses", href: "/courses", icon: BookOpen },
-      { label: "Store", href: "/catalog", icon: ShoppingBag },
-      { label: "Billing/Orders", href: "/orders", icon: Receipt },
-      { label: "Profile", href: "/profile", icon: User },
+      { labelKey: "nav_dashboard", href: "/", icon: LayoutDashboard, exact: true },
+      cs("nav_competition", "/competition", Trophy),
+      { labelKey: "nav_courses", href: "/courses", icon: BookOpen },
+      { labelKey: "nav_store", href: "/catalog", icon: ShoppingBag },
+      { labelKey: "nav_billing", href: "/orders", icon: Receipt },
+      { labelKey: "nav_profile", href: "/profile", icon: User },
     ],
   },
 ];
 
 const CONTENT_MANAGER_NAV: RoleNavConfig = [
   {
-    title: "Content Manager",
+    titleKey: "role_admin_store",
     items: [
-      { label: "Dashboard", href: "/admin", icon: LayoutDashboard, exact: true },
-      { label: "Products", href: "/admin/products", icon: Package },
-      { label: "Course Builder", href: "/admin/courses", icon: Library },
-      { label: "Orders", href: "/admin/orders", icon: Receipt },
-      { label: "Promos", href: "/admin/promos", icon: Tag },
-      { label: "Revenue", href: "/admin/revenue", icon: BarChart3 },
-      cs("Notifications", "/admin/notifications", Bell),
+      { labelKey: "nav_dashboard", href: "/admin", icon: LayoutDashboard, exact: true },
+      { labelKey: "nav_store", href: "/admin/products", icon: Package },
+      { labelKey: "nav_courses", href: "/admin/courses", icon: Library },
+      { labelKey: "nav_billing", href: "/admin/orders", icon: Receipt },
+      { labelKey: "promos", href: "/admin/promos", icon: Tag },
+      { labelKey: "revenue", href: "/admin/revenue", icon: BarChart3 },
+      cs("notifications", "/admin/notifications", Bell),
     ],
   },
 ];
 
 const ADMIN_EXAM_NAV: RoleNavConfig = [
   {
-    title: "Admin Exam",
+    titleKey: "role_admin_exam",
     items: [
-      cs("Question Banks", "/admin/exam/banks", FileQuestion),
-      cs("Tryouts", "/admin/exam/tryouts", ClipboardList),
-      cs("Analytics", "/admin/exam/analytics", BarChart),
-      cs("Schedules", "/admin/exam/schedules", Calendar),
+      cs("question_bank", "/admin/exam/banks", FileQuestion),
+      cs("tests", "/admin/exam/tryouts", ClipboardList),
+      cs("analytics", "/admin/exam/analytics", BarChart),
+      cs("schedules", "/admin/exam/schedules", Calendar),
     ],
   },
 ];
 
 const ADMIN_SCHOOL_NAV: RoleNavConfig = [
   {
-    title: "School Operator",
+    titleKey: "role_admin_school",
     items: [
-      cs("Students", "/admin/school/students", Users),
-      cs("Classes", "/admin/school/classes", School),
-      cs("Reports", "/admin/school/reports", FileText),
+      cs("students", "/admin/school/students", Users),
+      cs("classes", "/admin/school/classes", School),
+      cs("reports", "/admin/school/reports", FileText),
     ],
   },
 ];
@@ -121,12 +124,12 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   ...ADMIN_EXAM_NAV,
   ...ADMIN_SCHOOL_NAV,
   {
-    title: "System",
+    titleKey: "system",
     items: [
-      cs("Accounts", "/admin/system/accounts", Users),
-      cs("Schools", "/admin/system/schools", Building),
-      cs("Config", "/admin/system/config", Settings),
-      cs("Audit", "/admin/system/audit", ShieldCheck),
+      cs("accounts", "/admin/system/accounts", Users),
+      cs("schools", "/admin/system/schools", Building),
+      cs("config", "/admin/system/config", Settings),
+      cs("audit", "/admin/system/audit", ShieldCheck),
     ],
   },
 ];
@@ -139,7 +142,7 @@ export const NAV_CONFIG: Record<UserRole, RoleNavConfig> = {
   super_admin: SUPER_ADMIN_NAV,
 };
 
-export function roleDisplayName(role?: string): string {
-  if (!role) return "User";
-  return ROLE_LABELS[role as UserRole] ?? role;
+export function roleLabelKey(role?: string): keyof (typeof import("./i18n").DICT)["id"] | undefined {
+  if (!role) return undefined;
+  return ROLE_LABEL_KEYS[role as UserRole];
 }

@@ -64,6 +64,22 @@ body {
   font-size: 15px;
 }
 
+/* page entrance — matches design-app-abak/source/styles.css .fade-in */
+.fade-in {
+  animation: fadeIn 0.28s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Dark mode — mirrors design-app-abak/source/styles.css :root[data-theme="dark"] */
 html[data-theme="dark"] {
   --color-paper:     #0e1020;

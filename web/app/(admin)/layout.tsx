@@ -43,9 +43,13 @@ export default function AdminLayout({
     }
   }, [hydrated, token, effectiveRole, me.isError, router]);
 
-  if (!hydrated || !token) return null;
-  if (!effectiveRole) return null;
-  if (!ADMIN_ROLES.includes(effectiveRole)) return null;
+  if (!hydrated || !token || !effectiveRole || !ADMIN_ROLES.includes(effectiveRole)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-ink-500">
+        Memuat…
+      </div>
+    );
+  }
 
   return <AppShell role={effectiveRole}>{children}</AppShell>;
 }
