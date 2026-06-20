@@ -37,6 +37,9 @@ vi.mock("@/lib/hooks/students", () => ({
   useProfile: () => profileState,
   useUpdateProfile: () => ({ mutate: mutateMock, isPending: false }),
   useChangePassword: () => ({ mutate: vi.fn(), isPending: false }),
+  useSchools: () => ({ data: null, isLoading: false }),
+  usePresignUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdatePhoto: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 
@@ -69,13 +72,13 @@ describe("ProfilePage", () => {
     render(<ProfilePage />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/nama/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/nomor telepon|phone/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/nis/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/kelas|grade/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/target ujian|target exam/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/alamat domisili|address/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/nama/i, { selector: "input" })).toBeInTheDocument();
+      expect(screen.getByLabelText(/email/i, { selector: "input" })).toBeInTheDocument();
+      expect(screen.getByLabelText(/telepon|phone/i, { selector: "input" })).toBeInTheDocument();
+      expect(screen.getByLabelText(/nis/i, { selector: "input" })).toBeInTheDocument();
+      expect(screen.getByLabelText(/kelas|grade/i, { selector: "input" })).toBeInTheDocument();
+      expect(screen.getByLabelText(/target ujian|target exam/i, { selector: "input" })).toBeInTheDocument();
+      expect(screen.getByLabelText(/alamat|address/i, { selector: "input" })).toBeInTheDocument();
     });
   });
 
@@ -84,11 +87,11 @@ describe("ProfilePage", () => {
 
     await waitFor(() => {
       const lockedLabels = [
-        screen.getByLabelText(/nomor telepon|phone/i),
-        screen.getByLabelText(/nis/i),
-        screen.getByLabelText(/kelas|grade/i),
-        screen.getByLabelText(/target ujian|target exam/i),
-        screen.getByLabelText(/alamat domisili|address/i),
+        screen.getByLabelText(/telepon|phone/i, { selector: "input" }),
+        screen.getByLabelText(/nis/i, { selector: "input" }),
+        screen.getByLabelText(/kelas|grade/i, { selector: "input" }),
+        screen.getByLabelText(/target ujian|target exam/i, { selector: "input" }),
+        screen.getByLabelText(/alamat|address/i, { selector: "input" }),
       ];
       for (const input of lockedLabels) {
         expect(input).toBeDisabled();

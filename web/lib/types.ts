@@ -13,6 +13,12 @@ export type OrderStatus =
 
 export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "failed" | "refunded";
 
+export interface School {
+  id: string;
+  name: string;
+  code?: string;
+}
+
 export interface User {
   id: string;
   email?: string;
