@@ -286,7 +286,24 @@ export interface DashboardStudySummary {
 }
 
 export interface DashboardLeaderboardEntry {
-  // Placeholder — populated when ranking data exists
+  rank: number;
+  name: string;
+  points: number;
+  is_me?: boolean;
+}
+
+export interface ExamProgressEntry {
+  label: string;
+  completed: number;
+  in_progress: number;
+}
+
+export interface PopularLessonEntry {
+  title: string;
+  topics: number;
+  students: number;
+  duration: string;
+  progress: number;
 }
 
 export interface DashboardRanking {
@@ -301,6 +318,6 @@ export interface Dashboard {
   pending_order?: DashboardPendingOrder;
   study_summary: DashboardStudySummary;
   ranking: DashboardRanking;
-  exam_progress: unknown[];
-  popular_lessons: unknown[];
+  exam_progress: ExamProgressEntry[];
+  popular_lessons: PopularLessonEntry[];
 }

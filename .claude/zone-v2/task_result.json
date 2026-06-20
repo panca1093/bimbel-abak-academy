@@ -1,5 +1,8 @@
 {
   "status": "DONE",
-  "summary": "Wired every not-ready admin nav item to a real ComingSoon route. Created 12 page.tsx files under app/(admin)/admin/ for notifications, all admin_exam items (banks/tryouts/analytics/schedules), all admin_school items (students/classes/reports), and super-admin System items (accounts/schools/config/audit), each rendering the shared ComingSoon component. Added a single parameterized test file (coming-soon-routes.test.tsx) verifying each route renders ComingSoon plus nav-config flag assertions for admin_exam/admin_school/super_admin/system/notifications and that live Content Manager items are not flagged. Nav-config already correctly marks coming-soon items via the cs() helper; no changes needed. Full test suite 104/104 green; npm run build green (all 12 new routes appear in the static route table).",
-  "commit": "d371213"
+  "summary": "Rebuilt student dashboard page with all 7 design sections (a-g): greeting (hero), ranking card with leaderboard, pending banner, course gradient cards, study-summary donut/counters, exam-progress bars, and popular-lessons list. Added 6 section components under components/dashboard/ (RankingCard, StudySummaryCard, ExamProgressCard, PopularLessonsSection, Donut, Ring, GroupedBars), extended DashboardLeaderboardEntry/ExamProgressEntry/PopularLessonEntry types, added 16 new i18n keys per locale. All 10 dashboard render tests pass + tsc + build clean.",
+  "commit": "",
+  "concerns": "",
+  "question": "",
+  "blocker": ""
 }

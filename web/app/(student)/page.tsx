@@ -5,9 +5,6 @@ import {
   AlertCircle,
   ChevronRight,
   Plus,
-  Trophy,
-  Clock,
-  Target,
   Construction,
 } from "lucide-react";
 import { useDashboard } from "@/lib/hooks/students";
@@ -19,6 +16,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PendingBanner } from "@/components/dashboard/PendingBanner";
+import { RankingCard } from "@/components/dashboard/RankingCard";
+import { StudySummaryCard } from "@/components/dashboard/StudySummaryCard";
+import { ExamProgressCard } from "@/components/dashboard/ExamProgressCard";
+import { PopularLessonsSection } from "@/components/dashboard/PopularLessonsSection";
 
 const COURSE_GRADIENTS = [
   "linear-gradient(135deg, #EEF0FE 0%, #F3E8FB 45%, #FDE8EE 100%)",
@@ -88,52 +89,16 @@ export default function DashboardPage() {
             />
           )}
 
+          {/* (b) Ranking, (e) Study Summary, (f) Exam Progress */}
           <section className="mb-8">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <DashboardStubCard
-                title={t("dash_my_ranking")}
-                icon={Trophy}
-                placeholder={t("dash_ranking_placeholder")}
-              />
-              <DashboardStubCard
-                title={t("dash_study_hours")}
-                icon={Clock}
-                placeholder={t("dash_hours_placeholder")}
-              >
-                <div className="mx-auto my-2 size-28 rounded-full border-8 border-brand-100 border-t-brand-600" />
-              </DashboardStubCard>
-              <DashboardStubCard
-                title={t("dash_exam_progress")}
-                icon={Target}
-                placeholder={t("dash_progress_placeholder")}
-              >
-                <div className="my-2 space-y-3">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-ink-500">
-                      <span>{t("dash_tryout")} 1</span>
-                      <span>—</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-ink-100" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-ink-500">
-                      <span>{t("dash_tryout")} 2</span>
-                      <span>—</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-ink-100" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-ink-500">
-                      <span>{t("dash_tryout")} 3</span>
-                      <span>—</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-ink-100" />
-                  </div>
-                </div>
-              </DashboardStubCard>
+              <RankingCard ranking={data.ranking} />
+              <StudySummaryCard study={data.study_summary} />
+              <ExamProgressCard examProgress={data.exam_progress} />
             </div>
           </section>
 
+          {/* (d) My Courses */}
           <section className="mb-8">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="font-serif text-xl font-semibold text-ink-900">
@@ -162,6 +127,10 @@ export default function DashboardPage() {
             )}
           </section>
 
+          {/* (g) Popular Lessons */}
+          <PopularLessonsSection lessons={data.popular_lessons} />
+
+          {/* Explore Catalog CTA */}
           <section>
             <Card className="flex flex-col items-center justify-center gap-3 border-dashed border-line bg-surface-2 px-6 py-10 text-center">
               <div className="flex size-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
@@ -243,43 +212,9 @@ function EmptyCourses() {
   );
 }
 
-function DashboardStubCard({
-  title,
-  icon: Icon,
-  placeholder,
-  children,
-}: {
-  title: string;
-  icon: React.ComponentType<{ className?: string }>;
-  placeholder: string;
-  children?: React.ReactNode;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Card className="flex flex-col border-line px-5 py-5">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-            <Icon className="size-4" />
-          </div>
-          <h3 className="font-serif text-base font-semibold text-ink-900">{title}</h3>
-        </div>
-        <Badge variant="outline" className="text-[10px] font-medium">
-          <Construction className="mr-1 size-3" />
-          {t("dash_coming_soon")}
-        </Badge>
-      </div>
-      <div className="flex flex-1 flex-col justify-center">
-        {children}
-      </div>
-      <p className="mt-3 text-xs text-ink-500">{placeholder}</p>
-    </Card>
-  );
-}
-
 function DashboardSkeleton() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-testid="dashboard-skeleton">
       <div className="flex items-end justify-between gap-4">
         <div className="space-y-2">
           <Skeleton className="h-4 w-32" />
