@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Receipt } from "lucide-react";
 import { useOrders } from "@/lib/hooks/orders";
+import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { Order } from "@/lib/types";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
@@ -21,16 +22,17 @@ function formatDate(iso?: string): string {
 }
 
 function OrdersList({ orders }: { orders: Order[] }) {
+  const { t } = useTranslation();
   if (orders.length === 0) {
     return (
       <div className="rounded-lg border border-line bg-surface px-6 py-16 text-center">
         <Receipt className="mx-auto size-10 text-ink-300" strokeWidth={1.5} />
-        <p className="mt-3 text-sm font-medium text-ink-700">Belum ada pesanan.</p>
+        <p className="mt-3 text-sm font-medium text-ink-700">{t("orders_empty")}</p>
         <p className="mt-1 text-xs text-ink-500">
-          Pesanan Anda akan muncul di sini setelah checkout.
+          {t("orders_empty_desc")}
         </p>
         <Button asChild variant="outline" size="sm" className="mt-5">
-          <Link href="/catalog">Mulai belanja</Link>
+          <Link href="/catalog">{t("orders_start_shopping")}</Link>
         </Button>
       </div>
     );
@@ -101,20 +103,21 @@ function OrdersSkeleton() {
 }
 
 export default function OrdersPage() {
+  const { t } = useTranslation();
   const { data, isLoading, isError, error, refetch } = useOrders();
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 md:px-6 md:py-10">
       <header className="mb-6 flex items-center gap-3">
         <Receipt className="size-6 text-success" />
-        <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">Pesanan</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">{t("orders_title")}</h1>
       </header>
 
       {isError ? (
         <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-          <p>Gagal memuat pesanan. {(error as Error)?.message}</p>
+          <p>{t("orders_load_failed")} {(error as Error)?.message}</p>
           <button onClick={() => refetch()} className="mt-2 underline">
-            Coba lagi
+            {t("retry")}
           </button>
         </div>
       ) : isLoading ? (

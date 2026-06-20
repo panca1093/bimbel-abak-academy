@@ -3,24 +3,26 @@
 import { useState } from "react";
 import { useProducts } from "@/lib/hooks/products";
 import type { ProductType } from "@/lib/types";
+import { useTranslation } from "@/lib/i18n";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProductCard } from "@/components/catalog/ProductCard";
 
 type TabValue = "all" | ProductType;
 
-const TABS: { value: TabValue; label: string }[] = [
-  { value: "all", label: "Semua" },
-  { value: "book", label: "Buku" },
-  { value: "course", label: "Kursus" },
-  { value: "package", label: "Kompetisi" },
+const TABS: { value: TabValue; labelKey: string }[] = [
+  { value: "all", labelKey: "catalog_tab_all" },
+  { value: "book", labelKey: "catalog_tab_book" },
+  { value: "course", labelKey: "catalog_tab_course" },
+  { value: "package", labelKey: "catalog_tab_competition" },
 ];
 
 function CatalogGrid({ products }: { products: ReturnType<typeof useProducts>["data"] }) {
+  const { t } = useTranslation();
   if (!products || products.length === 0) {
     return (
       <p className="py-16 text-center text-sm text-ink-500">
-        Belum ada produk pada kategori ini.
+        {t("catalog_empty")}
       </p>
     );
   }
@@ -51,6 +53,7 @@ function CatalogSkeleton() {
 }
 
 export default function CatalogPage() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<TabValue>("all");
   const type = tab === "all" ? undefined : tab;
   const { data, isLoading, isError, error, refetch } = useProducts(type);
@@ -58,9 +61,9 @@ export default function CatalogPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
       <header className="mb-6">
-        <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">Katalog</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">{t("catalog_title")}</h1>
         <p className="mt-1 text-sm text-ink-500">
-          Jelajahi buku, kursus, dan paket kompetisi.
+          {t("catalog_subtitle")}
         </p>
       </header>
 
@@ -70,9 +73,9 @@ export default function CatalogPage() {
         className="mb-6"
       >
         <TabsList variant="line">
-          {TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value}>
-              {t.label}
+          {TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {t(tab.labelKey as any)}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -80,9 +83,9 @@ export default function CatalogPage() {
 
       {isError ? (
         <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-          <p>Gagal memuat katalog. {(error as Error)?.message}</p>
+          <p>{t("catalog_load_failed")} {(error as Error)?.message}</p>
           <button onClick={() => refetch()} className="mt-2 underline">
-            Coba lagi
+            {t("retry")}
           </button>
         </div>
       ) : isLoading ? (

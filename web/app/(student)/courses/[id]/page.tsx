@@ -7,6 +7,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 import { useCourse, useCompleteLesson } from "@/lib/hooks/courses";
+import { useTranslation } from "@/lib/i18n";
 import type { Lesson } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,6 +31,7 @@ function flattenLessons(
 }
 
 export default function CourseDetailPage() {
+  const { t } = useTranslation();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const courseId = params?.id ?? "";
@@ -67,12 +69,12 @@ export default function CourseDetailPage() {
       {
         onSuccess: () => {
           toast.success(
-            wasDone ? "Pelajaran dibatalkan." : "Pelajaran selesai."
+            wasDone ? t("course_lesson_undone") : t("course_lesson_done")
           );
         },
         onError: (err: unknown) => {
           const message =
-            err instanceof Error ? err.message : "Gagal memperbarui status.";
+            err instanceof Error ? err.message : t("course_update_failed");
           toast.error(message);
         },
       }
@@ -90,13 +92,13 @@ export default function CourseDetailPage() {
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
-              Gagal memuat kursus.
+              {t("course_load_failed")}
               {error instanceof Error && error.message
                 ? ` ${error.message}`
                 : ""}
             </div>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
-              Coba lagi
+              {t("retry")}
             </Button>
           </div>
         </Card>
@@ -107,14 +109,14 @@ export default function CourseDetailPage() {
   if (!course) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">
-        <p className="text-sm text-ink-500">Kursus tidak ditemukan.</p>
+        <p className="text-sm text-ink-500">{t("course_not_found")}</p>
         <Button
           variant="ghost"
           size="sm"
           className="mt-3"
           onClick={() => router.push("/courses")}
         >
-          Kembali ke kursus
+          {t("course_back")}
         </Button>
       </div>
     );
@@ -132,7 +134,7 @@ export default function CourseDetailPage() {
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-600 hover:text-ink-900"
       >
         <ArrowLeft className="size-4" />
-        Kembali ke kursus
+        {t("course_back")}
       </Link>
 
       <header className="mb-6">
@@ -141,7 +143,7 @@ export default function CourseDetailPage() {
         </h1>
         {course.instructor_name && (
           <p className="mt-1 text-sm text-ink-500">
-            Pengajar: {course.instructor_name}
+            {t("course_instructor")}: {course.instructor_name}
           </p>
         )}
       </header>
@@ -162,12 +164,12 @@ export default function CourseDetailPage() {
                   </div>
                 )}
                 <h2 className="mt-1 font-serif text-xl font-semibold text-ink-900">
-                  {activeLesson?.title ?? "Pilih pelajaran"}
+                  {activeLesson?.title ?? t("course_select_lesson")}
                 </h2>
                 {typeof activeLesson?.duration_seconds === "number" &&
                   activeLesson.duration_seconds > 0 && (
                     <p className="mt-1 text-xs text-ink-500">
-                      Durasi {Math.round(activeLesson.duration_seconds / 60)} menit
+                      {t("course_duration").replace("{n}", String(Math.round(activeLesson.duration_seconds / 60)))}
                     </p>
                   )}
               </div>
@@ -186,7 +188,7 @@ export default function CourseDetailPage() {
                 ) : activeLesson?.completed ? (
                   <Check className="size-4" />
                 ) : null}
-                {activeLesson?.completed ? "Selesai" : "Tandai selesai"}
+                {activeLesson?.completed ? t("course_complete") : t("course_mark_complete")}
               </Button>
             </div>
           </Card>

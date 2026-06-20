@@ -10,6 +10,7 @@ import { useProduct } from "@/lib/hooks/products";
 import { useAddToCart } from "@/lib/hooks/orders";
 import { useCartStore } from "@/stores/cart";
 import { useAuthStore } from "@/stores/auth";
+import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { ApiError } from "@/lib/api";
 import type { ProductType } from "@/lib/types";
@@ -21,11 +22,11 @@ import { cn } from "@/lib/utils";
 
 const TYPE_META: Record<
   ProductType,
-  { label: string; tone: string; bg: string; Icon: typeof Book }
+  { labelKey: string; tone: string; bg: string; Icon: typeof Book }
 > = {
-  book: { label: "Buku", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
-  course: { label: "Kursus", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
-  package: { label: "Kompetisi", tone: "text-violet", bg: "bg-violet-bg", Icon: Trophy },
+  book: { labelKey: "product_type_book", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
+  course: { labelKey: "product_type_course", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
+  package: { labelKey: "product_type_competition", tone: "text-violet", bg: "bg-violet-bg", Icon: Trophy },
 };
 
 const COVER_GRADIENT: Record<ProductType, string> = {
@@ -39,6 +40,7 @@ export default function ProductDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const { t } = useTranslation();
   const { id } = use(params);
   const router = useRouter();
   const { data: product, isLoading, isError, error, refetch } = useProduct(id);
@@ -52,9 +54,9 @@ export default function ProductDetailPage({
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 md:px-6">
         <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-          <p>Gagal memuat produk. {(error as Error)?.message}</p>
+          <p>{t("product_load_failed")} {(error as Error)?.message}</p>
           <button onClick={() => refetch()} className="mt-2 underline">
-            Coba lagi
+            {t("retry")}
           </button>
         </div>
       </div>
@@ -74,14 +76,14 @@ export default function ProductDetailPage({
       {
         onSuccess: () => {
           bumpBadge(useCartStore.getState().count + 1);
-          toast.success("Ditambahkan ke keranjang", {
+          toast.success(t("product_added_toast"), {
             description: product.name,
           });
           thenRoute?.();
         },
         onError: (err) => {
-          const msg = err instanceof ApiError ? err.message : "Gagal menambahkan ke keranjang.";
-          toast.error("Gagal menambahkan", { description: msg });
+          const msg = err instanceof ApiError ? err.message : t("product_add_failed_desc");
+          toast.error(t("product_add_failed_title"), { description: msg });
         },
       },
     );
@@ -92,7 +94,7 @@ export default function ProductDetailPage({
       <Button asChild variant="ghost" size="sm" className="mb-4">
         <Link href="/catalog">
           <ArrowLeft className="size-4" />
-          Katalog
+          {t("product_back_catalog")}
         </Link>
       </Button>
 
@@ -114,18 +116,18 @@ export default function ProductDetailPage({
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
               <Badge variant="outline" className={cn("border-transparent", meta.bg, meta.tone)}>
-                {meta.label}
+                {t(meta.labelKey as any)}
               </Badge>
               <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">
                 {product.name}
               </h1>
             </div>
             <p className="max-w-2xl text-sm leading-relaxed text-ink-600 md:text-[15px]">
-              {product.description ?? "Tidak ada deskripsi."}
+              {product.description ?? t("product_no_description")}
             </p>
             {product.type === "book" && (
               <p className="text-xs text-ink-500">
-                Stok: {product.stock ?? 0} · dikirim ke alamat Anda
+                {t("product_stock_label")}: {product.stock ?? 0} · {t("product_shipped_to_address")}
               </p>
             )}
           </div>
@@ -138,7 +140,7 @@ export default function ProductDetailPage({
             </div>
             {product.type === "book" && (
               <div className="mt-1 text-xs text-ink-500">
-                Stok: {product.stock ?? 0}
+                {t("product_stock_label")}: {product.stock ?? 0}
               </div>
             )}
             <div className="my-4 h-px bg-line" />
@@ -150,7 +152,7 @@ export default function ProductDetailPage({
                 onClick={() => handleAdd()}
               >
                 <ShoppingCart className="size-4" />
-                Tambah ke Keranjang
+                {t("product_add_cart")}
               </Button>
               <Button
                 size="lg"
@@ -159,7 +161,7 @@ export default function ProductDetailPage({
                 disabled={addToCart.isPending}
                 onClick={() => handleAdd(() => router.push("/cart"))}
               >
-                Beli Sekarang
+                {t("product_buy_now")}
               </Button>
             </div>
           </div>

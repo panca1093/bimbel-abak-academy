@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 
 import { useOrder, useRetryPayment } from "@/lib/hooks/orders";
+import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { ApiError } from "@/lib/api";
 import type { Order, OrderItem, OrderStatus } from "@/lib/types";
@@ -55,42 +56,42 @@ interface TimelineStep {
   cancelled?: boolean;
 }
 
-function buildTimeline(o: Order): TimelineStep[] {
+function buildTimeline(o: Order, t: (key: any) => string): TimelineStep[] {
   const cancelled = o.status === "cancelled";
   return [
     {
       key: "created",
-      label: "Pesanan dibuat",
+      label: t("order_tl_created"),
       at: o.created_at,
       reached: Boolean(o.created_at),
     },
     {
       key: "checkout",
-      label: "Checkout dimulai",
+      label: t("order_tl_checkout"),
       at: o.checked_out_at,
       reached: Boolean(o.checked_out_at),
     },
     {
       key: "paid",
-      label: "Pembayaran diterima",
+      label: t("order_tl_paid"),
       at: o.paid_at,
       reached: Boolean(o.paid_at),
     },
     {
       key: "shipped",
-      label: "Pesanan dikirim",
+      label: t("order_tl_shipped"),
       at: o.shipped_at,
       reached: Boolean(o.shipped_at),
     },
     {
       key: "completed",
-      label: "Pesanan selesai",
+      label: t("order_tl_completed"),
       at: o.completed_at,
       reached: Boolean(o.completed_at),
     },
     {
       key: "cancelled",
-      label: "Pesanan dibatalkan",
+      label: t("order_tl_cancelled"),
       at: o.cancelled_at,
       reached: cancelled,
       cancelled,
@@ -98,9 +99,9 @@ function buildTimeline(o: Order): TimelineStep[] {
   ].filter((s) => s.reached || s.key === "completed" || s.key === "cancelled");
 }
 
-function OrderItems({ items }: { items: OrderItem[] }) {
+function OrderItems({ items, t }: { items: OrderItem[]; t: (key: any) => string }) {
   if (items.length === 0) {
-    return <p className="text-sm text-ink-500">Tidak ada item pada pesanan ini.</p>;
+    return <p className="text-sm text-ink-500">{t("order_no_items")}</p>;
   }
   return (
     <ul className="flex flex-col divide-y divide-line">
@@ -174,38 +175,38 @@ function Timeline({ steps }: { steps: TimelineStep[] }) {
   );
 }
 
-function PaymentInfo({ order }: { order: Order }) {
-  const rows: { label: string; value: string }[] = [];
+function PaymentInfo({ order, t }: { order: Order; t: (key: any) => string }) {
+  const rows: { labelKey: string; value: string }[] = [];
   if (order.payment_method) {
-    rows.push({ label: "Metode pembayaran", value: order.payment_method });
+    rows.push({ labelKey: "order_payment_method", value: order.payment_method });
   }
   if (order.gateway_ref) {
-    rows.push({ label: "Referensi gateway", value: order.gateway_ref });
+    rows.push({ labelKey: "order_gateway_ref", value: order.gateway_ref });
   }
   if (order.payment_expires_at) {
-    rows.push({ label: "Berlaku sampai", value: formatDate(order.payment_expires_at) });
+    rows.push({ labelKey: "order_valid_until", value: formatDate(order.payment_expires_at) });
   }
   if (order.invoice_url) {
-    rows.push({ label: "Invoice", value: order.invoice_url });
+    rows.push({ labelKey: "order_invoice", value: order.invoice_url });
   }
   if (order.tracking_number) {
-    rows.push({ label: "No. resi", value: order.tracking_number });
+    rows.push({ labelKey: "order_tracking", value: order.tracking_number });
   }
   if (rows.length === 0) return null;
   return (
     <dl className="flex flex-col gap-2 text-sm">
       {rows.map((r) => (
-        <div key={r.label} className="flex items-start justify-between gap-3">
-          <dt className="text-ink-500">{r.label}</dt>
+        <div key={r.labelKey} className="flex items-start justify-between gap-3">
+          <dt className="text-ink-500">{t(r.labelKey)}</dt>
           <dd className="text-right font-medium text-ink-900 break-all">
-            {r.label === "Invoice" && r.value.startsWith("http") ? (
+            {r.labelKey === "order_invoice" && r.value.startsWith("http") ? (
               <a
                 href={r.value}
                 target="_blank"
                 rel="noreferrer"
                 className="text-info underline underline-offset-2"
               >
-                Lihat invoice
+                {t("order_view_invoice")}
               </a>
             ) : (
               r.value
@@ -217,17 +218,20 @@ function PaymentInfo({ order }: { order: Order }) {
   );
 }
 
-const SUMMARY_ROWS: { key: keyof Order; label: string }[] = [
-  { key: "subtotal", label: "Subtotal" },
-  { key: "discount", label: "Diskon" },
-  { key: "shipping_cost", label: "Ongkos kirim" },
-];
+function summaryRows(t: (key: any) => string): { key: keyof Order; labelKey: any }[] {
+  return [
+    { key: "subtotal", labelKey: "order_subtotal" },
+    { key: "discount", labelKey: "order_discount" },
+    { key: "shipping_cost", labelKey: "order_shipping" },
+  ];
+}
 
 export default function OrderDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const { t } = useTranslation();
   const { id } = use(params);
   const router = useRouter();
   const { data: order, isLoading, isError, error, refetch } = useOrder(id);
@@ -243,32 +247,32 @@ export default function OrderDetailPage({
         if (typeof window !== "undefined" && window.snap && res.snap_token) {
           window.snap.pay(res.snap_token, {
             onSuccess: () => {
-              toast.success("Pembayaran berhasil");
+              toast.success(t("order_pay_success_toast"));
               router.push(`/orders/${order.id}`);
             },
             onPending: () => {
-              toast.info("Pembayaran masih tertunda");
+              toast.info(t("order_pay_pending_toast"));
               router.push(`/orders/${order.id}`);
             },
             onError: (err) => {
-              toast.error("Pembayaran gagal", {
-                description: err?.transaction_status ?? "Silakan coba lagi.",
+              toast.error(t("order_pay_failed_toast"), {
+                description: err?.transaction_status ?? t("order_pay_try_again"),
               });
             },
             onClose: () => {
-              toast.info("Pembayaran ditutup", {
-                description: "Anda dapat melanjutkan kapan saja.",
+              toast.info(t("order_pay_closed_toast"), {
+                description: t("order_pay_continue_later"),
               });
             },
           });
         } else {
-          toast.error("Snap tidak tersedia");
+          toast.error(t("order_snap_unavailable"));
         }
       },
       onError: (err) => {
         setRetrying(false);
-        const msg = err instanceof ApiError ? err.message : "Gagal memulai ulang pembayaran.";
-        toast.error("Gagal melanjutkan pembayaran", { description: msg });
+        const msg = err instanceof ApiError ? err.message : t("order_retry_failed_desc");
+        toast.error(t("order_retry_failed_title"), { description: msg });
       },
     });
   };
@@ -279,9 +283,9 @@ export default function OrderDetailPage({
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 md:px-6">
         <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-          <p>Gagal memuat pesanan. {(error as Error)?.message}</p>
+          <p>{t("orders_load_failed")} {(error as Error)?.message}</p>
           <button onClick={() => refetch()} className="mt-2 underline">
-            Coba lagi
+            {t("retry")}
           </button>
         </div>
       </div>
@@ -289,14 +293,14 @@ export default function OrderDetailPage({
   }
 
   const isPaymentPending = order.status === "payment_pending";
-  const timeline = buildTimeline(order);
+  const timeline = buildTimeline(order, t);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-10">
       <Button asChild variant="ghost" size="sm" className="mb-4">
         <Link href="/orders">
           <ArrowLeft className="size-4" />
-          Semua pesanan
+          {t("order_all_orders")}
         </Link>
       </Button>
 
@@ -305,10 +309,10 @@ export default function OrderDetailPage({
           <div className="flex items-center gap-2">
             <Receipt className="size-5 text-ink-400" />
             <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">
-              Pesanan #{order.id.slice(-8)}
+              {t("order_title").replace("{id}", `#${order.id.slice(-8)}`)}
             </h1>
           </div>
-          <span className="text-xs text-ink-500">Dibuat {formatDate(order.created_at)}</span>
+          <span className="text-xs text-ink-500">{t("order_created_at").replace("{date}", formatDate(order.created_at))}</span>
         </div>
         <OrderStatusBadge status={order.status as OrderStatus} className="text-sm" />
       </header>
@@ -319,9 +323,9 @@ export default function OrderDetailPage({
             <div className="flex items-start gap-3">
               <Clock className="mt-0.5 size-5 text-warn" />
               <div className="text-sm">
-                <p className="font-semibold text-ink-900">Pembayaran tertunda</p>
+                <p className="font-semibold text-ink-900">{t("order_payment_pending_title")}</p>
                 <p className="text-ink-600">
-                  Selesaikan pembayaran{order.payment_expires_at ? ` sebelum ${formatDate(order.payment_expires_at)}` : ""}.
+                  {t("order_payment_pending_desc").replace("{deadline}", order.payment_expires_at ? `${t("order_pay_before")}${formatDate(order.payment_expires_at)}` : "")}
                 </p>
               </div>
             </div>
@@ -331,7 +335,7 @@ export default function OrderDetailPage({
               ) : (
                 <CreditCard className="size-4" />
               )}
-              Lanjutkan Pembayaran
+              {t("order_continue_payment")}
             </Button>
           </div>
         </Card>
@@ -340,14 +344,14 @@ export default function OrderDetailPage({
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_320px] md:gap-8">
         <div className="flex flex-col gap-6">
           <section>
-            <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Item pesanan</h2>
+            <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("order_items_section")}</h2>
             <Card className="p-5">
-              <OrderItems items={order.items ?? []} />
+              <OrderItems items={order.items ?? []} t={t} />
             </Card>
           </section>
 
           <section>
-            <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">Riwayat status</h2>
+            <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("order_status_history")}</h2>
             <Card className="p-5">
               <Timeline steps={timeline} />
             </Card>
@@ -356,20 +360,20 @@ export default function OrderDetailPage({
 
         <aside className="md:sticky md:top-6 md:self-start">
           <Card className="p-5">
-            <h2 className="mb-3 font-serif text-base font-semibold text-ink-900">Ringkasan</h2>
+            <h2 className="mb-3 font-serif text-base font-semibold text-ink-900">{t("order_summary")}</h2>
             <dl className="flex flex-col gap-2 text-sm">
-              {SUMMARY_ROWS.map(({ key, label }) => {
+              {summaryRows(t).map(({ key, labelKey }) => {
                 const val = (order[key] as number) ?? 0;
                 return (
                   <div key={key} className="flex items-center justify-between gap-3">
-                    <dt className="text-ink-500">{label}</dt>
+                    <dt className="text-ink-500">{t(labelKey)}</dt>
                     <dd className="font-medium text-ink-900">{formatRupiah(val)}</dd>
                   </div>
                 );
               })}
               <div className="my-1 h-px bg-line" />
               <div className="flex items-center justify-between gap-3">
-                <dt className="font-semibold text-ink-900">Total</dt>
+                <dt className="font-semibold text-ink-900">{t("order_total")}</dt>
                 <dd className="font-serif text-lg font-bold text-success">
                   {formatRupiah(order.total)}
                 </dd>
@@ -379,9 +383,9 @@ export default function OrderDetailPage({
             <div className="my-4 h-px bg-line" />
 
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
-              Info pembayaran
+              {t("order_payment_info")}
             </h3>
-            <PaymentInfo order={order} />
+            <PaymentInfo order={order} t={t} />
           </Card>
         </aside>
       </div>

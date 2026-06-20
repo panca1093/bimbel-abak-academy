@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AlertCircle, Plus } from "lucide-react";
 import { useMyCourses } from "@/lib/hooks/courses";
+import { useTranslation } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,16 +17,17 @@ const COURSE_GRADIENTS = [
 ];
 
 export default function CoursesPage() {
+  const { t } = useTranslation();
   const { data: sessions, isLoading, isError, error, refetch } = useMyCourses();
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
       <header className="mb-8">
         <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-          Kursus saya
+          {t("nav_courses")}
         </h1>
         <p className="mt-2 text-sm text-ink-500">
-          Lanjutkan belajar dari kursus yang sudah terdaftar.
+          {t("course_subtitle")}
         </p>
       </header>
 
@@ -34,11 +36,11 @@ export default function CoursesPage() {
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
-              Gagal memuat kursus.
+              {t("course_load_failed")}
               {error instanceof Error && error.message ? ` ${error.message}` : ""}
             </div>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
-              Coba lagi
+              {t("retry")}
             </Button>
           </div>
         </Card>
@@ -64,19 +66,20 @@ export default function CoursesPage() {
 }
 
 function EmptyCourses() {
+  const { t } = useTranslation();
   return (
     <Card className="flex flex-col items-center justify-center gap-3 border-dashed border-line bg-surface-2 px-6 py-10 text-center">
       <div className="flex size-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
         <Plus className="size-6" />
       </div>
       <div>
-        <p className="font-semibold text-ink-900">Belum ada kursus</p>
+        <p className="font-semibold text-ink-900">{t("dash_no_courses")}</p>
         <p className="mt-1 text-sm text-ink-500">
-          Mulai belajar dengan menjelajahi katalog kami.
+          {t("dash_no_courses_desc")}
         </p>
       </div>
       <Button asChild size="sm" className="mt-2">
-        <Link href="/catalog">Buka katalog</Link>
+        <Link href="/catalog">{t("dash_open_catalog")}</Link>
       </Button>
     </Card>
   );
