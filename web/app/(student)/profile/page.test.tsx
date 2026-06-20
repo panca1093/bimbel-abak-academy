@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import ProfilePage from "./page";
 
 vi.mock("next/navigation", () => ({
@@ -68,34 +68,39 @@ describe("ProfilePage", () => {
     mutateMock.mockClear();
   });
 
-  it("renders locked read-only profile fields returned by the API", async () => {
+  it("shows a read-only profile with an edit trigger and no save button by default", async () => {
     render(<ProfilePage />);
 
     await waitFor(() => {
       expect(screen.getByLabelText(/nama/i, { selector: "input" })).toBeInTheDocument();
-      expect(screen.getByLabelText(/email/i, { selector: "input" })).toBeInTheDocument();
-      expect(screen.getByLabelText(/telepon|phone/i, { selector: "input" })).toBeInTheDocument();
-      expect(screen.getByLabelText(/nis/i, { selector: "input" })).toBeInTheDocument();
-      expect(screen.getByLabelText(/kelas|grade/i, { selector: "input" })).toBeInTheDocument();
-      expect(screen.getByLabelText(/target ujian|target exam/i, { selector: "input" })).toBeInTheDocument();
-      expect(screen.getByLabelText(/alamat|address/i, { selector: "input" })).toBeInTheDocument();
     });
+
+    expect(screen.getByLabelText(/nama/i, { selector: "input" })).toBeDisabled();
+    expect(screen.getByLabelText(/telepon|phone/i, { selector: "input" })).toBeDisabled();
+    expect(screen.getByLabelText(/alamat|address/i, { selector: "input" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /ubah profil|edit profile/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /simpan perubahan|save changes/i })
+    ).not.toBeInTheDocument();
   });
 
-  it("locks extended fields so they cannot be edited", async () => {
+  it("entering edit mode unlocks fields and does not save on its own", async () => {
     render(<ProfilePage />);
 
     await waitFor(() => {
-      const lockedLabels = [
-        screen.getByLabelText(/telepon|phone/i, { selector: "input" }),
-        screen.getByLabelText(/nis/i, { selector: "input" }),
-        screen.getByLabelText(/kelas|grade/i, { selector: "input" }),
-        screen.getByLabelText(/target ujian|target exam/i, { selector: "input" }),
-        screen.getByLabelText(/alamat|address/i, { selector: "input" }),
-      ];
-      for (const input of lockedLabels) {
-        expect(input).toBeDisabled();
-      }
+      expect(screen.getByRole("button", { name: /ubah profil|edit profile/i })).toBeInTheDocument();
     });
+
+    fireEvent.click(screen.getByRole("button", { name: /ubah profil|edit profile/i }));
+
+    // entering edit mode must never trigger a save (regression: edit click used to PATCH)
+    expect(mutateMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/nama/i, { selector: "input" })).toBeEnabled();
+    expect(screen.getByLabelText(/telepon|phone/i, { selector: "input" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: /simpan perubahan|save changes/i })
+    ).toBeInTheDocument();
+    // email stays locked even in edit mode
+    expect(screen.getByLabelText(/email/i, { selector: "input" })).toBeDisabled();
   });
 });

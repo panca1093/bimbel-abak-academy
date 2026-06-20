@@ -5,6 +5,7 @@ import (
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
 	"context"
+	"sync"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
@@ -20,6 +21,8 @@ type Service struct {
 	payment       PaymentClient
 	logistics     LogisticsClient
 	storage       *minio.Client
+	presignOnce   sync.Once
+	presignClient *minio.Client
 	cfg           *config.Config
 }
 

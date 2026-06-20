@@ -55,6 +55,7 @@ export interface PresignUploadResponse {
   method: "PUT";
   key: string;
   fields?: Record<string, string>;
+  public_url: string;
 }
 
 export function usePresignUpload() {

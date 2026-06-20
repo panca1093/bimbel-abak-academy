@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type DashboardCourseSummary struct {
@@ -34,10 +35,11 @@ type DashboardView struct {
 }
 
 type PresignedUploadURL struct {
-	URL    string            `json:"url"`
-	Method string            `json:"method"`
-	Fields map[string]string `json:"fields"`
-	Key    string            `json:"key"`
+	URL       string            `json:"url"`
+	Method    string            `json:"method"`
+	Fields    map[string]string `json:"fields"`
+	Key       string            `json:"key"`
+	PublicURL string            `json:"public_url"`
 }
 
 func (s *Service) GetDashboard(ctx context.Context, studentID string) (*DashboardView, error) {
@@ -160,6 +162,46 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 	return updated, nil
 }
 
+// presignStorage returns a MinIO client whose endpoint matches the host the
+// browser uses (MinioPublicEndpoint). Presigned URLs bind the host into the
+// signature, so they must be signed for the public host — not the internal
+// docker hostname the API container connects through.
+func (s *Service) presignStorage() *minio.Client {
+	s.presignOnce.Do(func() {
+		endpoint := s.cfg.MinioPublicEndpoint
+		if endpoint == "" || endpoint == s.cfg.MinioEndpoint {
+			s.presignClient = s.storage
+			return
+		}
+		// Region must be set explicitly: this client's endpoint resolves to the
+		// browser host, which the API container cannot reach, so presigning must
+		// not trigger a bucket-region lookup. us-east-1 is MinIO's default.
+		c, err := minio.New(endpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(s.cfg.MinioAccessKey, s.cfg.MinioSecretKey, ""),
+			Secure: s.cfg.MinioUseSSL,
+			Region: "us-east-1",
+		})
+		if err != nil {
+			s.presignClient = s.storage
+			return
+		}
+		s.presignClient = c
+	})
+	return s.presignClient
+}
+
+func (s *Service) publicObjectURL(bucket, key string) string {
+	endpoint := s.cfg.MinioPublicEndpoint
+	if endpoint == "" {
+		endpoint = s.cfg.MinioEndpoint
+	}
+	scheme := "http"
+	if s.cfg.MinioUseSSL {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s/%s/%s", scheme, endpoint, bucket, key)
+}
+
 func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, filename, contentType string) (*PresignedUploadURL, error) {
 	if s.storage == nil {
 		return nil, errors.New("storage not configured")
@@ -178,18 +220,25 @@ func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, filena
 			return nil, err
 		}
 	}
+	// Uploaded objects are served directly via <img src>, so the bucket needs
+	// anonymous read. Idempotent — safe to re-apply.
+	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}`, bucket)
+	if err := s.storage.SetBucketPolicy(ctx, bucket, policy); err != nil {
+		return nil, err
+	}
 
 	key := fmt.Sprintf("avatars/%s/%s-%s", userID, uuid.New().String(), filename)
-	presigned, err := s.storage.PresignedPutObject(ctx, bucket, key, 15*time.Minute)
+	presigned, err := s.presignStorage().PresignedPutObject(ctx, bucket, key, 15*time.Minute)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PresignedUploadURL{
-		URL:    presigned.String(),
-		Method: "PUT",
-		Fields: map[string]string{},
-		Key:    key,
+		URL:       presigned.String(),
+		Method:    "PUT",
+		Fields:    map[string]string{},
+		Key:       key,
+		PublicURL: s.publicObjectURL(bucket, key),
 	}, nil
 }
 

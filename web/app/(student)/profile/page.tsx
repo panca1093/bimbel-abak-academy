@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Key, Loader2 } from "lucide-react";
+import { Camera, Key, Loader2, Pencil } from "lucide-react";
 import {
   useChangePassword,
   usePresignUpload,
@@ -256,16 +256,19 @@ export default function ProfilePage() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
 
+  const syncedVersion = useRef<string | null>(null);
   useEffect(() => {
-    if (profile && !editMode) {
-      setName(profile.name ?? "");
-      setPhone(profile.phone ?? "");
-      setAddress(profile.alamat_domisili ?? "");
-      setTargetExam(profile.target_exam ?? "");
-      setGrade(profile.grade != null ? String(profile.grade) : "");
-      setSchoolId(profile.school_id ?? "");
-      setWaNotif(!!profile.phone);
-    }
+    if (!profile || editMode) return;
+    const version = `${profile.id}:${profile.updated_at}`;
+    if (syncedVersion.current === version) return;
+    syncedVersion.current = version;
+    setName(profile.name ?? "");
+    setPhone(profile.phone ?? "");
+    setAddress(profile.alamat_domisili ?? "");
+    setTargetExam(profile.target_exam ?? "");
+    setGrade(profile.grade != null ? String(profile.grade) : "");
+    setSchoolId(profile.school_id ?? "");
+    setWaNotif(!!profile.phone);
   }, [profile, editMode]);
 
   const displayName = profile?.name ?? "";
@@ -277,20 +280,21 @@ export default function ProfilePage() {
       : `${t("joined")} ${joined}`;
   }, [profile, lang, t]);
 
-  const schoolName = useMemo(() => {
-    if (!schoolId) return undefined;
-    return schools?.find((s) => s.id === schoolId)?.name;
-  }, [schools, schoolId]);
-
-  function enterEditMode() {
-    setEditMode(true);
+  function cancelEdit() {
     if (profile) {
-      setWaNotif(!!profile.phone);
+      setName(profile.name ?? "");
+      setPhone(profile.phone ?? "");
+      setAddress(profile.alamat_domisili ?? "");
+      setTargetExam(profile.target_exam ?? "");
+      setGrade(profile.grade != null ? String(profile.grade) : "");
+      setSchoolId(profile.school_id ?? "");
     }
+    setEditMode(false);
   }
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (!editMode) return;
     const gradeNum = grade ? parseInt(grade, 10) : undefined;
     if (gradeNum !== undefined && Number.isNaN(gradeNum)) {
       toast.error("Kelas tidak valid.");
@@ -321,15 +325,16 @@ export default function ProfilePage() {
   }
 
   async function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!editMode) return;
     const file = e.target.files?.[0];
     if (!file) return;
     setPhotoUploading(true);
     try {
-      const { url } = await presign.mutateAsync({
+      const presigned = await presign.mutateAsync({
         filename: file.name,
         content_type: file.type,
       });
-      const uploadRes = await fetch(url, {
+      const uploadRes = await fetch(presigned.url, {
         method: "PUT",
         body: file,
         headers: { "Content-Type": file.type },
@@ -337,7 +342,7 @@ export default function ProfilePage() {
       if (!uploadRes.ok) {
         throw new Error(`Upload failed: ${uploadRes.status}`);
       }
-      await updatePhoto.mutateAsync(url);
+      await updatePhoto.mutateAsync(presigned.public_url);
       toast.success(t("photo_uploaded"));
     } catch (err) {
       toast.error(
@@ -353,7 +358,7 @@ export default function ProfilePage() {
 
   if (isError) {
     return (
-      <div className="fade-in min-h-screen bg-gradient-to-br from-paper via-surface to-brand-50/60">
+      <div className="fade-in min-h-screen">
         <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
           <header className="mb-6">
             <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
@@ -379,7 +384,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="fade-in min-h-screen bg-gradient-to-br from-paper via-surface to-brand-50/60">
+    <div className="fade-in min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
         <header className="mb-6">
           <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
@@ -388,24 +393,49 @@ export default function ProfilePage() {
         </header>
 
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1fr_340px]">
-          <Card className="rounded-2xl p-6 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg">
-            <div className="mb-6 flex items-center gap-4">
-              <div className="relative">
-                {isLoading ? (
-                  <Skeleton className="size-20 rounded-full" />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={photoUploading}
-                    aria-label={t("upload_photo")}
-                    className="relative flex size-20 cursor-pointer items-center justify-center rounded-full border-0 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
+          <Card className="rounded-2xl border-0 p-6 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg">
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  {isLoading ? (
+                    <Skeleton className="size-20 rounded-full" />
+                  ) : editMode ? (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={photoUploading}
+                      aria-label={t("upload_photo")}
+                      className="relative flex size-20 cursor-pointer items-center justify-center rounded-full border-0 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Avatar
+                        size="lg"
+                        className={`size-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-brand-700 ring-4 ring-surface shadow-sm ${
+                          photoUploading ? "animate-pulse" : ""
+                        }`}
+                      >
+                        {profile?.photo_url ? (
+                          <AvatarImage
+                            src={profile.photo_url}
+                            alt={displayName}
+                            className="object-cover"
+                          />
+                        ) : null}
+                        <AvatarFallback className="rounded-full bg-transparent text-2xl font-semibold">
+                          {initials(displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="absolute -right-1 -bottom-1 flex size-8 items-center justify-center rounded-full bg-brand-600 text-white shadow-md ring-2 ring-surface transition-transform hover:scale-110">
+                        {photoUploading ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Camera className="size-4" />
+                        )}
+                      </span>
+                    </button>
+                  ) : (
                     <Avatar
                       size="lg"
-                      className={`size-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-brand-700 ring-4 ring-surface shadow-sm ${
-                        photoUploading ? "animate-pulse" : ""
-                      }`}
+                      className="size-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-brand-700 ring-4 ring-surface shadow-sm"
                     >
                       {profile?.photo_url ? (
                         <AvatarImage
@@ -418,46 +448,52 @@ export default function ProfilePage() {
                         {initials(displayName)}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="absolute -right-1 -bottom-1 flex size-8 items-center justify-center rounded-full bg-brand-600 text-white shadow-md ring-2 ring-surface transition-transform hover:scale-110">
-                      {photoUploading ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Camera className="size-4" />
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoSelect}
+                  />
+                </div>
+                <div className="min-w-0">
+                  {isLoading ? (
+                    <>
+                      <Skeleton className="h-5 w-40" />
+                      <Skeleton className="mt-2 h-4 w-56" />
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-serif text-xl font-semibold text-ink-900">
+                        {displayName || t("unnamed")}
+                      </div>
+                      <div className="truncate text-sm text-ink-500">{metaLine}</div>
+                      {editMode && (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={photoUploading}
+                          className="mt-2 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-60"
+                        >
+                          {photoUploading ? t("saving") : t("upload_photo")}
+                        </button>
                       )}
-                    </span>
-                  </button>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handlePhotoSelect}
-                />
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="min-w-0">
-                {isLoading ? (
-                  <>
-                    <Skeleton className="h-5 w-40" />
-                    <Skeleton className="mt-2 h-4 w-56" />
-                  </>
-                ) : (
-                  <>
-                    <div className="font-serif text-xl font-semibold text-ink-900">
-                      {displayName || t("unnamed")}
-                    </div>
-                    <div className="truncate text-sm text-ink-500">{metaLine}</div>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={photoUploading}
-                      className="mt-2 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-60"
-                    >
-                      {photoUploading ? t("saving") : t("upload_photo")}
-                    </button>
-                  </>
-                )}
-              </div>
+              {!isLoading && !editMode && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditMode(true)}
+                >
+                  <Pencil className="mr-2 size-4" />
+                  {t("edit_profile")}
+                </Button>
+              )}
             </div>
 
             <form
@@ -494,13 +530,13 @@ export default function ProfilePage() {
                   </Label>
                   {isLoading ? (
                     <Skeleton className="h-11 w-full rounded-md" />
-                  ) : editMode ? (
+                  ) : (
                     <Select
                       value={schoolId || "_empty_"}
                       onValueChange={(v) =>
                         setSchoolId(v === "_empty_" ? "" : v)
                       }
-                      disabled={schoolsLoading}
+                      disabled={!editMode || schoolsLoading}
                     >
                       <SelectTrigger id="school" className={PROFILE_INPUT_CLASS}>
                         <SelectValue placeholder={t("select_school")} />
@@ -516,14 +552,6 @@ export default function ProfilePage() {
                         ))}
                       </SelectContent>
                     </Select>
-                  ) : (
-                    <Input
-                      id="school"
-                      value={schoolName ?? profile?.school_id ?? "—"}
-                      readOnly
-                      disabled
-                      className={PROFILE_INPUT_CLASS}
-                    />
                   )}
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -532,10 +560,11 @@ export default function ProfilePage() {
                   </Label>
                   {isLoading ? (
                     <Skeleton className="h-11 w-full rounded-md" />
-                  ) : editMode ? (
+                  ) : (
                     <Select
                       value={grade || "_empty_"}
                       onValueChange={(v) => setGrade(v === "_empty_" ? "" : v)}
+                      disabled={!editMode}
                     >
                       <SelectTrigger id="grade" className={PROFILE_INPUT_CLASS}>
                         <SelectValue placeholder={t("select_grade")} />
@@ -551,14 +580,6 @@ export default function ProfilePage() {
                         ))}
                       </SelectContent>
                     </Select>
-                  ) : (
-                    <Input
-                      id="grade"
-                      value={profile?.grade != null ? String(profile.grade) : "—"}
-                      readOnly
-                      disabled
-                      className={PROFILE_INPUT_CLASS}
-                    />
                   )}
                 </div>
                 <Field
@@ -584,12 +605,9 @@ export default function ProfilePage() {
                 />
               </div>
 
-              {editMode ? (
+              {editMode && (
                 <div className="flex flex-wrap gap-3 pt-3">
-                  <Button
-                    type="submit"
-                    disabled={updateProfile.isPending || isLoading}
-                  >
+                  <Button type="submit" disabled={updateProfile.isPending}>
                     {updateProfile.isPending ? (
                       <Loader2 className="mr-2 size-4 animate-spin" />
                     ) : null}
@@ -599,7 +617,6 @@ export default function ProfilePage() {
                     type="button"
                     variant="outline"
                     onClick={() => setPasswordOpen(true)}
-                    disabled={isLoading}
                   >
                     <Key className="mr-2 size-4" />
                     {t("change_password")}
@@ -607,27 +624,17 @@ export default function ProfilePage() {
                   <Button
                     type="button"
                     variant="ghost"
-                    onClick={() => setEditMode(false)}
+                    onClick={cancelEdit}
+                    disabled={updateProfile.isPending}
                   >
                     {t("cancel")}
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-3 pt-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={enterEditMode}
-                    disabled={isLoading}
-                  >
-                    {t("edit_profile")}
                   </Button>
                 </div>
               )}
             </form>
           </Card>
 
-          <Card className="rounded-2xl p-5 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg">
+          <Card className="rounded-2xl border-0 p-5 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg">
             <h3 className="mb-4 text-[15px] font-semibold text-ink-900">
               {t("notif_prefs")}
             </h3>
