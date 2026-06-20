@@ -13,3 +13,7 @@ web/.env.local
 
 # OS
 .DS_Store
+
+# Claude Code
+.claude/worktrees/
+.claude/zone-v2/
