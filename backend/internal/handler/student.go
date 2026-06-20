@@ -6,6 +6,18 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+func (h *Handler) StudentDashboard(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	dashboard, err := h.svc.GetDashboard(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, dashboard)
+}
+
 func (h *Handler) ListSchools(c echo.Context) error {
 	schools, err := h.svc.ListSchools(c.Request().Context())
 	if err != nil {
