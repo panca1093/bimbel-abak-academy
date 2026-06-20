@@ -6,6 +6,7 @@ import (
 	"akademi-bimbel/internal/repository"
 	"context"
 
+	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -18,6 +19,7 @@ type Service struct {
 	emailProvider EmailProvider
 	payment       PaymentClient
 	logistics     LogisticsClient
+	storage       *minio.Client
 	cfg           *config.Config
 }
 
@@ -53,6 +55,7 @@ func NewWithStore(
 	emailProvider EmailProvider,
 	payment PaymentClient,
 	logistics LogisticsClient,
+	storage *minio.Client,
 	cfg *config.Config,
 ) *Service {
 	return &Service{
@@ -64,6 +67,7 @@ func NewWithStore(
 		emailProvider: emailProvider,
 		payment:       payment,
 		logistics:     logistics,
+		storage:       storage,
 		cfg:           cfg,
 	}
 }

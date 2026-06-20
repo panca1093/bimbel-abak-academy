@@ -87,6 +87,21 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	webhooks := v1.Group("/webhooks")
 	webhooks.POST("/payment", h.HandlePaymentWebhook)
 
+	// Public school list
+	v1.GET("/schools", h.ListSchools)
+
+	// Upload presign (authenticated)
+	uploads := v1.Group("/uploads")
+	uploads.Use(handler.JWTMiddleware(svc, jwtSigner))
+	uploads.POST("/presign", h.GeneratePresignUploadURL)
+
+	// Student profile routes
+	students := v1.Group("/students")
+	students.Use(handler.JWTMiddleware(svc, jwtSigner))
+	students.GET("/profile", h.StudentProfile)
+	students.PATCH("/profile", h.StudentUpdateProfile)
+	students.PATCH("/photo", h.UpdatePhoto)
+
 	// Student course routes
 	studentCourses := v1.Group("/courses")
 	studentCourses.Use(handler.JWTMiddleware(svc, jwtSigner))
@@ -94,13 +109,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	studentCourses.GET("/:id", h.StudentGetCourse)
 	studentCourses.POST("/:id/lessons/:lId/complete", h.StudentMarkLessonComplete)
 	studentCourses.GET("/:id/progress", h.StudentCourseProgress)
-
-	// Student profile/dashboard routes
-	students := v1.Group("/students")
-	students.Use(handler.JWTMiddleware(svc, jwtSigner))
-	students.GET("/dashboard", h.StudentDashboard)
-	students.GET("/profile", h.StudentProfile)
-	students.PATCH("/profile", h.StudentUpdateProfile)
 
 	// Admin order routes
 	adminOrders := admin.Group("/orders")

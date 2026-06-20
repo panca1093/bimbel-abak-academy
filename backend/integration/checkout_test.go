@@ -91,7 +91,7 @@ func webhookServer(t *testing.T, env *testEnv, payment service.PaymentClient) *h
 	cfg := &config.Config{CORSOrigins: []string{"*"}}
 	svc := service.NewWithStore(repo, repo, env.rdb, env.signer,
 		&service.NoopOTPProvider{}, &service.NoopEmailProvider{}, payment,
-		&service.NoopLogisticsClient{}, cfg)
+		&service.NoopLogisticsClient{}, nil, cfg)
 	h := handler.New(svc)
 	e := echo.New()
 	e.HideBanner = true

@@ -41,6 +41,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusForbidden, APIError{Code: "account_deactivated", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidToken):
 		status, apiErr = http.StatusUnauthorized, APIError{Code: "invalid_google_token", Message: "invalid or expired Google token"}
+	case errors.Is(err, service.ErrInvalidUUID):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrWeakPassword):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error(), Details: "password must be at least 8 characters"}
 	case errors.Is(err, service.ErrProductNotFound):

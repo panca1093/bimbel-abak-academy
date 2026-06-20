@@ -82,7 +82,7 @@ func (f *fakeUserRepo) UpdatePasswordHash(_ context.Context, userID, hash string
 	return nil
 }
 
-func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username, phone, address, targetExam *string) error {
+func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error {
 	u, ok := f.byID[userID]
 	if !ok {
 		return errors.New("not found")
@@ -105,7 +105,26 @@ func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name,
 	if targetExam != nil {
 		u.TargetExam = targetExam
 	}
+	if grade != nil {
+		u.Grade = grade
+	}
+	if schoolID != nil {
+		u.SchoolID = schoolID
+	}
 	return nil
+}
+
+func (f *fakeUserRepo) UpdateUserPhoto(_ context.Context, userID, photoURL string) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return errors.New("not found")
+	}
+	u.PhotoURL = &photoURL
+	return nil
+}
+
+func (f *fakeUserRepo) ListSchools(_ context.Context) ([]*model.School, error) {
+	return nil, nil
 }
 
 func (f *fakeUserRepo) DisableOTP(_ context.Context, userID string) error {

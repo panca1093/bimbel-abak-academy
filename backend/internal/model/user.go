@@ -11,15 +11,16 @@ type User struct {
 	Role         string     `json:"role"`
 	Name         string     `json:"name"`
 	SchoolID     *string    `json:"school_id"`
+	PhotoURL     *string    `json:"photo_url"`
 	Status       string     `json:"status"`
 	OTPEnabled   bool       `json:"otp_enabled"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	// student-only
-	NIS            *string   `json:"nis"`
+	NIS            *string    `json:"nis"`
 	DOB            *time.Time `json:"dob"`
-	Gender         *string   `json:"gender"`
-	Grade          *int      `json:"grade"`
-	AlamatDomisili *string   `json:"alamat_domisili"`
-	TargetExam     *string   `json:"target_exam"`
+	Gender         *string    `json:"gender"`
+	Grade          *int       `json:"grade"`
+	AlamatDomisili *string    `json:"alamat_domisili"`
+	TargetExam     *string    `json:"target_exam"`
 }

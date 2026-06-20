@@ -19,15 +19,15 @@ func (r *Repository) CreateUser(ctx context.Context, u *model.User) error {
 	return r.pool.QueryRow(ctx,
 		`INSERT INTO users (
 			email, username, phone, password_hash, role, name,
-			school_id, status, otp_enabled,
+			school_id, photo_url, status, otp_enabled,
 			nis, dob, gender, grade, alamat_domisili, target_exam
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
-			$7, $8, $9,
-			$10, $11, $12, $13, $14, $15
+			$7, $8, $9, $10,
+			$11, $12, $13, $14, $15, $16
 		) RETURNING id, created_at, updated_at`,
 		u.Email, u.Username, u.Phone, u.PasswordHash, u.Role, u.Name,
-		u.SchoolID, u.Status, u.OTPEnabled,
+		u.SchoolID, u.PhotoURL, u.Status, u.OTPEnabled,
 		u.NIS, u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
@@ -37,14 +37,14 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*model.U
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, status, otp_enabled, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, created_at, updated_at,
 			nis, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE email = $1 AND status != 'deleted'`,
 		email,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
 		&u.NIS, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
@@ -60,14 +60,14 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, status, otp_enabled, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, created_at, updated_at,
 			nis, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE username = $1 AND status != 'deleted'`,
 		username,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
 		&u.NIS, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
@@ -83,14 +83,14 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, e
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, status, otp_enabled, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, created_at, updated_at,
 			nis, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE id = $1`,
 		id,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
 		&u.NIS, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
@@ -121,7 +121,7 @@ func (r *Repository) DisableOTP(ctx context.Context, userID string) error {
 
 // UpdateUserProfile patches the editable profile fields. nil args leave the
 // column unchanged via COALESCE. Email normalization is the caller's job.
-func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string) error {
+func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users
 		SET name = COALESCE($1, name),
@@ -130,11 +130,42 @@ func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name,
 		    phone = COALESCE($4, phone),
 		    alamat_domisili = COALESCE($5, alamat_domisili),
 		    target_exam = COALESCE($6, target_exam),
+		    grade = COALESCE($7, grade),
+		    school_id = COALESCE($8, school_id),
 		    updated_at = now()
-		WHERE id = $7`,
-		name, email, username, phone, address, targetExam, userID,
+		WHERE id = $9`,
+		name, email, username, phone, address, targetExam, grade, schoolID, userID,
 	)
 	return err
+}
+
+// UpdateUserPhoto sets the user's avatar URL.
+func (r *Repository) UpdateUserPhoto(ctx context.Context, userID, photoURL string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET photo_url = $1, updated_at = now() WHERE id = $2`,
+		photoURL, userID,
+	)
+	return err
+}
+
+// ListSchools returns active schools ordered by name.
+func (r *Repository) ListSchools(ctx context.Context) ([]*model.School, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, name, code FROM school WHERE status = 'active' ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	schools := []*model.School{}
+	for rows.Next() {
+		s := &model.School{}
+		if err := rows.Scan(&s.ID, &s.Name, &s.Code); err != nil {
+			return nil, err
+		}
+		schools = append(schools, s)
+	}
+	return schools, rows.Err()
 }
 
 func (r *Repository) TombstoneUser(ctx context.Context, userID string) error {
