@@ -1,10 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import CompetitionPage from "./page";
-
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() },
-}));
 
 let uiStore = { lang: "id" as "id" | "en" };
 
@@ -13,44 +9,32 @@ vi.mock("@/stores/ui", () => ({
 }));
 
 describe("CompetitionPage", () => {
-  it("renders title and package sections", async () => {
+  it("renders title from i18n", () => {
     render(<CompetitionPage />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: /Kompetisi & Tryout/i })
-      ).toBeInTheDocument();
-      expect(screen.getByText(/Paket gratis/i)).toBeInTheDocument();
-      expect(screen.getByText(/Paket saya/i)).toBeInTheDocument();
-    });
+    expect(
+      screen.getByRole("heading", { name: /Kompetisi & Tryout/i })
+    ).toBeInTheDocument();
   });
 
-  it("lists free and purchased packages", async () => {
+  it("shows maintenance message", () => {
     render(<CompetitionPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Try Out UTBK Gratis #12")).toBeInTheDocument();
-      expect(
-        screen.getByText("Simulasi SNBT Nasional 2026")
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.getByText(/Halaman ini sedang dalam pengembangan/i)
+    ).toBeInTheDocument();
   });
 
-  it("shows check-in token input for checkin package", async () => {
+  it("does not render package data", () => {
     render(<CompetitionPage />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText(/Token dari kartu ujian/i)
-      ).toBeInTheDocument();
-    });
+    expect(
+      screen.queryByText("Try Out UTBK Gratis #12")
+    ).not.toBeInTheDocument();
   });
 
-  it("shows score for submitted package", async () => {
+  it("translates copy when language is en", () => {
+    uiStore.lang = "en";
     render(<CompetitionPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("7.5")).toBeInTheDocument();
-    });
+    expect(
+      screen.getByText(/This page is under development/i)
+    ).toBeInTheDocument();
   });
 });
