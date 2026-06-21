@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAdminCourses } from "@/lib/hooks/admin-courses";
 import type { Product, ProductType, ProductStatus, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 
 interface ProductModalProps {
@@ -46,6 +47,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [stock, setStock] = useState("");
   const [status, setStatus] = useState<ProductStatus>("draft");
   const [description, setDescription] = useState("");
+  const [courseIds, setCourseIds] = useState<string[]>([]);
+  const { data: courses } = useAdminCourses();
 
   useEffect(() => {
     if (open) {
@@ -56,6 +59,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setStock(product.stock != null ? String(product.stock) : "");
         setStatus(product.status ?? "draft");
         setDescription(product.description ?? "");
+        setCourseIds(product.course_ids ?? []);
       } else {
         setName("");
         setType("");
@@ -63,11 +67,14 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setStock("");
         setStatus("draft");
         setDescription("");
+        setCourseIds([]);
       }
     }
   }, [open, product]);
 
   const showStock = type === "book";
+  const effectiveType = isEdit ? product?.type : type;
+  const showCourses = effectiveType === "course" || effectiveType === "package";
   const canSubmit = name.trim() !== "" && (isEdit || type !== "") && price !== "";
 
   function handleSubmit(e: React.FormEvent) {
@@ -85,6 +92,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         ...base,
         status,
         ...(showStock ? { stock: Number(stock) } : {}),
+        ...(showCourses ? { course_ids: courseIds } : {}),
       };
       onSubmit(input);
       return;
@@ -95,6 +103,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       ...base,
       type,
       ...(showStock ? { stock: Number(stock) } : {}),
+      ...(showCourses ? { course_ids: courseIds } : {}),
     };
     onSubmit(input);
   }
@@ -186,6 +195,36 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                   placeholder="0"
                   disabled={isPending}
                 />
+              </div>
+            )}
+
+            {showCourses && (
+              <div className="grid gap-2">
+                <Label>Kursus terkait</Label>
+                <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
+                  {(courses ?? []).length === 0 ? (
+                    <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada kursus.</p>
+                  ) : (
+                    (courses ?? []).map((c) => {
+                      const checked = courseIds.includes(c.id);
+                      return (
+                        <label key={c.id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={isPending}
+                            onChange={(e) =>
+                              setCourseIds((prev) =>
+                                e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)
+                              )
+                            }
+                          />
+                          <span>{c.title}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
 

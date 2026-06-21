@@ -28,6 +28,10 @@ vi.mock("@/lib/hooks/admin-products", () => ({
   useDeleteProduct: () => deleteState,
 }));
 
+vi.mock("@/lib/hooks/admin-courses", () => ({
+  useAdminCourses: () => ({ data: [], isLoading: false }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
