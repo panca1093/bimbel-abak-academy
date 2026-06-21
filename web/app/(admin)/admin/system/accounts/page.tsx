@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Plus,
+  ShieldCheck,
   Shield,
   MoreHorizontal,
   Edit,
@@ -38,6 +39,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatCard } from "@/components/admin/StatCard";
 
 type SystemRole = "super_admin" | "admin_exam" | "admin_school" | "admin_store";
 type AccountStatus = "active" | "suspended" | "pending";
@@ -154,38 +157,23 @@ export default function SystemAccountsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-            {t("accounts")}
-          </h1>
-          <p className="mt-2 text-sm text-ink-500">
-            Kelola akun admin, peran, dan status aktivasi.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-1 size-4" />
-          {t("create")}
-        </Button>
-      </header>
+      <AdminPageHeader
+        icon={ShieldCheck}
+        title="Akun Pengguna"
+        description="Kelola akun dan hak akses admin."
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1 size-4" />
+            {t("create")}
+          </Button>
+        }
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Total akun</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.total}</div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Aktif</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.active}</div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Pending</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.pending}</div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Suspended</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.suspended}</div>
-        </Card>
+        <StatCard label="Total akun" value={String(stats.total)} />
+        <StatCard label="Aktif" value={String(stats.active)} />
+        <StatCard label="Pending" value={String(stats.pending)} />
+        <StatCard label="Suspended" value={String(stats.suspended)} />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -225,7 +213,7 @@ export default function SystemAccountsPage() {
         </div>
       </div>
 
-      <Card className="overflow-hidden">
+      <div className="md-card-outlined">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
@@ -306,7 +294,7 @@ export default function SystemAccountsPage() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">

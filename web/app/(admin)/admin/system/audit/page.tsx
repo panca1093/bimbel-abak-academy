@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ShieldCheck, Filter, Clock } from "lucide-react";
+import { ShieldCheck, ClipboardList, Filter, Clock } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 type AuditAction = "create" | "update" | "delete" | "login" | "publish";
 
@@ -116,27 +117,24 @@ export default function SystemAuditPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-            {t("audit")}
-          </h1>
-          <p className="mt-2 text-sm text-ink-500">
-            Catatan aktivitas penting di seluruh platform.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Filter className="size-4 text-ink-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari aktor atau target…"
-            className="h-9 w-[240px] text-xs"
-          />
-        </div>
-      </header>
+      <AdminPageHeader
+        icon={ClipboardList}
+        title="Audit Log"
+        description="Riwayat aktivitas admin di seluruh platform."
+        actions={
+          <div className="flex items-center gap-2">
+            <Filter className="size-4 text-ink-400" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari aktor atau target…"
+              className="h-9 w-[240px] text-xs"
+            />
+          </div>
+        }
+      />
 
-      <Card className="overflow-hidden">
+      <div className="md-card-outlined">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
@@ -196,7 +194,7 @@ export default function SystemAuditPage() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 
 interface ToggleProps {
   checked: boolean;
@@ -68,14 +69,11 @@ export default function SystemConfigPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <header className="mb-6">
-        <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-          {t("config")}
-        </h1>
-        <p className="mt-2 text-sm text-ink-500">
-          Pengaturan platform, fitur, notifikasi, dan pembayaran.
-        </p>
-      </header>
+      <AdminPageHeader
+        icon={Settings}
+        title="Konfigurasi Sistem"
+        description="Pengaturan platform dan fitur global."
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-6">
@@ -98,7 +96,7 @@ export default function SystemConfigPage() {
         </TabsList>
 
         <TabsContent value="general">
-          <Card className="p-5">
+          <div className="md-card-outlined">
             <div className="space-y-4">
               <div>
                 <Label>Nama platform</Label>
@@ -123,17 +121,17 @@ export default function SystemConfigPage() {
                 </div>
               </div>
               <div className="flex justify-end">
-                <Button size="sm">
+                <button className="md-btn-filled">
                   <Save className="mr-1 size-4" />
                   Simpan
-                </Button>
+                </button>
               </div>
             </div>
-          </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="features">
-          <Card className="p-5">
+          <div className="md-card-outlined">
             <Toggle
               checked={features.selfReg}
               onChange={(v) => setFeatures((f) => ({ ...f, selfReg: v }))}
@@ -146,11 +144,11 @@ export default function SystemConfigPage() {
               label="OTP wajib saat login"
               description="Kirimkan kode verifikasi untuk setiap percobaan login."
             />
-          </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="notifications">
-          <Card className="p-5">
+          <div className="md-card-outlined">
             <Toggle
               checked={features.emailNotif}
               onChange={(v) => setFeatures((f) => ({ ...f, emailNotif: v }))}
@@ -161,11 +159,11 @@ export default function SystemConfigPage() {
               onChange={(v) => setFeatures((f) => ({ ...f, waNotif: v }))}
               label="Notifikasi WhatsApp"
             />
-          </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="payment">
-          <Card className="p-5">
+          <div className="md-card-outlined">
             <div className="space-y-4">
               <div>
                 <Label>Payment gateway</Label>
@@ -178,7 +176,7 @@ export default function SystemConfigPage() {
                 description="Aktifkan untuk transaksi uji tanpa charge nyata."
               />
             </div>
-          </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
