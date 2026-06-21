@@ -587,7 +587,7 @@ func (s *Service) ListStudentOrders(ctx context.Context, studentID string, curso
 		return nil, "", err
 	}
 
-	var filtered []model.Order
+	filtered := make([]model.Order, 0, len(orders))
 	for _, o := range orders {
 		if o.Status != "cart" {
 			filtered = append(filtered, o)

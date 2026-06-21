@@ -122,6 +122,11 @@ func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.O
 			if err != nil {
 				return model.Order{}, false, err
 			}
+			items, err := r.fetchItems(ctx, order.ID)
+			if err != nil {
+				return model.Order{}, false, err
+			}
+			order.Items = items
 			return order, false, nil
 		}
 		return model.Order{}, false, err
@@ -230,6 +235,14 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 
 	if err = rows.Err(); err != nil {
 		return nil, "", err
+	}
+
+	for i := range orders {
+		items, err := r.fetchItems(ctx, orders[i].ID)
+		if err != nil {
+			return nil, "", err
+		}
+		orders[i].Items = items
 	}
 
 	return orders, nextCursor, nil
