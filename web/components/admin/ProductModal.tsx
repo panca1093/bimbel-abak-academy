@@ -75,7 +75,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const showStock = type === "book";
   const effectiveType = isEdit ? product?.type : type;
   const showCourses = effectiveType === "course" || effectiveType === "package";
-  const canSubmit = name.trim() !== "" && (isEdit || type !== "") && price !== "";
+  const canSubmit = name.trim() !== "" && (isEdit || type !== "") && price !== "" && (!showCourses || courseIds.length > 0);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,7 +92,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         ...base,
         status,
         ...(showStock ? { stock: Number(stock) } : {}),
-        ...(showCourses ? { course_ids: courseIds } : {}),
+        ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
       };
       onSubmit(input);
       return;
@@ -103,7 +103,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       ...base,
       type,
       ...(showStock ? { stock: Number(stock) } : {}),
-      ...(showCourses ? { course_ids: courseIds } : {}),
+      ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
     };
     onSubmit(input);
   }

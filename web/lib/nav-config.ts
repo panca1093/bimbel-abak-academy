@@ -86,9 +86,9 @@ const CONTENT_MANAGER_NAV: RoleNavConfig = [
     titleKey: "role_admin_store",
     items: [
       { labelKey: "nav_dashboard", href: "/admin", icon: LayoutDashboard, exact: true },
-      { labelKey: "nav_store", href: "/admin/products", icon: Package },
-      { labelKey: "nav_courses", href: "/admin/courses", icon: Library },
-      { labelKey: "nav_billing", href: "/admin/orders", icon: Receipt },
+      { labelKey: "admin_nav_products", href: "/admin/products", icon: Package },
+      { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
+      { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt },
       { labelKey: "promos", href: "/admin/promos", icon: Tag },
       { labelKey: "revenue", href: "/admin/revenue", icon: BarChart3 },
       { labelKey: "notifications", href: "/admin/notifications", icon: Bell },
