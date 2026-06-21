@@ -3,12 +3,57 @@
 /* Brand tokens — see design-app-abak/source/styles.css (CSS vars are named
    --green-* upstream but the actual palette is indigo/violet). */
 @theme {
-  --color-brand-50: #eef0fe;
+  /* ---- Brand: indigo / violet ---- */
+  --color-brand-50:  #eef0fe;
+  --color-brand-100: #e0e4fd;
+  --color-brand-200: #c4cafb;
+  --color-brand-300: #9ca6f6;
+  --color-brand-400: #6e7cee;
   --color-brand-500: #5161e8;
   --color-brand-600: #3d4ddb;
   --color-brand-700: #2e3bb8;
+  --color-brand-800: #232c8c;
   --color-brand-900: #1a2168;
 
+  /* ---- Neutrals: cool lavender-gray ---- */
+  --color-paper:    #f4f5fd;
+  --color-surface:  #ffffff;
+  --color-surface-2: #fafafe;
+  --color-ink-900: #15183a;
+  --color-ink-700: #353a60;
+  --color-ink-600: #565c84;
+  --color-ink-500: #767da2;
+  --color-ink-400: #9da3c2;
+  --color-line:   #e7e9f5;
+  --color-line-2: #f0f1fa;
+
+  /* ---- Status ---- */
+  --color-info:       #2563d8;
+  --color-info-bg:    #e7eefb;
+  --color-warn:       #c2680a;
+  --color-warn-bg:    #fbf1e2;
+  --color-danger:     #d33a2e;
+  --color-danger-bg:  #fbeae8;
+  --color-success:    #1f9e63;
+  --color-success-bg: #e5f5ec;
+  --color-violet:     #7c4ddb;
+  --color-violet-bg:  #efe9fb;
+  --color-gold:       #b08612;
+  --color-gold-bg:    #f8f1dd;
+
+  /* ---- Radius ---- */
+  --r-sm: 9px;
+  --r-md: 13px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+
+  /* ---- Shadow ---- */
+  --sh-sm: 0 1px 2px rgba(40, 46, 110, .06), 0 1px 3px rgba(40, 46, 110, .05);
+  --sh-md: 0 6px 18px rgba(40, 46, 110, .08), 0 2px 5px rgba(40, 46, 110, .05);
+  --sh-lg: 0 16px 40px rgba(30, 36, 100, .14), 0 5px 12px rgba(30, 36, 100, .07);
+  --sh-pop: 0 22px 56px rgba(26, 33, 104, .24);
+
+  /* ---- Type ---- */
   --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-source-serif), ui-serif, Georgia, serif;
   --font-mono: var(--font-spline-mono), ui-monospace, monospace;
@@ -16,4 +61,111 @@
 
 body {
   font-family: var(--font-sans);
+  font-size: 15px;
+}
+
+/* page entrance — matches design-app-abak/source/styles.css .fade-in */
+.fade-in {
+  animation: fadeIn 0.28s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Dark mode — mirrors design-app-abak/source/styles.css :root[data-theme="dark"] */
+html[data-theme="dark"] {
+  --color-paper:     #0e1020;
+  --color-surface:   #181b30;
+  --color-surface-2: #1f2238;
+  --color-ink-900: #eceefa;
+  --color-ink-700: #ccd0e6;
+  --color-ink-600: #a6abcc;
+  --color-ink-500: #868cb0;
+  --color-ink-400: #686e92;
+  --color-line:    #2c3050;
+  --color-line-2:  #242843;
+
+  /* brighter brand on dark surfaces */
+  --color-brand-50:  rgba(81, 97, 232, .18);
+  --color-brand-100: rgba(81, 97, 232, .28);
+  --color-brand-200: rgba(81, 97, 232, .42);
+  --color-brand-600: #6e7cee;
+  --color-brand-700: #9ca6f6;
+
+  /* status: dark tints + brighter foregrounds */
+  --color-info:       #6ba0f0;
+  --color-info-bg:    rgba(37, 99, 216, .22);
+  --color-warn:       #e0974a;
+  --color-warn-bg:    rgba(194, 104, 10, .22);
+  --color-danger:     #e68479;
+  --color-danger-bg:  rgba(211, 58, 46, .24);
+  --color-success:    #4fc78d;
+  --color-success-bg: rgba(31, 158, 99, .22);
+  --color-violet:     #a98fe6;
+  --color-violet-bg:  rgba(124, 77, 219, .26);
+  --color-gold:       #d6bb5e;
+  --color-gold-bg:    rgba(176, 134, 18, .24);
+}
+
+/* shadcn semantic-token bridge: map shadcn --primary/--background/etc. to
+   the brand tokens above so generated primitives render with brand styling.
+   shadcn init normally writes this; Task 1 deferred it to avoid clobbering
+   the font wiring in layout.tsx. */
+:root {
+  --background: var(--color-surface);
+  --foreground: var(--color-ink-900);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink-900);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-ink-900);
+  --primary: var(--color-brand-600);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-brand-50);
+  --secondary-foreground: var(--color-brand-700);
+  --muted: var(--color-line-2);
+  --muted-foreground: var(--color-ink-500);
+  --accent: var(--color-brand-50);
+  --accent-foreground: var(--color-brand-700);
+  --destructive: var(--color-danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--color-line);
+  --input: var(--color-line);
+  --ring: var(--color-brand-600);
+  --radius: var(--r-md);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Map Tailwind radius utilities to the brand --r-* scale. */
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
 }

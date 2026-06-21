@@ -1,0 +1,255 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import {
+  useAdminOrders,
+  useConfirmOrder,
+  useShipOrder,
+  useRefundOrder,
+  useReconcileOrder,
+} from "@/lib/hooks/admin-orders";
+import { useTranslation } from "@/lib/i18n";
+import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatRupiah } from "@/lib/format";
+import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
+
+const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "failed", "refunded"];
+
+function orderNumber(order: Order): string {
+  return `#${order.id.slice(-8)}`;
+}
+
+function productSummary(order: Order): string {
+  if (!order.items || order.items.length === 0) return "-";
+  const names = order.items.slice(0, 2).map((it) => it.name);
+  const suffix = order.items.length > 2 ? ` +${order.items.length - 2}` : "";
+  return names.join(", ") + suffix;
+}
+
+function hasBookItem(order: Order): boolean {
+  return (order.items ?? []).some((it) => it.product_type === "book");
+}
+
+function isShipped(order: Order): boolean {
+  return Boolean(order.tracking_number || order.shipped_at);
+}
+
+function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "refund" | "reconcile"): boolean {
+  switch (action) {
+    case "confirm":
+      return status === "payment_pending";
+    case "ship":
+      return status === "paid" || status === "processing";
+    case "refund":
+      return status === "paid" || status === "processing" || status === "completed";
+    case "reconcile":
+      return status === "payment_pending";
+  }
+}
+
+export default function OrdersPage() {
+  const { t } = useTranslation();
+  const [filter, setFilter] = useState<AdminOrderFilterStatus>("all");
+  const { data: orders, isLoading, isError, error } = useAdminOrders(filter);
+  const confirm = useConfirmOrder();
+  const ship = useShipOrder();
+  const refund = useRefundOrder();
+  const reconcile = useReconcileOrder();
+
+  const filtered = useMemo(() => {
+    if (!orders) return [];
+    return orders;
+  }, [orders]);
+
+  const filterLabel = (f: AdminOrderFilterStatus): string => {
+    switch (f) {
+      case "all":
+        return t("tab_all");
+      case "pending":
+        return t("filter_pending");
+      case "paid":
+        return t("filter_paid");
+      case "failed":
+        return t("filter_failed");
+      case "refunded":
+        return t("filter_refunded");
+    }
+  };
+
+  function shippingBadge(order: Order) {
+    if (!hasBookItem(order)) return null;
+    if (isShipped(order)) {
+      return <Badge className="bg-green-100 text-green-800 border-green-200">{t("status_shipped")}</Badge>;
+    }
+    return <Badge variant="outline">{t("status_pending_ship")}</Badge>;
+  }
+
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return t("error_generic");
+  }
+
+  async function handleConfirm(id: string) {
+    try {
+      await confirm.mutateAsync(id);
+      toast.success(t("orders_confirm"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  async function handleShip(id: string) {
+    const trackingNumber = window.prompt(t("orders_ship_prompt"));
+    if (!trackingNumber) return;
+    try {
+      await ship.mutateAsync({ id, trackingNumber });
+      toast.success(t("orders_shipped"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  async function handleRefund(id: string) {
+    if (!window.confirm(t("orders_refund_prompt"))) return;
+    try {
+      await refund.mutateAsync(id);
+      toast.success(t("orders_refunded"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  async function handleReconcile(id: string) {
+    try {
+      await reconcile.mutateAsync(id);
+      toast.success(t("orders_reconciled"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{t("orders")}</h1>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {FILTER_OPTIONS.map((f) => (
+          <Button
+            key={f}
+            variant={filter === f ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilter(f)}
+          >
+            {filterLabel(f)}
+          </Button>
+        ))}
+      </div>
+
+      {isLoading && (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      )}
+
+      {isError && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+          {t("orders_load_failed")}: {errorMessage(error)}
+        </div>
+      )}
+
+      {!isLoading && !isError && (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">{t("orders")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_buyer")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_product")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_total")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_payment")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("th_shipping")}</th>
+                <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((order) => (
+                <tr
+                  key={order.id}
+                  className="border-t transition-colors hover:bg-muted/40"
+                >
+                  <td className="px-4 py-3 font-mono font-medium">{orderNumber(order)}</td>
+                  <td className="px-4 py-3">{order.student_id}</td>
+                  <td className="px-4 py-3 max-w-xs truncate">{productSummary(order)}</td>
+                  <td className="px-4 py-3">{formatRupiah(order.total)}</td>
+                  <td className="px-4 py-3">
+                    <OrderStatusBadge status={order.status} />
+                  </td>
+                  <td className="px-4 py-3">{shippingBadge(order)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {actionAllowed(order.status, "confirm") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleConfirm(order.id)}
+                          disabled={confirm.isPending}
+                        >
+                          {t("action_confirm")}
+                        </Button>
+                      )}
+                      {actionAllowed(order.status, "ship") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleShip(order.id)}
+                          disabled={ship.isPending}
+                        >
+                          {t("action_ship")}
+                        </Button>
+                      )}
+                      {actionAllowed(order.status, "refund") && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleRefund(order.id)}
+                          disabled={refund.isPending}
+                        >
+                          {t("action_refund")}
+                        </Button>
+                      )}
+                      {actionAllowed(order.status, "reconcile") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleReconcile(order.id)}
+                          disabled={reconcile.isPending}
+                        >
+                          {t("action_reconcile")}
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    {t("empty_orders")}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

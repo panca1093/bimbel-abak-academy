@@ -7,43 +7,43 @@ import (
 )
 
 type Order struct {
-	ID                    uuid.UUID
-	StudentID             uuid.UUID
-	Status                string
-	Subtotal              float64
-	Discount              float64
-	ShippingCost          float64
-	Total                 float64
-	PromoCodeID           *uuid.UUID
-	ShippingAddress       []byte
-	SelectedCourier       string
-	TrackingNumber        string
-	ShippedAt             *time.Time
-	GatewayRef            string
-	PaymentMethod         string
-	PaymentExpiresAt      *time.Time
-	PaidAt                *time.Time
-	InvoiceURL            string
-	EstimatedDeliveryDays string
-	CheckedOutAt          *time.Time
-	CompletedAt           *time.Time
-	CancelledAt           *time.Time
-	CancellationReason    string
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
-	Items                 []OrderItem
+	ID                    uuid.UUID   `json:"id"`
+	StudentID             uuid.UUID   `json:"student_id"`
+	Status                string      `json:"status"`
+	Subtotal              float64     `json:"subtotal"`
+	Discount              float64     `json:"discount"`
+	ShippingCost          float64     `json:"shipping_cost"`
+	Total                 float64     `json:"total"`
+	PromoCodeID           *uuid.UUID  `json:"promo_code_id"`
+	ShippingAddress       []byte      `json:"shipping_address"`
+	SelectedCourier       string      `json:"selected_courier"`
+	TrackingNumber        string      `json:"tracking_number"`
+	ShippedAt             *time.Time  `json:"shipped_at"`
+	GatewayRef            string      `json:"gateway_ref"`
+	PaymentMethod         string      `json:"payment_method"`
+	PaymentExpiresAt      *time.Time  `json:"payment_expires_at"`
+	PaidAt                *time.Time  `json:"paid_at"`
+	InvoiceURL            string      `json:"invoice_url"`
+	EstimatedDeliveryDays string      `json:"estimated_delivery_days"`
+	CheckedOutAt          *time.Time  `json:"checked_out_at"`
+	CompletedAt           *time.Time  `json:"completed_at"`
+	CancelledAt           *time.Time  `json:"cancelled_at"`
+	CancellationReason    string      `json:"cancellation_reason"`
+	CreatedAt             time.Time   `json:"created_at"`
+	UpdatedAt             time.Time   `json:"updated_at"`
+	Items                 []OrderItem `json:"items"`
 }
 
 type OrderItem struct {
-	ID          uuid.UUID
-	OrderID     uuid.UUID
-	ProductID   uuid.UUID
-	ProductType string
-	Name        string
-	UnitPrice   float64
-	Qty         int
-	Jumlah      float64
-	WeightGrams int
-	FulfilledAt *time.Time
-	CreatedAt   time.Time
+	ID          uuid.UUID  `json:"id"`
+	OrderID     uuid.UUID  `json:"order_id"`
+	ProductID   uuid.UUID  `json:"product_id"`
+	ProductType string     `json:"product_type"`
+	Name        string     `json:"name"`
+	UnitPrice   float64    `json:"unit_price"`
+	Qty         int        `json:"qty"`
+	Jumlah      float64    `json:"jumlah"`
+	WeightGrams int        `json:"weight_grams"`
+	FulfilledAt *time.Time `json:"fulfilled_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }

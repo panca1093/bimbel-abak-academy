@@ -92,6 +92,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		&service.NoopEmailProvider{},
 		&service.NoopPaymentClient{},
 		&service.NoopLogisticsClient{},
+		nil,
 		cfg,
 	)
 

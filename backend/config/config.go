@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -14,18 +15,25 @@ type Config struct {
 	WorkerPollInterval time.Duration
 	CORSOrigins        []string
 
-	JWTSecret           string
-	AccessTokenTTL      time.Duration
-	RefreshTokenTTL     time.Duration
-	OTPSecret           string
-	OTPTTL              time.Duration
-	GoogleClientID      string
-	FazpassMerchantKey  string
-	FazpassAPIKey       string
-	FazpassBaseURL      string
-	MidtransServerKey   string
-	MidtransClientKey   string
-	MidtransEnv         string
+	JWTSecret          string
+	AccessTokenTTL     time.Duration
+	RefreshTokenTTL    time.Duration
+	OTPSecret          string
+	OTPTTL             time.Duration
+	GoogleClientID     string
+	FazpassMerchantKey string
+	FazpassAPIKey      string
+	FazpassBaseURL     string
+	MidtransServerKey  string
+	MidtransClientKey  string
+	MidtransEnv        string
+
+	MinioEndpoint       string
+	MinioPublicEndpoint string
+	MinioAccessKey      string
+	MinioSecretKey      string
+	MinioUseSSL         bool
+	MinioBucketName     string
 }
 
 func Load() Config {
@@ -50,6 +58,13 @@ func Load() Config {
 		MidtransServerKey:  env("MIDTRANS_SERVER_KEY", ""),
 		MidtransClientKey:  env("MIDTRANS_CLIENT_KEY", ""),
 		MidtransEnv:        env("MIDTRANS_ENV", "sandbox"),
+
+		MinioEndpoint:       env("MINIO_ENDPOINT", "minio:9000"),
+		MinioPublicEndpoint: env("MINIO_PUBLIC_ENDPOINT", "localhost:9000"),
+		MinioAccessKey:      env("MINIO_ACCESS_KEY", "minioadmin"),
+		MinioSecretKey:      env("MINIO_SECRET_KEY", "minioadmin"),
+		MinioUseSSL:         envBool("MINIO_USE_SSL", false),
+		MinioBucketName:     env("MINIO_BUCKET_NAME", "akademi-bimbel"),
 	}
 }
 
@@ -64,6 +79,15 @@ func envDuration(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return def
+}
+
+func envBool(key string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
 		}
 	}
 	return def

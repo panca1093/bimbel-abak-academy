@@ -142,11 +142,7 @@ func TestAdmin(t *testing.T) {
 		body := decodeBody(t, resp)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 
-		promoID, ok := body["ID"].(string)
-		if !ok {
-			// Try lowercase variant
-			promoID, ok = body["id"].(string)
-		}
+		promoID, ok := body["id"].(string)
 		require.True(t, ok, "response must contain promo id, got: %v", body)
 		require.NotEmpty(t, promoID)
 
@@ -160,10 +156,31 @@ func TestAdmin(t *testing.T) {
 		assert.Equal(t, 0, usedCount, "used_count must start at 0")
 	})
 
-	t.Run("FR-INT-25 used_count increment on checkout (documented gap)", func(t *testing.T) {
-		// IncrementPromoUses exists in repository/promo.go (line 84) but is NOT called
-		// in service.Checkout — the checkout path does not wire promo usage tracking.
-		// Asserting the create half above; skipping the increment half until wired.
-		t.Skip("used_count increment not wired in checkout path — gap documented per FR-INT-25 note")
+	t.Run("FR-INT-25 used_count increment on checkout", func(t *testing.T) {
+		studentID := seedUser(t, env, "student", "active", false)
+		token := authToken(t, env, studentID, "student")
+		productID := seedProduct(t, env, "book", "Buku Promo Test", 100000)
+		promoID := seedPromo(t, env, "PROMO25", 10.0)
+
+		orderResp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+		require.Equal(t, http.StatusCreated, orderResp.StatusCode)
+		orderID := decodeBody(t, orderResp)["id"].(string)
+
+		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{"promo_code": "PROMO25"}, token)
+		require.Equal(t, http.StatusOK, patchResp.StatusCode, "PATCH promo: %v", decodeBody(t, patchResp))
+
+		coResp := checkoutWithKey(t, env, orderID, token, fmt.Sprintf("idemp-promo25-%d", time.Now().UnixNano()))
+		coBody := decodeBody(t, coResp)
+		require.Equal(t, http.StatusOK, coResp.StatusCode, "checkout failed: %v", coBody)
+
+		var usedCount int
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT used_count FROM promo_code WHERE id=$1`, promoID,
+		).Scan(&usedCount))
+		assert.Equal(t, 1, usedCount, "used_count must be 1 after checkout with promo")
 	})
 }

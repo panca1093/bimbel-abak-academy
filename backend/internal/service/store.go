@@ -28,6 +28,7 @@ var (
 )
 
 type PromoValidation struct {
+	PromoID  uuid.UUID
 	Code     string
 	Discount float64
 	Total    float64
@@ -253,7 +254,7 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 		}
 	}
 
-	return PromoValidation{Code: code, Discount: discount, Total: subtotal - discount}, nil
+	return PromoValidation{PromoID: promo.ID, Code: code, Discount: discount, Total: subtotal - discount}, nil
 }
 
 func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
@@ -389,6 +390,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		if err != nil {
 			return err
 		}
+		repoPatch.PromoCodeID = &validation.PromoID
 		repoPatch.Discount = validation.Discount
 		repoPatch.Total = validation.Total
 	}
@@ -480,6 +482,12 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 
 	if err := s.storeRepo.SetPaymentRef(ctx, oID, paymentResp.GatewayRef, paymentResp.ExpiresAt); err != nil {
 		return CheckoutResult{}, err
+	}
+
+	if order.PromoCodeID != nil {
+		if err := s.storeRepo.IncrementPromoUses(ctx, *order.PromoCodeID); err != nil {
+			return CheckoutResult{}, err
+		}
 	}
 
 	result := CheckoutResult{

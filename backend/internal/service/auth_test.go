@@ -82,6 +82,60 @@ func (f *fakeUserRepo) UpdatePasswordHash(_ context.Context, userID, hash string
 	return nil
 }
 
+func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return errors.New("not found")
+	}
+	if name != nil {
+		u.Name = *name
+	}
+	if email != nil {
+		u.Email = email
+	}
+	if username != nil {
+		u.Username = username
+	}
+	if phone != nil {
+		u.Phone = phone
+	}
+	if address != nil {
+		u.AlamatDomisili = address
+	}
+	if targetExam != nil {
+		u.TargetExam = targetExam
+	}
+	if grade != nil {
+		u.Grade = grade
+	}
+	if schoolID != nil {
+		u.SchoolID = schoolID
+	}
+	return nil
+}
+
+func (f *fakeUserRepo) UpdateUserPhoto(_ context.Context, userID, photoURL string) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return errors.New("not found")
+	}
+	u.PhotoURL = &photoURL
+	return nil
+}
+
+func (f *fakeUserRepo) ListSchools(_ context.Context) ([]*model.School, error) {
+	return nil, nil
+}
+
+func (f *fakeUserRepo) DisableOTP(_ context.Context, userID string) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return errors.New("not found")
+	}
+	u.OTPEnabled = false
+	return nil
+}
+
 func (f *fakeUserRepo) TombstoneUser(_ context.Context, userID string) error {
 	u, ok := f.byID[userID]
 	if !ok {
@@ -188,7 +242,7 @@ func TestLogin(t *testing.T) {
 		repo := newFakeUserRepo()
 		seedActive(repo, false)
 		svc, _ := newTestService(t, repo)
-		_, _, _, _, err := svc.Login(ctx, "user@example.com", "wrong")
+		_, _, err := svc.Login(ctx, "user@example.com", "wrong")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("want ErrInvalidCredentials, got %v", err)
 		}
@@ -203,44 +257,22 @@ func TestLogin(t *testing.T) {
 			Status:       "deactivated",
 		})
 		svc, _ := newTestService(t, repo)
-		_, _, _, _, err := svc.Login(ctx, "user@example.com", "password123")
+		_, _, err := svc.Login(ctx, "user@example.com", "password123")
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("want ErrInvalidCredentials, got %v", err)
 		}
 	})
 
-	t.Run("otp disabled returns tokens inline", func(t *testing.T) {
+	t.Run("valid active user returns tokens inline", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		seedActive(repo, false)
 		svc, _ := newTestService(t, repo)
-		pending, otpRequired, access, refresh, err := svc.Login(ctx, "user@example.com", "password123")
+		access, refresh, err := svc.Login(ctx, "user@example.com", "password123")
 		if err != nil {
 			t.Fatalf("Login: %v", err)
-		}
-		if otpRequired || pending != "" {
-			t.Errorf("want otpRequired=false pending empty, got %v %q", otpRequired, pending)
 		}
 		if access == "" || refresh == "" {
 			t.Error("want non-empty tokens")
-		}
-	})
-
-	t.Run("otp enabled returns pending token", func(t *testing.T) {
-		repo := newFakeUserRepo()
-		seedActive(repo, true)
-		svc, mr := newTestService(t, repo)
-		pending, otpRequired, access, refresh, err := svc.Login(ctx, "user@example.com", "password123")
-		if err != nil {
-			t.Fatalf("Login: %v", err)
-		}
-		if !otpRequired || pending == "" {
-			t.Errorf("want otpRequired=true and pending token, got %v %q", otpRequired, pending)
-		}
-		if access != "" || refresh != "" {
-			t.Error("want empty tokens when otp required")
-		}
-		if got, _ := mr.Get("pending:" + pending); got == "" {
-			t.Error("pending token not stored in redis")
 		}
 	})
 
@@ -253,7 +285,7 @@ func TestLogin(t *testing.T) {
 			Status:       "active",
 		})
 		svc, _ := newTestService(t, repo)
-		_, _, access, _, err := svc.Login(ctx, "budi", "password123")
+		access, _, err := svc.Login(ctx, "budi", "password123")
 		if err != nil {
 			t.Fatalf("Login: %v", err)
 		}
@@ -266,27 +298,20 @@ func TestLogin(t *testing.T) {
 func TestVerifyOTP(t *testing.T) {
 	ctx := context.Background()
 
-	setup := func(t *testing.T) (*Service, *miniredis.Miniredis, *fakeUserRepo, string) {
+	setup := func(t *testing.T) (*Service, *miniredis.Miniredis, *fakeUserRepo, string, string) {
 		repo := newFakeUserRepo()
-		repo.seed(&model.User{
-			ID:           "u1",
-			Email:        strptr("user@example.com"),
-			PasswordHash: mustHashStd("password123"),
-			Role:         RoleStudent,
-			Status:       "active",
-			OTPEnabled:   true,
-		})
 		svc, mr := newTestService(t, repo)
-		pending, _, _, _, err := svc.Login(ctx, "user@example.com", "password123")
+		pending, err := svc.Register(ctx, "user@example.com", "password123", "Budi")
 		if err != nil {
-			t.Fatalf("Login: %v", err)
+			t.Fatalf("Register: %v", err)
 		}
-		return svc, mr, repo, pending
+		userID, _ := mr.Get("pending:" + pending)
+		return svc, mr, repo, pending, userID
 	}
 
-	t.Run("correct code returns tokens and clears keys", func(t *testing.T) {
-		svc, mr, _, pending := setup(t)
-		code, _ := mr.Get("otp:u1")
+	t.Run("correct code returns tokens, clears keys and disables otp", func(t *testing.T) {
+		svc, mr, repo, pending, userID := setup(t)
+		code, _ := mr.Get("otp:" + userID)
 		access, refresh, err := svc.VerifyOTP(ctx, pending, code)
 		if err != nil {
 			t.Fatalf("VerifyOTP: %v", err)
@@ -294,13 +319,17 @@ func TestVerifyOTP(t *testing.T) {
 		if access == "" || refresh == "" {
 			t.Error("want tokens")
 		}
-		if mr.Exists("otp:u1") || mr.Exists("pending:"+pending) {
+		if mr.Exists("otp:"+userID) || mr.Exists("pending:"+pending) {
 			t.Error("otp/pending keys should be deleted after verify")
+		}
+		u, _ := repo.GetUserByID(ctx, userID)
+		if u == nil || u.OTPEnabled {
+			t.Error("otp should be disabled after verification")
 		}
 	})
 
 	t.Run("wrong code", func(t *testing.T) {
-		svc, _, _, pending := setup(t)
+		svc, _, _, pending, _ := setup(t)
 		_, _, err := svc.VerifyOTP(ctx, pending, "000000")
 		if !errors.Is(err, ErrInvalidOTP) {
 			t.Errorf("want ErrInvalidOTP, got %v", err)
@@ -308,8 +337,8 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("expired otp", func(t *testing.T) {
-		svc, mr, _, pending := setup(t)
-		mr.Del("otp:u1")
+		svc, mr, _, pending, userID := setup(t)
+		mr.Del("otp:" + userID)
 		_, _, err := svc.VerifyOTP(ctx, pending, "123456")
 		if !errors.Is(err, ErrOTPExpired) {
 			t.Errorf("want ErrOTPExpired, got %v", err)
@@ -317,7 +346,7 @@ func TestVerifyOTP(t *testing.T) {
 	})
 
 	t.Run("invalid pending token", func(t *testing.T) {
-		svc, _, _, _ := setup(t)
+		svc, _, _, _, _ := setup(t)
 		_, _, err := svc.VerifyOTP(ctx, "bogus", "123456")
 		if !errors.Is(err, ErrInvalidPendingToken) {
 			t.Errorf("want ErrInvalidPendingToken, got %v", err)
@@ -338,7 +367,7 @@ func TestRefresh(t *testing.T) {
 			Status:       "active",
 		})
 		svc, mr := newTestService(t, repo)
-		_, _, _, refresh, err := svc.Login(ctx, "user@example.com", "password123")
+		_, refresh, err := svc.Login(ctx, "user@example.com", "password123")
 		if err != nil {
 			t.Fatalf("Login: %v", err)
 		}
@@ -378,7 +407,7 @@ func TestLogout(t *testing.T) {
 		Status:       "active",
 	})
 	svc, mr := newTestService(t, repo)
-	_, _, access, _, err := svc.Login(ctx, "user@example.com", "password123")
+	access, _, err := svc.Login(ctx, "user@example.com", "password123")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -485,7 +514,7 @@ func TestGoogleLogin_InvalidToken(t *testing.T) {
 	repo := newFakeUserRepo()
 	svc, _ := newTestService(t, repo)
 
-	_, _, _, _, err := svc.GoogleLogin(context.Background(), "bogus-id-token")
+	_, _, err := svc.GoogleLogin(context.Background(), "bogus-id-token")
 	if !errors.Is(err, ErrInvalidToken) {
 		t.Errorf("want ErrInvalidToken, got %v", err)
 	}
@@ -519,7 +548,7 @@ func TestLogout_WithRefreshToken(t *testing.T) {
 	})
 	svc, mr := newTestService(t, repo)
 
-	_, _, access, refresh, err := svc.Login(ctx, "user@example.com", "password123")
+	access, refresh, err := svc.Login(ctx, "user@example.com", "password123")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}
@@ -559,7 +588,7 @@ func TestResetPassword_RevokesAllSessions(t *testing.T) {
 	svc, mr := newTestService(t, repo)
 
 	// Mint a session so we have live access+refresh keys.
-	_, _, access, refresh, err := svc.Login(ctx, "user@example.com", "oldpassword")
+	access, refresh, err := svc.Login(ctx, "user@example.com", "oldpassword")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}

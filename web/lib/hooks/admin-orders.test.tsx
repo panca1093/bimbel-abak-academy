@@ -1,0 +1,171 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, waitFor, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  useAdminOrders,
+  useAdminOrder,
+  useConfirmOrder,
+  useShipOrder,
+  useRefundOrder,
+  useReconcileOrder,
+  adminOrdersKeys,
+} from "./admin-orders";
+import type { Order } from "@/lib/types";
+
+const mockAuthFetch = vi.fn();
+
+vi.mock("@/lib/api", () => ({
+  authFetch: (...args: Parameters<typeof mockAuthFetch>) => mockAuthFetch(...args),
+  ApiError: class extends Error {
+    code: string;
+    status: number;
+    constructor(code: string, message: string, status: number) {
+      super(message);
+      this.code = code;
+      this.status = status;
+    }
+  },
+}));
+
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: {
+    getState: () => ({ token: "test-token" }),
+  },
+}));
+
+const sampleOrder: Order = {
+  id: "o1",
+  student_id: "s1",
+  status: "payment_pending",
+  subtotal: 100000,
+  discount: 0,
+  shipping_cost: 15000,
+  total: 115000,
+  items: [{ id: "i1", order_id: "o1", product_id: "p1", product_type: "book", name: "Buku A", unit_price: 100000, qty: 1, jumlah: 100000 }],
+};
+
+describe("admin-orders hooks", () => {
+  beforeEach(() => {
+    mockAuthFetch.mockReset();
+  });
+
+  it("useAdminOrders fetches GET /admin/orders and returns data", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [sampleOrder] });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useAdminOrders(), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders");
+    expect(result.current.data).toEqual([sampleOrder]);
+  });
+
+  it("useAdminOrders maps status filter to backend enum", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [] });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminOrders("pending"), { wrapper });
+
+    await waitFor(() => expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders?status=payment_pending"));
+  });
+
+  it("useAdminOrder fetches GET /admin/orders/:id", async () => {
+    mockAuthFetch.mockResolvedValueOnce(sampleOrder);
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useAdminOrder("o1"), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders/o1");
+    expect(result.current.data).toEqual(sampleOrder);
+  });
+
+  it("useConfirmOrder posts to /admin/orders/:id/confirm with idempotency key", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "order confirmed" });
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useConfirmOrder(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync("o1");
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/orders/o1/confirm",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) }),
+      })
+    );
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
+  });
+
+  it("useShipOrder posts tracking_number to /admin/orders/:id/ship", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "order shipped" });
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useShipOrder(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: "o1", trackingNumber: "JNE-123" });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders/o1/ship", {
+      method: "POST",
+      body: JSON.stringify({ tracking_number: "JNE-123" }),
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
+  });
+
+  it("useRefundOrder posts to /admin/orders/:id/refund", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "order refunded" });
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useRefundOrder(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync("o1");
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/orders/o1/refund", { method: "POST" });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
+  });
+
+  it("useReconcileOrder posts to /admin/orders/:id/reconcile with idempotency key", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "order reconciled" });
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useReconcileOrder(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync("o1");
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/orders/o1/reconcile",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) }),
+      })
+    );
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminOrdersKeys.all });
+  });
+});
+
+function wrapperFactory() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return {
+    wrapper: ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
+    queryClient,
+  };
+}

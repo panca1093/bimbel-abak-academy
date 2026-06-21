@@ -17,6 +17,9 @@ import (
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/server"
 	"akademi-bimbel/internal/service"
+
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 func main() {
@@ -46,7 +49,8 @@ func main() {
 	otpProvider, emailProvider := newNotifyProviders(cfg)
 	paymentClient := newPaymentClient(cfg)
 	logisticsClient := &adapter.NoopLogisticsClient{}
-	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, &cfg)
+	storageClient := newStorageClient(cfg)
+	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, storageClient, &cfg)
 	h := handler.New(svc)
 	e := server.New(h, svc, jwtSigner, cfg)
 
@@ -87,4 +91,16 @@ func newPaymentClient(cfg config.Config) service.PaymentClient {
 		return adapter.NewMidtransClient(cfg.MidtransServerKey, cfg.MidtransClientKey, cfg.MidtransEnv)
 	}
 	return &adapter.NoopPaymentClient{}
+}
+
+func newStorageClient(cfg config.Config) *minio.Client {
+	client, err := minio.New(cfg.MinioEndpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
+		Secure: cfg.MinioUseSSL,
+	})
+	if err != nil {
+		slog.Default().Error("init minio client", "err", err)
+		return nil
+	}
+	return client
 }

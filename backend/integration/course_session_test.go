@@ -102,9 +102,9 @@ func TestCourseSession(t *testing.T) {
 		require.True(t, ok, "expected 'data' array in response, got: %v", bodyA)
 		require.Len(t, dataA, 1, "student A should see exactly 1 session")
 
-		// model.CourseSession has no json tags — serialized with PascalCase keys.
+		// model.CourseSession serializes with snake_case json tags.
 		sessionA := dataA[0].(map[string]any)
-		assert.Equal(t, courseA, sessionA["CourseID"], "student A's session must reference courseA")
+		assert.Equal(t, courseA, sessionA["course_id"], "student A's session must reference courseA")
 
 		// Student B should see only courseB's session.
 		respB := env.doJSON(t, http.MethodGet, "/api/v1/courses", nil, tokenB)
@@ -116,7 +116,7 @@ func TestCourseSession(t *testing.T) {
 		require.Len(t, dataB, 1, "student B should see exactly 1 session")
 
 		sessionB := dataB[0].(map[string]any)
-		assert.Equal(t, courseB, sessionB["CourseID"], "student B's session must reference courseB")
+		assert.Equal(t, courseB, sessionB["course_id"], "student B's session must reference courseB")
 	})
 
 	t.Run("FR-INT-27 mark lesson complete updates JSONB; re-call is idempotent", func(t *testing.T) {
