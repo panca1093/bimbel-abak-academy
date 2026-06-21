@@ -358,35 +358,32 @@ export default function ProfilePage() {
 
   if (isError) {
     return (
-      <div className="fade-in min-h-screen">
-        <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
-          <header className="mb-6">
-            <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-              {t("profile_title")}
-            </h1>
-          </header>
-          <Card className="rounded-2xl border-danger/30 bg-danger-bg px-5 py-4 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 text-sm text-ink-700">
-                {t("load_failed")}
-                {error instanceof Error && error.message
-                  ? ` ${error.message}`
-                  : ""}
-              </div>
-              <Button variant="outline" size="sm" onClick={() => refetch()}>
-                {t("retry")}
-              </Button>
+      <div className="fade-in">
+        <header className="mb-6">
+          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
+            {t("profile_title")}
+          </h1>
+        </header>
+        <Card className="rounded-2xl border-danger/30 bg-danger-bg px-5 py-4 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 text-sm text-ink-700">
+              {t("load_failed")}
+              {error instanceof Error && error.message
+                ? ` ${error.message}`
+                : ""}
             </div>
-          </Card>
-        </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              {t("retry")}
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="fade-in min-h-screen">
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
-        <header className="mb-6">
+    <div className="fade-in">
+      <header className="mb-6">
           <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
             {t("profile_title")}
           </h1>
@@ -671,11 +668,10 @@ export default function ProfilePage() {
           </Card>
         </div>
 
-        <ChangePasswordDialog
-          open={passwordOpen}
-          onOpenChange={setPasswordOpen}
-        />
-      </div>
+      <ChangePasswordDialog
+        open={passwordOpen}
+        onOpenChange={setPasswordOpen}
+      />
     </div>
   );
 }

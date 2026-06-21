@@ -89,7 +89,7 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "orders_empty", id: "Belum ada pesanan.", en: "No orders yet." },
   { key: "orders_empty_desc", id: "Pesanan Anda akan muncul di sini setelah checkout.", en: "Your orders will appear here after checkout." },
   { key: "orders_start_shopping", id: "Mulai belanja", en: "Start shopping" },
-  { key: "orders_load_failed", id: "Gagal memuat pesanan.", en: "Failed to load orders." },
+  { key: "orders_load_failed", id: "Gagal memuat pesanan", en: "Failed to load orders" },
 
   // Order detail (orders/[id]/page.tsx)
   { key: "order_tl_created", id: "Pesanan dibuat", en: "Order created" },

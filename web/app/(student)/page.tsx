@@ -41,7 +41,7 @@ export default function DashboardPage() {
   })();
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
+    <div>
       {isError && (
         <Card className="mb-8 border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">

@@ -21,7 +21,7 @@ export default function CoursesPage() {
   const { data: sessions, isLoading, isError, error, refetch } = useMyCourses();
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
+    <div>
       <header className="mb-8">
         <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
           {t("nav_courses")}

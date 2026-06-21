@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Receipt } from "lucide-react";
+import { AlertCircle, ArrowRight, CreditCard, Lock, Receipt, ShoppingCart } from "lucide-react";
 import { useOrders } from "@/lib/hooks/orders";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
@@ -21,21 +21,47 @@ function formatDate(iso?: string): string {
   }).format(d);
 }
 
+function BillingEmpty() {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-2xl border border-line bg-surface">
+      <div className="px-8 py-16 text-center">
+        <div className="mx-auto mb-6 flex size-24 items-center justify-center rounded-full bg-brand-50">
+          <Receipt className="size-12 text-brand-400" strokeWidth={1.5} />
+        </div>
+        <h2 className="font-serif text-2xl font-bold text-ink-900">{t("billing_no_tx_title")}</h2>
+        <p className="mx-auto mt-3 max-w-sm text-sm text-ink-500">{t("billing_no_tx_desc")}</p>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Button asChild>
+            <Link href="/catalog">
+              <ShoppingCart className="mr-2 size-4" />
+              {t("billing_browse_store")}
+            </Link>
+          </Button>
+          <Button variant="outline">
+            <AlertCircle className="mr-2 size-4" />
+            {t("billing_how_payments")}
+          </Button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-6 border-t border-line px-8 py-4 text-xs text-ink-400">
+        <div className="flex items-center gap-1.5">
+          <CreditCard className="size-3.5" />
+          {t("billing_payment_methods")}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Lock className="size-3.5" />
+          {t("billing_secure")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrdersList({ orders }: { orders: Order[] }) {
   const { t } = useTranslation();
   if (orders.length === 0) {
-    return (
-      <div className="rounded-lg border border-line bg-surface px-6 py-16 text-center">
-        <Receipt className="mx-auto size-10 text-ink-300" strokeWidth={1.5} />
-        <p className="mt-3 text-sm font-medium text-ink-700">{t("orders_empty")}</p>
-        <p className="mt-1 text-xs text-ink-500">
-          {t("orders_empty_desc")}
-        </p>
-        <Button asChild variant="outline" size="sm" className="mt-5">
-          <Link href="/catalog">{t("orders_start_shopping")}</Link>
-        </Button>
-      </div>
-    );
+    return <BillingEmpty />;
   }
 
   const sorted = [...orders].sort((a, b) => {
@@ -107,10 +133,10 @@ export default function OrdersPage() {
   const { data, isLoading, isError, error, refetch } = useOrders();
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 md:px-6 md:py-10">
-      <header className="mb-6 flex items-center gap-3">
-        <Receipt className="size-6 text-success" />
-        <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">{t("orders_title")}</h1>
+    <>
+      <header className="mb-6">
+        <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">{t("nav_billing")}</h1>
+        <p className="mt-1 text-sm text-ink-500">{t("billing_subtitle")}</p>
       </header>
 
       {isError ? (
@@ -125,6 +151,6 @@ export default function OrdersPage() {
       ) : (
         <OrdersList orders={data ?? []} />
       )}
-    </div>
+    </>
   );
 }

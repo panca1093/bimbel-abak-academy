@@ -99,7 +99,7 @@ describe("OrdersPage", () => {
 
     expect(screen.getByText("Rp115.000")).toBeInTheDocument();
     expect(screen.getByText("s1")).toBeInTheDocument();
-    expect(screen.getByText("Shipped")).toBeInTheDocument();
+    expect(screen.getByText("Dikirim")).toBeInTheDocument();
   });
 
   it("shows confirm and reconcile actions for pending orders", async () => {

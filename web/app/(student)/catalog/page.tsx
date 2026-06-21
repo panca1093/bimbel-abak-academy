@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { Bell, ShoppingBag } from "lucide-react";
 import { useProducts } from "@/lib/hooks/products";
 import type { ProductType } from "@/lib/types";
 import { useTranslation } from "@/lib/i18n";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/catalog/ProductCard";
 
 type TabValue = "all" | ProductType;
@@ -17,13 +20,33 @@ const TABS: { value: TabValue; labelKey: string }[] = [
   { value: "package", labelKey: "catalog_tab_competition" },
 ];
 
-function CatalogGrid({ products }: { products: ReturnType<typeof useProducts>["data"] }) {
+function CatalogGrid({ products, tab }: { products: ReturnType<typeof useProducts>["data"]; tab: TabValue }) {
   const { t } = useTranslation();
   if (!products || products.length === 0) {
+    if (tab !== "all") {
+      return (
+        <div className="rounded-2xl border border-line bg-surface px-8 py-16 text-center">
+          <p className="text-sm text-ink-500">{t("catalog_empty")}</p>
+        </div>
+      );
+    }
     return (
-      <p className="py-16 text-center text-sm text-ink-500">
-        {t("catalog_empty")}
-      </p>
+      <div className="rounded-2xl border border-line bg-surface px-8 py-16 text-center">
+        <div className="mx-auto mb-6 flex size-24 items-center justify-center rounded-full bg-brand-50">
+          <ShoppingBag className="size-12 text-brand-400" strokeWidth={1.5} />
+        </div>
+        <h2 className="font-serif text-2xl font-bold text-ink-900">{t("store_setup_title")}</h2>
+        <p className="mx-auto mt-3 max-w-sm text-sm text-ink-500">{t("store_setup_desc")}</p>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Button>
+            <Bell className="mr-2 size-4" />
+            {t("store_notify_me")}
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href="/">{t("store_back_dashboard")}</Link>
+          </Button>
+        </div>
+      </div>
     );
   }
   return (
@@ -59,9 +82,9 @@ export default function CatalogPage() {
   const { data, isLoading, isError, error, refetch } = useProducts(type);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
+    <>
       <header className="mb-6">
-        <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">{t("catalog_title")}</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">{t("nav_store")}</h1>
         <p className="mt-1 text-sm text-ink-500">
           {t("catalog_subtitle")}
         </p>
@@ -91,8 +114,8 @@ export default function CatalogPage() {
       ) : isLoading ? (
         <CatalogSkeleton />
       ) : (
-        <CatalogGrid products={data} />
+        <CatalogGrid products={data} tab={tab} />
       )}
-    </div>
+    </>
   );
 }
