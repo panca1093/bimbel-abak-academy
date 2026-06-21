@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { cn } from "@/lib/utils";
-import type { UserRole } from "@/lib/nav-config";
+import { ADMIN_ROLES, type UserRole } from "@/lib/nav-config";
 
 function useIsLg() {
   const [lg, setLg] = useState(false);
@@ -33,6 +33,7 @@ export function AppShell({ role, children }: AppShellProps) {
   const [expanded, setExpanded] = useState(false);
   const isLg = useIsLg();
   const collapsed = !isLg && !expanded;
+  const isAdmin = ADMIN_ROLES.includes(role);
 
   useEffect(() => {
     if (isLg) setExpanded(false);
@@ -43,7 +44,7 @@ export function AppShell({ role, children }: AppShellProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-paper">
+    <div className={cn("flex min-h-screen bg-paper", isAdmin && "admin-shell")}>
       <aside
         className={cn(
           "fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-line bg-surface transition-all duration-200 ease-out",

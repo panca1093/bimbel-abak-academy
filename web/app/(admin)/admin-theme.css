@@ -1,0 +1,209 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
+
+.admin-shell {
+  /* Primary (blue) */
+  --md-sys-color-primary: #1A5CFF;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #E0E8FF;
+  --md-sys-color-on-primary-container: #001A73;
+
+  /* Secondary (teal) */
+  --md-sys-color-secondary: #008080;
+  --md-sys-color-on-secondary: #FFFFFF;
+  --md-sys-color-secondary-container: #CCF2F2;
+  --md-sys-color-on-secondary-container: #003333;
+
+  /* Tertiary (deep indigo accent — hero band + Total Schools stat) */
+  --md-sys-color-tertiary: #5B3FBF;
+  --md-sys-color-on-tertiary: #FFFFFF;
+  --md-sys-color-tertiary-container: #E7DEFF;
+  --md-sys-color-on-tertiary-container: #1E0A66;
+
+  /* Error */
+  --md-sys-color-error: #BA1A1A;
+  --md-sys-color-on-error: #FFFFFF;
+  --md-sys-color-error-container: #FFDAD6;
+  --md-sys-color-on-error-container: #410002;
+
+  /* Surfaces + background */
+  --md-sys-color-background: #F4F7FE;
+  --md-sys-color-on-background: #2B3674;
+  --md-sys-color-surface: #FFFFFF;
+  --md-sys-color-on-surface: #2B3674;
+  --md-sys-color-surface-variant: #F4F7FE;
+  --md-sys-color-on-surface-variant: #A3AED0;
+
+  /* Surface container tonal steps (MD3) */
+  --md-sys-color-surface-container-lowest: #FFFFFF;
+  --md-sys-color-surface-container-low: #F7F9FE;
+  --md-sys-color-surface-container: #F0F4FD;
+  --md-sys-color-surface-container-high: #E9EEFB;
+  --md-sys-color-surface-container-highest: #E2E9F8;
+
+  /* Outline */
+  --md-sys-color-outline: #E0E5F2;
+  --md-sys-color-outline-variant: #E9EDF7;
+
+  /* Typography families */
+  --md-sys-typescale-display: 'Outfit', sans-serif;
+  --md-sys-typescale-body: 'Roboto', sans-serif;
+
+  /* Elevation */
+  --md-sys-elevation-1: 0px 8px 24px rgba(112, 144, 176, 0.15);
+  --md-sys-elevation-2: 0px 18px 40px rgba(112, 144, 176, 0.12);
+
+  /* Base typography inside the shell */
+  font-family: var(--md-sys-typescale-body);
+}
+
+.admin-shell h1, .admin-shell h2, .admin-shell h3,
+.admin-shell h4, .admin-shell h5, .admin-shell h6 {
+  font-family: var(--md-sys-typescale-display);
+  margin: 0;
+}
+
+/* Component classes */
+.admin-shell .md-card-elevated {
+  background-color: var(--md-sys-color-surface);
+  border-radius: 20px;
+  box-shadow: var(--md-sys-elevation-1);
+  padding: 24px;
+  color: var(--md-sys-color-on-surface);
+  transition: box-shadow 0.3s ease, background-color 0.3s ease;
+}
+.admin-shell .md-card-elevated:hover { box-shadow: var(--md-sys-elevation-2); }
+
+.admin-shell .md-card-filled {
+  background-color: var(--md-sys-color-surface);
+  border-radius: 20px;
+  padding: 24px;
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.admin-shell .md-card-outlined {
+  background-color: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 20px;
+  padding: 24px;
+  color: var(--md-sys-color-on-surface);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.admin-shell .md-btn-filled {
+  height: 48px;
+  padding: 0 28px;
+  border-radius: 16px;
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0px 4px 12px rgba(26, 92, 255, 0.24);
+}
+.admin-shell .md-btn-filled:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0px 6px 16px rgba(26, 92, 255, 0.3); }
+
+.admin-shell .md-btn-tonal {
+  height: 48px;
+  padding: 0 28px;
+  border-radius: 16px;
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+.admin-shell .md-btn-tonal:not(:disabled):hover { background-color: var(--md-sys-color-outline-variant); }
+
+.admin-shell .md-btn-outlined {
+  height: 48px;
+  padding: 0 28px;
+  border-radius: 16px;
+  background-color: var(--md-sys-color-surface);
+  color: var(--md-sys-color-primary);
+  border: 1px solid var(--md-sys-color-outline);
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+.admin-shell .md-btn-outlined:not(:disabled):hover { border-color: var(--md-sys-color-primary); }
+
+.admin-shell .md-icon-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--md-sys-color-on-surface-variant);
+  background-color: var(--md-sys-color-surface);
+  transition: all 0.2s ease;
+}
+.admin-shell .md-icon-btn:not(:disabled):hover { color: var(--md-sys-color-primary); box-shadow: var(--md-sys-elevation-1); }
+
+.admin-shell .md-chip {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 16px;
+  background-color: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-shell .md-chip-primary {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-primary);
+}
+
+.admin-shell .md-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-family: var(--md-sys-typescale-display);
+}
+
+/* Typography utility classes */
+.admin-shell .text-headline { font-size: 34px; line-height: 42px; font-weight: 700; color: var(--md-sys-color-on-surface); }
+.admin-shell .text-title-large { font-size: 24px; line-height: 32px; font-weight: 700; color: var(--md-sys-color-on-surface); }
+.admin-shell .text-title-medium { font-size: 18px; line-height: 26px; font-weight: 700; color: var(--md-sys-color-on-surface); }
+.admin-shell .text-body { font-size: 15px; line-height: 24px; color: var(--md-sys-color-on-surface-variant); }
+.admin-shell .text-label { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--md-sys-color-on-surface-variant); }
+.admin-shell .color-primary { color: var(--md-sys-color-primary); }
+.admin-shell .color-on-surface-variant { color: var(--md-sys-color-on-surface-variant); }
+.admin-shell .color-error { color: var(--md-sys-color-error); }
+
+/* Spacing utilities */
+.admin-shell .mb-2 { margin-bottom: 8px; }
+.admin-shell .mb-4 { margin-bottom: 16px; }
+.admin-shell .mb-6 { margin-bottom: 24px; }
+.admin-shell .mb-8 { margin-bottom: 32px; }
+.admin-shell .spin { animation: spin 1s linear infinite; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

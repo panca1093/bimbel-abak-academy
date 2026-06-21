@@ -7,6 +7,7 @@ import { useMe } from "@/lib/hooks/auth";
 import { AppShell } from "@/components/shell/AppShell";
 import { ADMIN_ROLES } from "@/lib/nav-config";
 import type { UserRole } from "@/lib/nav-config";
+import "./admin-theme.css";
 
 export default function AdminLayout({
   children,
