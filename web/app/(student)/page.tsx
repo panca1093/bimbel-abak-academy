@@ -1,12 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  AlertCircle,
-  ChevronRight,
-  Plus,
-  Construction,
-} from "lucide-react";
+import { AlertCircle, ChevronRight, Plus, Trophy } from "lucide-react";
 import { useDashboard } from "@/lib/hooks/students";
 import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
@@ -14,7 +9,6 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { PendingBanner } from "@/components/dashboard/PendingBanner";
 import { RankingCard } from "@/components/dashboard/RankingCard";
 import { StudySummaryCard } from "@/components/dashboard/StudySummaryCard";
@@ -48,20 +42,6 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
-      <header className="mb-8 flex items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-ink-500">{greeting}</p>
-          <h1 className="mt-1 font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-            {name ? `${t("hello")}, ${name}` : t("hello")}
-          </h1>
-        </div>
-        <Button asChild variant="outline" size="sm" className="hidden md:inline-flex">
-          <Link href="/catalog">
-            <Plus className="size-4" /> {t("add_course")}
-          </Link>
-        </Button>
-      </header>
-
       {isError && (
         <Card className="mb-8 border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">
@@ -81,22 +61,56 @@ export default function DashboardPage() {
         <DashboardSkeleton />
       ) : data ? (
         <>
-          {data.pending_order && (
-            <PendingBanner
-              id={data.pending_order.id}
-              product={data.pending_order.product}
-              amount={data.pending_order.amount}
-            />
-          )}
+          {/* (a) Hero + (b) Ranking */}
+          <section className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <div
+              className="relative overflow-hidden rounded-xl lg:col-span-3"
+              style={{
+                background:
+                  "linear-gradient(135deg, var(--color-brand-600) 0%, var(--color-brand-800) 100%)",
+              }}
+            >
+              <div className="flex h-full flex-col justify-between p-6 md:p-8">
+                <div>
+                  <p className="text-sm font-medium text-white/70">
+                    {greeting}{name ? `, ${name}` : ""}
+                  </p>
+                  <h1 className="mt-2 font-serif text-2xl font-bold text-white md:text-3xl">
+                    {t("dash_hero_title")}
+                  </h1>
+                  <p className="mt-2 max-w-xs text-sm text-white/80">
+                    {t("dash_hero_sub")}
+                  </p>
+                </div>
+                <Button
+                  asChild
+                  size="sm"
+                  className="mt-6 w-fit border-white/30 bg-white/15 text-white hover:bg-white/25"
+                  variant="outline"
+                >
+                  <Link href="/catalog">
+                    {t("dash_explore_btn")} <ChevronRight className="size-4" />
+                  </Link>
+                </Button>
+              </div>
+              <Trophy className="pointer-events-none absolute bottom-4 right-6 size-28 text-white opacity-10" />
+            </div>
 
-          {/* (b) Ranking, (e) Study Summary, (f) Exam Progress */}
-          <section className="mb-8">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="lg:col-span-2">
               <RankingCard ranking={data.ranking} />
-              <StudySummaryCard study={data.study_summary} />
-              <ExamProgressCard examProgress={data.exam_progress} />
             </div>
           </section>
+
+          {/* (c) Pending order banner */}
+          {data.pending_order && (
+            <div className="mb-6">
+              <PendingBanner
+                id={data.pending_order.id}
+                product={data.pending_order.product}
+                amount={data.pending_order.amount}
+              />
+            </div>
+          )}
 
           {/* (d) My Courses */}
           <section className="mb-8">
@@ -112,44 +126,44 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            {data.enrolled_courses.length === 0 ? (
-              <EmptyCourses />
-            ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {data.enrolled_courses.map((course, i) => (
-                  <CourseCard
-                    key={course.id}
-                    course={course}
-                    gradient={COURSE_GRADIENTS[i % COURSE_GRADIENTS.length]}
-                  />
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {data.enrolled_courses.map((course, i) => (
+                <CourseCard
+                  key={course.id}
+                  course={course}
+                  gradient={COURSE_GRADIENTS[i % COURSE_GRADIENTS.length]}
+                />
+              ))}
+              <AddCourseCard />
+            </div>
+          </section>
+
+          {/* (e) Study Summary + (f) Exam Progress */}
+          <section className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <StudySummaryCard study={data.study_summary} />
+            <ExamProgressCard examProgress={data.exam_progress} />
           </section>
 
           {/* (g) Popular Lessons */}
           <PopularLessonsSection lessons={data.popular_lessons} />
-
-          {/* Explore Catalog CTA */}
-          <section>
-            <Card className="flex flex-col items-center justify-center gap-3 border-dashed border-line bg-surface-2 px-6 py-10 text-center">
-              <div className="flex size-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-                <Plus className="size-6" />
-              </div>
-              <div>
-                <p className="font-semibold text-ink-900">{t("dash_explore_catalog")}</p>
-                <p className="mt-1 text-sm text-ink-500">
-                  {t("dash_catalog_desc")}
-                </p>
-              </div>
-              <Button asChild size="sm" className="mt-2">
-                <Link href="/catalog">{t("dash_open_catalog")}</Link>
-              </Button>
-            </Card>
-          </section>
         </>
       ) : null}
     </div>
+  );
+}
+
+function AddCourseCard() {
+  const { t } = useTranslation();
+  return (
+    <Link
+      href="/catalog"
+      className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line bg-surface-2 p-6 text-center transition-colors hover:border-brand-400 hover:bg-brand-50/50"
+    >
+      <div className="flex size-10 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+        <Plus className="size-5" />
+      </div>
+      <span className="text-sm font-medium text-ink-500">{t("add_course")}</span>
+    </Link>
   );
 }
 
@@ -163,7 +177,6 @@ function CourseCard({
     progress: number;
     total_lessons: number;
     done_lessons: number;
-    cover?: string;
   };
   gradient: string;
 }) {
@@ -174,7 +187,7 @@ function CourseCard({
       className="group flex flex-col rounded-lg border border-line p-5 transition-all hover:-translate-y-0.5 hover:shadow-md"
       style={{ background: gradient }}
     >
-      <h3 className="text-lg font-bold text-ink-900">{course.title}</h3>
+      <h3 className="text-base font-bold text-ink-900">{course.title}</h3>
       <div className="mt-auto flex items-center justify-between pt-4">
         <span className="font-mono text-sm font-bold text-brand-700">
           {String(course.done_lessons).padStart(2, "0")}
@@ -192,44 +205,24 @@ function CourseCard({
   );
 }
 
-function EmptyCourses() {
-  const { t } = useTranslation();
-  return (
-    <Card className="flex flex-col items-center justify-center gap-3 border-dashed border-line bg-surface-2 px-6 py-10 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-        <Plus className="size-6" />
-      </div>
-      <div>
-        <p className="font-semibold text-ink-900">{t("dash_no_courses")}</p>
-        <p className="mt-1 text-sm text-ink-500">
-          {t("dash_no_courses_desc")}
-        </p>
-      </div>
-      <Button asChild size="sm" className="mt-2">
-        <Link href="/catalog">{t("dash_open_catalog")}</Link>
-      </Button>
-    </Card>
-  );
-}
-
 function DashboardSkeleton() {
   return (
-    <div className="space-y-8" data-testid="dashboard-skeleton">
-      <div className="flex items-end justify-between gap-4">
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-9 w-56" />
-        </div>
-        <Skeleton className="hidden h-8 w-36 md:block" />
+    <div className="space-y-6" data-testid="dashboard-skeleton">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+        <Skeleton className="h-52 rounded-xl lg:col-span-3" />
+        <Skeleton className="h-52 rounded-xl lg:col-span-2" />
       </div>
-      <Skeleton className="h-20 w-full rounded-lg" />
       <div>
         <Skeleton className="mb-4 h-6 w-32" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-40 rounded-lg" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-36 rounded-lg" />
           ))}
         </div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Skeleton className="h-48 rounded-lg" />
+        <Skeleton className="h-48 rounded-lg" />
       </div>
     </div>
   );

@@ -96,7 +96,7 @@ describe("DashboardPage", () => {
   it("renders greeting with user name", async () => {
     render(<DashboardPage />);
     await waitFor(() => {
-      expect(screen.getByText(/Halo, Budi|Hello, Budi/)).toBeInTheDocument();
+      expect(screen.getByText(/Selamat|Good (morning|afternoon|evening).*Budi/)).toBeInTheDocument();
     });
   });
 

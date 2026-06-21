@@ -24,7 +24,7 @@ export function RankingCard({ ranking }: { ranking: DashboardRanking }) {
   const { leaderboard } = ranking;
 
   return (
-    <Card className="flex flex-col border-line px-5 py-5">
+    <Card className="flex h-full flex-col border-line px-5 py-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="flex size-8 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
