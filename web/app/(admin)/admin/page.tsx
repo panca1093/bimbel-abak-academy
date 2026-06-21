@@ -41,31 +41,32 @@ export default function AdminIndexPage() {
     <div className="fade-in">
       {/* Hero band */}
       <div
-        className="md-card-filled mb-8"
+        className="mb-8 rounded-[20px] px-8 py-7"
         style={{
-          backgroundColor: "var(--md-sys-color-tertiary-container)",
-          color: "var(--md-sys-color-on-tertiary-container)",
+          background: "linear-gradient(135deg, #1A5CFF 0%, #0A3DBF 55%, #005B8E 100%)",
+          color: "#FFFFFF",
+          boxShadow: "0 4px 24px rgba(26,92,255,0.28)",
         }}
       >
         <div className="flex items-center gap-6">
           <div
-            className="flex size-[72px] items-center justify-center rounded-[24px]"
+            className="flex size-[72px] shrink-0 items-center justify-center rounded-[24px]"
             style={{
-              backgroundColor: "var(--md-sys-color-tertiary)",
-              color: "var(--md-sys-color-on-tertiary)",
+              backgroundColor: "rgba(255,255,255,0.18)",
+              backdropFilter: "blur(8px)",
             }}
           >
-            <Shield size={36} />
+            <Shield size={36} color="#FFFFFF" />
           </div>
           <div>
             <div
               className="text-label"
-              style={{ letterSpacing: "0.05em", textTransform: "uppercase" }}
+              style={{ letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.75 }}
             >
-              Selamat Pagi · Super Admin
+              Super Admin · Abak Academy
             </div>
-            <h1 className="text-headline">{name}</h1>
-            <p className="text-body" style={{ marginTop: "4px" }}>
+            <h1 className="text-headline" style={{ color: "#FFFFFF" }}>{name}</h1>
+            <p className="text-body" style={{ marginTop: "4px", opacity: 0.85 }}>
               Akses penuh ke semua domain. Pantau seluruh platform dari satu tempat.
             </p>
           </div>
