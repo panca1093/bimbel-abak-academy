@@ -7,9 +7,10 @@ import {
   Tag,
   Edit,
   MoreHorizontal,
+  FileQuestion,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { Card } from "@/components/ui/card";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -203,37 +204,27 @@ export default function ExamBanksPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in"
     >
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
-      >
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl"
-          >
-            {t("question_bank")}
-          </h1>
-          <p className="mt-2 text-sm text-ink-500"
-          >
-            Kelola soal — terikat ke satu Tes, dikelompokkan per topik.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2"
-        >
-          <Button variant="outline" size="sm" onClick={() => setTopicsOpen(true)}
-          >
-            <Tag className="mr-1 size-4" />
-            {t("manage_topics")}
-          </Button>
-          <Button variant="outline" size="sm"
-          >
-            <Upload className="mr-1 size-4" />
-            CSV
-          </Button>
-          <Button size="sm" onClick={() => setCreateOpen(true)}
-          >
-            <Plus className="mr-1 size-4" />
-            {t("create")}
-          </Button>
-        </div>
-      </header>
+      <AdminPageHeader
+        icon={FileQuestion}
+        title="Bank Soal"
+        description="Kelola soal — terikat ke satu Tes, dikelompokkan per topik."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setTopicsOpen(true)}>
+              <Tag className="mr-1 size-4" />
+              {t("manage_topics")}
+            </Button>
+            <Button variant="outline" size="sm">
+              <Upload className="mr-1 size-4" />
+              CSV
+            </Button>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1 size-4" />
+              {t("create")}
+            </Button>
+          </div>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-2"
       >
@@ -274,7 +265,7 @@ export default function ExamBanksPage() {
         </div>
       </div>
 
-      <Card className="overflow-hidden"
+      <div className="md-card-outlined overflow-hidden"
       >
         <div className="overflow-x-auto"
         >
@@ -381,7 +372,7 @@ export default function ExamBanksPage() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <TopicsDialog
         open={topicsOpen}
