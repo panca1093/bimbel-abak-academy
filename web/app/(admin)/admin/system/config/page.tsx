@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Save, Settings, Bell, Shield, CreditCard, Mail } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
