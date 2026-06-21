@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Receipt } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   useAdminOrders,
   useConfirmOrder,
@@ -133,21 +135,22 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("orders")}</h1>
-      </div>
+    <div className="space-y-6 fade-in">
+      <AdminPageHeader
+        icon={Receipt}
+        title="Pesanan"
+        description="Konfirmasi, kirim, dan kelola retur pesanan."
+      />
 
       <div className="flex flex-wrap gap-2">
         {FILTER_OPTIONS.map((f) => (
-          <Button
+          <button
             key={f}
-            variant={filter === f ? "default" : "outline"}
-            size="sm"
+            className={filter === f ? "md-btn-filled" : "md-btn-outlined"}
             onClick={() => setFilter(f)}
           >
             {filterLabel(f)}
-          </Button>
+          </button>
         ))}
       </div>
 
@@ -166,7 +169,7 @@ export default function OrdersPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto md-card-outlined">
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>

@@ -6,11 +6,12 @@ import { toast } from "sonner";
 import { useAdminCourse, useUpdateCourse } from "@/lib/hooks/admin-courses";
 import { useTranslation } from "@/lib/i18n";
 import { SectionEditor } from "@/components/admin/SectionEditor";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, BookOpen } from "lucide-react";
 import type { AdminUpdateCourseInput } from "@/lib/types";
 
 export default function CourseBuilderPage() {
@@ -89,16 +90,17 @@ export default function CourseBuilderPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={() => router.push("/admin/courses")}>
-          <ArrowLeft className="mr-1 size-4" />
-          {t("course_back")}
-        </Button>
-        <h1 className="text-2xl font-semibold">{t("courses_edit")}</h1>
-      </div>
+    <div className="space-y-8 fade-in">
+      <Button variant="ghost" size="sm" onClick={() => router.push("/admin/courses")}>
+        <ArrowLeft className="mr-1 size-4" />
+        {t("course_back")}
+      </Button>
+      <AdminPageHeader
+        icon={BookOpen}
+        title={course?.title ?? t("courses_edit")}
+      />
 
-      <form onSubmit={handleSaveMetadata} className="rounded-lg border bg-card p-6">
+      <form onSubmit={handleSaveMetadata} className="md-card-outlined">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-medium">{t("course_metadata")}</h2>
           <Button type="submit" disabled={!dirty || !title.trim() || update.isPending}>
@@ -153,7 +155,7 @@ export default function CourseBuilderPage() {
         </div>
       </form>
 
-      <div className="rounded-lg border bg-card p-6">
+      <div className="md-card-outlined">
         <h2 className="mb-4 text-lg font-medium">{t("course_curriculum")}</h2>
         <SectionEditor courseId={courseId} />
       </div>

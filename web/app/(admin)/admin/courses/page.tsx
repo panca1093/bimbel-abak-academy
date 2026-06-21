@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAdminCourses, useCreateCourse } from "@/lib/hooks/admin-courses";
 import { useTranslation } from "@/lib/i18n";
+import { Library } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   Dialog,
   DialogContent,
@@ -149,11 +151,13 @@ export default function CoursesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("courses")}</h1>
-        <Button onClick={() => setModalOpen(true)}>{t("courses_create")}</Button>
-      </div>
+    <div className="space-y-6 fade-in">
+      <AdminPageHeader
+        icon={Library}
+        title="Manajemen Kursus"
+        description="Buat dan kelola konten video kursus."
+        actions={<Button onClick={() => setModalOpen(true)}>{t("courses_create")}</Button>}
+      />
 
       {isLoading && (
         <div className="space-y-2">
@@ -170,7 +174,7 @@ export default function CoursesPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto md-card-outlined">
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>

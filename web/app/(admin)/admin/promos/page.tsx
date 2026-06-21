@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Tag } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   useAdminPromoCodes,
   useCreatePromoCode,
@@ -99,11 +101,13 @@ export default function PromosPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("promos")}</h1>
-        <Button onClick={openCreate}>{t("promo_create")}</Button>
-      </div>
+    <div className="space-y-6 fade-in">
+      <AdminPageHeader
+        icon={Tag}
+        title="Promo &amp; Diskon"
+        description="Kelola kode promo dan diskon aktif."
+        actions={<Button onClick={openCreate}>{t("promo_create")}</Button>}
+      />
 
       {isLoading && (
         <div className="space-y-2">
@@ -120,7 +124,7 @@ export default function PromosPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto md-card-outlined">
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>

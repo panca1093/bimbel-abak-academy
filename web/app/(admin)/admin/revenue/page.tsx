@@ -1,7 +1,9 @@
 "use client";
 
 import { useTranslation } from "@/lib/i18n";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BarChart3 } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatCard } from "@/components/admin/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminRevenue } from "@/lib/hooks/admin-revenue";
 import { formatRupiah } from "@/lib/format";
@@ -42,10 +44,12 @@ export default function RevenuePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("revenue")}</h1>
-      </div>
+    <div className="space-y-6 fade-in">
+      <AdminPageHeader
+        icon={BarChart3}
+        title="Pendapatan"
+        description="Ringkasan pendapatan dan tren penjualan."
+      />
 
       {isLoading && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -64,39 +68,26 @@ export default function RevenuePage() {
       {!isLoading && !isError && revenue && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{t("revenue_total")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold">{formatRupiah(revenue.total)}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{t("orders")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold">{orderCount(revenue)}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{t("revenue_avg_order")}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold">{formatRupiah(averageOrderValue(revenue))}</div>
-              </CardContent>
-            </Card>
+            <StatCard
+              label={t("revenue_total")}
+              value={formatRupiah(revenue.total)}
+              accent="primary"
+            />
+            <StatCard
+              label={t("orders")}
+              value={String(orderCount(revenue))}
+              accent="secondary"
+            />
+            <StatCard
+              label={t("revenue_avg_order")}
+              value={formatRupiah(averageOrderValue(revenue))}
+              accent="tertiary"
+            />
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{t("revenue_by_type")}</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="md-card-outlined">
+            <h3 className="text-title-medium mb-4">{t("revenue_by_type")}</h3>
+            <div>
               {entries.length === 0 ? (
                 <div className="text-sm text-muted-foreground">{t("revenue_no_data")}</div>
               ) : (
@@ -123,15 +114,12 @@ export default function RevenuePage() {
                   })}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{t("revenue_top_products")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto rounded-lg border">
+          <div className="md-card-outlined">
+            <h3 className="text-title-medium mb-4">{t("revenue_top_products")}</h3>
+            <div className="overflow-x-auto md-card-outlined">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
                     <tr>
@@ -148,9 +136,8 @@ export default function RevenuePage() {
                     </tr>
                   </tbody>
                 </table>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </>
       )}
     </div>

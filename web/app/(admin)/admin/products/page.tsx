@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Package } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   useAdminProducts,
   useCreateProduct,
@@ -141,22 +143,23 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("products")}</h1>
-        <Button onClick={openCreate}>{t("products_create")}</Button>
-      </div>
+    <div className="space-y-6 fade-in">
+      <AdminPageHeader
+        icon={Package}
+        title="Produk &amp; Katalog"
+        description="Kelola buku, kursus, dan paket produk."
+        actions={<Button onClick={openCreate}>{t("products_create")}</Button>}
+      />
 
       <div className="flex flex-wrap gap-2">
         {FILTER_TYPES.map((ft) => (
-          <Button
+          <button
             key={ft}
-            variant={filter === ft ? "default" : "outline"}
-            size="sm"
+            className={filter === ft ? "md-btn-filled" : "md-btn-outlined"}
             onClick={() => setFilter(ft)}
           >
             {filterLabel(ft)}
-          </Button>
+          </button>
         ))}
       </div>
 
@@ -175,7 +178,7 @@ export default function ProductsPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto md-card-outlined">
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
