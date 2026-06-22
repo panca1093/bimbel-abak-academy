@@ -98,7 +98,7 @@ const ROLE_LABEL: Record<SystemRole, string> = {
   super_admin: "Super Admin",
   admin_exam: "Admin Exam",
   admin_school: "School Operator",
-  admin_store: "Content Manager",
+  admin_store: "Store Manager",
 };
 
 const ROLE_TONE: Record<SystemRole, string> = {

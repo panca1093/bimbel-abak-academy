@@ -43,6 +43,7 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+      target: api
     environment:
       APP_ENV: development
       HTTP_PORT: 8080
@@ -65,6 +66,21 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      target: worker
+    environment:
+      DATABASE_URL: postgres://akademi:akademi@postgres:5432/akademi?sslmode=disable
+      REDIS_ADDR: redis:6379
+      WORKER_POLL_INTERVAL: 5s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   web:
     build:
