@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Plus, Calendar, Clock, Users, MoreHorizontal, Edit, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { Card } from "@/components/ui/card";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -112,20 +112,17 @@ export default function ExamSchedulesPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-            {t("schedules")}
-          </h1>
-          <p className="mt-2 text-sm text-ink-500">
-            Atur jadwal sesi ujian, token check-in, dan durasi.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-1 size-4" />
-          {t("create")}
-        </Button>
-      </header>
+      <AdminPageHeader
+        icon={Calendar}
+        title="Jadwal Ujian"
+        description="Atur jadwal pelaksanaan ujian."
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1 size-4" />
+            {t("create")}
+          </Button>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap gap-2">
         <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
@@ -145,7 +142,7 @@ export default function ExamSchedulesPage() {
         </FilterChip>
       </div>
 
-      <Card className="overflow-hidden">
+      <div className="md-card-outlined overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
@@ -211,7 +208,7 @@ export default function ExamSchedulesPage() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">

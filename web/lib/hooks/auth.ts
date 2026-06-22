@@ -20,7 +20,7 @@ export function useLogin() {
       }),
     onSuccess: (data) => {
       if (data.access_token && data.user) {
-        setSession(data.access_token, data.user);
+        setSession(data.access_token, data.refresh_token ?? "", data.user);
       }
     },
   });
@@ -58,7 +58,7 @@ export function useVerifyOtp() {
       }),
     onSuccess: (data) => {
       if (data.access_token && data.user) {
-        setSession(data.access_token, data.user);
+        setSession(data.access_token, data.refresh_token ?? "", data.user);
       }
     },
   });

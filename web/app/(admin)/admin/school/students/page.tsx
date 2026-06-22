@@ -4,13 +4,13 @@ import { useMemo, useState } from "react";
 import {
   Plus,
   Search,
+  Users,
   GraduationCap,
   MoreHorizontal,
   Mail,
   School,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatCard } from "@/components/admin/StatCard";
 
 type StudentStatus = "active" | "inactive" | "pending";
 
@@ -140,38 +142,23 @@ export default function SchoolStudentsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-            {t("students")}
-          </h1>
-          <p className="mt-2 text-sm text-ink-500">
-            Kelola siswa, status, dan asal sekolah.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-1 size-4" />
-          {t("create")}
-        </Button>
-      </header>
+      <AdminPageHeader
+        icon={Users}
+        title="Manajemen Siswa"
+        description="Daftar dan kelola data siswa."
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1 size-4" />
+            {t("create")}
+          </Button>
+        }
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Total siswa</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.total}</div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Aktif</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.active}</div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Menunggu aktivasi</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.pending}</div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Mitra sekolah</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.schools}</div>
-        </Card>
+        <StatCard label="Total siswa" value={String(stats.total)} />
+        <StatCard label="Aktif" value={String(stats.active)} />
+        <StatCard label="Menunggu aktivasi" value={String(stats.pending)} />
+        <StatCard label="Mitra sekolah" value={String(stats.schools)} />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -200,7 +187,7 @@ export default function SchoolStudentsPage() {
         </div>
       </div>
 
-      <Card className="overflow-hidden">
+      <div className="md-card-outlined">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
@@ -289,7 +276,7 @@ export default function SchoolStudentsPage() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">

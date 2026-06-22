@@ -314,7 +314,8 @@ export default function ProfilePage() {
           toast.success(t("saved"));
           setEditMode(false);
           if (updated && token) {
-            setSession(token, updated);
+            const rt = useAuthStore.getState().refreshToken ?? "";
+            setSession(token, rt, updated);
           }
         },
         onError: (err) => {

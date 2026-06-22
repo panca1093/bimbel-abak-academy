@@ -10,12 +10,15 @@ import {
   Bell,
   LogOut,
   UserCircle,
+  ShoppingCart,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
+import { useCartStore } from "@/stores/cart";
 import { useUIStore, type Lang } from "@/stores/ui";
 import { useLogout } from "@/lib/hooks/auth";
 import { useTranslation } from "@/lib/i18n";
-import { roleLabelKey } from "@/lib/nav-config";
+import { roleLabelKey, ADMIN_ROLES } from "@/lib/nav-config";
+import type { UserRole } from "@/lib/nav-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -44,6 +47,9 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const lang = useUIStore((s) => s.lang);
   const toggleTheme = useUIStore((s) => s.toggleTheme);
   const setLang = useUIStore((s) => s.setLang);
+
+  const cartCount = useCartStore((s) => s.count);
+  const isStudent = !ADMIN_ROLES.includes(user?.role as UserRole);
 
   const initial = (user?.name ?? user?.email ?? user?.username ?? "A")
     .trim()
@@ -117,6 +123,25 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             <Moon className="size-[18px] text-ink-600" />
           )}
         </Button>
+
+        {isStudent && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            aria-label="Keranjang"
+            asChild
+          >
+            <Link href="/cart">
+              <ShoppingCart className="size-[18px] text-ink-600" />
+              {cartCount > 0 && (
+                <span className="absolute right-1 top-1 flex size-[18px] items-center justify-center rounded-full bg-danger text-[10px] font-bold text-white">
+                  {cartCount > 9 ? "9+" : cartCount}
+                </span>
+              )}
+            </Link>
+          </Button>
+        )}
 
         <Button
           variant="ghost"

@@ -265,7 +265,7 @@ type shimCourseService struct {
 // --- Course CRUD shim ---
 
 func (s *shimCourseService) CreateCourse(ctx context.Context, title, level, subject, instructorName, role string) (model.Course, error) {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return model.Course{}, ErrForbidden
 	}
 	c := model.Course{
@@ -282,7 +282,7 @@ func (s *shimCourseService) ListCourses(ctx context.Context, role string) ([]mod
 }
 
 func (s *shimCourseService) UpdateCourse(ctx context.Context, id, title, level, subject, instructorName, role string) (model.Course, error) {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return model.Course{}, ErrForbidden
 	}
 	courseID, err := uuid.Parse(id)
@@ -309,7 +309,7 @@ func (s *shimCourseService) ListSections(ctx context.Context, courseID string) (
 }
 
 func (s *shimCourseService) CreateSection(ctx context.Context, courseID string, title string, role string) (model.Section, error) {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return model.Section{}, ErrForbidden
 	}
 
@@ -333,7 +333,7 @@ func (s *shimCourseService) CreateSection(ctx context.Context, courseID string, 
 }
 
 func (s *shimCourseService) UpdateSection(ctx context.Context, courseID, sectionID string, title string, role string) (model.Section, error) {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return model.Section{}, ErrForbidden
 	}
 
@@ -346,7 +346,7 @@ func (s *shimCourseService) UpdateSection(ctx context.Context, courseID, section
 }
 
 func (s *shimCourseService) DeleteSection(ctx context.Context, courseID, sectionID string, role string) error {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return ErrForbidden
 	}
 
@@ -359,7 +359,7 @@ func (s *shimCourseService) DeleteSection(ctx context.Context, courseID, section
 }
 
 func (s *shimCourseService) ReorderSections(ctx context.Context, courseID string, orderedIDs []string, role string) error {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return ErrForbidden
 	}
 
@@ -383,7 +383,7 @@ func (s *shimCourseService) ReorderSections(ctx context.Context, courseID string
 // --- Lesson shim (keyed by course_id) ---
 
 func (s *shimCourseService) CreateLesson(ctx context.Context, courseID, sectionID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return model.Lesson{}, ErrForbidden
 	}
 
@@ -409,7 +409,7 @@ func (s *shimCourseService) CreateLesson(ctx context.Context, courseID, sectionI
 }
 
 func (s *shimCourseService) UpdateLesson(ctx context.Context, courseID, sectionID, lessonID string, title, videoURL string, duration int, role string) (model.Lesson, error) {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return model.Lesson{}, ErrForbidden
 	}
 
@@ -427,7 +427,7 @@ func (s *shimCourseService) UpdateLesson(ctx context.Context, courseID, sectionI
 }
 
 func (s *shimCourseService) DeleteLesson(ctx context.Context, courseID, sectionID, lessonID string, role string) error {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return ErrForbidden
 	}
 
@@ -440,7 +440,7 @@ func (s *shimCourseService) DeleteLesson(ctx context.Context, courseID, sectionI
 }
 
 func (s *shimCourseService) ReorderLessons(ctx context.Context, courseID, sectionID string, orderedIDs []string, role string) error {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return ErrForbidden
 	}
 
@@ -552,7 +552,7 @@ func (s *shimGetDeleteCourse) GetCourse(ctx context.Context, id string) (model.C
 }
 
 func (s *shimGetDeleteCourse) DeleteCourse(ctx context.Context, id, role string) error {
-	if role != RoleAdminStore {
+	if role != RoleAdminStore && role != RoleSuperAdmin {
 		return ErrForbidden
 	}
 	cID, err := uuid.Parse(id)
@@ -632,6 +632,21 @@ func (s *shimStudentCourse) GetCourseWithProgress(ctx context.Context, studentID
 }
 
 // --- Tests ---
+
+// Test: CreateCourse allows super_admin
+func TestCreateCourse_SuperAdminCanCreate(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+
+	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleSuperAdmin)
+	if err != nil {
+		t.Fatalf("super_admin CreateCourse: %v", err)
+	}
+	if course.Title != "Math" {
+		t.Errorf("want title Math, got %s", course.Title)
+	}
+}
 
 // Test: CreateCourse rejects non-store role
 func TestCreateCourse_RejectsNonStoreRole(t *testing.T) {

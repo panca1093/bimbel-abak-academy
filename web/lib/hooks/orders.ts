@@ -90,6 +90,26 @@ export function useRemoveCartItem() {
   });
 }
 
+interface UpdateCartItemQtyInput {
+  orderId: string;
+  itemId: string;
+  qty: number;
+}
+
+export function useUpdateCartItemQty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, itemId, qty }: UpdateCartItemQtyInput) =>
+      authFetch<void>(`/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ qty }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ordersKeys.cart() });
+    },
+  });
+}
+
 interface ValidatePromoInput {
   code: string;
   orderId?: string;

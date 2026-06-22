@@ -2,10 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Receipt } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   useAdminOrders,
   useConfirmOrder,
   useShipOrder,
+  useCompleteOrder,
   useRefundOrder,
   useReconcileOrder,
 } from "@/lib/hooks/admin-orders";
@@ -17,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
 import type { Order, OrderStatus, AdminOrderFilterStatus } from "@/lib/types";
 
-const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "failed", "refunded"];
+const FILTER_OPTIONS: AdminOrderFilterStatus[] = ["all", "pending", "paid", "processing", "shipped", "failed", "refunded"];
 
 function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;
@@ -38,14 +41,16 @@ function isShipped(order: Order): boolean {
   return Boolean(order.tracking_number || order.shipped_at);
 }
 
-function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "refund" | "reconcile"): boolean {
+function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "complete" | "refund" | "reconcile"): boolean {
   switch (action) {
     case "confirm":
       return status === "payment_pending";
     case "ship":
       return status === "paid" || status === "processing";
+    case "complete":
+      return status === "shipped";
     case "refund":
-      return status === "paid" || status === "processing" || status === "completed";
+      return status === "paid" || status === "processing" || status === "shipped" || status === "completed";
     case "reconcile":
       return status === "payment_pending";
   }
@@ -57,6 +62,7 @@ export default function OrdersPage() {
   const { data: orders, isLoading, isError, error } = useAdminOrders(filter);
   const confirm = useConfirmOrder();
   const ship = useShipOrder();
+  const complete = useCompleteOrder();
   const refund = useRefundOrder();
   const reconcile = useReconcileOrder();
 
@@ -67,16 +73,13 @@ export default function OrdersPage() {
 
   const filterLabel = (f: AdminOrderFilterStatus): string => {
     switch (f) {
-      case "all":
-        return t("tab_all");
-      case "pending":
-        return t("filter_pending");
-      case "paid":
-        return t("filter_paid");
-      case "failed":
-        return t("filter_failed");
-      case "refunded":
-        return t("filter_refunded");
+      case "all": return t("tab_all");
+      case "pending": return t("filter_pending");
+      case "paid": return t("filter_paid");
+      case "processing": return "Diproses";
+      case "shipped": return "Dikirim";
+      case "failed": return t("filter_failed");
+      case "refunded": return t("filter_refunded");
     }
   };
 
@@ -113,6 +116,16 @@ export default function OrdersPage() {
     }
   }
 
+  async function handleComplete(id: string) {
+    if (!window.confirm("Tandai pesanan ini sebagai selesai?")) return;
+    try {
+      await complete.mutateAsync(id);
+      toast.success("Pesanan selesai");
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
   async function handleRefund(id: string) {
     if (!window.confirm(t("orders_refund_prompt"))) return;
     try {
@@ -133,21 +146,22 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("orders")}</h1>
-      </div>
+    <div className="space-y-6 fade-in">
+      <AdminPageHeader
+        icon={Receipt}
+        title="Pesanan"
+        description="Konfirmasi, kirim, dan kelola retur pesanan."
+      />
 
       <div className="flex flex-wrap gap-2">
         {FILTER_OPTIONS.map((f) => (
-          <Button
+          <button
             key={f}
-            variant={filter === f ? "default" : "outline"}
-            size="sm"
+            className={filter === f ? "md-btn-filled" : "md-btn-outlined"}
             onClick={() => setFilter(f)}
           >
             {filterLabel(f)}
-          </Button>
+          </button>
         ))}
       </div>
 
@@ -166,7 +180,7 @@ export default function OrdersPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto md-card-outlined">
           <table className="w-full text-sm">
             <thead className="bg-muted">
               <tr>
@@ -205,7 +219,7 @@ export default function OrdersPage() {
                           {t("action_confirm")}
                         </Button>
                       )}
-                      {actionAllowed(order.status, "ship") && (
+                      {actionAllowed(order.status, "ship") && hasBookItem(order) && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -213,6 +227,16 @@ export default function OrdersPage() {
                           disabled={ship.isPending}
                         >
                           {t("action_ship")}
+                        </Button>
+                      )}
+                      {actionAllowed(order.status, "complete") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleComplete(order.id)}
+                          disabled={complete.isPending}
+                        >
+                          Selesai
                         </Button>
                       )}
                       {actionAllowed(order.status, "refund") && (

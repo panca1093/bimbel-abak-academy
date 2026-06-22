@@ -82,6 +82,19 @@ func (h *Handler) AdminShipOrder(c echo.Context) error {
 	})
 }
 
+func (h *Handler) AdminCompleteOrder(c echo.Context) error {
+	orderID := c.Param("id")
+
+	err := h.svc.AdminCompleteOrder(c.Request().Context(), orderID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "order completed",
+	})
+}
+
 func (h *Handler) AdminRefundOrder(c echo.Context) error {
 	orderID := c.Param("id")
 

@@ -30,6 +30,14 @@ func (h *Handler) AdminGetRevenue(c echo.Context) error {
 		}
 	}
 
+	now := time.Now().UTC()
+	if from.IsZero() {
+		from = now.AddDate(0, 0, -30)
+	}
+	if to.IsZero() {
+		to = now
+	}
+
 	revenue, err := h.svc.AdminGetRevenue(c.Request().Context(), from, to)
 	if err != nil {
 		return mapServiceError(c, err)

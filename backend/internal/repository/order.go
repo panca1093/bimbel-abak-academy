@@ -122,6 +122,11 @@ func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.O
 			if err != nil {
 				return model.Order{}, false, err
 			}
+			items, err := r.fetchItems(ctx, order.ID)
+			if err != nil {
+				return model.Order{}, false, err
+			}
+			order.Items = items
 			return order, false, nil
 		}
 		return model.Order{}, false, err
@@ -232,6 +237,14 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		return nil, "", err
 	}
 
+	for i := range orders {
+		items, err := r.fetchItems(ctx, orders[i].ID)
+		if err != nil {
+			return nil, "", err
+		}
+		orders[i].Items = items
+	}
+
 	return orders, nextCursor, nil
 }
 
@@ -244,7 +257,10 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
 		item.ID, item.OrderID, item.ProductID, item.ProductType, item.Name, item.UnitPrice, item.Qty, jumlah, item.WeightGrams,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return r.recalcOrderTotals(ctx, orderID)
 }
 
 func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) error {
@@ -252,6 +268,30 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) 
 		`DELETE FROM order_item WHERE id = $1 AND order_id = $2`,
 		itemID, orderID,
 	)
+	if err != nil {
+		return err
+	}
+	return r.recalcOrderTotals(ctx, orderID)
+}
+
+func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUID, qty int) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE order_item SET qty = $1, jumlah = unit_price * $2 WHERE id = $3 AND order_id = $4`,
+		qty, qty, itemID, orderID,
+	)
+	if err != nil {
+		return err
+	}
+	return r.recalcOrderTotals(ctx, orderID)
+}
+
+func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE orders SET
+		  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+		  updated_at = now()
+		WHERE id = $1`, orderID)
 	return err
 }
 
@@ -268,17 +308,19 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 }
 
 func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, status, reason string) error {
+	q := `UPDATE orders SET
+		status = $1,
+		cancellation_reason = $2,
+		paid_at       = CASE WHEN $1 = 'paid'      THEN now() ELSE paid_at      END,
+		completed_at  = CASE WHEN $1 = 'completed' THEN now() ELSE completed_at END,
+		cancelled_at  = CASE WHEN $1 = 'cancelled' THEN now() ELSE cancelled_at END,
+		updated_at    = now()
+		WHERE id = $3`
 	var err error
 	if tx != nil {
-		_, err = tx.Exec(ctx,
-			`UPDATE orders SET status = $1, cancellation_reason = $2, updated_at = now() WHERE id = $3`,
-			status, reason, orderID,
-		)
+		_, err = tx.Exec(ctx, q, status, reason, orderID)
 	} else {
-		_, err = r.pool.Exec(ctx,
-			`UPDATE orders SET status = $1, cancellation_reason = $2, updated_at = now() WHERE id = $3`,
-			status, reason, orderID,
-		)
+		_, err = r.pool.Exec(ctx, q, status, reason, orderID)
 	}
 	return err
 }

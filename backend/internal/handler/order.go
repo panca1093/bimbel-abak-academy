@@ -107,6 +107,28 @@ func (h *Handler) RemoveItem(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+func (h *Handler) UpdateItemQty(c echo.Context) error {
+	claims, _ := c.Get("claims").(*infra.Claims)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+
+	orderID := c.Param("id")
+	itemID := c.Param("itemId")
+
+	var req struct {
+		Qty int `json:"qty"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	if err := h.svc.UpdateItemQty(c.Request().Context(), claims.Sub, orderID, itemID, req.Qty); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (h *Handler) PatchCart(c echo.Context) error {
 	claims, _ := c.Get("claims").(*infra.Claims)
 	if claims == nil || claims.Sub == "" {

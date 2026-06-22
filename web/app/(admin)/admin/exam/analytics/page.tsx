@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  BarChart,
   BarChart3,
   TrendingUp,
   Users,
@@ -10,7 +11,8 @@ import {
   Target,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { Card } from "@/components/ui/card";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatCard } from "@/components/admin/StatCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -67,33 +69,30 @@ export default function ExamAnalyticsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-            {t("analytics")}
-          </h1>
-          <p className="mt-2 text-sm text-ink-500">
-            Metrik ujian, partisipasi, dan distribusi penguasaan materi.
-          </p>
-        </div>
-        <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
-          <TabsList className="h-9">
-            <TabsTrigger value="7d" className="text-xs">7 hari</TabsTrigger>
-            <TabsTrigger value="30d" className="text-xs">30 hari</TabsTrigger>
-            <TabsTrigger value="90d" className="text-xs">90 hari</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </header>
+      <AdminPageHeader
+        icon={BarChart}
+        title="Analitik Ujian"
+        description="Statistik skor dan performa siswa."
+        actions={
+          <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
+            <TabsList className="h-9">
+              <TabsTrigger value="7d" className="text-xs">7 hari</TabsTrigger>
+              <TabsTrigger value="30d" className="text-xs">30 hari</TabsTrigger>
+              <TabsTrigger value="90d" className="text-xs">90 hari</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        }
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard icon={<Calendar className="size-5" />} label="Ujian" value={overview.exams.toString()} />
-        <MetricCard icon={<Users className="size-5" />} label="Peserta" value={overview.participants.toLocaleString("id-ID")} />
-        <MetricCard icon={<Target className="size-5" />} label="Rata-rata skor" value={`${overview.avgScore}%`} />
-        <MetricCard icon={<TrendingUp className="size-5" />} label="Penyelesaian" value={`${overview.completion}%`} />
+        <StatCard label="Ujian" value={overview.exams.toString()} icon={Calendar} />
+        <StatCard label="Peserta" value={overview.participants.toLocaleString("id-ID")} icon={Users} />
+        <StatCard label="Rata-rata skor" value={`${overview.avgScore}%`} icon={Target} />
+        <StatCard label="Penyelesaian" value={`${overview.completion}%`} icon={TrendingUp} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-5">
+        <div className="md-card-outlined p-5">
           <div className="mb-4 flex items-center gap-2">
             <BarChart3 className="size-5 text-brand-600" />
             <h2 className="font-semibold text-ink-900">Performa per ujian</h2>
@@ -125,9 +124,9 @@ export default function ExamAnalyticsPage() {
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
 
-        <Card className="p-5">
+        <div className="md-card-outlined p-5">
           <div className="mb-4 flex items-center gap-2">
             <Clock className="size-5 text-brand-600" />
             <h2 className="font-semibold text-ink-900">Distribusi materi</h2>
@@ -148,33 +147,9 @@ export default function ExamAnalyticsPage() {
               </div>
             ))}
           </div>
-        </Card>
+        </div>
       </div>
     </div>
-  );
-}
-
-function MetricCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-xs text-ink-500">{label}</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{value}</div>
-        </div>
-        <div className="flex size-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-          {icon}
-        </div>
-      </div>
-    </Card>
   );
 }
 

@@ -10,7 +10,8 @@ import {
   Clock,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { Card } from "@/components/ui/card";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatCard } from "@/components/admin/StatCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -159,38 +160,22 @@ export default function ExamTryoutsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-            {t("tests")}
-          </h1>
-          <p className="mt-2 text-sm text-ink-500">
-            Susun, publikasikan, dan pantau sesi ujian.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-1 size-4" />
-          {t("create")}
-        </Button>
-      </header>
+      <AdminPageHeader
+        icon={ClipboardList}
+        title="Daftar Ujian"
+        description="Susun, publikasikan, dan pantau sesi ujian."
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1 size-4" />
+            {t("create")}
+          </Button>
+        }
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Sesi aktif</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">{stats.live}</div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Terpublikasi</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">
-            {stats.published}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Total peserta</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">
-            {stats.totalParticipants.toLocaleString("id-ID")}
-          </div>
-        </Card>
+        <StatCard label="Sesi aktif" value={stats.live.toString()} icon={Clock} />
+        <StatCard label="Terpublikasi" value={stats.published.toString()} icon={ClipboardList} />
+        <StatCard label="Total peserta" value={stats.totalParticipants.toLocaleString("id-ID")} icon={Users} />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -230,7 +215,7 @@ export default function ExamTryoutsPage() {
         </div>
       </div>
 
-      <Card className="overflow-hidden">
+      <div className="md-card-outlined overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
@@ -310,7 +295,7 @@ export default function ExamTryoutsPage() {
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">

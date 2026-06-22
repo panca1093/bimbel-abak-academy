@@ -39,14 +39,9 @@ func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFil
 	case RoleSuperAdmin:
 		// no filter restrictions
 	case RoleAdminStore:
-		if filter.Type == "exam" {
-			return nil, "", nil
-		}
+		// no filter restrictions — manages book, course, package
 	case RoleAdminExam:
-		if filter.Type != "" && filter.Type != "exam" {
-			return nil, "", nil
-		}
-		filter.Type = "exam"
+		return nil, "", nil // exam product type removed; role has no product access
 	default: // student or ""
 		filter.VisibleOnly = true
 		filter.Status = "published"
@@ -312,7 +307,7 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 		ProductID:   pID,
 		ProductType: product.Type,
 		Name:        product.Name,
-		UnitPrice:   float64(product.Price) / 100,
+		UnitPrice:   float64(product.Price),
 		Qty:         qty,
 		WeightGrams: product.WeightGrams,
 	}
@@ -345,6 +340,37 @@ func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID str
 	}
 
 	return s.storeRepo.RemoveItem(ctx, oID, iID)
+}
+
+func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID string, qty int) error {
+	if qty < 1 {
+		return errors.New("qty must be at least 1")
+	}
+	oID, err := parseUUID(orderID)
+	if err != nil {
+		return err
+	}
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return err
+	}
+	iID, err := parseUUID(itemID)
+	if err != nil {
+		return err
+	}
+
+	order, err := s.storeRepo.GetOrderByID(ctx, oID)
+	if err != nil {
+		return err
+	}
+	if order.ID.String() == "" || order.StudentID != sID {
+		return ErrOrderNotFound
+	}
+	if order.Status != "cart" {
+		return ErrOrderNotEditable
+	}
+
+	return s.storeRepo.UpdateItemQty(ctx, oID, iID, qty)
 }
 
 type CartPatch struct {
@@ -587,7 +613,7 @@ func (s *Service) ListStudentOrders(ctx context.Context, studentID string, curso
 		return nil, "", err
 	}
 
-	var filtered []model.Order
+	filtered := make([]model.Order, 0, len(orders))
 	for _, o := range orders {
 		if o.Status != "cart" {
 			filtered = append(filtered, o)
@@ -731,6 +757,40 @@ func (s *Service) AdminShipOrder(ctx context.Context, orderID, trackingNumber st
 	}
 
 	return s.storeRepo.SetShipped(ctx, id, trackingNumber)
+}
+
+func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error {
+	id, err := parseUUID(orderID)
+	if err != nil {
+		return err
+	}
+
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if order.ID.String() == "" {
+		return ErrOrderNotFound
+	}
+	if order.Status != "shipped" {
+		return errors.New("order must be in shipped status to complete")
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.SetOrderStatus(ctx, tx, id, "completed", ""); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Service) AdminRefundOrder(ctx context.Context, orderID string) error {
@@ -920,12 +980,7 @@ func checkTypeRBAC(role, productType string) error {
 	case RoleSuperAdmin:
 		return nil
 	case RoleAdminStore:
-		if productType == "book" || productType == "course" {
-			return nil
-		}
-		return ErrForbidden
-	case RoleAdminExam:
-		if productType == "exam" {
+		if productType == "book" || productType == "course" || productType == "package" {
 			return nil
 		}
 		return ErrForbidden

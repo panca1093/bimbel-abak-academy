@@ -72,6 +72,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	orders.GET("/:id", h.GetOrder)
 	orders.POST("/:id/items", h.AddItem)
 	orders.DELETE("/:id/items/:itemId", h.RemoveItem)
+	orders.PATCH("/:id/items/:itemId", h.UpdateItemQty)
 	orders.PATCH("/:id", h.PatchCart)
 	orders.POST("/:id/checkout", h.Checkout)
 	orders.POST("/:id/retry", h.RetryPayment)
@@ -118,6 +119,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminOrders.GET("/:id", h.AdminGetOrder)
 	adminOrders.POST("/:id/confirm", h.AdminConfirmOrder)
 	adminOrders.POST("/:id/ship", h.AdminShipOrder)
+	adminOrders.POST("/:id/complete", h.AdminCompleteOrder)
 	adminOrders.POST("/:id/refund", h.AdminRefundOrder)
 	adminOrders.POST("/:id/reconcile", h.AdminReconcileOrder)
 

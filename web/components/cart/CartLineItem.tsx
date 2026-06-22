@@ -1,6 +1,6 @@
 "use client";
 
-import { Book, PlayCircle, Trash2, Trophy } from "lucide-react";
+import { Book, Minus, Plus, PlayCircle, Trash2, Trophy } from "lucide-react";
 import type { OrderItem } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -16,14 +16,16 @@ const TYPE_META: Record<string, { label: string; tone: string; bg: string; Icon:
 export interface CartLineItemProps {
   item: OrderItem;
   onRemove: () => void;
+  onQtyChange: (qty: number) => void;
   removing?: boolean;
+  updatingQty?: boolean;
 }
 
-export function CartLineItem({ item, onRemove, removing }: CartLineItemProps) {
+export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQty }: CartLineItemProps) {
   const meta = TYPE_META[item.product_type] ?? TYPE_META.book;
   const { Icon } = meta;
-  const isBook = item.product_type === "book";
   const lineTotal = item.jumlah ?? item.unit_price * item.qty;
+  const busy = removing || updatingQty;
 
   return (
     <div className="flex gap-4 rounded-lg border border-line bg-surface p-4 shadow-[var(--sh-sm)]">
@@ -48,17 +50,35 @@ export function CartLineItem({ item, onRemove, removing }: CartLineItemProps) {
             size="icon"
             className="size-8 text-ink-400 hover:text-danger"
             onClick={onRemove}
-            disabled={removing}
+            disabled={busy}
             aria-label={`Hapus ${item.name} dari keranjang`}
           >
             <Trash2 className="size-4" />
           </Button>
         </div>
 
-        <div className="mt-1 flex items-end justify-between gap-2 text-sm">
-          <div className="flex flex-col text-ink-500">
-            <span>{formatRupiah(item.unit_price)}</span>
-            {isBook && item.qty > 1 && <span className="text-xs">Qty: {item.qty}</span>}
+        <div className="mt-1 flex items-center justify-between gap-2 text-sm">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onQtyChange(item.qty - 1)}
+              disabled={busy || item.qty <= 1}
+              className="flex size-7 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
+              aria-label="Kurangi jumlah"
+            >
+              <Minus className="size-3" />
+            </button>
+            <span className="w-6 text-center font-semibold text-ink-900">{item.qty}</span>
+            <button
+              type="button"
+              onClick={() => onQtyChange(item.qty + 1)}
+              disabled={busy || item.qty >= 10}
+              className="flex size-7 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
+              aria-label="Tambah jumlah"
+            >
+              <Plus className="size-3" />
+            </button>
+            <span className="text-xs text-ink-400">× {formatRupiah(item.unit_price)}</span>
           </div>
           <span className="font-serif text-base font-bold text-ink-900">{formatRupiah(lineTotal)}</span>
         </div>

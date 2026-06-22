@@ -23,6 +23,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatCard } from "@/components/admin/StatCard";
 
 interface SchoolReport {
   id: string;
@@ -95,68 +97,45 @@ export default function SchoolReportsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-            {t("reports")}
-          </h1>
-          <p className="mt-2 text-sm text-ink-500">
-            Ringkasan performa per sekolah mitra dan distribusi materi.
-          </p>
-        </div>
-        <Tabs value={period} onValueChange={(v) => setPeriod(v as typeof period)}>
-          <TabsList className="h-9">
-            <TabsTrigger value="month" className="text-xs">
-              Bulan
-            </TabsTrigger>
-            <TabsTrigger value="quarter" className="text-xs">
-              Kuartal
-            </TabsTrigger>
-            <TabsTrigger value="year" className="text-xs">
-              Tahun
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </header>
+      <AdminPageHeader
+        icon={FileText}
+        title="Laporan Sekolah"
+        description="Laporan performa per sekolah mitra."
+        actions={
+          <Tabs value={period} onValueChange={(v) => setPeriod(v as typeof period)}>
+            <TabsList className="h-9">
+              <TabsTrigger value="month" className="text-xs">
+                Bulan
+              </TabsTrigger>
+              <TabsTrigger value="quarter" className="text-xs">
+                Kuartal
+              </TabsTrigger>
+              <TabsTrigger value="year" className="text-xs">
+                Tahun
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        }
+      />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Total siswa</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">
-            {totals.students.toLocaleString("id-ID")}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Total ujian</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">
-            {totals.exams}
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Rata-rata skor</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">
-            {totals.avgScore.toFixed(1)}%
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="text-xs text-ink-500">Mitra sekolah</div>
-          <div className="mt-1 text-2xl font-bold text-ink-900">
-            {INITIAL_REPORTS.length}
-          </div>
-        </Card>
+        <StatCard label="Total siswa" value={totals.students.toLocaleString("id-ID")} />
+        <StatCard label="Total ujian" value={String(totals.exams)} />
+        <StatCard label="Rata-rata skor" value={`${totals.avgScore.toFixed(1)}%`} />
+        <StatCard label="Mitra sekolah" value={String(INITIAL_REPORTS.length)} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="overflow-hidden lg:col-span-2">
+        <div className="md-card-outlined lg:col-span-2">
           <div className="flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-2">
               <School className="size-5 text-brand-600" />
               <h2 className="font-semibold text-ink-900">Performa per sekolah</h2>
             </div>
-            <Button variant="outline" size="sm">
+            <button className="md-btn-outlined">
               <Download className="mr-1 size-4" />
               Export
-            </Button>
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -209,9 +188,9 @@ export default function SchoolReportsPage() {
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
 
-        <Card className="p-5">
+        <div className="md-card-outlined">
           <div className="mb-4 flex items-center gap-2">
             <FileText className="size-5 text-brand-600" />
             <h2 className="font-semibold text-ink-900">Penguasaan materi</h2>
@@ -227,7 +206,7 @@ export default function SchoolReportsPage() {
               </div>
             ))}
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );

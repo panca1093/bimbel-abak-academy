@@ -16,6 +16,8 @@ export const adminOrdersKeys = {
 const FILTER_STATUS_MAP: Record<Exclude<AdminOrderFilterStatus, "all">, Order["status"]> = {
   pending: "payment_pending",
   paid: "paid",
+  processing: "processing",
+  shipped: "shipped",
   failed: "payment_expired",
   refunded: "cancelled",
 };
@@ -102,6 +104,19 @@ export function useReconcileOrder() {
       authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/reconcile`, {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey() },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminOrdersKeys.all });
+    },
+  });
+}
+
+export function useCompleteOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      authFetch<{ message: string }>(`/admin/orders/${encodeURIComponent(id)}/complete`, {
+        method: "POST",
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminOrdersKeys.all });

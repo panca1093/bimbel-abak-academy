@@ -5,7 +5,18 @@ import { usePathname } from "next/navigation";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { cn } from "@/lib/utils";
-import type { UserRole } from "@/lib/nav-config";
+import { ADMIN_ROLES, type UserRole } from "@/lib/nav-config";
+import { useCart } from "@/lib/hooks/orders";
+import { useCartStore } from "@/stores/cart";
+
+function CartCountSync() {
+  const { data: cart } = useCart();
+  const setCount = useCartStore((s) => s.setCount);
+  useEffect(() => {
+    setCount(cart?.items?.length ?? 0);
+  }, [cart?.items?.length, setCount]);
+  return null;
+}
 
 function useIsLg() {
   const [lg, setLg] = useState(false);
@@ -33,6 +44,7 @@ export function AppShell({ role, children }: AppShellProps) {
   const [expanded, setExpanded] = useState(false);
   const isLg = useIsLg();
   const collapsed = !isLg && !expanded;
+  const isAdmin = ADMIN_ROLES.includes(role);
 
   useEffect(() => {
     if (isLg) setExpanded(false);
@@ -43,7 +55,7 @@ export function AppShell({ role, children }: AppShellProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-paper">
+    <div className={cn("flex min-h-screen bg-paper", isAdmin && "admin-shell")}>
       <aside
         className={cn(
           "fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-line bg-surface transition-all duration-200 ease-out",
@@ -59,6 +71,7 @@ export function AppShell({ role, children }: AppShellProps) {
           collapsed ? "pl-16" : "pl-[252px]"
         )}
       >
+        {!isAdmin && <CartCountSync />}
         <AppHeader onMenuClick={toggleSidebar} />
         <main className="flex-1">
           <div
