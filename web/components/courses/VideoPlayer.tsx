@@ -1,5 +1,7 @@
 "use client";
 
+import { PlayCircle } from "lucide-react";
+
 interface VideoPlayerProps {
   videoRef?: string;
   title?: string;
@@ -44,8 +46,16 @@ export function VideoPlayer({ videoRef, title }: VideoPlayerProps) {
           className="block size-full border-0"
         />
       ) : (
-        <div className="flex size-full items-center justify-center text-sm text-ink-300">
-          Video belum tersedia.
+        <div className="flex size-full flex-col items-center justify-center gap-3 text-ink-400">
+          <PlayCircle size={48} strokeWidth={1.5} />
+          <div className="text-center">
+            <p className="text-sm font-medium text-ink-300">
+              {title ? `${title}` : "Video pelajaran"}
+            </p>
+            <p className="mt-1 text-xs text-ink-500">
+              Video belum tersedia. Hubungi admin untuk informasi lebih lanjut.
+            </p>
+          </div>
         </div>
       )}
     </div>
