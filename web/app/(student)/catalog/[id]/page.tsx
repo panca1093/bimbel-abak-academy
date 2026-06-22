@@ -1,9 +1,9 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Book, ShoppingCart, PlayCircle, Trophy } from "lucide-react";
+import { ArrowLeft, Book, ShoppingCart, PlayCircle, Trophy, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useProduct } from "@/lib/hooks/products";
@@ -48,6 +48,7 @@ export default function ProductDetailPage({
   const { data: cart } = useCart();
   const bumpBadge = useCartStore((s) => s.setCount);
   const token = useAuthStore((s) => s.token);
+  const [qty, setQty] = useState(1);
 
   if (isLoading) return <DetailSkeleton />;
 
@@ -78,7 +79,7 @@ export default function ProductDetailPage({
       return;
     }
     addToCart.mutate(
-      { productId: product.id, qty: 1 },
+      { productId: product.id, qty },
       {
         onSuccess: () => {
           bumpBadge(useCartStore.getState().count + 1);
@@ -150,6 +151,30 @@ export default function ProductDetailPage({
               </div>
             )}
             <div className="my-4 h-px bg-line" />
+            {!alreadyInCart && (
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-sm text-ink-600">{t("product_qty_label")}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQty((q) => Math.max(1, q - 1))}
+                    disabled={qty <= 1}
+                    className="flex size-8 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
+                  >
+                    <Minus className="size-3.5" />
+                  </button>
+                  <span className="w-6 text-center text-sm font-semibold text-ink-900">{qty}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQty((q) => Math.min(10, q + 1))}
+                    disabled={qty >= 10}
+                    className="flex size-8 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="flex flex-col gap-3">
               <Button
                 size="lg"
