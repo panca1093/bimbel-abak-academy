@@ -73,14 +73,10 @@ export function useChangeAccountStatus() {
 }
 
 export function useResetAccountPassword() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
       authFetch<{ message: string }>(`/admin/system/accounts/${encodeURIComponent(id)}/reset-password`, {
         method: "POST",
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminAccountsKeys.all });
-    },
   });
 }

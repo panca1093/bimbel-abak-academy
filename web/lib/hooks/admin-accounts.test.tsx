@@ -122,7 +122,7 @@ describe("admin-accounts hooks", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: adminAccountsKeys.all });
   });
 
-  it("useResetAccountPassword posts to /admin/system/accounts/:id/reset-password and invalidates list", async () => {
+  it("useResetAccountPassword posts to /admin/system/accounts/:id/reset-password and does not invalidate list", async () => {
     mockAuthFetch.mockResolvedValueOnce({ message: "password reset triggered" });
 
     const { wrapper, queryClient } = wrapperFactory();
@@ -136,7 +136,7 @@ describe("admin-accounts hooks", () => {
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/system/accounts/a1/reset-password", {
       method: "POST",
     });
-    expect(spy).toHaveBeenCalledWith({ queryKey: adminAccountsKeys.all });
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

@@ -3,11 +3,14 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"akademi-bimbel/internal/repository"
 )
+
+var ErrInvalidDateFormat = errors.New("invalid date format")
 
 // AuditLogEntry is the response shape for a single audit log entry.
 type AuditLogEntry struct {
@@ -39,14 +42,14 @@ func (s *Service) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([]Au
 	if filter.From != "" {
 		if _, err := time.Parse(time.RFC3339, filter.From); err != nil {
 			if _, err2 := time.Parse("2006-01-02", filter.From); err2 != nil {
-				return nil, "", fmt.Errorf("invalid from date format: %s", filter.From)
+				return nil, "", fmt.Errorf("%w: %s", ErrInvalidDateFormat, filter.From)
 			}
 		}
 	}
 	if filter.To != "" {
 		if _, err := time.Parse(time.RFC3339, filter.To); err != nil {
 			if _, err2 := time.Parse("2006-01-02", filter.To); err2 != nil {
-				return nil, "", fmt.Errorf("invalid to date format: %s", filter.To)
+				return nil, "", fmt.Errorf("%w: %s", ErrInvalidDateFormat, filter.To)
 			}
 		}
 	}
