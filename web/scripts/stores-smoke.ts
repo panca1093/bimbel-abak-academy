@@ -10,9 +10,10 @@ assert.equal(auth.token, null, "token starts null");
 assert.equal(auth.user, null, "user starts null");
 
 // setSession mutates state
-useAuthStore.getState().setSession("t1", { id: "u1", name: "A" });
+useAuthStore.getState().setSession("t1", "rt1", { id: "u1", name: "A" });
 const afterSet = useAuthStore.getState();
 assert.equal(afterSet.token, "t1", "setSession stores token");
+assert.equal(afterSet.refreshToken, "rt1", "setSession stores refreshToken");
 assert.deepEqual(afterSet.user, { id: "u1", name: "A" }, "setSession stores user");
 
 // clear resets both

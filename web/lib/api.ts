@@ -55,19 +55,46 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   return res.json() as Promise<T>;
 }
 
+async function tryRefresh(): Promise<string | null> {
+  const { useAuthStore } = await import("@/stores/auth");
+  const { refreshToken } = useAuthStore.getState();
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { access_token: string; refresh_token: string };
+    const { useAuthStore: store } = await import("@/stores/auth");
+    const user = store.getState().user!;
+    store.getState().setSession(data.access_token, data.refresh_token, user);
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
 export async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
 
-  const headers: HeadersInit = {
+  const buildHeaders = (t: string | null): HeadersInit => ({
     "Content-Type": "application/json",
     ...(init?.headers ?? {}),
-  };
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+    ...(t ? { Authorization: `Bearer ${t}` } : {}),
+  });
+
+  let res = await fetch(`${API_BASE}${path}`, { ...init, headers: buildHeaders(token) });
+
+  if (res.status === 401) {
+    const newToken = await tryRefresh();
+    if (newToken) {
+      res = await fetch(`${API_BASE}${path}`, { ...init, headers: buildHeaders(newToken) });
+    }
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
     if (res.status === 401) {
       useAuthStore.getState().clear();

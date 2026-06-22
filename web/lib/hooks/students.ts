@@ -78,9 +78,9 @@ export function useUpdatePhoto() {
         body: JSON.stringify({ photo_url }),
       }),
     onSuccess: (data) => {
-      const token = useAuthStore.getState().token;
+      const { token, refreshToken } = useAuthStore.getState();
       if (token && data) {
-        useAuthStore.getState().setSession(token, data);
+        useAuthStore.getState().setSession(token, refreshToken ?? "", data);
       }
       qc.invalidateQueries({ queryKey: studentsKeys.profile() });
     },
