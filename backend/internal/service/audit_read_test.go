@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -100,5 +101,16 @@ func TestErrSentinelsExist(t *testing.T) {
 	}
 	if !errors.Is(ErrInvalidAdminRole, ErrInvalidAdminRole) {
 		t.Error("ErrInvalidAdminRole should identify itself")
+	}
+
+	if ErrInvalidDateFormat == nil {
+		t.Fatal("ErrInvalidDateFormat must be defined")
+	}
+	// Verify wrapping works — production code uses fmt.Errorf("%w: ...", ErrInvalidDateFormat, val)
+	{
+		wrapped := fmt.Errorf("%w: %s", ErrInvalidDateFormat, "2026-13-01")
+		if !errors.Is(wrapped, ErrInvalidDateFormat) {
+			t.Error("wrapped ErrInvalidDateFormat should be detectable via errors.Is")
+		}
 	}
 }
