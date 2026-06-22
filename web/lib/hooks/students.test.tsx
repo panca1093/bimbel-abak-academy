@@ -62,8 +62,8 @@ describe("useUpdatePhoto", () => {
       body: JSON.stringify({ photo_url: "https://example.com/new-photo.jpg" }),
     });
 
-    // Auth store should be updated with token and returned user
-    expect(mockSetSession).toHaveBeenCalledWith("test-token-123", updatedUser);
+    // Auth store should be updated with token, refreshToken, and returned user
+    expect(mockSetSession).toHaveBeenCalledWith("test-token-123", "", updatedUser);
 
     // Profile query should still be invalidated
     expect(spy).toHaveBeenCalledWith({ queryKey: studentsKeys.profile() });

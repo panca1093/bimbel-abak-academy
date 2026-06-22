@@ -53,7 +53,7 @@ describe("AdminIndexPage", () => {
   it("renders dashboard for super_admin role", () => {
     authStore = { token: "t", user: { role: "super_admin", name: "Super Admin" } };
     const { getByText, container } = render(<AdminIndexPage />);
-    expect(getByText("Selamat Pagi · Super Admin")).toBeInTheDocument();
+    expect(getByText("Super Admin · Abak Academy")).toBeInTheDocument();
     const headings = container.querySelectorAll("h1");
     expect(headings.length).toBeGreaterThan(0);
   });
@@ -121,7 +121,7 @@ describe("AdminIndexPage", () => {
   it("redirects non-super_admin roles via router.replace", async () => {
     authStore = { token: "t", user: { role: "admin_store" } };
     render(<AdminIndexPage />);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin/products"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin/store"));
   });
 
   it("uses name from store when available", () => {
