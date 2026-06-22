@@ -308,17 +308,19 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 }
 
 func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, status, reason string) error {
+	q := `UPDATE orders SET
+		status = $1,
+		cancellation_reason = $2,
+		paid_at       = CASE WHEN $1 = 'paid'      THEN now() ELSE paid_at      END,
+		completed_at  = CASE WHEN $1 = 'completed' THEN now() ELSE completed_at END,
+		cancelled_at  = CASE WHEN $1 = 'cancelled' THEN now() ELSE cancelled_at END,
+		updated_at    = now()
+		WHERE id = $3`
 	var err error
 	if tx != nil {
-		_, err = tx.Exec(ctx,
-			`UPDATE orders SET status = $1, cancellation_reason = $2, updated_at = now() WHERE id = $3`,
-			status, reason, orderID,
-		)
+		_, err = tx.Exec(ctx, q, status, reason, orderID)
 	} else {
-		_, err = r.pool.Exec(ctx,
-			`UPDATE orders SET status = $1, cancellation_reason = $2, updated_at = now() WHERE id = $3`,
-			status, reason, orderID,
-		)
+		_, err = r.pool.Exec(ctx, q, status, reason, orderID)
 	}
 	return err
 }
