@@ -17,6 +17,7 @@ let ordersState = {
 
 let confirmState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let shipState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+let completeState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let refundState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 
@@ -25,6 +26,7 @@ vi.mock("@/lib/hooks/admin-orders", () => ({
   useAdminOrder: () => ({}),
   useConfirmOrder: () => confirmState,
   useShipOrder: () => shipState,
+  useCompleteOrder: () => completeState,
   useRefundOrder: () => refundState,
   useReconcileOrder: () => reconcileState,
 }));
@@ -82,6 +84,7 @@ describe("OrdersPage", () => {
     };
     confirmState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     shipState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+    completeState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     refundState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     mockMutate.mockReset();
@@ -98,8 +101,9 @@ describe("OrdersPage", () => {
     });
 
     expect(screen.getByText("Rp115.000")).toBeInTheDocument();
-    expect(screen.getByText("s1")).toBeInTheDocument();
-    expect(screen.getByText("Dikirim")).toBeInTheDocument();
+    expect(screen.getByText("...s1")).toBeInTheDocument();
+    // Shipping column renders — "Dikirim" appears both as a filter chip and as a badge
+    expect(screen.getAllByText("Dikirim").length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows confirm and reconcile actions for pending orders", async () => {
