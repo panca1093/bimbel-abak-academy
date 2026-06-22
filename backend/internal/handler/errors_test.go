@@ -45,6 +45,14 @@ func TestMapServiceError(t *testing.T) {
 		{name: "invalid signature", err: service.ErrInvalidSignature, wantStatus: 401, wantCode: "invalid_signature"},
 		{name: "course link required", err: service.ErrCourseLinkRequired, wantStatus: 422, wantCode: "course_required"},
 		{name: "no course access", err: service.ErrNoCourseAccess, wantStatus: 422, wantCode: "no_course_access"},
+		{name: "cannot deactivate self", err: service.ErrCannotDeactivateSelf, wantStatus: 403, wantCode: "cannot_deactivate_self"},
+		{name: "invalid admin role", err: service.ErrInvalidAdminRole, wantStatus: 400, wantCode: "invalid_request"},
+		{name: "invalid role filter", err: service.ErrInvalidRoleFilter, wantStatus: 400, wantCode: "invalid_request"},
+		{name: "invalid status filter", err: service.ErrInvalidStatusFilter, wantStatus: 400, wantCode: "invalid_request"},
+		{name: "unknown config key", err: service.ErrUnknownConfigKey, wantStatus: 400, wantCode: "invalid_request"},
+		{name: "config encryption failed", err: service.ErrConfigEncryption, wantStatus: 500, wantCode: "internal_error"},
+		{name: "missing field", err: service.ErrMissingField, wantStatus: 400, wantCode: "invalid_request"},
+		{name: "account no email", err: service.ErrAccountNoEmail, wantStatus: 422, wantCode: "reset_invalid"},
 		{name: "unknown error falls to 500", err: errors.New("something unexpected"), wantStatus: 500, wantCode: "internal_error"},
 	}
 
