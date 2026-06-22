@@ -276,8 +276,8 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) 
 
 func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUID, qty int) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE order_item SET qty = $1, jumlah = unit_price * $1 WHERE id = $2 AND order_id = $3`,
-		qty, itemID, orderID,
+		`UPDATE order_item SET qty = $1, jumlah = unit_price * $2 WHERE id = $3 AND order_id = $4`,
+		qty, qty, itemID, orderID,
 	)
 	if err != nil {
 		return err
