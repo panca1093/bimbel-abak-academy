@@ -274,6 +274,17 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) 
 	return r.recalcOrderTotals(ctx, orderID)
 }
 
+func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUID, qty int) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE order_item SET qty = $1, jumlah = unit_price * $1 WHERE id = $2 AND order_id = $3`,
+		qty, itemID, orderID,
+	)
+	if err != nil {
+		return err
+	}
+	return r.recalcOrderTotals(ctx, orderID)
+}
+
 func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE orders SET

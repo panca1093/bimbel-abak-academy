@@ -347,6 +347,37 @@ func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID str
 	return s.storeRepo.RemoveItem(ctx, oID, iID)
 }
 
+func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID string, qty int) error {
+	if qty < 1 {
+		return errors.New("qty must be at least 1")
+	}
+	oID, err := parseUUID(orderID)
+	if err != nil {
+		return err
+	}
+	sID, err := parseUUID(studentID)
+	if err != nil {
+		return err
+	}
+	iID, err := parseUUID(itemID)
+	if err != nil {
+		return err
+	}
+
+	order, err := s.storeRepo.GetOrderByID(ctx, oID)
+	if err != nil {
+		return err
+	}
+	if order.ID.String() == "" || order.StudentID != sID {
+		return ErrOrderNotFound
+	}
+	if order.Status != "cart" {
+		return ErrOrderNotEditable
+	}
+
+	return s.storeRepo.UpdateItemQty(ctx, oID, iID, qty)
+}
+
 type CartPatch struct {
 	ShippingAddress []byte
 	Courier         string

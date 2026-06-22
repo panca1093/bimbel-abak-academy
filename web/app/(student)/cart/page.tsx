@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart, X } from "lucide-react";
-import { useCart, useRemoveCartItem, useValidatePromo } from "@/lib/hooks/orders";
+import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo } from "@/lib/hooks/orders";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { OrderItem } from "@/lib/types";
@@ -18,6 +18,7 @@ export default function CartPage() {
   const { t } = useTranslation();
   const { data: cart, isLoading, isError, error, refetch } = useCart();
   const removeItem = useRemoveCartItem();
+  const updateQty = useUpdateCartItemQty();
   const validatePromo = useValidatePromo();
 
   const items: OrderItem[] = cart?.items ?? [];
@@ -61,7 +62,12 @@ export default function CartPage() {
                   if (!cart) return;
                   removeItem.mutate({ orderId: cart.id, itemId: it.id });
                 }}
+                onQtyChange={(qty) => {
+                  if (!cart) return;
+                  updateQty.mutate({ orderId: cart.id, itemId: it.id, qty });
+                }}
                 removing={removeItem.isPending}
+                updatingQty={updateQty.isPending}
               />
             ))}
           </section>
