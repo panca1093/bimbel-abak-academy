@@ -15,11 +15,12 @@ import (
 var ErrInsufficientStock = errors.New("insufficient stock")
 
 type OrderFilter struct {
-	StudentID   *uuid.UUID
-	Status      string
-	ProductType string
-	Cursor      string
-	Limit       int
+	StudentID    *uuid.UUID
+	Status       string
+	ProductType  string
+	ExcludeCart  bool
+	Cursor       string
+	Limit        int
 }
 
 type OrderPatch struct {
@@ -202,6 +203,9 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 		query += fmt.Sprintf(` AND EXISTS (SELECT 1 FROM order_item WHERE order_item.order_id = orders.id AND product_type = $%d)`, argNum)
 		args = append(args, filter.ProductType)
 		argNum++
+	}
+	if filter.ExcludeCart {
+		query += ` AND status != 'cart'`
 	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND id > $%d`, argNum)

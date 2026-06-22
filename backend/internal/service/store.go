@@ -656,6 +656,7 @@ func parseUUID(s string) (uuid.UUID, error) {
 // Admin order methods
 
 func (s *Service) AdminListOrders(ctx context.Context, filter repository.OrderFilter) ([]model.Order, string, error) {
+	filter.ExcludeCart = true
 	return s.storeRepo.ListOrders(ctx, filter)
 }
 
@@ -772,8 +773,18 @@ func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error 
 	if order.ID.String() == "" {
 		return ErrOrderNotFound
 	}
-	if order.Status != "shipped" {
-		return errors.New("order must be in shipped status to complete")
+	switch order.Status {
+	case "shipped":
+		// physical order after delivery — always completable
+	case "processing":
+		// only completable if no physical items (digital-only orders stuck before worker fix)
+		for _, item := range order.Items {
+			if item.ProductType == "book" {
+				return errors.New("order has physical items — must be shipped before completing")
+			}
+		}
+	default:
+		return errors.New("order cannot be completed from status: " + order.Status)
 	}
 
 	tx, err := s.storeRepo.BeginTx(ctx)

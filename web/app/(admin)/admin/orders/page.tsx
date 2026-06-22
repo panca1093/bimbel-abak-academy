@@ -26,6 +26,10 @@ function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;
 }
 
+function buyerLabel(order: Order): string {
+  return `...${order.student_id.slice(-12)}`;
+}
+
 function productSummary(order: Order): string {
   if (!order.items || order.items.length === 0) return "-";
   const names = order.items.slice(0, 2).map((it) => it.name);
@@ -48,7 +52,7 @@ function actionAllowed(status: OrderStatus, action: "confirm" | "ship" | "comple
     case "ship":
       return status === "paid" || status === "processing";
     case "complete":
-      return status === "shipped";
+      return status === "shipped" || status === "processing";
     case "refund":
       return status === "paid" || status === "processing" || status === "shipped" || status === "completed";
     case "reconcile":
@@ -188,8 +192,8 @@ export default function OrdersPage() {
                 <th className="px-4 py-3 text-left font-medium">{t("th_buyer")}</th>
                 <th className="px-4 py-3 text-left font-medium">{t("th_product")}</th>
                 <th className="px-4 py-3 text-left font-medium">{t("th_total")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_payment")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_shipping")}</th>
+                <th className="px-4 py-3 text-left font-medium">Status</th>
+                <th className="px-4 py-3 text-left font-medium">Pengiriman</th>
                 <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
@@ -200,13 +204,15 @@ export default function OrdersPage() {
                   className="border-t transition-colors hover:bg-muted/40"
                 >
                   <td className="px-4 py-3 font-mono font-medium">{orderNumber(order)}</td>
-                  <td className="px-4 py-3">{order.student_id}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{buyerLabel(order)}</td>
                   <td className="px-4 py-3 max-w-xs truncate">{productSummary(order)}</td>
                   <td className="px-4 py-3">{formatRupiah(order.total)}</td>
                   <td className="px-4 py-3">
                     <OrderStatusBadge status={order.status} />
                   </td>
-                  <td className="px-4 py-3">{shippingBadge(order)}</td>
+                  <td className="px-4 py-3">
+                    {hasBookItem(order) ? shippingBadge(order) : <span className="text-xs text-muted-foreground">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       {actionAllowed(order.status, "confirm") && (
@@ -229,7 +235,7 @@ export default function OrdersPage() {
                           {t("action_ship")}
                         </Button>
                       )}
-                      {actionAllowed(order.status, "complete") && (
+                      {actionAllowed(order.status, "complete") && (order.status === "shipped" || !hasBookItem(order)) && (
                         <Button
                           size="sm"
                           variant="outline"
