@@ -15,11 +15,15 @@ function toYoutubeId(value?: string): string | null {
     try {
       const url = new URL(trimmed);
       if (/youtube\.com$/i.test(url.hostname)) {
+        // /watch?v=VIDEO_ID
         const v = url.searchParams.get("v");
         if (v) return v;
+        // /shorts/VIDEO_ID  or  /embed/VIDEO_ID
+        const match = url.pathname.match(/\/(shorts|embed)\/([^/?]+)/);
+        if (match?.[2]) return match[2];
       }
       if (/youtu\.be$/i.test(url.hostname)) {
-        const id = url.pathname.replace(/^\//, "");
+        const id = url.pathname.replace(/^\//, "").split("?")[0];
         if (id) return id;
       }
       return null;
