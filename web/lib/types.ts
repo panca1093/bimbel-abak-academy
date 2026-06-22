@@ -322,3 +322,38 @@ export interface Dashboard {
   exam_progress: ExamProgressEntry[];
   popular_lessons: PopularLessonEntry[];
 }
+
+export type AdminAccountRole = "super_admin" | "admin_store" | "admin_exam" | "admin_school";
+
+export type AdminAccountStatus = "active" | "deactivated";
+
+export interface AdminAccount {
+  id: string;
+  name: string;
+  email?: string | null;
+  role: AdminAccountRole;
+  status: AdminAccountStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminCreateAccountInput {
+  email: string;
+  name: string;
+  role: AdminAccountRole;
+  password: string;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  actor_id?: string | null;
+  actor_name?: string | null;
+  actor_email?: string | null;
+  target_type: string;
+  target_id: string;
+  action: string;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export type SystemConfig = Record<string, string>;
