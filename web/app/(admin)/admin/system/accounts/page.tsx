@@ -4,13 +4,12 @@ import { useMemo, useState } from "react";
 import {
   Plus,
   ShieldCheck,
-  Shield,
   MoreHorizontal,
-  Edit,
   Lock,
   Mail,
   Search,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +29,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -40,81 +40,35 @@ import {
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatCard } from "@/components/admin/StatCard";
+import {
+  useAdminAccounts,
+  useCreateAdminAccount,
+  useChangeAccountRole,
+  useChangeAccountStatus,
+  useResetAccountPassword,
+} from "@/lib/hooks/admin-accounts";
+import type { AdminAccount, AdminAccountRole, AdminAccountStatus } from "@/lib/types";
 
-type SystemRole = "super_admin" | "admin_exam" | "admin_school" | "admin_store";
-type AccountStatus = "active" | "suspended" | "pending";
-
-interface Account {
-  id: string;
-  name: string;
-  email: string;
-  role: SystemRole;
-  status: AccountStatus;
-  lastActive?: string;
-}
-
-const INITIAL_ACCOUNTS: Account[] = [
-  {
-    id: "ACC-9001",
-    name: "Saifullah Panca",
-    email: "saifullah.panca@amartha.com",
-    role: "super_admin",
-    status: "active",
-    lastActive: "2026-06-19T09:30",
-  },
-  {
-    id: "ACC-9002",
-    name: "Rina Wijayanti",
-    email: "rina.w@example.com",
-    role: "admin_exam",
-    status: "active",
-    lastActive: "2026-06-18T16:45",
-  },
-  {
-    id: "ACC-9003",
-    name: "Hendra Gunawan",
-    email: "hendra.g@example.com",
-    role: "admin_store",
-    status: "active",
-    lastActive: "2026-06-17T11:20",
-  },
-  {
-    id: "ACC-9004",
-    name: "Sri Wahyuni",
-    email: "sri.w@example.com",
-    role: "admin_school",
-    status: "pending",
-  },
-  {
-    id: "ACC-9005",
-    name: "Budi Admin Lama",
-    email: "budi.lama@example.com",
-    role: "admin_exam",
-    status: "suspended",
-  },
-];
-
-const ROLE_LABEL: Record<SystemRole, string> = {
+const ROLE_LABEL: Record<AdminAccountRole, string> = {
   super_admin: "Super Admin",
   admin_exam: "Admin Exam",
   admin_school: "School Operator",
   admin_store: "Store Manager",
 };
 
-const ROLE_TONE: Record<SystemRole, string> = {
+const ROLE_TONE: Record<AdminAccountRole, string> = {
   super_admin: "bg-danger-bg text-danger border-danger",
   admin_exam: "bg-info-bg text-info border-info",
   admin_school: "bg-violet-bg text-violet border-violet",
   admin_store: "bg-success-bg text-success border-success",
 };
 
-const STATUS_TONE: Record<AccountStatus, string> = {
+const STATUS_TONE: Record<AdminAccountStatus, string> = {
   active: "bg-success-bg text-success border-success",
-  suspended: "bg-danger-bg text-danger border-danger",
-  pending: "bg-warn-bg text-warn border-warn",
+  deactivated: "bg-danger-bg text-danger border-danger",
 };
 
-const ROLES: SystemRole[] = ["super_admin", "admin_exam", "admin_school", "admin_store"];
+const ROLES: AdminAccountRole[] = ["super_admin", "admin_exam", "admin_school", "admin_store"];
 
 function initials(name: string) {
   return name
@@ -128,31 +82,121 @@ function initials(name: string) {
 export default function SystemAccountsPage() {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<SystemRole | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
+  const [roleFilter, setRoleFilter] = useState<AdminAccountRole | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<AdminAccountStatus | "all">("all");
   const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    email: "",
+    role: "admin_store" as AdminAccountRole,
+    password: "",
+  });
+  const [roleChangeTarget, setRoleChangeTarget] = useState<AdminAccount | null>(null);
+  const [roleChangeRole, setRoleChangeRole] = useState<AdminAccountRole>("admin_store");
+
+  const { data: accounts = [], isLoading, error } = useAdminAccounts(
+    roleFilter === "all" ? undefined : roleFilter,
+    statusFilter === "all" ? undefined : statusFilter
+  );
+
+  const createAccount = useCreateAdminAccount();
+  const changeRole = useChangeAccountRole();
+  const changeStatus = useChangeAccountStatus();
+  const resetPwd = useResetAccountPassword();
 
   const rows = useMemo(() => {
-    return INITIAL_ACCOUNTS.filter((a) => {
-      const q = search.toLowerCase();
-      const matchesSearch =
-        search.trim() === "" ||
-        a.name.toLowerCase().includes(q) ||
-        a.email.toLowerCase().includes(q);
-      const matchesRole = roleFilter === "all" || a.role === roleFilter;
-      const matchesStatus = statusFilter === "all" || a.status === statusFilter;
-      return matchesSearch && matchesRole && matchesStatus;
-    });
-  }, [search, roleFilter, statusFilter]);
+    if (search.trim() === "") return accounts;
+    const q = search.toLowerCase();
+    return accounts.filter(
+      (a) => a.name.toLowerCase().includes(q) || (a.email ?? "").toLowerCase().includes(q)
+    );
+  }, [search, accounts]);
 
-  const stats = useMemo(() => {
-    return {
-      total: INITIAL_ACCOUNTS.length,
-      active: INITIAL_ACCOUNTS.filter((a) => a.status === "active").length,
-      pending: INITIAL_ACCOUNTS.filter((a) => a.status === "pending").length,
-      suspended: INITIAL_ACCOUNTS.filter((a) => a.status === "suspended").length,
-    };
-  }, []);
+  const stats = useMemo(
+    () => ({
+      total: accounts.length,
+      active: accounts.filter((a) => a.status === "active").length,
+      deactivated: accounts.filter((a) => a.status === "deactivated").length,
+    }),
+    [accounts]
+  );
+
+  const handleCreate = async () => {
+    if (!createForm.name || !createForm.email || !createForm.password) {
+      toast.error("Semua field harus diisi");
+      return;
+    }
+    try {
+      await createAccount.mutateAsync({
+        name: createForm.name,
+        email: createForm.email,
+        role: createForm.role,
+        password: createForm.password,
+      });
+      toast.success("Akun berhasil dibuat");
+      setCreateOpen(false);
+      setCreateForm({ name: "", email: "", role: "admin_store", password: "" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal membuat akun";
+      toast.error(msg);
+    }
+  };
+
+  const handleRoleChange = async () => {
+    if (!roleChangeTarget) return;
+    try {
+      await changeRole.mutateAsync({ id: roleChangeTarget.id, role: roleChangeRole });
+      toast.success("Peran berhasil diubah");
+      setRoleChangeTarget(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal mengubah peran";
+      toast.error(msg);
+    }
+  };
+
+  const handleStatusToggle = async (account: AdminAccount) => {
+    const newStatus: AdminAccountStatus = account.status === "active" ? "deactivated" : "active";
+    const label = newStatus === "active" ? "Aktifkan" : "Nonaktifkan";
+    try {
+      await changeStatus.mutateAsync({ id: account.id, status: newStatus });
+      toast.success(`${label} berhasil`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : `Gagal ${label.toLowerCase()}`;
+      toast.error(msg);
+    }
+  };
+
+  const handleResetPassword = async (account: AdminAccount) => {
+    try {
+      await resetPwd.mutateAsync(account.id);
+      toast.success("Email reset password telah dikirim");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal mereset password";
+      toast.error(msg);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+        <AdminPageHeader icon={ShieldCheck} title="Akun Pengguna" description="Memuat…" />
+        <div className="py-12 text-center text-ink-500">Memuat data…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    const msg =
+      (error as { code?: string })?.code === "forbidden"
+        ? "Akses ditolak. Hanya Super Admin yang dapat mengakses halaman ini."
+        : "Gagal memuat data. Coba refresh halaman.";
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+        <AdminPageHeader icon={ShieldCheck} title="Akun Pengguna" description="Terjadi kesalahan" />
+        <div className="py-12 text-center text-ink-500">{msg}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
@@ -171,8 +215,7 @@ export default function SystemAccountsPage() {
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Total akun" value={String(stats.total)} />
         <StatCard label="Aktif" value={String(stats.active)} />
-        <StatCard label="Pending" value={String(stats.pending)} />
-        <StatCard label="Suspended" value={String(stats.suspended)} />
+        <StatCard label="Nonaktif" value={String(stats.deactivated)} />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -191,15 +234,17 @@ export default function SystemAccountsPage() {
           ))}
         </div>
         <div className="flex items-center gap-2 lg:ml-auto">
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as AccountStatus | "all")}>
+          <Select
+            value={statusFilter}
+            onValueChange={(v) => setStatusFilter(v as AdminAccountStatus | "all")}
+          >
             <SelectTrigger className="h-9 w-[140px] text-xs">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua status</SelectItem>
               <SelectItem value="active">Aktif</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="suspended">Suspended</SelectItem>
+              <SelectItem value="deactivated">Nonaktif</SelectItem>
             </SelectContent>
           </Select>
           <Search className="size-4 text-ink-400" />
@@ -220,11 +265,18 @@ export default function SystemAccountsPage() {
                 <th className="px-4 py-3">Akun</th>
                 <th className="px-4 py-3">Peran</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Terakhir aktif</th>
+                <th className="px-4 py-3">Dibuat</th>
                 <th className="px-4 py-3 text-right"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-ink-500">
+                    Tidak ada akun ditemukan.
+                  </td>
+                </tr>
+              )}
               {rows.map((a) => (
                 <tr key={a.id} className="group hover:bg-surface-2">
                   <td className="px-4 py-3">
@@ -238,7 +290,7 @@ export default function SystemAccountsPage() {
                         <div className="font-medium text-ink-900">{a.name}</div>
                         <div className="flex items-center gap-1 text-[11px] text-ink-500">
                           <Mail className="size-3" />
-                          {a.email}
+                          {a.email ?? "—"}
                         </div>
                       </div>
                     </div>
@@ -254,18 +306,20 @@ export default function SystemAccountsPage() {
                   <td className="px-4 py-3">
                     <Badge
                       variant="outline"
-                      className={cn("text-[11px] font-semibold capitalize", STATUS_TONE[a.status])}
+                      className={cn(
+                        "text-[11px] font-semibold capitalize",
+                        STATUS_TONE[a.status]
+                      )}
                     >
-                      {a.status}
+                      {a.status === "active" ? "Aktif" : "Nonaktif"}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
-                    {a.lastActive
-                      ? new Date(a.lastActive).toLocaleString("id-ID", {
+                    {a.created_at
+                      ? new Date(a.created_at).toLocaleString("id-ID", {
                           day: "2-digit",
                           month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
+                          year: "numeric",
                         })
                       : "—"}
                   </td>
@@ -277,11 +331,20 @@ export default function SystemAccountsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setCreateOpen(true)}>
-                          <Edit className="mr-2 size-4" />
-                          Edit
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setRoleChangeTarget(a);
+                            setRoleChangeRole(a.role);
+                          }}
+                        >
+                          <Mail className="mr-2 size-4" />
+                          Ganti peran
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleStatusToggle(a)}>
+                          <Lock className="mr-2 size-4" />
+                          {a.status === "active" ? "Nonaktifkan" : "Aktifkan"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleResetPassword(a)}>
                           <Lock className="mr-2 size-4" />
                           Reset password
                         </DropdownMenuItem>
@@ -295,26 +358,37 @@ export default function SystemAccountsPage() {
         </div>
       </div>
 
+      {/* Create account dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-serif">{t("create")} akun</DialogTitle>
-            <DialogDescription>
-              Form undangan akun admin akan tersedia di iterasi berikutnya.
-            </DialogDescription>
+            <DialogTitle className="font-serif">Buat akun admin</DialogTitle>
+            <DialogDescription>Isi data akun admin baru.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>Nama</Label>
-              <Input placeholder="Nama lengkap" />
+              <Input
+                value={createForm.name}
+                onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Nama lengkap"
+              />
             </div>
             <div>
               <Label>Email</Label>
-              <Input type="email" placeholder="email@example.com" />
+              <Input
+                type="email"
+                value={createForm.email}
+                onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="email@example.com"
+              />
             </div>
             <div>
               <Label>Peran</Label>
-              <Select>
+              <Select
+                value={createForm.role}
+                onValueChange={(v) => setCreateForm((f) => ({ ...f, role: v as AdminAccountRole }))}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Pilih peran" />
                 </SelectTrigger>
@@ -327,13 +401,69 @@ export default function SystemAccountsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button onClick={() => setCreateOpen(false)}>{t("create")}</Button>
+            <div>
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={createForm.password}
+                onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
+                placeholder="Minimal 8 karakter"
+              />
             </div>
           </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button onClick={handleCreate} disabled={createAccount.isPending}>
+              {createAccount.isPending ? "Menyimpan…" : t("create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Role change dialog */}
+      <Dialog
+        open={roleChangeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRoleChangeTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-serif">Ganti peran</DialogTitle>
+            <DialogDescription>
+              {roleChangeTarget ? `Ubah peran untuk ${roleChangeTarget.name}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Peran baru</Label>
+              <Select
+                value={roleChangeRole}
+                onValueChange={(v) => setRoleChangeRole(v as AdminAccountRole)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih peran" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {ROLE_LABEL[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setRoleChangeTarget(null)}>
+              {t("cancel")}
+            </Button>
+            <Button onClick={handleRoleChange} disabled={changeRole.isPending}>
+              {changeRole.isPending ? "Menyimpan…" : "Simpan"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
