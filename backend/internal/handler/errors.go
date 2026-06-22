@@ -69,6 +69,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "course_required", Message: err.Error()}
 	case errors.Is(err, service.ErrNoCourseAccess):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_course_access", Message: err.Error()}
+	case errors.Is(err, service.ErrUnknownConfigKey):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrConfigEncryption):
+		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "config encryption failed"}
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}
