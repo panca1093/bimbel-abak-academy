@@ -951,7 +951,7 @@ func checkTypeRBAC(role, productType string) error {
 	case RoleSuperAdmin:
 		return nil
 	case RoleAdminStore:
-		if productType == "book" || productType == "course" {
+		if productType == "book" || productType == "course" || productType == "package" {
 			return nil
 		}
 		return ErrForbidden
