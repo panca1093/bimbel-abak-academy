@@ -312,7 +312,7 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 		ProductID:   pID,
 		ProductType: product.Type,
 		Name:        product.Name,
-		UnitPrice:   float64(product.Price) / 100,
+		UnitPrice:   float64(product.Price),
 		Qty:         qty,
 		WeightGrams: product.WeightGrams,
 	}
