@@ -201,7 +201,7 @@ func TestOrderPaidHandlerZeroLinkedCoursesSkipsButCommits(t *testing.T) {
 			return nil
 		},
 		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
-			if status == "processing" {
+			if status == "completed" {
 				orderStatusUpdated = true
 			}
 			return nil
@@ -222,7 +222,7 @@ func TestOrderPaidHandlerZeroLinkedCoursesSkipsButCommits(t *testing.T) {
 		t.Error("expected no course session to be created for zero-linked product")
 	}
 	if !orderStatusUpdated {
-		t.Error("expected order status to be updated to processing")
+		t.Error("expected order status to be updated to completed (digital-only order)")
 	}
 	if !outboxMarkedProcessed {
 		t.Error("expected outbox event to be marked processed")

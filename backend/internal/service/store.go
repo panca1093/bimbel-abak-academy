@@ -759,6 +759,40 @@ func (s *Service) AdminShipOrder(ctx context.Context, orderID, trackingNumber st
 	return s.storeRepo.SetShipped(ctx, id, trackingNumber)
 }
 
+func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error {
+	id, err := parseUUID(orderID)
+	if err != nil {
+		return err
+	}
+
+	order, err := s.storeRepo.GetOrderByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if order.ID.String() == "" {
+		return ErrOrderNotFound
+	}
+	if order.Status != "shipped" {
+		return errors.New("order must be in shipped status to complete")
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.SetOrderStatus(ctx, tx, id, "completed", ""); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *Service) AdminRefundOrder(ctx context.Context, orderID string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {

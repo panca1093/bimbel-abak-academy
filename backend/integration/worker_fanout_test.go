@@ -82,7 +82,7 @@ func pollUntil(t *testing.T, deadline time.Duration, fn func() bool) bool {
 }
 
 func TestWorkerFanout(t *testing.T) {
-	t.Run("FR-INT-14 N linked courses produce N active sessions, order processing, outbox processed", func(t *testing.T) {
+	t.Run("FR-INT-14 N linked courses produce N active sessions, order completed, outbox processed", func(t *testing.T) {
 		env := newTestEnv(t)
 		ctx := context.Background()
 
@@ -122,12 +122,12 @@ func TestWorkerFanout(t *testing.T) {
 		).Scan(&sessionCount))
 		assert.Equal(t, 2, sessionCount)
 
-		// Assert order is processing.
+		// Assert order is completed (digital-only order skips shipping).
 		var orderStatus string
 		require.NoError(t, env.pool.QueryRow(ctx,
 			`SELECT status FROM orders WHERE id=$1`, orderID,
 		).Scan(&orderStatus))
-		assert.Equal(t, "processing", orderStatus)
+		assert.Equal(t, "completed", orderStatus)
 
 		// Assert outbox row is processed.
 		var processedCount int
@@ -191,7 +191,7 @@ func TestWorkerFanout(t *testing.T) {
 		assert.Equal(t, 1, sessionCount, "ON CONFLICT DO NOTHING must prevent duplicate sessions")
 	})
 
-	t.Run("FR-INT-16 zero-linked course product: no session, order processing, outbox processed", func(t *testing.T) {
+	t.Run("FR-INT-16 zero-linked course product: no session, order completed, outbox processed", func(t *testing.T) {
 		env := newTestEnv(t)
 		ctx := context.Background()
 
@@ -208,16 +208,16 @@ func TestWorkerFanout(t *testing.T) {
 		defer cancel()
 		go w.Run(wCtx)
 
-		// Poll until the order is processing (worker committed the tx).
+		// Poll until the order is completed (digital-only, worker skips shipping).
 		ok := pollUntil(t, 5*time.Second, func() bool {
 			var status string
 			_ = env.pool.QueryRow(ctx,
 				`SELECT status FROM orders WHERE id=$1`, orderID,
 			).Scan(&status)
-			return status == "processing"
+			return status == "completed"
 		})
 		cancel()
-		require.True(t, ok, "timed out waiting for order to reach processing")
+		require.True(t, ok, "timed out waiting for order to reach completed")
 
 		// No sessions must have been created.
 		var sessionCount int

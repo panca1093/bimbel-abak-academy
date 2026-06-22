@@ -122,10 +122,11 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Provision access for each item
+	// Provision access for each item; track whether any physical item requires shipping.
+	hasPhysicalItem := false
 	for _, item := range payload.Items {
 		switch item.ProductType {
-		case "course":
+		case "course", "package":
 			courses, err := w.repo.GetCoursesByProductID(ctx, item.ProductID)
 			if err != nil {
 				slog.Error("get courses by product id", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
@@ -150,14 +151,18 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 				}
 			}
 		case "book":
-			// no access action for books
+			hasPhysicalItem = true
 		default:
 			slog.Warn("unknown product type in order", "product_type", item.ProductType, "product_id", item.ProductID)
 		}
 	}
 
-	// Set order status to processing
-	if err := w.repo.SetOrderStatus(ctx, tx, payload.OrderID, "processing", ""); err != nil {
+	// Digital-only orders complete immediately; physical orders need admin to ship.
+	nextStatus := "completed"
+	if hasPhysicalItem {
+		nextStatus = "processing"
+	}
+	if err := w.repo.SetOrderStatus(ctx, tx, payload.OrderID, nextStatus, ""); err != nil {
 		slog.Error("set order status", "order_id", payload.OrderID, "err", err)
 		return
 	}
