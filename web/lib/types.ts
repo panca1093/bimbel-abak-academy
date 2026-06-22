@@ -7,11 +7,12 @@ export type OrderStatus =
   | "payment_pending"
   | "paid"
   | "processing"
+  | "shipped"
   | "completed"
   | "payment_expired"
   | "cancelled";
 
-export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "failed" | "refunded";
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "refunded";
 
 export interface School {
   id: string;
