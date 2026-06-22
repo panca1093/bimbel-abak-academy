@@ -104,5 +104,6 @@ export async function authFetch<T>(path: string, init?: RequestInit): Promise<T>
     }
     throw await parseError(res);
   }
+  if (res.status === 204 || res.status === 205) return undefined as T;
   return res.json() as Promise<T>;
 }

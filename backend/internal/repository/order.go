@@ -257,7 +257,10 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
 		item.ID, item.OrderID, item.ProductID, item.ProductType, item.Name, item.UnitPrice, item.Qty, jumlah, item.WeightGrams,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return r.recalcOrderTotals(ctx, orderID)
 }
 
 func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) error {
@@ -265,6 +268,19 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) 
 		`DELETE FROM order_item WHERE id = $1 AND order_id = $2`,
 		itemID, orderID,
 	)
+	if err != nil {
+		return err
+	}
+	return r.recalcOrderTotals(ctx, orderID)
+}
+
+func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE orders SET
+		  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+		  updated_at = now()
+		WHERE id = $1`, orderID)
 	return err
 }
 

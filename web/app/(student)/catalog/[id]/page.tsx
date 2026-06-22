@@ -7,7 +7,7 @@ import { ArrowLeft, Book, ShoppingCart, PlayCircle, Trophy } from "lucide-react"
 import { toast } from "sonner";
 
 import { useProduct } from "@/lib/hooks/products";
-import { useAddToCart } from "@/lib/hooks/orders";
+import { useAddToCart, useCart } from "@/lib/hooks/orders";
 import { useCartStore } from "@/stores/cart";
 import { useAuthStore } from "@/stores/auth";
 import { useTranslation } from "@/lib/i18n";
@@ -45,6 +45,7 @@ export default function ProductDetailPage({
   const router = useRouter();
   const { data: product, isLoading, isError, error, refetch } = useProduct(id);
   const addToCart = useAddToCart();
+  const { data: cart } = useCart();
   const bumpBadge = useCartStore((s) => s.setCount);
   const token = useAuthStore((s) => s.token);
 
@@ -65,10 +66,15 @@ export default function ProductDetailPage({
 
   const meta = TYPE_META[product.type];
   const { Icon } = meta;
+  const alreadyInCart = cart?.items?.some((i) => i.product_id === product.id) ?? false;
 
   const handleAdd = (thenRoute?: () => void) => {
     if (!token) {
       router.push("/login");
+      return;
+    }
+    if (alreadyInCart) {
+      thenRoute?.() ?? router.push("/cart");
       return;
     }
     addToCart.mutate(
@@ -149,10 +155,10 @@ export default function ProductDetailPage({
                 size="lg"
                 className="w-full"
                 disabled={addToCart.isPending}
-                onClick={() => handleAdd()}
+                onClick={() => alreadyInCart ? router.push("/cart") : handleAdd()}
               >
                 <ShoppingCart className="size-4" />
-                {t("product_add_cart")}
+                {alreadyInCart ? t("product_view_cart") : t("product_add_cart")}
               </Button>
               <Button
                 size="lg"
