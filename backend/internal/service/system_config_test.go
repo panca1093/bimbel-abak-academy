@@ -326,22 +326,13 @@ func TestProcessConfigValues_ClearSecretWithEmptyString(t *testing.T) {
 		t.Fatalf("processConfigValues: %v", err)
 	}
 
-	// Empty string for a secret means "clear it" — encrypt empty string
-	encrypted, ok := processed["midtrans_client_key"]
+	// Empty string for a secret means "clear it" — stored as empty, not encrypted
+	stored, ok := processed["midtrans_client_key"]
 	if !ok {
 		t.Fatal("midtrans_client_key missing from processed")
 	}
-	if encrypted == "" {
-		t.Fatal("empty string for secret should be encrypted, not stored as plaintext empty")
-	}
-
-	// Decrypt back should yield ""
-	decrypted, err := decryptConfigValue(hexKey, encrypted)
-	if err != nil {
-		t.Fatalf("decrypt back: %v", err)
-	}
-	if decrypted != "" {
-		t.Fatalf("decrypt back: want '', got %q", decrypted)
+	if stored != "" {
+		t.Fatalf("empty string for secret should be stored as empty, got %q", stored)
 	}
 
 	if len(changedKeys) != 1 || changedKeys[0] != "midtrans_client_key" {

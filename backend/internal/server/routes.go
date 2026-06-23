@@ -88,6 +88,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	webhooks := v1.Group("/webhooks")
 	webhooks.POST("/payment", h.HandlePaymentWebhook)
 
+	// Public config (client key is safe to expose)
+	v1.GET("/config/payment-client-key", h.GetPaymentClientKey)
+
 	// Public school list
 	v1.GET("/schools", h.ListSchools)
 

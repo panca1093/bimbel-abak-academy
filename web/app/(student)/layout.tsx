@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Script from "next/script";
 import { useAuthStore } from "@/stores/auth";
 import { AppShell } from "@/components/shell/AppShell";
 import { ADMIN_ROLES } from "@/lib/nav-config";
@@ -11,7 +10,8 @@ import type { UserRole } from "@/lib/nav-config";
 const SNAP_SRC =
   process.env.NEXT_PUBLIC_MIDTRANS_SNAP_URL ??
   "https://app.sandbox.midtrans.com/snap/snap.js";
-const SNAP_CLIENT_KEY = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY ?? "";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
 export default function StudentLayout({
   children,
@@ -40,6 +40,40 @@ export default function StudentLayout({
     }
   }, [hydrated, token, role, router]);
 
+  // Load Midtrans Snap JS with client key from backend (DB-sourced).
+  useEffect(() => {
+    if (!hydrated || !token) return;
+    if (document.querySelector('script[src*="snap.js"]')) return;
+
+    let cancelled = false;
+
+    fetch(`${API_BASE}/config/payment-client-key`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { client_key: string }) => {
+        if (cancelled || !data.client_key) return;
+        const script = document.createElement("script");
+        script.src = SNAP_SRC;
+        script.setAttribute("data-client-key", data.client_key);
+        script.async = true;
+        document.head.appendChild(script);
+      })
+      .catch(() => {
+        // Fall back to build-time env var if API unavailable
+        const fallbackKey =
+          process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY ?? "";
+        if (cancelled || !fallbackKey) return;
+        const script = document.createElement("script");
+        script.src = SNAP_SRC;
+        script.setAttribute("data-client-key", fallbackKey);
+        script.async = true;
+        document.head.appendChild(script);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, token]);
+
   if (!hydrated || !token || (role && ADMIN_ROLES.includes(role))) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
@@ -48,15 +82,5 @@ export default function StudentLayout({
     );
   }
 
-  return (
-    <>
-      <Script
-        id="midtrans-snap"
-        src={SNAP_SRC}
-        strategy="afterInteractive"
-        data-client-key={SNAP_CLIENT_KEY}
-      />
-      <AppShell role="student">{children}</AppShell>
-    </>
-  );
+  return <AppShell role="student">{children}</AppShell>;
 }

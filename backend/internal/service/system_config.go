@@ -75,6 +75,12 @@ func encryptConfigValue(hexKey, plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(append(nonce, ciphertext...)), nil
 }
 
+// DecryptConfigValue decrypts a base64(nonce || ciphertext+tag) string.
+// hexKey is a 64-char hex string (decoded to 32 bytes).
+func DecryptConfigValue(hexKey, encoded string) (string, error) {
+	return decryptConfigValue(hexKey, encoded)
+}
+
 // decryptConfigValue decrypts a base64(nonce || ciphertext+tag) string.
 // hexKey is a 64-char hex string (decoded to 32 bytes).
 func decryptConfigValue(hexKey, encoded string) (string, error) {
@@ -164,6 +170,7 @@ func buildConfigMap(rows []repository.SystemConfigRow) map[string]string {
 
 // processConfigValues processes update values for upsert:
 //   - Secret keys with value "***" are skipped (left unchanged).
+//   - Secret keys with value "" are stored as empty (not encrypted) so buildConfigMap returns "".
 //   - Secret keys with other values are AES-256-GCM encrypted.
 //   - Non-secret keys are passed through as-is.
 //
@@ -180,9 +187,13 @@ func processConfigValues(values map[string]string, hexKey string) (processed map
 
 		var storedValue string
 		if def.secret {
-			storedValue, err = encryptConfigValue(hexKey, val)
-			if err != nil {
-				return nil, nil, err
+			if val == "" {
+				storedValue = ""
+			} else {
+				storedValue, err = encryptConfigValue(hexKey, val)
+				if err != nil {
+					return nil, nil, err
+				}
 			}
 		} else {
 			storedValue = val
@@ -192,6 +203,28 @@ func processConfigValues(values map[string]string, hexKey string) (processed map
 		changedKeys = append(changedKeys, key)
 	}
 	return processed, changedKeys, nil
+}
+
+// GetPaymentClientKey returns the Midtrans client key from DB config (decrypted).
+// Falls back to env var. Client key is public per Midtrans documentation.
+func (s *Service) GetPaymentClientKey(ctx context.Context) (string, error) {
+	rows, err := s.storeRepo.ListSystemConfig(ctx)
+	if err != nil {
+		// If DB read fails, fall back to env
+		if s.cfg.MidtransClientKey != "" {
+			return s.cfg.MidtransClientKey, nil
+		}
+		return "", err
+	}
+
+	for _, row := range rows {
+		if row.Key == "midtrans_client_key" && row.IsSecret && row.Value != "" {
+			return decryptConfigValue(s.cfg.ConfigEncryptionKey, row.Value)
+		}
+	}
+
+	// Fall back to env
+	return s.cfg.MidtransClientKey, nil
 }
 
 // GetSystemConfig returns the full config map. Secret values are masked as

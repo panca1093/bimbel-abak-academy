@@ -120,6 +120,11 @@ const ADMIN_SCHOOL_NAV: RoleNavConfig = [
 ];
 
 const SUPER_ADMIN_NAV: RoleNavConfig = [
+  {
+    items: [
+      { labelKey: "nav_dashboard", href: "/admin", icon: LayoutDashboard, exact: true },
+    ],
+  },
   ...CONTENT_MANAGER_NAV,
   ...ADMIN_EXAM_NAV,
   ...ADMIN_SCHOOL_NAV,

@@ -260,6 +260,7 @@ export interface PromoValidation {
 export interface CheckoutResult {
   snap_token: string;
   gateway_ref?: string;
+  payment_url?: string;
   payment_expires_at?: string;
 }
 

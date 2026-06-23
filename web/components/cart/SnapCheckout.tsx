@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock, Loader2 } from "lucide-react";
+import { Lock, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,34 +17,19 @@ export function SnapCheckout({ orderId, disabled }: SnapCheckoutProps) {
   const qc = useQueryClient();
   const checkout = useCheckout();
 
-  const isPending = checkout.isPending;
-
   const handleCheckout = () => {
     if (!orderId) return;
     checkout.mutate(orderId, {
       onSuccess: (data) => {
-        if (typeof window === "undefined" || !window.snap) {
-          toast.error("Payment gateway belum siap. Muat ulang halaman lalu coba lagi.");
-          return;
+        if (data.payment_url) {
+          window.open(data.payment_url, "_blank");
+          toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
+        } else if (data.snap_token) {
+          navigator.clipboard.writeText(data.snap_token);
+          toast.info("Snap token disalin. Buka Midtrans untuk melanjutkan pembayaran.");
+        } else {
+          toast.error("Gagal memulai pembayaran. Coba lagi nanti.");
         }
-        window.snap.pay(data.snap_token, {
-          onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ordersKeys.cart() });
-            qc.invalidateQueries({ queryKey: ordersKeys.list() });
-            router.push(`/orders/${orderId}`);
-          },
-          onPending: () => {
-            qc.invalidateQueries({ queryKey: ordersKeys.cart() });
-            qc.invalidateQueries({ queryKey: ordersKeys.list() });
-            router.push(`/orders/${orderId}`);
-          },
-          onError: () => {
-            toast.error("Pembayaran gagal. Coba metode lain atau ulangi sebentar lagi.");
-          },
-          onClose: () => {
-            toast.info("Kamu menutup pembayaran. Selesaikan pembayaran agar pesanan diproses.");
-          },
-        });
       },
       onError: (err) => {
         toast.error(err instanceof Error ? err.message : "Gagal memulai checkout.");
@@ -58,10 +43,14 @@ export function SnapCheckout({ orderId, disabled }: SnapCheckoutProps) {
       className="mt-4 w-full"
       size="lg"
       onClick={handleCheckout}
-      disabled={!orderId || isPending || disabled}
+      disabled={!orderId || checkout.isPending || disabled}
     >
-      {isPending ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
-      Bayar Sekarang
+      {checkout.isPending ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <ExternalLink className="size-4" />
+      )}
+      Bayar di Tab Baru
     </Button>
   );
 }
