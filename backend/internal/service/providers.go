@@ -14,11 +14,28 @@ type EmailProvider interface {
 	SendEmail(ctx context.Context, to, subject, body string) error
 }
 
+type ItemDetail struct {
+	ID       string
+	Name     string
+	Price    int64
+	Qty      int32
+	Category string
+}
+
+type CustomerInfo struct {
+	Name  string
+	Email string
+	Phone string
+}
+
 type PaymentRequest struct {
-	OrderID   string
-	Reference string
-	Amount    int64
-	ExpiresIn time.Duration
+	OrderID     string
+	Reference   string
+	Amount      int64
+	ExpiresIn   time.Duration
+	Items       []ItemDetail
+	Customer    CustomerInfo
+	CallbackURL string
 }
 
 type PaymentResponse struct {

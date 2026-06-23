@@ -44,13 +44,42 @@ func NewMidtransClient(serverKey, clientKey, env string) *MidtransClient {
 }
 
 func (m *MidtransClient) CreatePayment(ctx context.Context, req service.PaymentRequest) (service.PaymentResponse, error) {
-	// The SDK does not accept a per-call context; we keep the method signature
-	// compatible with service.PaymentClient and rely on the SDK's internal timeout.
 	snapReq := &snap.Request{
 		TransactionDetails: midtrans.TransactionDetails{
 			OrderID:  req.OrderID,
 			GrossAmt: req.Amount,
 		},
+	}
+
+	if len(req.Items) > 0 {
+		items := make([]midtrans.ItemDetails, len(req.Items))
+		for i, it := range req.Items {
+			items[i] = midtrans.ItemDetails{
+				ID:       it.ID,
+				Name:     it.Name,
+				Price:    it.Price,
+				Qty:      it.Qty,
+				Category: it.Category,
+			}
+		}
+		snapReq.Items = &items
+	}
+
+	if req.Customer.Name != "" || req.Customer.Email != "" {
+		snapReq.CustomerDetail = &midtrans.CustomerDetails{
+			FName: req.Customer.Name,
+			Email: req.Customer.Email,
+			Phone: req.Customer.Phone,
+		}
+	}
+
+	if req.CallbackURL != "" {
+		snapReq.Callbacks = &snap.Callbacks{Finish: req.CallbackURL}
+	}
+
+	snapReq.Expiry = &snap.ExpiryDetails{
+		Duration: int64(req.ExpiresIn.Hours()),
+		Unit:     "hour",
 	}
 
 	resp, err := m.snap.CreateTransaction(snapReq)

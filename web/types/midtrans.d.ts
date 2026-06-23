@@ -11,10 +11,18 @@ interface SnapCallbacks {
   onClose?: () => void;
 }
 
+interface SnapEmbedOptions extends SnapCallbacks {
+  embedId: string;
+}
+
 interface Snap {
   pay: (
     token: string,
     callbacks?: SnapCallbacks,
+  ) => void;
+  embed: (
+    token: string,
+    options: SnapEmbedOptions,
   ) => void;
 }
 

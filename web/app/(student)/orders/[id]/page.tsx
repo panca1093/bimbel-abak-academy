@@ -244,27 +244,9 @@ export default function OrderDetailPage({
     retry.mutate(order.id, {
       onSuccess: (res) => {
         setRetrying(false);
-        if (typeof window !== "undefined" && window.snap && res.snap_token) {
-          window.snap.pay(res.snap_token, {
-            onSuccess: () => {
-              toast.success(t("order_pay_success_toast"));
-              router.push(`/orders/${order.id}`);
-            },
-            onPending: () => {
-              toast.info(t("order_pay_pending_toast"));
-              router.push(`/orders/${order.id}`);
-            },
-            onError: (err) => {
-              toast.error(t("order_pay_failed_toast"), {
-                description: err?.transaction_status ?? t("order_pay_try_again"),
-              });
-            },
-            onClose: () => {
-              toast.info(t("order_pay_closed_toast"), {
-                description: t("order_pay_continue_later"),
-              });
-            },
-          });
+        if (res.payment_url) {
+          window.open(res.payment_url, "_blank");
+          toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
         } else {
           toast.error(t("order_snap_unavailable"));
         }

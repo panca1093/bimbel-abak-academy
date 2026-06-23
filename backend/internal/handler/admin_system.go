@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"strings"
+
 	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
@@ -174,5 +176,13 @@ func (h *Handler) AdminUpdateSystemConfig(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
+
+	for key := range req {
+		if strings.HasPrefix(key, "midtrans_") {
+			h.svc.ReloadPaymentClient(c.Request().Context())
+			break
+		}
+	}
+
 	return c.JSON(http.StatusOK, cfg)
 }
