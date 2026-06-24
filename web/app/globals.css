@@ -82,9 +82,9 @@ body {
 
 /* Dark mode — mirrors design-app-abak/source/styles.css :root[data-theme="dark"] */
 html[data-theme="dark"] {
-  --color-paper:     #0e1020;
-  --color-surface:   #181b30;
-  --color-surface-2: #1f2238;
+  --color-paper:     #1a1628;
+  --color-surface:   #241e34;
+  --color-surface-2: #302848;
   --color-ink-900: #eceefa;
   --color-ink-700: #ccd0e6;
   --color-ink-600: #a6abcc;
