@@ -7,7 +7,7 @@ export default function ExamTryoutsPage() {
   return (
     <UnderMaintenance
       icon={ClipboardList}
-      title="Daftar Ujian"
+      title="Tryout / Ujian"
       estimatedTimeline="Estimasi rilis: Q4 2026"
     />
   );

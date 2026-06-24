@@ -45,7 +45,7 @@ export default function AdminIndexPage() {
   const role = storeRole ?? (me.data?.role as UserRole | undefined);
   const name = user?.name ?? me.data?.name ?? "Super Admin";
 
-  const { data: auditEntries = [], isLoading: auditLoading, isError: auditError } = useAdminAuditLog();
+  const { data: auditEntries = [], isLoading: auditLoading, isError: auditError, refetch: refetchAudit } = useAdminAuditLog();
   const { data: revenue, isLoading: revenueLoading } = useAdminRevenue();
   const { data: schools, isLoading: schoolsLoading } = useSchools();
 
@@ -165,7 +165,14 @@ export default function AdminIndexPage() {
             </div>
           ) : auditError ? (
             <div className="py-12 text-center text-ink-500">
-              Gagal memuat log aktivitas. Coba lagi nanti.
+              <p className="mb-4">Gagal memuat log aktivitas. Coba lagi nanti.</p>
+              <button
+                type="button"
+                className="md-btn-tonal"
+                onClick={() => refetchAudit()}
+              >
+                Muat Ulang
+              </button>
             </div>
           ) : auditEntries.length === 0 ? (
             <div className="py-12 text-center text-ink-500">
