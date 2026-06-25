@@ -119,13 +119,26 @@ const ADMIN_SCHOOL_NAV: RoleNavConfig = [
   },
 ];
 
+// Store items for super admin — same as CONTENT_MANAGER_NAV but without the store dashboard.
+const SUPER_ADMIN_STORE_ITEMS: NavGroup = {
+  titleKey: "role_admin_store",
+  items: [
+    { labelKey: "admin_nav_products", href: "/admin/products", icon: Package },
+    { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
+    { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt },
+    { labelKey: "promos", href: "/admin/promos", icon: Tag },
+    { labelKey: "revenue", href: "/admin/revenue", icon: BarChart3 },
+    { labelKey: "notifications", href: "/admin/notifications", icon: Bell },
+  ],
+};
+
 const SUPER_ADMIN_NAV: RoleNavConfig = [
   {
     items: [
       { labelKey: "nav_dashboard", href: "/admin", icon: LayoutDashboard, exact: true },
     ],
   },
-  ...CONTENT_MANAGER_NAV,
+  SUPER_ADMIN_STORE_ITEMS,
   ...ADMIN_EXAM_NAV,
   ...ADMIN_SCHOOL_NAV,
   {

@@ -40,6 +40,6 @@ describe("adminHomeForRole", () => {
   });
 
   it("sends super_admin to first live admin item", () => {
-    expect(adminHomeForRole("super_admin")).toBe("/admin/store");
+    expect(adminHomeForRole("super_admin")).toBe("/admin/products");
   });
 });
