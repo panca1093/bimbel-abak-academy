@@ -2,7 +2,9 @@
 
 import { FileText } from "lucide-react";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
+import { useTranslation } from "@/lib/i18n";
 
 export default function SchoolReportsPage() {
-  return <UnderMaintenance icon={FileText} title="Laporan Sekolah" />;
+  const { t } = useTranslation();
+  return <UnderMaintenance icon={FileText} title={t("school_reports_title")} />;
 }

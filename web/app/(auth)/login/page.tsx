@@ -10,9 +10,11 @@ import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslation } from "@/lib/i18n";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const login = useLogin();
   const [identifier, setIdentifier] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -27,7 +29,7 @@ export default function LoginPage() {
       router.push(redirectForRole(data.user?.role));
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : "Gagal masuk. Coba lagi.";
+        err instanceof ApiError ? err.message : t("login_failed");
       setError(msg);
     }
   };
@@ -38,27 +40,27 @@ export default function LoginPage() {
     <div className="w-full max-w-[372px]">
       <div className="mb-7">
         <div className="mb-2 text-[11.5px] font-bold uppercase tracking-[0.06em] text-success">
-          Selamat datang kembali
+          {t("login_eyebrow")}
         </div>
         <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900">
-          Masuk ke Akun Kamu 👋
+          {t("login_title")}
         </h2>
         <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-500">
-          Masukkan email/username dan kata sandi untuk melanjutkan.
+          {t("login_subtitle")}
         </p>
       </div>
 
       <form onSubmit={onSubmit} noValidate>
         <div className="mb-4">
           <Label htmlFor="identifier" className="mb-1.5 text-[12.5px] font-semibold text-ink-600">
-            Email atau Username
+            {t("login_identifier_label")}
           </Label>
           <div className="relative">
             <Input
               id="identifier"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="email atau username"
+              placeholder={t("login_identifier_placeholder")}
               autoComplete="username"
               required
               className="h-11 pl-10"
@@ -71,7 +73,7 @@ export default function LoginPage() {
 
         <div className="mb-2.5">
           <Label htmlFor="password" className="mb-1.5 text-[12.5px] font-semibold text-ink-600">
-            Kata Sandi
+            {t("login_password_label")}
           </Label>
           <div className="relative">
             <Input
@@ -90,7 +92,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => setShowPw((p) => !p)}
-              aria-label={showPw ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
+              aria-label={showPw ? t("auth_hide_password") : t("auth_show_password")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
             >
               {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -116,22 +118,22 @@ export default function LoginPage() {
           {loading ? (
             <span className="flex items-center gap-2">
               <Loader2 size={16} className="animate-spin" />
-              Masuk...
+              {t("login_submitting")}
             </span>
           ) : (
-            "Masuk"
+            t("login_submit")
           )}
         </Button>
       </form>
 
       <p className="mt-6 text-center text-[13px] text-ink-500">
-        Belum punya akun?{" "}
+        {t("login_no_account")}{" "}
         <button
           type="button"
           onClick={() => router.push("/register")}
           className="font-bold text-success transition-colors hover:text-success/80"
         >
-          Daftar sekarang
+          {t("login_sign_up_link")}
         </button>
       </p>
     </div>

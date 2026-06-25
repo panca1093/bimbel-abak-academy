@@ -2,7 +2,9 @@
 
 import { Users } from "lucide-react";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
+import { useTranslation } from "@/lib/i18n";
 
 export default function SchoolStudentsPage() {
-  return <UnderMaintenance icon={Users} title="Manajemen Siswa" />;
+  const { t } = useTranslation();
+  return <UnderMaintenance icon={Users} title={t("school_students_title")} />;
 }

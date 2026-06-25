@@ -12,38 +12,44 @@ import { adminHomeForRole } from "@/lib/auth-redirect";
 import { StatCard } from "@/components/admin/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
+import { useTranslation } from "@/lib/i18n";
 import type { UserRole } from "@/lib/nav-config";
 import type { AuditLogEntry } from "@/lib/types";
 
-function formatRelativeTime(iso: string): string {
-  const now = Date.now();
-  const then = new Date(iso).getTime();
-  const diffMs = now - then;
-  if (diffMs < 0) return "baru saja";
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "baru saja";
-  if (minutes < 60) return `${minutes}m lalu`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}j lalu`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}h lalu`;
-  return new Date(iso).toLocaleDateString("id-ID");
+function useFormatRelativeTime() {
+  const { t, lang } = useTranslation();
+  return (iso: string): string => {
+    const now = Date.now();
+    const then = new Date(iso).getTime();
+    const diffMs = now - then;
+    if (diffMs < 0) return t("time_just_now");
+    const minutes = Math.floor(diffMs / 60000);
+    if (minutes < 1) return t("time_just_now");
+    if (minutes < 60) return `${minutes}${t("time_min_suffix")}`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}${t("time_hour_suffix")}`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}${t("time_day_suffix")}`;
+    return new Date(iso).toLocaleDateString(lang === "en" ? "en-US" : "id-ID");
+  };
 }
-
-const QUICK_ACTIONS = [
-  { icon: Clipboard, label: "Buat Soal Baru", route: "/admin/exam/banks" },
-  { icon: Store, label: "Tambah Produk", route: "/admin/products" },
-  { icon: UserPlus, label: "Daftarkan Siswa", route: "/admin/school/students" },
-  { icon: BarChart3, label: "Laporan Penjualan", route: "/admin/revenue" },
-] as const;
 
 export default function AdminIndexPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const storeRole = user?.role as UserRole | undefined;
   const me = useMe({ enabled: !storeRole });
   const role = storeRole ?? (me.data?.role as UserRole | undefined);
-  const name = user?.name ?? me.data?.name ?? "Super Admin";
+  const name = user?.name ?? me.data?.name ?? t("admin_home_default_name");
+  const formatRelativeTime = useFormatRelativeTime();
+
+  const quickActions = [
+    { icon: Clipboard, label: t("admin_action_create_question"), route: "/admin/exam/banks" },
+    { icon: Store, label: t("admin_action_add_product"), route: "/admin/products" },
+    { icon: UserPlus, label: t("admin_action_register_student"), route: "/admin/school/students" },
+    { icon: BarChart3, label: t("admin_action_sales_report"), route: "/admin/revenue" },
+  ];
 
   const { data: auditEntries = [], isLoading: auditLoading, isError: auditError, refetch: refetchAudit } = useAdminAuditLog();
   const { data: revenue, isLoading: revenueLoading } = useAdminRevenue();
@@ -85,11 +91,11 @@ export default function AdminIndexPage() {
               className="text-label"
               style={{ letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.75 }}
             >
-              Super Admin · Abak Academy
+              {t("admin_home_badge")}
             </div>
             <h1 className="text-headline" style={{ color: "#FFFFFF" }}>{name}</h1>
             <p className="text-body" style={{ marginTop: "4px", opacity: 0.85 }}>
-              Akses penuh ke semua domain. Pantau seluruh platform dari satu tempat.
+              {t("admin_home_subtitle")}
             </p>
           </div>
         </div>
@@ -101,7 +107,7 @@ export default function AdminIndexPage() {
           <Skeleton className="h-28 w-full" />
         ) : (
           <StatCard
-            label="Pendapatan Bulan Ini"
+            label={t("admin_home_stat_revenue")}
             value={revenue ? formatRupiah(revenue.total) : "—"}
             accent="primary"
             icon={DollarSign}
@@ -111,16 +117,16 @@ export default function AdminIndexPage() {
           <Skeleton className="h-28 w-full" />
         ) : (
           <StatCard
-            label="Total Siswa"
+            label={t("admin_home_stat_students")}
             value={schoolCountStr}
             accent="secondary"
             icon={Users}
           />
         )}
         <StatCard
-          label="Sesi Ujian Aktif"
+          label={t("admin_home_stat_exam_sessions")}
           value="—"
-          trend="Belum tersedia"
+          trend={t("admin_home_stat_unavailable")}
           accent="error"
           icon={Eye}
         />
@@ -128,9 +134,9 @@ export default function AdminIndexPage() {
           <Skeleton className="h-28 w-full" />
         ) : (
           <StatCard
-            label="Jumlah Sekolah"
+            label={t("admin_home_stat_schools")}
             value={schoolCountStr}
-            trend={schoolCount !== null ? "Bimbel mitra aktif" : undefined}
+            trend={schoolCount !== null ? t("admin_home_partner_trend") : undefined}
             accent="tertiary"
             icon={Store}
           />
@@ -142,13 +148,13 @@ export default function AdminIndexPage() {
         {/* Log Aktivitas */}
         <div className="lg:col-span-2 md-card-outlined">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-title-large">Log Aktivitas</h3>
+            <h3 className="text-title-large">{t("admin_home_activity_log")}</h3>
             <button
               className="md-btn-tonal"
               type="button"
               onClick={() => router.push("/admin/system/audit")}
             >
-              Lihat Semua
+              {t("admin_home_view_all")}
             </button>
           </div>
           {auditLoading ? (
@@ -165,18 +171,18 @@ export default function AdminIndexPage() {
             </div>
           ) : auditError ? (
             <div className="py-12 text-center text-ink-500">
-              <p className="mb-4">Gagal memuat log aktivitas. Coba lagi nanti.</p>
+              <p className="mb-4">{t("admin_home_audit_failed")}</p>
               <button
                 type="button"
                 className="md-btn-tonal"
                 onClick={() => refetchAudit()}
               >
-                Muat Ulang
+                {t("admin_home_reload")}
               </button>
             </div>
           ) : auditEntries.length === 0 ? (
             <div className="py-12 text-center text-ink-500">
-              Belum ada aktivitas.
+              {t("admin_home_no_activity")}
             </div>
           ) : (
             <div className="space-y-4">
@@ -209,9 +215,9 @@ export default function AdminIndexPage() {
 
         {/* Akses Cepat */}
         <div className="md-card-outlined">
-          <h3 className="text-title-large mb-6">Akses Cepat</h3>
+          <h3 className="text-title-large mb-6">{t("admin_home_quick_actions")}</h3>
           <div className="grid gap-3">
-            {QUICK_ACTIONS.map((action, i) => (
+            {quickActions.map((action, i) => (
               <button
                 key={i}
                 type="button"
