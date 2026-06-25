@@ -122,9 +122,9 @@ export default function SystemConfigPage() {
   const handleSaveGeneral = async () => {
     try {
       await updateConfig.mutateAsync(appFields);
-      toast.success("Pengaturan umum disimpan");
+      toast.success(t("config_toast_general_saved"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Gagal menyimpan";
+      const msg = err instanceof Error ? err.message : t("sys_save_failed");
       toast.error(msg);
     }
   };
@@ -132,9 +132,9 @@ export default function SystemConfigPage() {
   const handleSaveNotif = async () => {
     try {
       await updateConfig.mutateAsync(notifFields);
-      toast.success("Pengaturan notifikasi disimpan");
+      toast.success(t("config_toast_notif_saved"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Gagal menyimpan";
+      const msg = err instanceof Error ? err.message : t("sys_save_failed");
       toast.error(msg);
     }
   };
@@ -142,9 +142,9 @@ export default function SystemConfigPage() {
   const handleSavePayment = async () => {
     try {
       await updateConfig.mutateAsync(paymentFields);
-      toast.success("Pengaturan pembayaran disimpan");
+      toast.success(t("config_toast_payment_saved"));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Gagal menyimpan";
+      const msg = err instanceof Error ? err.message : t("sys_save_failed");
       toast.error(msg);
     }
   };
@@ -154,10 +154,10 @@ export default function SystemConfigPage() {
       <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 fade-in">
         <AdminPageHeader
           icon={Settings}
-          title="Konfigurasi Sistem"
-          description="Memuat…"
+          title={t("config_title")}
+          description={t("sys_loading")}
         />
-        <div className="py-12 text-center text-ink-500">Memuat data…</div>
+        <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
       </div>
     );
   }
@@ -165,14 +165,14 @@ export default function SystemConfigPage() {
   if (error) {
     const msg =
       (error as { code?: string })?.code === "forbidden"
-        ? "Akses ditolak. Hanya Super Admin yang dapat mengakses halaman ini."
-        : "Gagal memuat data. Coba refresh halaman.";
+        ? t("sys_error_forbidden")
+        : t("sys_error_load");
     return (
       <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 fade-in">
         <AdminPageHeader
           icon={Settings}
-          title="Konfigurasi Sistem"
-          description="Terjadi kesalahan"
+          title={t("config_title")}
+          description={t("sys_error_title")}
         />
         <div className="py-12 text-center text-ink-500">{msg}</div>
       </div>
@@ -183,27 +183,27 @@ export default function SystemConfigPage() {
     <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 fade-in">
       <AdminPageHeader
         icon={Settings}
-        title="Konfigurasi Sistem"
-        description="Pengaturan platform dan fitur global."
+        title={t("config_title")}
+        description={t("config_subtitle")}
       />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="general" className="text-xs">
             <Settings className="mr-1 size-4" />
-            Umum
+            {t("config_tab_general")}
           </TabsTrigger>
           <TabsTrigger value="features" className="text-xs">
             <Shield className="mr-1 size-4" />
-            Fitur
+            {t("config_tab_features")}
           </TabsTrigger>
           <TabsTrigger value="notifications" className="text-xs">
             <Bell className="mr-1 size-4" />
-            Notifikasi
+            {t("config_tab_notifications")}
           </TabsTrigger>
           <TabsTrigger value="payment" className="text-xs">
             <CreditCard className="mr-1 size-4" />
-            Pembayaran
+            {t("config_tab_payment")}
           </TabsTrigger>
         </TabsList>
 
@@ -211,7 +211,7 @@ export default function SystemConfigPage() {
           <div className="md-card-outlined">
             <div className="space-y-4">
               <div>
-                <Label>Nama platform</Label>
+                <Label>{t("config_general_app_name")}</Label>
                 <Input
                   value={appFields.app_name}
                   onChange={(e) =>
@@ -220,7 +220,7 @@ export default function SystemConfigPage() {
                 />
               </div>
               <div>
-                <Label>Alamat</Label>
+                <Label>{t("config_general_address")}</Label>
                 <Input
                   value={appFields.app_address}
                   onChange={(e) =>
@@ -229,7 +229,7 @@ export default function SystemConfigPage() {
                 />
               </div>
               <div>
-                <Label>URL Logo</Label>
+                <Label>{t("config_general_logo_url")}</Label>
                 <Input
                   value={appFields.app_logo_url}
                   onChange={(e) =>
@@ -238,7 +238,7 @@ export default function SystemConfigPage() {
                 />
               </div>
               <div>
-                <Label>Email kontak</Label>
+                <Label>{t("config_general_contact_email")}</Label>
                 <div className="flex items-center gap-2">
                   <Mail className="size-4 text-ink-400" />
                   <Input
@@ -254,7 +254,7 @@ export default function SystemConfigPage() {
                 </div>
               </div>
               <div>
-                <Label>Telepon kontak</Label>
+                <Label>{t("config_general_contact_phone")}</Label>
                 <Input
                   value={appFields.app_contact_phone}
                   onChange={(e) =>
@@ -283,14 +283,14 @@ export default function SystemConfigPage() {
             <Toggle
               checked={features.selfReg}
               onChange={(v) => setFeatures((f) => ({ ...f, selfReg: v }))}
-              label="Registrasi mandiri siswa"
-              description="Izinkan siswa mendaftar langsung dari halaman publik."
+              label={t("config_feature_selfreg_label")}
+              description={t("config_feature_selfreg_desc")}
             />
             <Toggle
               checked={features.otpMandatory}
               onChange={(v) => setFeatures((f) => ({ ...f, otpMandatory: v }))}
-              label="OTP wajib saat login"
-              description="Kirimkan kode verifikasi untuk setiap percobaan login."
+              label={t("config_feature_otp_label")}
+              description={t("config_feature_otp_desc")}
             />
           </div>
         </TabsContent>
@@ -305,8 +305,8 @@ export default function SystemConfigPage() {
                   notify_on_purchase_admin_store: v ? "true" : "false",
                 }))
               }
-              label="Notifikasi pembelian (Store Manager)"
-              description="Kirim notifikasi ke admin store saat ada pembelian baru."
+              label={t("config_notif_store_label")}
+              description={t("config_notif_store_desc")}
             />
             <Toggle
               checked={notifFields.notify_on_purchase_admin_exam === "true"}
@@ -316,8 +316,8 @@ export default function SystemConfigPage() {
                   notify_on_purchase_admin_exam: v ? "true" : "false",
                 }))
               }
-              label="Notifikasi pembelian (Admin Exam)"
-              description="Kirim notifikasi ke admin exam saat ada pembelian baru."
+              label={t("config_notif_exam_label")}
+              description={t("config_notif_exam_desc")}
             />
             <div className="flex justify-end pt-4">
               <Button
@@ -335,7 +335,7 @@ export default function SystemConfigPage() {
           <div className="md-card-outlined">
             <div className="space-y-4">
               <div>
-                <Label>Midtrans Server Key</Label>
+                <Label>{t("config_payment_server_key")}</Label>
                 <Input
                   type="password"
                   value={paymentFields.midtrans_server_key}
@@ -348,17 +348,17 @@ export default function SystemConfigPage() {
                   placeholder={
                     paymentFields.midtrans_server_key === "***"
                       ? "***"
-                      : "Isi server key"
+                      : t("config_payment_placeholder_server")
                   }
                 />
                 {paymentFields.midtrans_server_key === "***" && (
                   <div className="mt-1 text-xs text-ink-500">
-                    Biarkan *** untuk tidak mengubah
+                    {t("config_payment_mask_hint")}
                   </div>
                 )}
               </div>
               <div>
-                <Label>Midtrans Client Key</Label>
+                <Label>{t("config_payment_client_key")}</Label>
                 <Input
                   type="password"
                   value={paymentFields.midtrans_client_key}
@@ -371,17 +371,17 @@ export default function SystemConfigPage() {
                   placeholder={
                     paymentFields.midtrans_client_key === "***"
                       ? "***"
-                      : "Isi client key"
+                      : t("config_payment_placeholder_client")
                   }
                 />
                 {paymentFields.midtrans_client_key === "***" && (
                   <div className="mt-1 text-xs text-ink-500">
-                    Biarkan *** untuk tidak mengubah
+                    {t("config_payment_mask_hint")}
                   </div>
                 )}
               </div>
               <div>
-                <Label>Lingkungan Midtrans</Label>
+                <Label>{t("config_payment_env")}</Label>
                 <Select
                   value={paymentFields.midtrans_env}
                   onValueChange={(v) =>

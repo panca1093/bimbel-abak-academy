@@ -36,8 +36,9 @@ function initials(name: string) {
 }
 
 export default function SystemAuditPage() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [search, setSearch] = useState("");
+  const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   const { data: entries = [], isLoading, error } = useAdminAuditLog(
     search.trim() ? { q: search } : undefined
@@ -46,8 +47,8 @@ export default function SystemAuditPage() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader icon={ClipboardList} title="Audit Log" description="Memuat…" />
-        <div className="py-12 text-center text-ink-500">Memuat data…</div>
+        <AdminPageHeader icon={ClipboardList} title={t("audit_title")} description={t("sys_loading")} />
+        <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
       </div>
     );
   }
@@ -55,14 +56,14 @@ export default function SystemAuditPage() {
   if (error) {
     const msg =
       (error as { code?: string })?.code === "forbidden"
-        ? "Akses ditolak. Hanya Super Admin yang dapat mengakses halaman ini."
-        : "Gagal memuat data. Coba refresh halaman.";
+        ? t("sys_error_forbidden")
+        : t("sys_error_load");
     return (
       <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10 fade-in">
         <AdminPageHeader
           icon={ClipboardList}
-          title="Audit Log"
-          description="Terjadi kesalahan"
+          title={t("audit_title")}
+          description={t("sys_error_title")}
         />
         <div className="py-12 text-center text-ink-500">{msg}</div>
       </div>
@@ -73,15 +74,15 @@ export default function SystemAuditPage() {
     <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10 fade-in">
       <AdminPageHeader
         icon={ClipboardList}
-        title="Audit Log"
-        description="Riwayat aktivitas admin di seluruh platform."
+        title={t("audit_title")}
+        description={t("audit_subtitle")}
         actions={
           <div className="flex items-center gap-2">
             <Filter className="size-4 text-ink-400" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari aksi…"
+              placeholder={t("audit_search_placeholder")}
               className="h-9 w-[240px] text-xs"
             />
           </div>
@@ -93,17 +94,17 @@ export default function SystemAuditPage() {
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
               <tr>
-                <th className="px-4 py-3">Waktu</th>
-                <th className="px-4 py-3">Aktor</th>
-                <th className="px-4 py-3">Aksi</th>
-                <th className="px-4 py-3">Target</th>
+                <th className="px-4 py-3">{t("audit_th_time")}</th>
+                <th className="px-4 py-3">{t("audit_th_actor")}</th>
+                <th className="px-4 py-3">{t("audit_th_action")}</th>
+                <th className="px-4 py-3">{t("audit_th_target")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {entries.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-sm text-ink-500">
-                    Tidak ada catatan audit.
+                    {t("audit_empty")}
                   </td>
                 </tr>
               )}
@@ -112,7 +113,7 @@ export default function SystemAuditPage() {
                   <td className="px-4 py-3 text-xs text-ink-600">
                     <span className="inline-flex items-center gap-1">
                       <Clock className="size-3" />
-                      {new Date(a.created_at).toLocaleString("id-ID", {
+                      {new Date(a.created_at).toLocaleString(dateLocale, {
                         day: "2-digit",
                         month: "short",
                         year: "numeric",
