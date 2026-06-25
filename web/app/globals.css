@@ -80,39 +80,39 @@ body {
   }
 }
 
-/* Dark mode — mirrors design-app-abak/source/styles.css :root[data-theme="dark"] */
+/* Dark mode — softer navy palette, higher text contrast */
 html[data-theme="dark"] {
   --color-paper:     #161225;
   --color-surface:   #27213b;
   --color-surface-2: #302848;
-  --color-ink-900: #eceefa;
-  --color-ink-700: #ccd0e6;
-  --color-ink-600: #a6abcc;
-  --color-ink-500: #868cb0;
-  --color-ink-400: #686e92;
-  --color-line:    #2c3050;
-  --color-line-2:  #242843;
+  --color-ink-900: #eeeffc;
+  --color-ink-700: #d6daef;
+  --color-ink-600: #bac0dc;
+  --color-ink-500: #9fa6c6;
+  --color-ink-400: #848bb0;
+  --color-line:    #393f60;
+  --color-line-2:  #313654;
 
   /* brighter brand on dark surfaces */
-  --color-brand-50:  rgba(81, 97, 232, .18);
-  --color-brand-100: rgba(81, 97, 232, .28);
-  --color-brand-200: rgba(81, 97, 232, .42);
-  --color-brand-600: #6e7cee;
-  --color-brand-700: #9ca6f6;
+  --color-brand-50:  rgba(81, 97, 232, .22);
+  --color-brand-100: rgba(81, 97, 232, .34);
+  --color-brand-200: rgba(81, 97, 232, .48);
+  --color-brand-600: #7d89f2;
+  --color-brand-700: #aab2f8;
 
-  /* status: dark tints + brighter foregrounds */
-  --color-info:       #6ba0f0;
-  --color-info-bg:    rgba(37, 99, 216, .22);
-  --color-warn:       #e0974a;
-  --color-warn-bg:    rgba(194, 104, 10, .22);
-  --color-danger:     #e68479;
-  --color-danger-bg:  rgba(211, 58, 46, .24);
-  --color-success:    #4fc78d;
-  --color-success-bg: rgba(31, 158, 99, .22);
-  --color-violet:     #a98fe6;
-  --color-violet-bg:  rgba(124, 77, 219, .26);
-  --color-gold:       #d6bb5e;
-  --color-gold-bg:    rgba(176, 134, 18, .24);
+  /* status: stronger bg opacity + brighter foregrounds for badge readability */
+  --color-info:       #7daff5;
+  --color-info-bg:    rgba(37, 99, 216, .28);
+  --color-warn:       #e8a558;
+  --color-warn-bg:    rgba(194, 104, 10, .28);
+  --color-danger:     #ee9086;
+  --color-danger-bg:  rgba(211, 58, 46, .30);
+  --color-success:    #5fd096;
+  --color-success-bg: rgba(31, 158, 99, .28);
+  --color-violet:     #b89dea;
+  --color-violet-bg:  rgba(124, 77, 219, .30);
+  --color-gold:       #ddc46e;
+  --color-gold-bg:    rgba(176, 134, 18, .28);
 }
 
 /* shadcn semantic-token bridge: map shadcn --primary/--background/etc. to
