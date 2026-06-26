@@ -9,6 +9,7 @@ import { redirectForRole } from "@/lib/auth-redirect";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { OtpInput } from "@/components/auth/OtpInput";
+import { useTranslation } from "@/lib/i18n";
 
 function maskContact(contact: string): string {
   if (!contact) return "•••••";
@@ -20,6 +21,7 @@ function maskContact(contact: string): string {
 
 function OtpForm() {
   const router = useRouter();
+  const { t } = useTranslation();
   const params = useSearchParams();
   const identifier = params.get("id") ?? "";
 
@@ -32,7 +34,7 @@ function OtpForm() {
 
   const onVerify = async () => {
     if (code.length < 6) {
-      setError("Masukkan 6 digit OTP");
+      setError(t("otp_required"));
       return;
     }
     setError(null);
@@ -44,7 +46,7 @@ function OtpForm() {
       router.push(redirectForRole(data.user?.role));
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : "Kode OTP tidak valid atau kedaluwarsa.";
+        err instanceof ApiError ? err.message : t("otp_invalid");
       setError(msg);
     }
   };
@@ -59,7 +61,7 @@ function OtpForm() {
         className="mb-8 flex items-center gap-1.5 text-[13px] font-semibold text-ink-400 transition-colors hover:text-ink-600"
       >
         <ArrowLeft size={15} />
-        Kembali
+        {t("auth_back")}
       </button>
 
       <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#EEF0FD,#DDE1FB)]">
@@ -67,12 +69,12 @@ function OtpForm() {
       </div>
 
       <h2 className="font-serif text-[26px] font-bold leading-tight tracking-[-0.01em] text-ink-900">
-        Verifikasi OTP
+        {t("otp_title")}
       </h2>
       <p className="mt-2.5 mb-7 text-[13.5px] leading-[1.6] text-ink-500">
-        Kode 6 digit telah dikirim ke{" "}
-        <strong className="text-ink-700">{maskContact(identifier)}</strong>. Kode berlaku
-        selama 5 menit.
+        {t("otp_subtitle_prefix")}
+        <strong className="text-ink-700">{maskContact(identifier)}</strong>
+        {t("otp_subtitle_suffix")}
       </p>
 
       <OtpInput
@@ -101,16 +103,15 @@ function OtpForm() {
         {loading ? (
           <span className="flex items-center gap-2">
             <Loader2 size={16} className="animate-spin" />
-            Memverifikasi...
+            {t("otp_submitting")}
           </span>
         ) : (
-          "Verifikasi & Masuk"
+          t("otp_submit")
         )}
       </Button>
 
       <p className="mt-5 text-center text-[12px] leading-[1.6] text-ink-400">
-        Tidak menerima kode? Periksa folder spam atau tunggu beberapa saat sebelum
-        meminta ulang.
+        {t("otp_help")}
       </p>
     </div>
   );

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,7 +47,7 @@ func (f *fakeUserRepo) CreateUser(_ context.Context, u *model.User) error {
 
 func (f *fakeUserRepo) GetUserByEmail(_ context.Context, email string) (*model.User, error) {
 	for _, u := range f.byID {
-		if u.Email != nil && *u.Email == email && u.Status != "deleted" {
+		if u.Email != nil && strings.ToLower(*u.Email) == email && u.Status != "deleted" {
 			cp := *u
 			return &cp, nil
 		}

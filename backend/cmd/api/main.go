@@ -47,10 +47,13 @@ func main() {
 	storeRepo := repository.New(pool)
 	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	otpProvider, emailProvider := newNotifyProviders(cfg)
-	paymentClient := newPaymentClient(cfg)
+	paymentClient := adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
 	logisticsClient := &adapter.NoopLogisticsClient{}
 	storageClient := newStorageClient(cfg)
 	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, storageClient, &cfg)
+	svc.SetReloadPaymentFn(func(ctx context.Context) service.PaymentClient {
+		return adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
+	})
 	h := handler.New(svc)
 	e := server.New(h, svc, jwtSigner, cfg)
 
@@ -84,13 +87,6 @@ func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailPr
 		BaseURL:     cfg.FazpassBaseURL,
 	})
 	return fz, fz
-}
-
-func newPaymentClient(cfg config.Config) service.PaymentClient {
-	if cfg.MidtransServerKey != "" {
-		return adapter.NewMidtransClient(cfg.MidtransServerKey, cfg.MidtransClientKey, cfg.MidtransEnv)
-	}
-	return &adapter.NoopPaymentClient{}
 }
 
 func newStorageClient(cfg config.Config) *minio.Client {

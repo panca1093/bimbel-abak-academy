@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslation } from "@/lib/i18n";
 
 type Errors = {
   name?: string;
@@ -22,6 +23,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const register = useRegister();
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -46,9 +48,9 @@ export default function RegisterPage() {
     strong: "bg-success",
   };
   const strengthText: Record<string, string> = {
-    weak: "Lemah",
-    fair: "Sedang",
-    strong: "Kuat",
+    weak: t("register_pw_weak"),
+    fair: t("register_pw_fair"),
+    strong: t("register_pw_strong"),
   };
   const strengthTextColor: Record<string, string> = {
     weak: "text-danger",
@@ -63,10 +65,10 @@ export default function RegisterPage() {
 
   const validate = (): Errors => {
     const e: Errors = {};
-    if (!name.trim()) e.name = "Nama wajib diisi";
-    if (!EMAIL_RE.test(email)) e.email = "Email tidak valid";
-    if (password.length < 8) e.password = "Min. 8 karakter";
-    if (confirm !== password) e.confirm = "Kata sandi tidak cocok";
+    if (!name.trim()) e.name = t("register_err_name_required");
+    if (!EMAIL_RE.test(email)) e.email = t("register_err_email_invalid");
+    if (password.length < 8) e.password = t("register_err_password_min");
+    if (confirm !== password) e.confirm = t("register_err_confirm_mismatch");
     return e;
   };
 
@@ -78,11 +80,11 @@ export default function RegisterPage() {
 
     try {
       await register.mutateAsync({ name: name.trim(), email: email.trim(), password });
-      toast.success("Pendaftaran berhasil. Silakan masuk.");
+      toast.success(t("register_success"));
       router.push("/login");
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.message : "Gagal mendaftar. Coba lagi.";
+        err instanceof ApiError ? err.message : t("register_failed");
       toast.error(msg);
     }
   };
@@ -94,20 +96,20 @@ export default function RegisterPage() {
     <div className="w-full max-w-[372px]">
       <div className="mb-7">
         <div className="mb-2 text-[11.5px] font-bold uppercase tracking-[0.06em] text-success">
-          Mulai sekarang
+          {t("register_eyebrow")}
         </div>
         <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900">
-          Buat Akun Baru ✨
+          {t("register_title")}
         </h2>
         <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-500">
-          Isi data di bawah untuk mulai belajar bersama Abak Academy.
+          {t("register_subtitle")}
         </p>
       </div>
 
       <form onSubmit={onSubmit} noValidate>
         <div className="mb-3.5">
           <Label htmlFor="name" className="mb-1.5 text-[12.5px] font-semibold text-ink-600">
-            Nama Lengkap
+            {t("register_full_name_label")}
           </Label>
           <div className="relative">
             <Input
@@ -117,7 +119,7 @@ export default function RegisterPage() {
                 setName(e.target.value);
                 setErrors((p) => ({ ...p, name: undefined }));
               }}
-              placeholder="masukkan nama lengkap"
+              placeholder={t("register_name_placeholder")}
               autoComplete="name"
               className="h-11 pl-10"
             />
@@ -132,7 +134,7 @@ export default function RegisterPage() {
 
         <div className="mb-3.5">
           <Label htmlFor="email" className="mb-1.5 text-[12.5px] font-semibold text-ink-600">
-            Email
+            {t("register_email_label")}
           </Label>
           <div className="relative">
             <Input
@@ -143,7 +145,7 @@ export default function RegisterPage() {
                 setEmail(e.target.value);
                 setErrors((p) => ({ ...p, email: undefined }));
               }}
-              placeholder="nama@email.com"
+              placeholder={t("register_email_placeholder")}
               autoComplete="email"
               className="h-11 pl-10"
             />
@@ -158,7 +160,7 @@ export default function RegisterPage() {
 
         <div className="mb-1.5">
           <Label htmlFor="password" className="mb-1.5 text-[12.5px] font-semibold text-ink-600">
-            Kata Sandi
+            {t("register_password_label")}
           </Label>
           <div className="relative">
             <Input
@@ -169,7 +171,7 @@ export default function RegisterPage() {
                 setPassword(e.target.value);
                 setErrors((p) => ({ ...p, password: undefined }));
               }}
-              placeholder="min. 8 karakter"
+              placeholder={t("register_password_placeholder")}
               autoComplete="new-password"
               className="h-11 pl-10 pr-11"
             />
@@ -179,7 +181,7 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => setShowPw((p) => !p)}
-              aria-label={showPw ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
+              aria-label={showPw ? t("auth_hide_password") : t("auth_show_password")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
             >
               {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -204,7 +206,7 @@ export default function RegisterPage() {
 
         <div className="mb-5">
           <Label htmlFor="confirm" className="mb-1.5 text-[12.5px] font-semibold text-ink-600">
-            Konfirmasi Kata Sandi
+            {t("register_confirm_label")}
           </Label>
           <div className="relative">
             <Input
@@ -229,7 +231,7 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => setShowCf((p) => !p)}
-              aria-label={showCf ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
+              aria-label={showCf ? t("auth_hide_password") : t("auth_show_password")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
             >
               {showCf ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -248,22 +250,22 @@ export default function RegisterPage() {
           {loading ? (
             <span className="flex items-center gap-2">
               <Loader2 size={16} className="animate-spin" />
-              Mendaftar...
+              {t("register_submitting")}
             </span>
           ) : (
-            "Daftar & Verifikasi OTP"
+            t("register_submit")
           )}
         </Button>
       </form>
 
       <p className="mt-6 text-center text-[13px] text-ink-500">
-        Sudah punya akun?{" "}
+        {t("register_already_have_account")}{" "}
         <button
           type="button"
           onClick={() => router.push("/login")}
           className="font-bold text-success transition-colors hover:text-success/80"
         >
-          Masuk
+          {t("register_sign_in_link")}
         </button>
       </p>
     </div>

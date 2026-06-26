@@ -427,7 +427,55 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 type CheckoutResult struct {
 	GatewayRef       string
 	SnapToken        string
+	PaymentURL       string
 	PaymentExpiresAt time.Time
+}
+
+func fetchCustomerInfo(ctx context.Context, s *Service, userID string) CustomerInfo {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		return CustomerInfo{}
+	}
+	name := user.Name
+	email := ""
+	if user.Email != nil {
+		email = *user.Email
+	}
+	phone := ""
+	if user.Phone != nil {
+		phone = *user.Phone
+	}
+	return CustomerInfo{Name: name, Email: email, Phone: phone}
+}
+
+func buildPaymentRequest(orderID string, order model.Order, customer CustomerInfo) PaymentRequest {
+	req := PaymentRequest{
+		OrderID:   orderID,
+		Amount:    int64(order.Total),
+		ExpiresIn: 24 * time.Hour,
+		Customer:  customer,
+	}
+
+	for _, item := range order.Items {
+		cat := "General"
+		switch item.ProductType {
+		case "book":
+			cat = "Book"
+		case "course":
+			cat = "Course"
+		case "package":
+			cat = "Package"
+		}
+		req.Items = append(req.Items, ItemDetail{
+			ID:       item.ProductID.String(),
+			Name:     item.Name,
+			Price:    int64(item.UnitPrice),
+			Qty:      int32(item.Qty),
+			Category: cat,
+		})
+	}
+
+	return req
 }
 
 type OrderPaidPayload struct {
@@ -497,11 +545,9 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
-	paymentResp, err := s.payment.CreatePayment(ctx, PaymentRequest{
-		OrderID:   oID.String(),
-		Amount:    int64(order.Total),
-		ExpiresIn: 24 * time.Hour,
-	})
+	customer := fetchCustomerInfo(ctx, s, order.StudentID.String())
+	paymentReq := buildPaymentRequest(oID.String(), order, customer)
+	paymentResp, err := s.payment.CreatePayment(ctx, paymentReq)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
@@ -519,6 +565,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	result := CheckoutResult{
 		GatewayRef:       paymentResp.GatewayRef,
 		SnapToken:        paymentResp.SnapToken,
+		PaymentURL:       paymentResp.PaymentURL,
 		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
@@ -555,15 +602,13 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	if order.StudentID != sID {
 		return CheckoutResult{}, ErrOrderNotFound
 	}
-	if order.Status != "payment_expired" {
+	if order.Status != "payment_pending" && order.Status != "payment_expired" {
 		return CheckoutResult{}, ErrOrderNotEditable
 	}
 
-	paymentResp, err := s.payment.CreatePayment(ctx, PaymentRequest{
-		OrderID:   oID.String(),
-		Amount:    int64(order.Total),
-		ExpiresIn: 24 * time.Hour,
-	})
+	customer := fetchCustomerInfo(ctx, s, order.StudentID.String())
+	paymentReq := buildPaymentRequest(oID.String(), order, customer)
+	paymentResp, err := s.payment.CreatePayment(ctx, paymentReq)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
@@ -589,6 +634,7 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	result := CheckoutResult{
 		GatewayRef:       paymentResp.GatewayRef,
 		SnapToken:        paymentResp.SnapToken,
+		PaymentURL:       paymentResp.PaymentURL,
 		PaymentExpiresAt: paymentResp.ExpiresAt,
 	}
 
@@ -656,6 +702,7 @@ func parseUUID(s string) (uuid.UUID, error) {
 // Admin order methods
 
 func (s *Service) AdminListOrders(ctx context.Context, filter repository.OrderFilter) ([]model.Order, string, error) {
+	filter.ExcludeCart = true
 	return s.storeRepo.ListOrders(ctx, filter)
 }
 
@@ -772,8 +819,18 @@ func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error 
 	if order.ID.String() == "" {
 		return ErrOrderNotFound
 	}
-	if order.Status != "shipped" {
-		return errors.New("order must be in shipped status to complete")
+	switch order.Status {
+	case "shipped":
+		// physical order after delivery — always completable
+	case "processing":
+		// only completable if no physical items (digital-only orders stuck before worker fix)
+		for _, item := range order.Items {
+			if item.ProductType == "book" {
+				return errors.New("order has physical items — must be shipped before completing")
+			}
+		}
+	default:
+		return errors.New("order cannot be completed from status: " + order.Status)
 	}
 
 	tx, err := s.storeRepo.BeginTx(ctx)

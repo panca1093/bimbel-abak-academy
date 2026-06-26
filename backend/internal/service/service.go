@@ -24,6 +24,10 @@ type Service struct {
 	presignOnce   sync.Once
 	presignClient *minio.Client
 	cfg           *config.Config
+
+	// reloadPaymentFn is called by ReloadPaymentClient to rebuild the
+	// payment client from current config (DB or env). Injected by main.
+	reloadPaymentFn func(ctx context.Context) PaymentClient
 }
 
 // NewForTest builds a Service with only a Redis client — sufficient for middleware tests.
@@ -83,6 +87,21 @@ type Health struct {
 
 func (s *Service) ParseAccess(tokenString string) (*infra.Claims, error) {
 	return s.jwtSigner.ParseAccess(tokenString)
+}
+
+// SetReloadPaymentFn sets the callback used by ReloadPaymentClient to
+// rebuild the payment client from current config.
+func (s *Service) SetReloadPaymentFn(fn func(ctx context.Context) PaymentClient) {
+	s.reloadPaymentFn = fn
+}
+
+// ReloadPaymentClient replaces s.payment by calling the injected reload
+// function. No-op when no reload function has been set.
+func (s *Service) ReloadPaymentClient(ctx context.Context) {
+	if s.reloadPaymentFn == nil {
+		return
+	}
+	s.payment = s.reloadPaymentFn(ctx)
 }
 
 func (s *Service) Health(ctx context.Context) Health {

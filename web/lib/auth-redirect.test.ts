@@ -27,8 +27,8 @@ describe("redirectForRole", () => {
 });
 
 describe("adminHomeForRole", () => {
-  it("sends admin_store to /admin/products", () => {
-    expect(adminHomeForRole("admin_store")).toBe("/admin/products");
+  it("sends admin_store to /admin/store", () => {
+    expect(adminHomeForRole("admin_store")).toBe("/admin/store");
   });
 
   it("sends admin_exam to first coming-soon exam item", () => {

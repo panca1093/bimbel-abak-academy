@@ -21,8 +21,9 @@ type Config struct {
 	OTPSecret          string
 	OTPTTL             time.Duration
 	GoogleClientID     string
-	FazpassMerchantKey string
-	FazpassAPIKey      string
+	ConfigEncryptionKey string
+	FazpassMerchantKey  string
+	FazpassAPIKey       string
 	FazpassBaseURL     string
 	MidtransServerKey  string
 	MidtransClientKey  string
@@ -47,6 +48,7 @@ func Load() Config {
 		CORSOrigins:        []string{env("WEB_ORIGIN", "http://localhost:3000")},
 
 		JWTSecret:          env("JWT_SECRET", ""),
+		ConfigEncryptionKey: env("CONFIG_ENCRYPTION_KEY", ""),
 		AccessTokenTTL:     envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:    envDuration("REFRESH_TOKEN_TTL", 168*time.Hour),
 		OTPSecret:          env("OTP_SECRET", ""),

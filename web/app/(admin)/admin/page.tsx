@@ -5,30 +5,55 @@ import { useRouter } from "next/navigation";
 import { Shield, DollarSign, Users, Eye, Store, Clipboard, BarChart3, UserPlus } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
+import { useAdminAuditLog } from "@/lib/hooks/admin-audit";
+import { useAdminRevenue } from "@/lib/hooks/admin-revenue";
+import { useSchools } from "@/lib/hooks/students";
 import { adminHomeForRole } from "@/lib/auth-redirect";
 import { StatCard } from "@/components/admin/StatCard";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatRupiah } from "@/lib/format";
+import { useTranslation } from "@/lib/i18n";
 import type { UserRole } from "@/lib/nav-config";
+import type { AuditLogEntry } from "@/lib/types";
 
-const AUDIT = [
-  { initial: "R", user: "Rina Wijayanti", action: "Mempublikasikan paket ujian", target: "UTBK 2024 Tryout 1", time: "10m lalu" },
-  { initial: "H", user: "Hendra Gunawan", action: "Mengubah stok produk", target: "Modul Fisika Kelas 12", time: "1j lalu" },
-  { initial: "S", user: "Sri Wahyuni", action: "Mendaftarkan siswa", target: "Andi P. (SMAN 1)", time: "2j lalu" },
-];
-
-const QUICK_ACTIONS = [
-  { icon: Clipboard, label: "Buat Soal Baru" },
-  { icon: Store, label: "Tambah Produk" },
-  { icon: UserPlus, label: "Daftarkan Siswa" },
-  { icon: BarChart3, label: "Laporan Penjualan" },
-];
+function useFormatRelativeTime() {
+  const { t, lang } = useTranslation();
+  return (iso: string): string => {
+    const now = Date.now();
+    const then = new Date(iso).getTime();
+    const diffMs = now - then;
+    if (diffMs < 0) return t("time_just_now");
+    const minutes = Math.floor(diffMs / 60000);
+    if (minutes < 1) return t("time_just_now");
+    if (minutes < 60) return `${minutes}${t("time_min_suffix")}`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}${t("time_hour_suffix")}`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}${t("time_day_suffix")}`;
+    return new Date(iso).toLocaleDateString(lang === "en" ? "en-US" : "id-ID");
+  };
+}
 
 export default function AdminIndexPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const storeRole = user?.role as UserRole | undefined;
   const me = useMe({ enabled: !storeRole });
   const role = storeRole ?? (me.data?.role as UserRole | undefined);
-  const name = user?.name ?? me.data?.name ?? "Super Admin";
+  const name = user?.name ?? me.data?.name ?? t("admin_home_default_name");
+  const formatRelativeTime = useFormatRelativeTime();
+
+  const quickActions = [
+    { icon: Clipboard, label: t("admin_action_create_question"), route: "/admin/exam/banks" },
+    { icon: Store, label: t("admin_action_add_product"), route: "/admin/products" },
+    { icon: UserPlus, label: t("admin_action_register_student"), route: "/admin/school/students" },
+    { icon: BarChart3, label: t("admin_action_sales_report"), route: "/admin/revenue" },
+  ];
+
+  const { data: auditEntries = [], isLoading: auditLoading, isError: auditError, refetch: refetchAudit } = useAdminAuditLog();
+  const { data: revenue, isLoading: revenueLoading } = useAdminRevenue();
+  const { data: schools, isLoading: schoolsLoading } = useSchools();
 
   useEffect(() => {
     if (!role) return;
@@ -36,6 +61,9 @@ export default function AdminIndexPage() {
   }, [role, router]);
 
   if (role !== "super_admin") return null;
+
+  const schoolCount = schools?.length ?? null;
+  const schoolCountStr = schoolCount !== null ? String(schoolCount) : "—";
 
   return (
     <div className="fade-in">
@@ -63,11 +91,11 @@ export default function AdminIndexPage() {
               className="text-label"
               style={{ letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.75 }}
             >
-              Super Admin · Abak Academy
+              {t("admin_home_badge")}
             </div>
             <h1 className="text-headline" style={{ color: "#FFFFFF" }}>{name}</h1>
             <p className="text-body" style={{ marginTop: "4px", opacity: 0.85 }}>
-              Akses penuh ke semua domain. Pantau seluruh platform dari satu tempat.
+              {t("admin_home_subtitle")}
             </p>
           </div>
         </div>
@@ -75,34 +103,44 @@ export default function AdminIndexPage() {
 
       {/* Stat grid */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
+        {revenueLoading ? (
+          <Skeleton className="h-28 w-full" />
+        ) : (
+          <StatCard
+            label={t("admin_home_stat_revenue")}
+            value={revenue ? formatRupiah(revenue.total) : "—"}
+            accent="primary"
+            icon={DollarSign}
+          />
+        )}
+        {schoolsLoading ? (
+          <Skeleton className="h-28 w-full" />
+        ) : (
+          <StatCard
+            label={t("admin_home_stat_students")}
+            value={schoolCountStr}
+            accent="secondary"
+            icon={Users}
+          />
+        )}
         <StatCard
-          label="Pendapatan Bulan Ini"
-          value="Rp 48,75 Jt"
-          trend="+18% vs bulan lalu"
-          accent="primary"
-          icon={DollarSign}
-        />
-        <StatCard
-          label="Total Siswa"
-          value="1.303"
-          trend="+42 minggu ini"
-          accent="secondary"
-          icon={Users}
-        />
-        <StatCard
-          label="Sesi Ujian Aktif"
-          value="4"
-          trend="Sedang berlangsung"
+          label={t("admin_home_stat_exam_sessions")}
+          value="—"
+          trend={t("admin_home_stat_unavailable")}
           accent="error"
           icon={Eye}
         />
-        <StatCard
-          label="Jumlah Sekolah"
-          value="4"
-          trend="Bimbel mitra aktif"
-          accent="tertiary"
-          icon={Store}
-        />
+        {schoolsLoading ? (
+          <Skeleton className="h-28 w-full" />
+        ) : (
+          <StatCard
+            label={t("admin_home_stat_schools")}
+            value={schoolCountStr}
+            trend={schoolCount !== null ? t("admin_home_partner_trend") : undefined}
+            accent="tertiary"
+            icon={Store}
+          />
+        )}
       </div>
 
       {/* Content grid */}
@@ -110,63 +148,80 @@ export default function AdminIndexPage() {
         {/* Log Aktivitas */}
         <div className="lg:col-span-2 md-card-outlined">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-title-large">Log Aktivitas</h3>
-            <button className="md-btn-tonal" type="button">
-              Lihat Semua
+            <h3 className="text-title-large">{t("admin_home_activity_log")}</h3>
+            <button
+              className="md-btn-tonal"
+              type="button"
+              onClick={() => router.push("/admin/system/audit")}
+            >
+              {t("admin_home_view_all")}
             </button>
           </div>
-          <div className="space-y-4">
-            {AUDIT.map((item, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div
-                  className="flex size-8 items-center justify-center rounded-full"
-                  style={{
-                    backgroundColor: "var(--md-sys-color-primary-container)",
-                    color: "var(--md-sys-color-primary)",
-                  }}
-                >
-                  <span className="text-label">{item.initial}</span>
-                </div>
-                <div>
-                  <div className="text-body" style={{ fontWeight: 500 }}>
-                    {item.user}
-                  </div>
-                  <div className="text-label color-on-surface-variant">
-                    {item.action} · {item.target} · {item.time}
+          {auditLoading ? (
+            <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="size-8 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-64" />
                   </div>
                 </div>
-              </div>
-            ))}
-            <div className="flex items-center gap-3">
-              <div
-                className="flex size-8 items-center justify-center rounded-full"
-                style={{
-                  backgroundColor: "var(--md-sys-color-primary-container)",
-                  color: "var(--md-sys-color-primary)",
-                }}
-              >
-                <span className="text-label">{name.charAt(0).toUpperCase()}</span>
-              </div>
-              <div>
-                <div className="text-body" style={{ fontWeight: 500 }}>
-                  {name}
-                </div>
-                <div className="text-label color-on-surface-variant">
-                  Login ke sistem · Portal Super Admin · 3j lalu
-                </div>
-              </div>
+              ))}
             </div>
-          </div>
+          ) : auditError ? (
+            <div className="py-12 text-center text-ink-500">
+              <p className="mb-4">{t("admin_home_audit_failed")}</p>
+              <button
+                type="button"
+                className="md-btn-tonal"
+                onClick={() => refetchAudit()}
+              >
+                {t("admin_home_reload")}
+              </button>
+            </div>
+          ) : auditEntries.length === 0 ? (
+            <div className="py-12 text-center text-ink-500">
+              {t("admin_home_no_activity")}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {auditEntries.slice(0, 5).map((entry: AuditLogEntry) => (
+                <div key={entry.id} className="flex items-center gap-3">
+                  <div
+                    className="flex size-8 items-center justify-center rounded-full"
+                    style={{
+                      backgroundColor: "var(--md-sys-color-primary-container)",
+                      color: "var(--md-sys-color-primary)",
+                    }}
+                  >
+                    <span className="text-label">
+                      {(entry.actor_name ?? "?").charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-body" style={{ fontWeight: 500 }}>
+                      {entry.actor_name ?? "System"}
+                    </div>
+                    <div className="text-label color-on-surface-variant">
+                      {entry.action} · {entry.target_type} #{entry.target_id} · {formatRelativeTime(entry.created_at)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Akses Cepat */}
         <div className="md-card-outlined">
-          <h3 className="text-title-large mb-6">Akses Cepat</h3>
+          <h3 className="text-title-large mb-6">{t("admin_home_quick_actions")}</h3>
           <div className="grid gap-3">
-            {QUICK_ACTIONS.map((action, i) => (
+            {quickActions.map((action, i) => (
               <button
                 key={i}
                 type="button"
+                onClick={() => router.push(action.route)}
                 className="flex items-center gap-3 p-3 rounded-[12px] border-none w-full text-left"
                 style={{
                   backgroundColor: "var(--md-sys-color-surface-container-high)",

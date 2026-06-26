@@ -69,6 +69,24 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "course_required", Message: err.Error()}
 	case errors.Is(err, service.ErrNoCourseAccess):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_course_access", Message: err.Error()}
+	case errors.Is(err, service.ErrUnknownConfigKey):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrConfigEncryption):
+		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "config encryption failed"}
+	case errors.Is(err, service.ErrCannotDeactivateSelf):
+		status, apiErr = http.StatusForbidden, APIError{Code: "cannot_deactivate_self", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidAdminRole):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidRoleFilter):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidStatusFilter):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAccountNoEmail):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "reset_invalid", Message: err.Error()}
+	case errors.Is(err, service.ErrMissingField):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidDateFormat):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}

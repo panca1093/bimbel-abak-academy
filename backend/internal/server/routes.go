@@ -88,6 +88,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	webhooks := v1.Group("/webhooks")
 	webhooks.POST("/payment", h.HandlePaymentWebhook)
 
+	// Public config (client key is safe to expose)
+	v1.GET("/config/payment-client-key", h.GetPaymentClientKey)
+
 	// Public school list
 	v1.GET("/schools", h.ListSchools)
 
@@ -140,6 +143,18 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminNotifs.Use(handler.RBACMiddleware("notifications:read"))
 	adminNotifs.GET("", h.AdminListNotifications)
 	adminNotifs.PATCH("/:id/read", h.AdminMarkNotificationRead)
+
+	// Admin system routes (super_admin only)
+	adminSystem := admin.Group("/system")
+	adminSystem.Use(handler.RBACMiddleware("system:admin"))
+	adminSystem.GET("/accounts", h.AdminListAccounts)
+	adminSystem.POST("/accounts", h.AdminCreateAccount)
+	adminSystem.PATCH("/accounts/:id/role", h.AdminChangeAccountRole)
+	adminSystem.PATCH("/accounts/:id/status", h.AdminChangeAccountStatus)
+	adminSystem.POST("/accounts/:id/reset-password", h.AdminResetAccountPassword)
+	adminSystem.GET("/audit", h.AdminListAuditLog)
+	adminSystem.GET("/config", h.AdminGetSystemConfig)
+	adminSystem.PUT("/config", h.AdminUpdateSystemConfig)
 }
 
 // RegisterRoutesForTest is the same as registerRoutes but exported for handler tests.

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { render } from "@testing-library/react";
 import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "./AppShell";
 
 const replace = vi.fn();
@@ -63,10 +64,13 @@ describe("AppShell — admin-shell class", () => {
   });
 
   it("does NOT add admin-shell class when role is student", () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = render(
-      <AppShell role="student">
-        <div>content</div>
-      </AppShell>
+      <QueryClientProvider client={qc}>
+        <AppShell role="student">
+          <div>content</div>
+        </AppShell>
+      </QueryClientProvider>
     );
     const root = container.firstElementChild;
     expect(root?.className).not.toContain("admin-shell");

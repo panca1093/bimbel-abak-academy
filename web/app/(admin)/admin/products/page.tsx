@@ -37,13 +37,13 @@ function statusBadgeClass(status?: string): string {
     case "published":
       return "bg-green-100 text-green-800 border-green-200";
     case "draft":
-      return "bg-slate-100 text-slate-800 border-slate-200";
+      return "bg-line-2 text-ink-700 border-line";
     case "hidden":
       return "bg-amber-100 text-amber-800 border-amber-200";
     case "archived":
       return "bg-red-100 text-red-800 border-red-200";
     default:
-      return "bg-slate-100 text-slate-800 border-slate-200";
+      return "bg-line-2 text-ink-700 border-line";
   }
 }
 

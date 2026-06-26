@@ -95,7 +95,8 @@ const STATUS_TONE: Record<SchoolStatus, string> = {
 };
 
 export default function SystemSchoolsPage() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const numberLocale = lang === "en" ? "en-US" : "id-ID";
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [createOpen, setCreateOpen] = useState(false);
@@ -127,8 +128,8 @@ export default function SystemSchoolsPage() {
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
       <AdminPageHeader
         icon={Building}
-        title="Sekolah Mitra"
-        description="Daftar dan verifikasi sekolah mitra."
+        title={t("schools_title")}
+        description={t("schools_subtitle")}
         actions={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-1 size-4" />
@@ -138,9 +139,9 @@ export default function SystemSchoolsPage() {
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Total sekolah" value={String(stats.total)} />
-        <StatCard label="Aktif" value={String(stats.active)} />
-        <StatCard label="Total siswa" value={stats.students.toLocaleString("id-ID")} />
+        <StatCard label={t("schools_stat_total")} value={String(stats.total)} />
+        <StatCard label={t("status_label_active")} value={String(stats.active)} />
+        <StatCard label={t("schools_stat_students")} value={stats.students.toLocaleString(numberLocale)} />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -149,19 +150,19 @@ export default function SystemSchoolsPage() {
             {t("tab_all")}
           </FilterChip>
           <FilterChip active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
-            Aktif
+            {t("status_label_active")}
           </FilterChip>
           <FilterChip active={statusFilter === "pending"} onClick={() => setStatusFilter("pending")}>
-            Pending
+            {t("schools_status_pending")}
           </FilterChip>
           <FilterChip active={statusFilter === "inactive"} onClick={() => setStatusFilter("inactive")}>
-            Nonaktif
+            {t("status_label_inactive")}
           </FilterChip>
         </div>
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari sekolah atau kota…"
+          placeholder={t("schools_search_placeholder")}
           className="h-9 w-[260px] text-xs sm:ml-auto"
         />
       </div>
@@ -171,12 +172,12 @@ export default function SystemSchoolsPage() {
           <table className="w-full text-sm">
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
               <tr>
-                <th className="px-4 py-3">Sekolah</th>
-                <th className="px-4 py-3">Lokasi</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Siswa</th>
-                <th className="px-4 py-3">Kelas</th>
-                <th className="px-4 py-3">Ujian</th>
+                <th className="px-4 py-3">{t("schools_th_school")}</th>
+                <th className="px-4 py-3">{t("schools_th_location")}</th>
+                <th className="px-4 py-3">{t("accounts_th_status")}</th>
+                <th className="px-4 py-3">{t("schools_th_students")}</th>
+                <th className="px-4 py-3">{t("schools_th_classes")}</th>
+                <th className="px-4 py-3">{t("schools_th_exams")}</th>
                 <th className="px-4 py-3 text-right"></th>
               </tr>
             </thead>
@@ -207,7 +208,7 @@ export default function SystemSchoolsPage() {
                   <td className="px-4 py-3 text-xs text-ink-600">
                     <span className="inline-flex items-center gap-1">
                       <Users className="size-3" />
-                      {s.students.toLocaleString("id-ID")}
+                      {s.students.toLocaleString(numberLocale)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">{s.classes}</td>
@@ -221,10 +222,10 @@ export default function SystemSchoolsPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setCreateOpen(true)}>
-                          <Edit className="mr-2 size-4" />Edit
+                          <Edit className="mr-2 size-4" />{t("schools_action_edit")}
                         </DropdownMenuItem>
                         <DropdownMenuItem className="text-danger">
-                          <Trash2 className="mr-2 size-4" />Hapus
+                          <Trash2 className="mr-2 size-4" />{t("schools_action_delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -239,22 +240,22 @@ export default function SystemSchoolsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-serif">{t("create")} sekolah</DialogTitle>
-            <DialogDescription>Form tambah mitra sekolah akan tersedia di iterasi berikutnya.</DialogDescription>
+            <DialogTitle className="font-serif">{t("schools_dialog_create_title")}</DialogTitle>
+            <DialogDescription>{t("schools_dialog_create_desc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Nama sekolah</Label>
-              <Input placeholder="mis. SMAN 1 Jakarta" />
+              <Label>{t("schools_field_name")}</Label>
+              <Input placeholder={t("schools_placeholder_name")} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Kota</Label>
-                <Input placeholder="Kota" />
+                <Label>{t("schools_field_city")}</Label>
+                <Input placeholder={t("schools_field_city")} />
               </div>
               <div>
-                <Label>Provinsi</Label>
-                <Input placeholder="Provinsi" />
+                <Label>{t("schools_field_province")}</Label>
+                <Input placeholder={t("schools_field_province")} />
               </div>
             </div>
             <div className="flex justify-end gap-2">

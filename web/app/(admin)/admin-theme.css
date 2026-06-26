@@ -207,3 +207,55 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Dark mode — mirrors the globals.css html[data-theme="dark"] block.
+   Without this, .admin-shell keeps its light MD3 surfaces and renders
+   bright-white cards on the dark page background. */
+html[data-theme="dark"] .admin-shell {
+  /* Primary (brighter blue, dark on-primary) */
+  --md-sys-color-primary: #7DA0FF;
+  --md-sys-color-on-primary: #001A73;
+  --md-sys-color-primary-container: rgba(26, 92, 255, .28);
+  --md-sys-color-on-primary-container: #C9D8FF;
+
+  /* Secondary (brighter teal) */
+  --md-sys-color-secondary: #5FD6D6;
+  --md-sys-color-on-secondary: #003333;
+  --md-sys-color-secondary-container: rgba(0, 128, 128, .30);
+  --md-sys-color-on-secondary-container: #9EE5E5;
+
+  /* Tertiary (brighter violet) */
+  --md-sys-color-tertiary: #B8A6F7;
+  --md-sys-color-on-tertiary: #1E0A66;
+  --md-sys-color-tertiary-container: rgba(91, 63, 191, .32);
+  --md-sys-color-on-tertiary-container: #D5C8FF;
+
+  /* Error */
+  --md-sys-color-error: #FF8A82;
+  --md-sys-color-on-error: #410002;
+  --md-sys-color-error-container: rgba(186, 26, 26, .32);
+  --md-sys-color-on-error-container: #FFCDC5;
+
+  /* Surfaces — aligned with globals.css dark palette */
+  --md-sys-color-background: #161225;
+  --md-sys-color-on-background: #eeeffc;
+  --md-sys-color-surface: #27213b;
+  --md-sys-color-on-surface: #eeeffc;
+  --md-sys-color-surface-variant: #302848;
+  --md-sys-color-on-surface-variant: #bac0dc;
+
+  /* Surface container tonal steps (dark) */
+  --md-sys-color-surface-container-lowest: #1c1730;
+  --md-sys-color-surface-container-low: #221b35;
+  --md-sys-color-surface-container: #27213b;
+  --md-sys-color-surface-container-high: #2e2845;
+  --md-sys-color-surface-container-highest: #352f50;
+
+  /* Outline */
+  --md-sys-color-outline: #393f60;
+  --md-sys-color-outline-variant: #313654;
+
+  /* Elevation — heavier shadows for depth on dark surfaces */
+  --md-sys-elevation-1: 0px 8px 24px rgba(0, 0, 0, 0.45);
+  --md-sys-elevation-2: 0px 18px 40px rgba(0, 0, 0, 0.55);
+}
