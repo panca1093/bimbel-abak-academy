@@ -331,7 +331,7 @@ func (r *Repository) SetOrderStatus(ctx context.Context, tx pgx.Tx, orderID uuid
 
 func (r *Repository) SetShipped(ctx context.Context, orderID uuid.UUID, trackingNumber string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE orders SET tracking_number = $1, shipped_at = now(), updated_at = now() WHERE id = $2`,
+		`UPDATE orders SET status = 'shipped', tracking_number = $1, shipped_at = now(), updated_at = now() WHERE id = $2`,
 		trackingNumber, orderID,
 	)
 	return err
