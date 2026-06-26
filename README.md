@@ -1,7 +1,6 @@
 # Abak Academy — App
 
 Monorepo for the Abak Academy platform: exam engine + ecommerce + video courses.
-Requirements live one level up in `../requirements/` (`product-requirements.md`, `technical-requirements.md`, `schema.dbml`).
 
 ## What's built
 
