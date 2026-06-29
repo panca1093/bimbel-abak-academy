@@ -31,8 +31,8 @@ describe("adminHomeForRole", () => {
     expect(adminHomeForRole("admin_store")).toBe("/admin/store");
   });
 
-  it("sends admin_exam to first coming-soon exam item", () => {
-    expect(adminHomeForRole("admin_exam")).toBe("/admin/exam/banks");
+  it("sends admin_exam to first exam item", () => {
+    expect(adminHomeForRole("admin_exam")).toBe("/admin/exam/tests");
   });
 
   it("sends admin_school to first coming-soon school item", () => {

@@ -358,3 +358,95 @@ export interface AuditLogEntry {
 }
 
 export type SystemConfig = Record<string, string>;
+
+export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay";
+
+export interface Test {
+  id: string;
+  title: string;
+  subject: string;
+  topic: string;
+  duration_minutes: number;
+  audio_url?: string | null;
+  audio_play_limit?: number | null;
+  question_count?: number;
+  created_at?: string;
+}
+
+export interface Question {
+  id: string;
+  test_id: string;
+  format: QuestionFormat;
+  body: string;
+  correct_answer?: string | null;
+  explanation?: string | null;
+  difficulty?: string | null;
+  image_url?: string | null;
+  sort_order: number;
+}
+
+export interface QuestionOption {
+  question_id: string;
+  key: string;
+  text: string;
+  image_url?: string | null;
+  is_correct: boolean;
+  sort_order: number;
+}
+
+export interface QuestionWithOptions {
+  question: Question;
+  options: QuestionOption[];
+}
+
+export interface TestDetail {
+  test: Test;
+  questions: QuestionWithOptions[];
+}
+
+export interface AdminCreateTestInput {
+  title: string;
+  subject: string;
+  topic: string;
+  duration_minutes: number;
+  audio_url?: string;
+  audio_play_limit?: number;
+}
+
+export interface AdminUpdateTestInput {
+  title?: string;
+  subject?: string;
+  topic?: string;
+  duration_minutes?: number;
+  audio_url?: string;
+  audio_play_limit?: number;
+}
+
+export interface AdminQuestionOptionInput {
+  key: string;
+  text: string;
+  image_url?: string;
+  is_correct: boolean;
+  sort_order: number;
+}
+
+export interface AdminQuestionInput {
+  format: QuestionFormat;
+  body: string;
+  sort_order: number;
+  difficulty?: string;
+  explanation?: string;
+  image_url?: string;
+  correct_answer?: string;
+  options?: AdminQuestionOptionInput[];
+}
+
+export interface TestListResponse {
+  data: Test[];
+  next_cursor?: string;
+}
+
+export interface QuestionListResponse {
+  data: QuestionWithOptions[];
+  next_cursor?: string;
+}

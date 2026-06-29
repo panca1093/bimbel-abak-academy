@@ -59,6 +59,12 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_editable", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "order_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrTestNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "test_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrQuestionNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "question_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrValidation):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "validation_failed", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidPromo):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_promo", Message: err.Error()}
 	case errors.Is(err, service.ErrPromoMinOrder):
