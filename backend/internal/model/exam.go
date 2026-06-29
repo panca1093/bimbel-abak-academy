@@ -16,7 +16,10 @@ type Test struct {
 	DurationMinutes int       `json:"duration_minutes"`
 	AudioURL        *string   `json:"audio_url"`
 	AudioPlayLimit  *int      `json:"audio_play_limit"`
-	CreatedAt       time.Time `json:"created_at"`
+	// QuestionCount is only populated by list-style reads (e.g. ListTests LEFT JOIN).
+	// It is zero on freshly created tests and on direct GetByID reads.
+	QuestionCount int       `json:"question_count"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // Question belongs to a Test. `Format` is one of: mcq, multi_answer, short, fill_blank, essay.

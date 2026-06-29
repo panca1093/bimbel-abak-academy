@@ -369,6 +369,7 @@ export interface Test {
   duration_minutes: number;
   audio_url?: string | null;
   audio_play_limit?: number | null;
+  question_count?: number;
   created_at?: string;
 }
 

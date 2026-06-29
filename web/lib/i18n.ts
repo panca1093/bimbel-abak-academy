@@ -640,7 +640,6 @@ export const DICT = {
     tests_field_difficulty_medium: "Sedang",
     tests_field_difficulty_hard: "Sulit",
     tests_field_correct_answer: "Jawaban benar",
-    tests_field_option_key: "Kunci",
     tests_field_option_text: "Teks opsi",
     tests_field_option_is_correct: "Benar",
     tests_add_option: "Tambah opsi",
@@ -653,6 +652,7 @@ export const DICT = {
     tests_validation_correct_answer_required: "Jawaban benar wajib diisi",
     tests_validation_body_required: "Badan soal wajib diisi",
     tests_questions_empty: "Belum ada soal. Tambahkan soal pertama untuk memulai.",
+    tests_question_count: "Jumlah soal",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1289,7 +1289,6 @@ export const DICT = {
     tests_field_difficulty_medium: "Medium",
     tests_field_difficulty_hard: "Hard",
     tests_field_correct_answer: "Correct answer",
-    tests_field_option_key: "Key",
     tests_field_option_text: "Option text",
     tests_field_option_is_correct: "Correct",
     tests_add_option: "Add option",
@@ -1302,6 +1301,7 @@ export const DICT = {
     tests_validation_correct_answer_required: "Correct answer is required",
     tests_validation_body_required: "Question body is required",
     tests_questions_empty: "No questions yet. Add the first one to get started.",
+    tests_question_count: "Questions",
   },
 };
 

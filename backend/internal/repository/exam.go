@@ -34,6 +34,27 @@ func scanTest(row interface{ Scan(dest ...any) error }, t *model.Test) error {
 	return nil
 }
 
+// scanTestWithCount is used by ListTests where the SELECT also LEFT JOINs a
+// grouped question count; keeps GetByID/CreateTest untouched.
+func scanTestWithCount(row interface{ Scan(dest ...any) error }, t *model.Test) error {
+	var audioURL *string
+	var audioPlayLimit *int
+	err := row.Scan(
+		&t.ID, &t.Title, &t.Subject, &t.Topic, &t.DurationMinutes,
+		&audioURL, &audioPlayLimit, &t.QuestionCount, &t.CreatedAt,
+	)
+	if err != nil {
+		return err
+	}
+	if audioURL != nil {
+		t.AudioURL = audioURL
+	}
+	if audioPlayLimit != nil {
+		t.AudioPlayLimit = audioPlayLimit
+	}
+	return nil
+}
+
 func scanQuestion(row interface{ Scan(dest ...any) error }, q *model.Question) error {
 	var correctAnswer, explanation, difficulty, imageURL *string
 	err := row.Scan(
@@ -132,28 +153,36 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 		filter.Limit = 20
 	}
 
-	query := `SELECT id, title, subject, topic, duration_minutes, audio_url, audio_play_limit, created_at
-	FROM test WHERE 1=1`
+	// LEFT JOIN with a grouped count keeps tests without questions counted as 0.
+	// We count per test_id and join back — the GROUP BY in the subquery avoids
+	// inflating the row count over the outer filters (subject/topic/cursor).
+	query := `SELECT t.id, t.title, t.subject, t.topic, t.duration_minutes,
+		t.audio_url, t.audio_play_limit, COALESCE(q.cnt, 0), t.created_at
+	FROM test t
+	LEFT JOIN (
+		SELECT test_id, COUNT(*) AS cnt FROM question GROUP BY test_id
+	) q ON q.test_id = t.id
+	WHERE 1=1`
 	args := []interface{}{}
 	argIdx := 1
 
 	if filter.Subject != "" {
-		query += fmt.Sprintf(` AND subject = $%d`, argIdx)
+		query += fmt.Sprintf(` AND t.subject = $%d`, argIdx)
 		args = append(args, filter.Subject)
 		argIdx++
 	}
 	if filter.Topic != "" {
-		query += fmt.Sprintf(` AND topic = $%d`, argIdx)
+		query += fmt.Sprintf(` AND t.topic = $%d`, argIdx)
 		args = append(args, filter.Topic)
 		argIdx++
 	}
 	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND id > $%d`, argIdx)
+		query += fmt.Sprintf(` AND t.id > $%d`, argIdx)
 		args = append(args, filter.Cursor)
 		argIdx++
 	}
 
-	query += ` ORDER BY id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	query += ` ORDER BY t.id LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -165,7 +194,7 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	var tests []model.Test
 	for rows.Next() {
 		t := model.Test{}
-		if err := scanTest(rows, &t); err != nil {
+		if err := scanTestWithCount(rows, &t); err != nil {
 			return nil, "", err
 		}
 		tests = append(tests, t)
@@ -298,13 +327,17 @@ func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 }
 
 func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption) error {
-	_, err := tx.Exec(ctx,
+	var updatedID uuid.UUID
+	err := tx.QueryRow(ctx,
 		`UPDATE question
 		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, sort_order = $7
-		WHERE id = $8`,
+		WHERE id = $8 RETURNING id`,
 		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder, q.ID,
-	)
+	).Scan(&updatedID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return pgx.ErrNoRows
+		}
 		if isSortOrderConflict(err) {
 			return ErrSortOrderConflict
 		}

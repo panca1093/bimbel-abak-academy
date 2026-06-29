@@ -103,7 +103,7 @@ export default function TestsPage() {
                 <th className="px-4 py-3 text-left font-medium">{t("tests_field_subject")}</th>
                 <th className="px-4 py-3 text-left font-medium">{t("tests_field_topic")}</th>
                 <th className="px-4 py-3 text-left font-medium">{t("tests_field_duration")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("question")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("tests_question_count")}</th>
                 <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
               </tr>
             </thead>
@@ -117,7 +117,7 @@ export default function TestsPage() {
                   <td className="px-4 py-3">{test.subject}</td>
                   <td className="px-4 py-3">{test.topic}</td>
                   <td className="px-4 py-3">{test.duration_minutes}</td>
-                  <td className="px-4 py-3">—</td>
+                  <td className="px-4 py-3">{test.question_count ?? 0}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button size="sm" variant="outline" onClick={() => openEdit(test)}>
