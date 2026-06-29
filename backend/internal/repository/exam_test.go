@@ -26,6 +26,19 @@ var _ interface {
 	DeleteQuestion(context.Context, uuid.UUID) error
 } = (*Repository)(nil)
 
+// Compile-time check: *Repository must implement all exam repository methods added
+// by Task 2 of Slice 2.
+var _ interface {
+	CreateProductAndExamTx(context.Context, *model.Exam) (model.Exam, model.Product, error)
+	CreateExamTx(context.Context, pgx.Tx, *model.Exam) error
+	GetExamByID(context.Context, uuid.UUID) (*model.Exam, error)
+	ListExams(context.Context, ExamFilter) ([]model.ExamListItem, string, error)
+	GetExamDetail(context.Context, uuid.UUID) (*model.ExamDetail, error)
+	UpdateExam(context.Context, uuid.UUID, *model.Exam) error
+	ReplaceExamTestsTx(context.Context, pgx.Tx, uuid.UUID, []model.ExamTest) error
+	UpdateProductPriceTx(context.Context, pgx.Tx, uuid.UUID, int64) error
+} = (*Repository)(nil)
+
 // Sentinel error from the package: uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
 var _ error = ErrSortOrderConflict
 
@@ -209,5 +222,57 @@ func TestScanQuestionOption_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[5].(*int); !ok {
 		t.Errorf("dest[5] = %T, want *int (sort_order)", rec.dests[5])
+	}
+}
+
+func TestExamFilterShape(t *testing.T) {
+	f := ExamFilter{
+		Cursor: uuid.NewString(),
+		Limit:  15,
+	}
+	if f.Cursor == "" || f.Limit != 15 {
+		t.Errorf("ExamFilter fields not round-tripping: %+v", f)
+	}
+}
+
+func TestScanExam_passes_expected_destinations(t *testing.T) {
+	var e model.Exam
+	e.ID = uuid.Nil
+
+	rec := &recordingScanner{}
+	if err := scanExam(rec, &e); err != nil {
+		t.Fatalf("scanExam returned error: %v", err)
+	}
+
+	if got := len(rec.dests); got != 20 {
+		t.Fatalf("scanExam passed %d destinations, want 20", got)
+	}
+
+	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
+		t.Errorf("dest[0] = %T, want *uuid.UUID (id)", rec.dests[0])
+	}
+	if _, ok := rec.dests[1].(*string); !ok {
+		t.Errorf("dest[1] = %T, want *string (title)", rec.dests[1])
+	}
+	if _, ok := rec.dests[2].(*bool); !ok {
+		t.Errorf("dest[2] = %T, want *bool (is_free)", rec.dests[2])
+	}
+	if _, ok := rec.dests[3].(**time.Time); !ok {
+		t.Errorf("dest[3] = %T, want **time.Time (scheduled_at, nullable pointer field)", rec.dests[3])
+	}
+	if _, ok := rec.dests[7].(**string); !ok {
+		t.Errorf("dest[7] = %T, want **string (bundle_url, nullable pointer field)", rec.dests[7])
+	}
+	if _, ok := rec.dests[13].(**int); !ok {
+		t.Errorf("dest[13] = %T, want **int (duration_minutes, nullable pointer field)", rec.dests[13])
+	}
+	if _, ok := rec.dests[17].(*string); !ok {
+		t.Errorf("dest[17] = %T, want *string (status, scalar)", rec.dests[17])
+	}
+	if _, ok := rec.dests[18].(**uuid.UUID); !ok {
+		t.Errorf("dest[18] = %T, want **uuid.UUID (product_id, nullable pointer field)", rec.dests[18])
+	}
+	if _, ok := rec.dests[19].(*time.Time); !ok {
+		t.Errorf("dest[19] = %T, want *time.Time (created_at)", rec.dests[19])
 	}
 }
