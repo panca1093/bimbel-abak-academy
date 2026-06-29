@@ -214,7 +214,7 @@ describe("AdminIndexPage", () => {
     authStore = { token: "t", user: { role: "super_admin" } };
     render(<AdminIndexPage />);
     fireEvent.click(screen.getByText("Buat Soal Baru"));
-    expect(push).toHaveBeenCalledWith("/admin/exam/banks");
+    expect(push).toHaveBeenCalledWith("/admin/exam/tests");
     fireEvent.click(screen.getByText("Tambah Produk"));
     expect(push).toHaveBeenCalledWith("/admin/products");
     fireEvent.click(screen.getByText("Daftarkan Siswa"));
