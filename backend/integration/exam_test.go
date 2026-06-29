@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -577,4 +578,265 @@ func TestExam_NonAdminRole_gets_403_on_questions_endpoints(t *testing.T) {
 	resp, out := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID, body, studentToken)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "body=%v", out)
 	assert.Equal(t, "forbidden", out["code"])
+}
+
+// ----- Exam CRUD (Slice 2) -----
+
+func TestExam_AdminCreateExam_creates_linked_product_draft_zero_price(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	body := map[string]any{
+		"title":             "Tryout Akbar",
+		"timer_mode":        "per_question",
+		"is_free":           true,
+		"requires_checkin":  false,
+		"allow_leaderboard": true,
+		"randomize":         false,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+
+	exam, ok := out["exam"].(map[string]any)
+	require.True(t, ok, "expected exam object, got %T", out["exam"])
+	assert.NotEmpty(t, exam["id"])
+
+	product, ok := out["product"].(map[string]any)
+	require.True(t, ok, "expected product object, got %T", out["product"])
+	productID, ok := product["id"].(string)
+	require.True(t, ok, "expected product.id string, got %T", product["id"])
+	require.NotEmpty(t, productID)
+	assert.Equal(t, "exam", product["type"])
+	assert.Equal(t, "draft", product["status"])
+	assert.Equal(t, float64(0), product["price"])
+
+	ctx := context.Background()
+	var dbType, dbStatus string
+	var dbPrice int64
+	err := env.pool.QueryRow(ctx,
+		`SELECT type, status, price FROM product WHERE id = $1`, productID,
+	).Scan(&dbType, &dbStatus, &dbPrice)
+	require.NoError(t, err)
+	assert.Equal(t, "exam", dbType)
+	assert.Equal(t, "draft", dbStatus)
+	assert.Equal(t, int64(0), dbPrice)
+
+	var dbExamProductID string
+	err = env.pool.QueryRow(ctx,
+		`SELECT product_id FROM exam WHERE id = $1`, exam["id"].(string),
+	).Scan(&dbExamProductID)
+	require.NoError(t, err)
+	assert.Equal(t, productID, dbExamProductID, "exam.product_id in DB must match product.id from response")
+}
+
+func TestExam_AdminListExams_returns_data_and_cursor(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createdIDs := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		body := map[string]any{
+			"title":      fmt.Sprintf("Paket %d", i),
+			"timer_mode": "per_question",
+			"is_free":    true,
+		}
+		resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams", body, token)
+		require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+		exam := out["exam"].(map[string]any)
+		createdIDs[exam["id"].(string)] = true
+	}
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	assert.GreaterOrEqual(t, len(data), 3, "list should include all 3 created exams")
+	for _, raw := range data {
+		row := raw.(map[string]any)
+		assert.True(t, createdIDs[row["id"].(string)], "listed exam %v should be one of the 3 we created", row["id"])
+	}
+}
+
+func TestExam_AdminGetExam_detail_with_and_without_tests(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	emptyBody := map[string]any{"title": "Empty Paket", "timer_mode": "per_question", "is_free": true}
+	emptyResp, emptyOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams", emptyBody, token)
+	require.Equal(t, http.StatusCreated, emptyResp.StatusCode)
+	emptyExamID := emptyOut["exam"].(map[string]any)["id"].(string)
+
+	emptyGet, emptyDetail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+emptyExamID, nil, token)
+	require.Equal(t, http.StatusOK, emptyGet.StatusCode, "body=%v", emptyDetail)
+	assert.Equal(t, float64(0), emptyDetail["product_price"])
+	assert.Equal(t, "draft", emptyDetail["product_status"])
+	testsAny, ok := emptyDetail["tests"].([]any)
+	require.True(t, ok, "tests should be array, got %T", emptyDetail["tests"])
+	assert.Len(t, testsAny, 0)
+	assert.Equal(t, "Empty Paket", emptyDetail["title"])
+
+	withTestResp, withTestOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{"title": "Full Paket", "timer_mode": "per_question", "is_free": true}, token)
+	require.Equal(t, http.StatusCreated, withTestResp.StatusCode)
+	withExamID := withTestOut["exam"].(map[string]any)["id"].(string)
+
+	testB := seedTest(t, env, "B-Test", "math", "algebra", 30)
+	testA := seedTest(t, env, "A-Test", "math", "algebra", 30)
+	_ = seedQuestion(t, env, testA, "essay", "a", 1)
+
+	putBody := []string{testB, testA}
+	putResp := env.doJSON(t, http.MethodPut, "/api/v1/admin/exams/"+withExamID+"/tests", putBody, token)
+	require.Equal(t, http.StatusNoContent, putResp.StatusCode)
+	putResp.Body.Close()
+
+	detailResp, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+withExamID, nil, token)
+	require.Equal(t, http.StatusOK, detailResp.StatusCode, "body=%v", detail)
+	detailTests := detail["tests"].([]any)
+	require.Len(t, detailTests, 2)
+	first := detailTests[0].(map[string]any)["test"].(map[string]any)
+	second := detailTests[1].(map[string]any)["test"].(map[string]any)
+	assert.Equal(t, testB, first["id"], "sort_order 0 should be testB")
+	assert.Equal(t, testA, second["id"], "sort_order 1 should be testA")
+	assert.Equal(t, float64(0), first["question_count"], "testB has no seeded questions")
+	assert.Equal(t, float64(1), second["question_count"], "testA has 1 seeded question")
+}
+
+func TestExam_AdminUpdateExam_overlays_fields(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{"title": "Old", "timer_mode": "per_question", "is_free": true}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode)
+	examID := createOut["exam"].(map[string]any)["id"].(string)
+
+	_, originalDetail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	originalProductID := originalDetail["product_id"].(string)
+	require.NotEmpty(t, originalProductID)
+
+	scheduled := time.Date(2030, 1, 15, 10, 0, 0, 0, time.UTC)
+	patchBody := map[string]any{
+		"title":            "New Title",
+		"scheduled_at":     scheduled.Format(time.RFC3339),
+		"timer_mode":       "overall",
+		"duration_minutes": 60,
+	}
+	patchResp, patchOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/exams/"+examID, patchBody, token)
+	require.Equal(t, http.StatusOK, patchResp.StatusCode, "body=%v", patchOut)
+	assert.Equal(t, "New Title", patchOut["title"])
+	assert.Equal(t, "overall", patchOut["timer_mode"])
+	assert.Equal(t, float64(60), patchOut["duration_minutes"])
+
+	getResp, getOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	require.Equal(t, http.StatusOK, getResp.StatusCode, "body=%v", getOut)
+	assert.Equal(t, "New Title", getOut["title"])
+	assert.Equal(t, "overall", getOut["timer_mode"])
+	assert.Equal(t, float64(60), getOut["duration_minutes"])
+	assert.Equal(t, originalProductID, getOut["product_id"], "product_id must not change on PATCH")
+}
+
+func TestExam_AdminReplaceExamTests_declarative_and_bad_id_leaves_rows_intact(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{"title": "Replaceable", "timer_mode": "per_question", "is_free": true}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode)
+	examID := createOut["exam"].(map[string]any)["id"].(string)
+
+	t1 := seedTest(t, env, "T1", "math", "algebra", 30)
+	t2 := seedTest(t, env, "T2", "math", "algebra", 30)
+	t3 := seedTest(t, env, "T3", "math", "algebra", 30)
+	fakeID := "11111111-2222-3333-4444-555555555555"
+
+	putResp := env.doJSON(t, http.MethodPut, "/api/v1/admin/exams/"+examID+"/tests",
+		[]string{t1, t2}, token)
+	require.Equal(t, http.StatusNoContent, putResp.StatusCode)
+	putResp.Body.Close()
+
+	detailResp, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	require.Equal(t, http.StatusOK, detailResp.StatusCode, "body=%v", detail)
+	cur := detail["tests"].([]any)
+	require.Len(t, cur, 2)
+
+	putResp2 := env.doJSON(t, http.MethodPut, "/api/v1/admin/exams/"+examID+"/tests",
+		[]string{t3}, token)
+	require.Equal(t, http.StatusNoContent, putResp2.StatusCode)
+	putResp2.Body.Close()
+
+	_, detail2 := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	cur2 := detail2["tests"].([]any)
+	require.Len(t, cur2, 1, "after replace down to 1 test_id, list should be exactly 1")
+	assert.Equal(t, t3, cur2[0].(map[string]any)["test"].(map[string]any)["id"])
+
+	badResp, badOut := doJSONBody(t, env, http.MethodPut, "/api/v1/admin/exams/"+examID+"/tests",
+		[]string{fakeID}, token)
+	assert.True(t, badResp.StatusCode == http.StatusBadRequest || badResp.StatusCode == http.StatusNotFound,
+		"want 400 or 404, got %d body=%v", badResp.StatusCode, badOut)
+
+	_, detailAfter := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	curAfter := detailAfter["tests"].([]any)
+	require.Len(t, curAfter, 1, "bad test_id must not mutate exam_test rows")
+	assert.Equal(t, t3, curAfter[0].(map[string]any)["test"].(map[string]any)["id"])
+}
+
+func TestExam_AdminUpdateExamPrice_updates_linked_product(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{"title": "Pricing Paket", "timer_mode": "per_question", "is_free": false}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode)
+	examID := createOut["exam"].(map[string]any)["id"].(string)
+	productID := createOut["product"].(map[string]any)["id"].(string)
+
+	priceResp, priceOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/exams/"+examID+"/price",
+		map[string]any{"price": 50000}, token)
+	require.Equal(t, http.StatusOK, priceResp.StatusCode, "body=%v", priceOut)
+	assert.Equal(t, float64(50000), priceOut["price"])
+
+	getResp, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	require.Equal(t, http.StatusOK, getResp.StatusCode, "body=%v", detail)
+	assert.Equal(t, float64(50000), detail["product_price"], "ExamDetail must reflect new price")
+
+	ctx := context.Background()
+	var dbPrice int64
+	err := env.pool.QueryRow(ctx, `SELECT price FROM product WHERE id = $1`, productID).Scan(&dbPrice)
+	require.NoError(t, err)
+	assert.Equal(t, int64(50000), dbPrice, "product.price in DB must equal 50000")
+}
+
+func TestExam_AdminPublishExam_marks_product_published(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{"title": "Publishable", "timer_mode": "overall", "duration_minutes": 90, "is_free": false}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode)
+	examID := createOut["exam"].(map[string]any)["id"].(string)
+	productID := createOut["product"].(map[string]any)["id"].(string)
+
+	priceResp, _ := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/exams/"+examID+"/price",
+		map[string]any{"price": 25000}, token)
+	require.Equal(t, http.StatusOK, priceResp.StatusCode)
+
+	pubResp, pubOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams/"+examID+"/publish",
+		nil, token)
+	require.Equal(t, http.StatusOK, pubResp.StatusCode, "body=%v", pubOut)
+
+	getResp, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	require.Equal(t, http.StatusOK, getResp.StatusCode, "body=%v", detail)
+	assert.Equal(t, "published", detail["product_status"], "ExamDetail.product_status should be 'published'")
+
+	ctx := context.Background()
+	var dbStatus string
+	err := env.pool.QueryRow(ctx, `SELECT status FROM product WHERE id = $1`, productID).Scan(&dbStatus)
+	require.NoError(t, err)
+	assert.Equal(t, "published", dbStatus, "product.status in DB must equal 'published'")
 }

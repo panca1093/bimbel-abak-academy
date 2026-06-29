@@ -450,3 +450,72 @@ export interface QuestionListResponse {
   data: QuestionWithOptions[];
   next_cursor?: string;
 }
+
+export interface Exam {
+  id: string;
+  title: string;
+  is_free?: boolean;
+  scheduled_at?: string | null;
+  requires_checkin?: boolean;
+  allow_leaderboard?: boolean;
+  cdn_bundle?: boolean;
+  bundle_url?: string | null;
+  bundle_generated_at?: string | null;
+  check_in_window_minutes?: number | null;
+  grace_window_minutes?: number | null;
+  max_attempts?: number | null;
+  timer_mode?: string;
+  duration_minutes?: number | null;
+  randomize?: boolean;
+  result_config?: string;
+  result_release_at?: string | null;
+  status?: string;
+  product_id?: string | null;
+  created_at?: string;
+}
+
+export interface ExamListItem extends Exam {
+  product_price: number;
+  product_status: string;
+}
+
+export interface ExamTestEntry {
+  id: string;
+  exam_id: string;
+  test_id: string;
+  sort_order: number;
+  test: {
+    id: string;
+    title: string;
+    subject: string;
+    topic?: string | null;
+    duration_minutes?: number | null;
+    question_count: number;
+  };
+}
+
+export interface ExamDetail extends ExamListItem {
+  tests: ExamTestEntry[];
+}
+
+export interface CreateExamPayload {
+  title: string;
+  scheduled_at?: string | null;
+  timer_mode?: string;
+  duration_minutes?: number | null;
+  is_free?: boolean;
+  requires_checkin?: boolean;
+  allow_leaderboard?: boolean;
+  randomize?: boolean;
+}
+
+export interface UpdateExamPayload {
+  title?: string;
+  scheduled_at?: string | null;
+  timer_mode?: string;
+  duration_minutes?: number | null;
+  is_free?: boolean;
+  requires_checkin?: boolean;
+  allow_leaderboard?: boolean;
+  randomize?: boolean;
+}

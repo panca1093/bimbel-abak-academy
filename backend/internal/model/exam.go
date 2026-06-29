@@ -150,3 +150,35 @@ type QuestionWithOptions struct {
 	Question Question         `json:"question"`
 	Options  []QuestionOption `json:"options"`
 }
+
+// ExamListItem is the read shape returned by GET /admin/exams — an Exam row joined
+// with product.price and product.status. Cursor pagination assembles a slice of these.
+type ExamListItem struct {
+	Exam          `json:",inline"`
+	ProductPrice  int64  `json:"product_price"`
+	ProductStatus string `json:"product_status"`
+}
+
+// ExamTestEntry is the read shape for an exam_test row plus the inline Test metadata
+// (title, subject, topic, duration_minutes, question_count) needed by the admin detail
+// page without a second round-trip.
+type ExamTestEntry struct {
+	ExamTest `json:",inline"`
+	Test     struct {
+		ID              uuid.UUID `json:"id"`
+		Title           string    `json:"title"`
+		Subject         string    `json:"subject"`
+		Topic           *string   `json:"topic"`
+		DurationMinutes *int      `json:"duration_minutes"`
+		QuestionCount   int       `json:"question_count"`
+	} `json:"test"`
+}
+
+// ExamDetail is the read shape returned by GET /admin/exams/:id — full Exam config
+// joined with product price/status and an ordered list of attached tests.
+type ExamDetail struct {
+	Exam          `json:",inline"`
+	ProductPrice  int64            `json:"product_price"`
+	ProductStatus string           `json:"product_status"`
+	Tests         []ExamTestEntry  `json:"tests"`
+}

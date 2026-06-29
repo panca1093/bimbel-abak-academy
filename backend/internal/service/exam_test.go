@@ -350,5 +350,86 @@ func TestValidateQuestion_multi_answer_rejects_correct_answer_set(t *testing.T) 
 	}
 }
 
+func TestValidateExam_rejects_empty_title(t *testing.T) {
+	e := model.Exam{Title: "   "}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("empty title should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "exam title required") {
+		t.Errorf("empty title msg should mention 'exam title required', got %q", err.Error())
+	}
+}
+
+func TestValidateExam_rejects_invalid_timer_mode(t *testing.T) {
+	e := model.Exam{Title: "Finals", TimerMode: "freeform"}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("invalid timer_mode should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "timer_mode must be overall or per_question") {
+		t.Errorf("invalid timer_mode msg should mention 'timer_mode must be overall or per_question', got %q", err.Error())
+	}
+}
+
+func TestValidateExam_requires_duration_when_overall(t *testing.T) {
+	e := model.Exam{Title: "Finals", TimerMode: "overall"}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("overall with nil duration should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "duration_minutes required and positive when timer_mode=overall") {
+		t.Errorf("overall nil-duration msg should mention duration requirement, got %q", err.Error())
+	}
+
+	zero := 0
+	e2 := model.Exam{Title: "Finals", TimerMode: "overall", DurationMinutes: &zero}
+	err = validateExam(e2)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("overall with zero duration should return ErrValidation, got %v", err)
+	}
+}
+
+func TestValidateExam_accepts_valid_overall(t *testing.T) {
+	e := model.Exam{Title: "Finals", TimerMode: "overall", DurationMinutes: intptr(120)}
+	if err := validateExam(e); err != nil {
+		t.Errorf("valid overall should pass, got %v", err)
+	}
+}
+
+func TestValidateExam_accepts_valid_per_question(t *testing.T) {
+	e := model.Exam{Title: "Finals", TimerMode: "per_question"}
+	if err := validateExam(e); err != nil {
+		t.Errorf("valid per_question should pass, got %v", err)
+	}
+}
+
+func TestValidateExam_accepts_empty_timer_mode_legacy(t *testing.T) {
+	e := model.Exam{Title: "Legacy", TimerMode: ""}
+	if err := validateExam(e); err != nil {
+		t.Errorf("empty timer_mode (legacy) should pass, got %v", err)
+	}
+}
+
+func TestCheckTypeRBAC_admin_exam_allows_exam(t *testing.T) {
+	if err := checkTypeRBAC(RoleAdminExam, "exam"); err != nil {
+		t.Errorf("admin_exam on exam type should be allowed, got %v", err)
+	}
+}
+
+func TestCheckTypeRBAC_admin_exam_blocks_book(t *testing.T) {
+	err := checkTypeRBAC(RoleAdminExam, "book")
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("admin_exam on book type should return ErrForbidden, got %v", err)
+	}
+}
+
+func TestCheckTypeRBAC_admin_exam_blocks_course(t *testing.T) {
+	err := checkTypeRBAC(RoleAdminExam, "course")
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("admin_exam on course type should return ErrForbidden, got %v", err)
+	}
+}
+
 // suppress unused: uuid is imported to avoid unused-import lint if tests get trimmed later
 var _ = uuid.Nil
