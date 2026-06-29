@@ -612,6 +612,22 @@ export const DICT = {
     schools_placeholder_name: "mis. SMAN 1 Jakarta",
     schools_field_city: "Kota",
     schools_field_province: "Provinsi",
+
+    // Admin — exam tests (Slice 1)
+    tests_page_title: "Penyusun Tes",
+    tests_empty: "Belum ada tes. Buat tes pertama Anda.",
+    tests_new: "Tes baru",
+    tests_edit: "Sunting tes",
+    tests_field_title: "Judul",
+    tests_field_subject: "Mata pelajaran",
+    tests_field_topic: "Topik",
+    tests_field_duration: "Durasi (menit)",
+    tests_field_audio_url: "URL audio",
+    tests_field_audio_play_limit: "Batas pemutaran audio",
+    tests_confirm_delete: "Hapus tes ini?",
+    tests_create_success: "Tes dibuat",
+    tests_update_success: "Tes diperbarui",
+    tests_delete_success: "Tes dihapus",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1220,6 +1236,22 @@ export const DICT = {
     schools_placeholder_name: "e.g. SMAN 1 Jakarta",
     schools_field_city: "City",
     schools_field_province: "Province",
+
+    // Admin — exam tests (Slice 1)
+    tests_page_title: "Test authoring",
+    tests_empty: "No tests yet. Create your first test.",
+    tests_new: "New test",
+    tests_edit: "Edit test",
+    tests_field_title: "Title",
+    tests_field_subject: "Subject",
+    tests_field_topic: "Topic",
+    tests_field_duration: "Duration (minutes)",
+    tests_field_audio_url: "Audio URL",
+    tests_field_audio_play_limit: "Audio play limit",
+    tests_confirm_delete: "Delete this test?",
+    tests_create_success: "Test created",
+    tests_update_success: "Test updated",
+    tests_delete_success: "Test deleted",
   },
 };
 
