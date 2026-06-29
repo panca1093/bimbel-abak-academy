@@ -160,6 +160,17 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminQuestions.PATCH("/:id", h.AdminUpdateQuestion)
 	adminQuestions.DELETE("/:id", h.AdminDeleteQuestion)
 
+	// Admin exam package routes (Exam + linked Product)
+	adminExams := admin.Group("/exams")
+	adminExams.Use(handler.RBACMiddleware("products(exam):write"))
+	adminExams.GET("", h.AdminListExams)
+	adminExams.POST("", h.AdminCreateExam)
+	adminExams.GET("/:id", h.AdminGetExam)
+	adminExams.PATCH("/:id", h.AdminUpdateExam)
+	adminExams.PUT("/:id/tests", h.AdminReplaceExamTests)
+	adminExams.PATCH("/:id/price", h.AdminUpdateExamPrice)
+	adminExams.POST("/:id/publish", h.AdminPublishExam)
+
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")
 	adminSystem.Use(handler.RBACMiddleware("system:admin"))
