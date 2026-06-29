@@ -16,6 +16,7 @@ import (
 var (
 	ErrTestNotFound     = errors.New("test not found")
 	ErrQuestionNotFound = errors.New("question not found")
+	ErrExamNotFound     = errors.New("exam not found")
 	ErrValidation       = errors.New("validation failed")
 )
 
@@ -224,4 +225,150 @@ func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	return nil
+}
+
+var validTimerModes = map[string]bool{
+	"overall":      true,
+	"per_question": true,
+}
+
+// validateExam enforces exam-level invariants: title required, timer_mode
+// ∈ {overall, per_question} (empty allowed for legacy rows), and duration
+// required when timer_mode=overall.
+func validateExam(e model.Exam) error {
+	if strings.TrimSpace(e.Title) == "" {
+		return fmt.Errorf("%w: exam title required", ErrValidation)
+	}
+	if e.TimerMode != "" && !validTimerModes[e.TimerMode] {
+		return fmt.Errorf("%w: timer_mode must be overall or per_question", ErrValidation)
+	}
+	if e.TimerMode == "overall" {
+		if e.DurationMinutes == nil || *e.DurationMinutes <= 0 {
+			return fmt.Errorf("%w: duration_minutes required and positive when timer_mode=overall", ErrValidation)
+		}
+	}
+	return nil
+}
+
+func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, model.Product, error) {
+	if err := validateExam(m); err != nil {
+		return model.Exam{}, model.Product{}, err
+	}
+	exam, product, err := s.storeRepo.CreateProductAndExamTx(ctx, &m)
+	if err != nil {
+		return model.Exam{}, model.Product{}, err
+	}
+	return exam, product, nil
+}
+
+func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (model.Exam, error) {
+	if err := validateExam(m); err != nil {
+		return model.Exam{}, err
+	}
+	existing, err := s.storeRepo.GetExamByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Exam{}, ErrExamNotFound
+		}
+		return model.Exam{}, err
+	}
+	m.ID = id
+	m.ProductID = existing.ProductID
+	m.CreatedAt = existing.CreatedAt
+	if err := s.storeRepo.UpdateExam(ctx, id, &m); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Exam{}, ErrExamNotFound
+		}
+		return model.Exam{}, err
+	}
+	return m, nil
+}
+
+func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {
+	if _, err := s.storeRepo.GetExamByID(ctx, examID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrExamNotFound
+		}
+		return err
+	}
+
+	for _, testID := range testIDs {
+		if _, err := s.storeRepo.GetTestByID(ctx, testID); err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrTestNotFound
+			}
+			return err
+		}
+	}
+
+	tests := make([]model.ExamTest, len(testIDs))
+	for i, testID := range testIDs {
+		tests[i] = model.ExamTest{ExamID: examID, TestID: testID, SortOrder: i}
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.ReplaceExamTestsTx(ctx, tx, examID, tests); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *Service) UpdateExamPrice(ctx context.Context, examID uuid.UUID, price int64) error {
+	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrExamNotFound
+		}
+		return err
+	}
+	if exam.ProductID == nil {
+		return fmt.Errorf("%w: exam has no linked product", ErrValidation)
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.UpdateProductPriceTx(ctx, tx, *exam.ProductID, price); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *Service) PublishExam(ctx context.Context, examID uuid.UUID) error {
+	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrExamNotFound
+		}
+		return err
+	}
+	if exam.ProductID == nil {
+		return fmt.Errorf("%w: exam has no linked product", ErrValidation)
+	}
+	return s.PublishProduct(ctx, exam.ProductID.String(), RoleAdminExam)
+}
+
+func (s *Service) GetExam(ctx context.Context, id uuid.UUID) (model.ExamDetail, error) {
+	d, err := s.storeRepo.GetExamDetail(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.ExamDetail{}, ErrExamNotFound
+		}
+		return model.ExamDetail{}, err
+	}
+	return *d, nil
+}
+
+func (s *Service) ListExams(ctx context.Context, filter repository.ExamFilter) ([]model.ExamListItem, string, error) {
+	return s.storeRepo.ListExams(ctx, filter)
 }
