@@ -1,13 +1,91 @@
 package repository
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"akademi-bimbel/internal/model"
 )
+
+// Compile-time check: *Repository must implement all exam methods declared by Task 4.
+var _ interface {
+	CreateTest(context.Context, *model.Test) error
+	GetTestByID(context.Context, uuid.UUID) (*model.Test, error)
+	GetTestDetail(context.Context, uuid.UUID) (*model.TestDetail, error)
+	ListTests(context.Context, TestFilter) ([]model.Test, string, error)
+	UpdateTest(context.Context, uuid.UUID, *model.Test) error
+	DeleteTest(context.Context, uuid.UUID) error
+	ListQuestions(context.Context, uuid.UUID) ([]model.QuestionWithOptions, error)
+	CreateQuestionTx(context.Context, pgx.Tx, *model.Question, []model.QuestionOption) error
+	UpdateQuestionTx(context.Context, pgx.Tx, *model.Question, []model.QuestionOption) error
+	DeleteQuestion(context.Context, uuid.UUID) error
+} = (*Repository)(nil)
+
+// Sentinel error from the package: uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
+var _ error = ErrSortOrderConflict
+
+func TestErrSortOrderConflict_isExported(t *testing.T) {
+	if ErrSortOrderConflict == nil {
+		t.Fatal("ErrSortOrderConflict must be a non-nil sentinel")
+	}
+	if ErrSortOrderConflict.Error() == "" {
+		t.Error("ErrSortOrderConflict must have a non-empty message")
+	}
+}
+
+func TestErrSortOrderConflict_isDistinctFromErrNotFound(t *testing.T) {
+	if errors.Is(ErrSortOrderConflict, ErrNotFound) {
+		t.Error("ErrSortOrderConflict must NOT be wrapped by/equal to ErrNotFound")
+	}
+}
+
+func TestTestFilterShape(t *testing.T) {
+	f := TestFilter{
+		Subject: "math",
+		Topic:   "algebra",
+		Cursor:  uuid.NewString(),
+		Limit:   10,
+	}
+	if f.Subject != "math" || f.Topic != "algebra" || f.Limit != 10 {
+		t.Errorf("TestFilter fields not round-tripping: %+v", f)
+	}
+}
+
+func TestTestDetailShape(t *testing.T) {
+	now := time.Now()
+	td := model.TestDetail{
+		Test: model.Test{
+			ID:              uuid.New(),
+			Title:           "Sample",
+			Subject:         "math",
+			Topic:           "algebra",
+			DurationMinutes: 60,
+			CreatedAt:       now,
+		},
+		Questions: []model.QuestionWithOptions{
+			{
+				Question: model.Question{
+					ID:        uuid.New(),
+					TestID:    uuid.New(),
+					Format:    "mcq",
+					Body:      "2+2",
+					SortOrder: 1,
+				},
+				Options: []model.QuestionOption{
+					{QuestionID: uuid.New(), Key: "a", Text: "4", IsCorrect: true, SortOrder: 1},
+				},
+			},
+		},
+	}
+	if len(td.Questions) != 1 || len(td.Questions[0].Options) != 1 {
+		t.Errorf("TestDetail not assembling as expected: %+v", td)
+	}
+}
 
 type recordingScanner struct {
 	dests []any
