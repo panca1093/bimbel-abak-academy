@@ -144,6 +144,22 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminNotifs.GET("", h.AdminListNotifications)
 	adminNotifs.PATCH("/:id/read", h.AdminMarkNotificationRead)
 
+	// Admin exam routes (Tests + Questions)
+	adminTests := admin.Group("/tests")
+	adminTests.Use(handler.RBACMiddleware("tests:*"))
+	adminTests.GET("", h.AdminListTests)
+	adminTests.POST("", h.AdminCreateTest)
+	adminTests.GET("/:id", h.AdminGetTest)
+	adminTests.PATCH("/:id", h.AdminUpdateTest)
+	adminTests.DELETE("/:id", h.AdminDeleteTest)
+	adminTests.GET("/:id/questions", h.AdminListQuestions)
+	adminTests.POST("/:id/questions", h.AdminCreateQuestion)
+
+	adminQuestions := admin.Group("/questions")
+	adminQuestions.Use(handler.RBACMiddleware("questions:*"))
+	adminQuestions.PATCH("/:id", h.AdminUpdateQuestion)
+	adminQuestions.DELETE("/:id", h.AdminDeleteQuestion)
+
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")
 	adminSystem.Use(handler.RBACMiddleware("system:admin"))
