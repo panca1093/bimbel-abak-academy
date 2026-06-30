@@ -77,10 +77,10 @@ export async function downloadCard(id: string): Promise<void> {
 export function useCheckIn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (registrationId: string) =>
+    mutationFn: ({ registrationId, token }: { registrationId: string; token: string }) =>
       authFetch<CheckInResult>(
         `/exam/registrations/${encodeURIComponent(registrationId)}/checkin`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify({ token }) },
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: examKeys.details() });

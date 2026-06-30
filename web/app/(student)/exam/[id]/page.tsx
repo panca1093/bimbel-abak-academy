@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertCircle, ArrowLeft, Download, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
-import { downloadCard, useRegistration } from "@/lib/hooks/exam";
+import {
+  downloadCard,
+  useCheckIn,
+  useRegistration,
+  useStartSession,
+} from "@/lib/hooks/exam";
+import { ApiError } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -36,6 +42,48 @@ export default function ExamDetailPage() {
   const [showToken, setShowToken] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  // ── Check-in state (FR27) ───────────────────────────────────────────────
+  const [token, setToken] = useState("");
+  const checkInMutation = useCheckIn();
+
+  const handleCheckIn = () => {
+    if (!id || !token.trim()) return;
+    checkInMutation.mutate(
+      { registrationId: id, token: token.trim() },
+      {
+        onSuccess: () => {
+          toast.success(t("checkin_success"));
+          setToken("");
+        },
+        onError: (err) => {
+          const msg =
+            err instanceof ApiError
+              ? err.message
+              : err instanceof Error
+                ? err.message
+                : t("invalid_token");
+          toast.error(msg);
+        },
+      },
+    );
+  };
+
+  // ── Start gate state (FR28) ─────────────────────────────────────────────
+  const startSessionMutation = useStartSession();
+
+  const handleStart = async () => {
+    if (!reg) return;
+    try {
+      const result = await startSessionMutation.mutateAsync(reg.id);
+      router.push(`/exam/sessions/${result.session_id}`);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : t("competition_error");
+      toast.error(msg);
+    }
+  };
+
+  // ── Download handler ────────────────────────────────────────────────────
   const handleDownload = async () => {
     if (!id) return;
     setDownloading(true);
@@ -48,6 +96,45 @@ export default function ExamDetailPage() {
       setDownloading(false);
     }
   };
+
+  // ── Window / gate computation ────────────────────────────────────────────
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const scheduledAt = reg?.exam.scheduled_at
+    ? new Date(reg.exam.scheduled_at)
+    : null;
+  const windowMin = reg?.exam.check_in_window_minutes ?? 15;
+  const windowOpen =
+    scheduledAt
+      ? new Date(scheduledAt.getTime() - windowMin * 60 * 1_000)
+      : null;
+  const inWindow =
+    windowOpen !== null &&
+    scheduledAt !== null &&
+    now >= windowOpen &&
+    now < scheduledAt;
+  const isBeforeWindow =
+    windowOpen !== null && scheduledAt !== null && now < windowOpen;
+  const isAfterWindow =
+    scheduledAt !== null && now >= scheduledAt;
+
+  const showCheckInForm =
+    reg?.exam.requires_checkin && reg?.status === "registered";
+  const showStartGate =
+    reg?.status === "checked_in" || !reg?.exam.requires_checkin;
+  const startDisabled = Boolean(
+    reg?.exam.requires_checkin &&
+      reg?.status === "checked_in" &&
+      scheduledAt &&
+      now < scheduledAt,
+  );
+
+  // ── Loading / error / empty states ───────────────────────────────────────
 
   if (isLoading) {
     return <DetailSkeleton />;
@@ -187,9 +274,88 @@ export default function ExamDetailPage() {
           <p className="mt-2 text-sm text-ink-700">
             {t("competition_detail_checkin_body").replace(
               "{N}",
-              String(checkInWindow ?? 15)
+              String(checkInWindow ?? 15),
             )}
           </p>
+        </Card>
+      )}
+
+      {/* ── Check-in form (FR27) ────────────────────────────────────────── */}
+      {showCheckInForm && (
+        <Card className="mt-4 p-5">
+          <h3 className="font-serif text-base font-semibold text-ink-900">
+            {t("exam_checkin_title")}
+          </h3>
+
+          {isBeforeWindow && (
+            <p className="mt-2 text-sm text-ink-500">
+              {t("window_closed_early")}
+            </p>
+          )}
+          {isAfterWindow && (
+            <p className="mt-2 text-sm text-ink-500">
+              {t("window_closed_late")}
+            </p>
+          )}
+
+          <div className="mt-3 space-y-3">
+            <div>
+              <label
+                htmlFor="checkin-token"
+                className="text-xs uppercase tracking-wide text-ink-500"
+              >
+                {t("token_label")}
+              </label>
+              <input
+                id="checkin-token"
+                type="text"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={t("token_placeholder")}
+                disabled={!inWindow}
+                className="mt-1 block w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+              />
+            </div>
+            <p className="text-xs text-ink-400">{t("token_hint")}</p>
+            <Button
+              type="button"
+              onClick={handleCheckIn}
+              disabled={
+                !inWindow || !token.trim() || checkInMutation.isPending
+              }
+            >
+              {checkInMutation.isPending ? t("sys_loading") : t("check_in")}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Start gate (FR28) ───────────────────────────────────────────── */}
+      {showStartGate && (
+        <Card className="mt-4 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-serif text-base font-semibold text-ink-900">
+                {t("exam_start_button")}
+              </h3>
+              {startDisabled && scheduledAt && (
+                <p className="mt-1 text-sm text-ink-500">
+                  {t("not_started")}
+                </p>
+              )}
+            </div>
+            <Button
+              type="button"
+              size="lg"
+              onClick={handleStart}
+              disabled={startDisabled || startSessionMutation.isPending}
+              className="shrink-0"
+            >
+              {startSessionMutation.isPending
+                ? t("sys_loading")
+                : t("exam_start_button")}
+            </Button>
+          </div>
         </Card>
       )}
     </div>
