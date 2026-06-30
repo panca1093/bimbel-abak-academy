@@ -519,3 +519,39 @@ export interface UpdateExamPayload {
   allow_leaderboard?: boolean;
   randomize?: boolean;
 }
+
+export interface RegistrationListItem {
+  id: string;
+  student_id: string;
+  exam_id: string;
+  token: string;
+  card_pdf_url: string | null;
+  checked_in_at: string | null;
+  attempts_used: number;
+  status: string;
+  created_at: string;
+  exam_title: string;
+  scheduled_at: string | null;
+}
+
+export interface RegistrationDetail {
+  id: string;
+  student_id: string;
+  exam_id: string;
+  token: string;
+  card_pdf_url: string | null;
+  checked_in_at: string | null;
+  attempts_used: number;
+  status: string;
+  created_at: string;
+  exam: {
+    id: string;
+    title: string;
+    scheduled_at: string | null;
+    requires_checkin: boolean;
+    check_in_window_minutes: number | null;
+    timer_mode: string;
+    duration_minutes: number | null;
+    result_config: string;
+  };
+}
