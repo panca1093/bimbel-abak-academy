@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -692,4 +693,125 @@ func (r *Repository) UpdateProductPriceTx(ctx context.Context, tx pgx.Tx, produc
 		price, productID,
 	)
 	return err
+}
+
+func (r *Repository) GetExamByProductID(ctx context.Context, productID uuid.UUID) (*model.Exam, error) {
+	out := &model.Exam{}
+	err := scanExam(r.pool.QueryRow(ctx,
+		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
+			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
+			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
+			status, product_id, created_at
+		FROM exam
+		WHERE product_id = $1`,
+		productID,
+	), out)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
+// CreateExamRegistration inserts a row using ON CONFLICT DO NOTHING — outbox
+// re-delivery (same OrderPaid event processed twice) collapses to a no-op when
+// (student_id, exam_id) already exists. RowsAffected == 0 is success, not error.
+func (r *Repository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
+	_, err := tx.Exec(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (student_id, exam_id) DO NOTHING`,
+		reg.StudentID, reg.ExamID, reg.Token, reg.Status,
+	)
+	return err
+}
+
+func (r *Repository) StampOrderItemFulfilledAt(ctx context.Context, tx pgx.Tx, orderID, productID uuid.UUID) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE order_items SET fulfilled_at = now() WHERE order_id = $1 AND product_id = $2`,
+		orderID, productID,
+	)
+	return err
+}
+
+func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentID uuid.UUID) ([]model.RegistrationListItem, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_pdf_url,
+			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
+			e.title, e.scheduled_at
+		FROM exam_registration reg
+		JOIN exam e ON e.id = reg.exam_id
+		WHERE reg.student_id = $1
+		ORDER BY reg.created_at DESC`,
+		studentID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.RegistrationListItem
+	for rows.Next() {
+		var item model.RegistrationListItem
+		var cardPDFURL *string
+		var checkedInAt *time.Time
+		if err := rows.Scan(
+			&item.ID, &item.StudentID, &item.ExamID, &item.Token, &cardPDFURL,
+			&checkedInAt, &item.AttemptsUsed, &item.Status, &item.CreatedAt,
+			&item.ExamTitle, &item.ScheduledAt,
+		); err != nil {
+			return nil, err
+		}
+		if cardPDFURL != nil {
+			item.CardPDFURL = cardPDFURL
+		}
+		if checkedInAt != nil {
+			item.CheckedInAt = checkedInAt
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.RegistrationListItem{}
+	}
+	return items, nil
+}
+
+func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, studentID uuid.UUID) (*model.RegistrationDetail, error) {
+	var detail model.RegistrationDetail
+	var cardPDFURL *string
+	var checkedInAt *time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_pdf_url,
+			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
+			e.id, e.title, e.scheduled_at, e.requires_checkin, e.check_in_window_minutes,
+			e.timer_mode, e.duration_minutes, e.result_config
+		FROM exam_registration reg
+		JOIN exam e ON e.id = reg.exam_id
+		WHERE reg.id = $1 AND reg.student_id = $2`,
+		regID, studentID,
+	).Scan(
+		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardPDFURL,
+		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt,
+		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.RequiresCheckin,
+		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
+		&detail.Exam.ResultConfig,
+	)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if cardPDFURL != nil {
+		detail.CardPDFURL = cardPDFURL
+	}
+	if checkedInAt != nil {
+		detail.CheckedInAt = checkedInAt
+	}
+	return &detail, nil
 }
