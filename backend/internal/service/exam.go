@@ -14,10 +14,11 @@ import (
 )
 
 var (
-	ErrTestNotFound     = errors.New("test not found")
-	ErrQuestionNotFound = errors.New("question not found")
-	ErrExamNotFound     = errors.New("exam not found")
-	ErrValidation       = errors.New("validation failed")
+	ErrTestNotFound          = errors.New("test not found")
+	ErrQuestionNotFound      = errors.New("question not found")
+	ErrExamNotFound          = errors.New("exam not found")
+	ErrRegistrationNotFound  = errors.New("registration not found")
+	ErrValidation            = errors.New("validation failed")
 )
 
 var validQuestionFormats = map[string]bool{
@@ -371,4 +372,55 @@ func (s *Service) GetExam(ctx context.Context, id uuid.UUID) (model.ExamDetail, 
 
 func (s *Service) ListExams(ctx context.Context, filter repository.ExamFilter) ([]model.ExamListItem, string, error) {
 	return s.storeRepo.ListExams(ctx, filter)
+}
+
+func (s *Service) GetExamRegistrations(ctx context.Context, studentID string) ([]model.RegistrationListItem, error) {
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+	return s.storeRepo.GetExamRegistrationsByStudent(ctx, sid)
+}
+
+func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID string) (*model.RegistrationDetail, error) {
+	rid, err := uuid.Parse(regID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid registration id", ErrValidation)
+	}
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+	detail, err := s.storeRepo.GetExamRegistrationByID(ctx, rid, sid)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, ErrRegistrationNotFound
+	}
+	return detail, err
+}
+
+func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]byte, string, error) {
+	detail, err := s.GetExamRegistration(ctx, regID, studentID)
+	if err != nil {
+		return nil, "", err
+	}
+	studentName := ""
+	user, err := s.Me(ctx, studentID)
+	if err == nil && user != nil {
+		studentName = user.Name
+	}
+	tenantName := ""
+	cfg, err := s.GetSystemConfig(ctx)
+	if err == nil && cfg != nil {
+		if v, ok := cfg["app_name"]; ok && v != "" {
+			tenantName = v
+		}
+	}
+	if tenantName == "" {
+		tenantName = "Akademi Bimbel"
+	}
+	pdf, err := generateExamCardPDF(detail, studentName, tenantName)
+	if err != nil {
+		return nil, "", err
+	}
+	return pdf, "kartu-peserta-" + detail.Token + ".pdf", nil
 }
