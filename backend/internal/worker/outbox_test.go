@@ -22,6 +22,9 @@ type mockRepository struct {
 	getCoursesByProductIDFn   func(context.Context, uuid.UUID) ([]model.Course, error)
 	beginTxFn                 func(context.Context) (pgx.Tx, error)
 	getExpiredPaymentOrdersFn func(context.Context, int) ([]uuid.UUID, error)
+	getExamByProductIDFn      func(context.Context, uuid.UUID) (*model.Exam, error)
+	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
+	stampOrderItemFulfilledFn func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 }
 
 func (m *mockRepository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
@@ -54,6 +57,27 @@ func (m *mockRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
 
 func (m *mockRepository) GetExpiredPaymentOrders(ctx context.Context, limit int) ([]uuid.UUID, error) {
 	return m.getExpiredPaymentOrdersFn(ctx, limit)
+}
+
+func (m *mockRepository) GetExamByProductID(ctx context.Context, productID uuid.UUID) (*model.Exam, error) {
+	if m.getExamByProductIDFn == nil {
+		return nil, nil
+	}
+	return m.getExamByProductIDFn(ctx, productID)
+}
+
+func (m *mockRepository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
+	if m.createExamRegistrationFn == nil {
+		return nil
+	}
+	return m.createExamRegistrationFn(ctx, tx, reg)
+}
+
+func (m *mockRepository) StampOrderItemFulfilledAt(ctx context.Context, tx pgx.Tx, orderID, productID uuid.UUID) error {
+	if m.stampOrderItemFulfilledFn == nil {
+		return nil
+	}
+	return m.stampOrderItemFulfilledFn(ctx, tx, orderID, productID)
 }
 
 type mockTx struct {
