@@ -520,6 +520,75 @@ export interface UpdateExamPayload {
   randomize?: boolean;
 }
 
+// ── Session engine types (FR26) ──────────────────────────────────────────
+// These mirror the backend ExamSession / ExamSessionAnswer / SessionViolationLog
+// models but strip is_correct/correct_answer fields the server keeps private.
+
+export interface SessionQuestionOption {
+  key: string;
+  text: string;
+  image_url?: string | null;
+  sort_order: number;
+}
+
+export interface SessionQuestion {
+  id: string;
+  test_id: string;
+  format: QuestionFormat;
+  body: string;
+  explanation?: string | null;
+  difficulty?: string | null;
+  image_url?: string | null;
+  sort_order: number;
+  options: SessionQuestionOption[];
+}
+
+export interface SessionTest {
+  id: string;
+  title: string;
+  subject: string;
+  questions: SessionQuestion[];
+}
+
+export interface SessionStartPayload {
+  session_id: string;
+  remaining_seconds: number;
+  timer_mode: string;
+  duration_minutes?: number | null;
+  tests: SessionTest[];
+}
+
+export interface SessionAnswer {
+  question_id: string;
+  answer?: string | null;
+}
+
+export interface SessionState extends SessionStartPayload {
+  registration_id: string;
+  status: string;
+  started_at: string;
+  submitted_at?: string | null;
+  extended_until?: string | null;
+  last_saved_at?: string | null;
+  answers: SessionAnswer[];
+}
+
+export interface SessionAnswerInput {
+  question_id: string;
+  answer: string;
+}
+
+export interface SubmitResult {
+  submitted: boolean;
+  score?: number | null;
+  total?: number;
+}
+
+export interface CheckInResult {
+  checked_in: boolean;
+  checked_in_at: string;
+}
+
 export interface RegistrationListItem {
   id: string;
   student_id: string;
