@@ -115,6 +115,13 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	studentCourses.POST("/:id/lessons/:lId/complete", h.StudentMarkLessonComplete)
 	studentCourses.GET("/:id/progress", h.StudentCourseProgress)
 
+	// Student competition routes (Phase 4 exam registrations + card download)
+	competition := v1.Group("/competition")
+	competition.Use(handler.JWTMiddleware(svc, jwtSigner))
+	competition.GET("/registrations", h.StudentListRegistrations)
+	competition.GET("/registrations/:id", h.StudentGetRegistration)
+	competition.GET("/registrations/:id/card", h.StudentGetExamCard)
+
 	// Admin order routes
 	adminOrders := admin.Group("/orders")
 	adminOrders.Use(handler.RBACMiddleware("orders:write"))
