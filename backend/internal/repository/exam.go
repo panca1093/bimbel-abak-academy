@@ -937,6 +937,26 @@ func (r *Repository) GetExamSessionForStudent(ctx context.Context, sessionID, st
 	return &s, nil
 }
 
+// GetExamSessionByID returns a session by ID without ownership filter (admin use).
+func (r *Repository) GetExamSessionByID(ctx context.Context, sessionID uuid.UUID) (*model.ExamSession, error) {
+	var s model.ExamSession
+	err := scanExamSession(r.pool.QueryRow(ctx,
+		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
+			submitted_at, extended_until, admin_submitted, score, certificate_url,
+			last_saved_at, status, created_at
+		FROM exam_session
+		WHERE id = $1`,
+		sessionID,
+	), &s)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
 // GetSessionWithQuestions returns the ordered test->question->option tree for an exam.
 // Reuses GetTestDetail for each attached test.
 func (r *Repository) GetSessionWithQuestions(ctx context.Context, examID uuid.UUID) ([]model.TestDetail, error) {

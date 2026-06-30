@@ -1,0 +1,1489 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math"
+	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+
+	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
+)
+
+// ---------- fakeSessionRepo ----------
+
+type fakeSessionRepo struct {
+	registrations  map[uuid.UUID]*model.RegistrationDetail
+	exams          map[uuid.UUID]*model.Exam
+	sessions       map[uuid.UUID]*model.ExamSession
+	sessionAnswers map[uuid.UUID][]model.ExamSessionAnswer
+}
+
+func newFakeSessionRepo() *fakeSessionRepo {
+	return &fakeSessionRepo{
+		registrations:  make(map[uuid.UUID]*model.RegistrationDetail),
+		exams:          make(map[uuid.UUID]*model.Exam),
+		sessions:       make(map[uuid.UUID]*model.ExamSession),
+		sessionAnswers: make(map[uuid.UUID][]model.ExamSessionAnswer),
+	}
+}
+
+func (f *fakeSessionRepo) seedExam(exam *model.Exam) {
+	if exam.ID == uuid.Nil {
+		exam.ID = uuid.New()
+	}
+	if f.exams == nil {
+		f.exams = make(map[uuid.UUID]*model.Exam)
+	}
+	cp := *exam
+	f.exams[exam.ID] = &cp
+}
+
+func (f *fakeSessionRepo) seedRegistration(detail *model.RegistrationDetail) {
+	if f.registrations == nil {
+		f.registrations = make(map[uuid.UUID]*model.RegistrationDetail)
+	}
+	if detail.ExamRegistration.ID == uuid.Nil {
+		detail.ExamRegistration.ID = uuid.New()
+	}
+	// Only add exam if not already present (seedExam should be called first)
+	if _, exists := f.exams[detail.Exam.ID]; !exists {
+		if f.exams == nil {
+			f.exams = make(map[uuid.UUID]*model.Exam)
+		}
+		f.exams[detail.Exam.ID] = &model.Exam{
+			ID:                   detail.Exam.ID,
+			Title:                detail.Exam.Title,
+			RequiresCheckin:      detail.Exam.RequiresCheckin,
+			CheckInWindowMinutes: detail.Exam.CheckInWindowMinutes,
+			ScheduledAt:          detail.Exam.ScheduledAt,
+			TimerMode:            detail.Exam.TimerMode,
+			DurationMinutes:      detail.Exam.DurationMinutes,
+			ResultConfig:         detail.Exam.ResultConfig,
+		}
+	}
+	cp := *detail
+	f.registrations[detail.ExamRegistration.ID] = &cp
+}
+
+func (f *fakeSessionRepo) GetExamRegistrationByToken(_ context.Context, studentID uuid.UUID, token string) (*model.ExamRegistration, error) {
+	for _, d := range f.registrations {
+		if d.Token == token && d.StudentID == studentID {
+			reg := d.ExamRegistration
+			return &reg, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (f *fakeSessionRepo) GetExamRegistrationByID(_ context.Context, regID, studentID uuid.UUID) (*model.RegistrationDetail, error) {
+	d, ok := f.registrations[regID]
+	if !ok || d.StudentID != studentID {
+		return nil, repository.ErrNotFound
+	}
+	cp := *d
+	return &cp, nil
+}
+
+func (f *fakeSessionRepo) GetExamForSession(_ context.Context, examID uuid.UUID) (*model.Exam, error) {
+	e, ok := f.exams[examID]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	cp := *e
+	return &cp, nil
+}
+
+func (f *fakeSessionRepo) CheckInExam(_ context.Context, regID uuid.UUID) error {
+	d, ok := f.registrations[regID]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	now := time.Now()
+	d.CheckedInAt = &now
+	d.Status = "checked_in"
+	return nil
+}
+
+func (f *fakeSessionRepo) CreateExamSession(_ context.Context, regID uuid.UUID) (model.ExamSession, error) {
+	d, ok := f.registrations[regID]
+	if !ok {
+		return model.ExamSession{}, repository.ErrNotFound
+	}
+	d.AttemptsUsed++
+	d.Status = "in_progress"
+
+	s := model.ExamSession{
+		ID:             uuid.New(),
+		RegistrationID: regID,
+		StudentID:      d.StudentID,
+		ExamID:         d.Exam.ID,
+		AttemptNumber:  1,
+		StartedAt:      time.Now(),
+		Status:         "in_progress",
+	}
+	if f.sessions == nil {
+		f.sessions = make(map[uuid.UUID]*model.ExamSession)
+	}
+	f.sessions[s.ID] = &s
+	return s, nil
+}
+
+func (f *fakeSessionRepo) GetExamSessionForStudent(_ context.Context, sessionID, studentID uuid.UUID) (*model.ExamSession, error) {
+	s, ok := f.sessions[sessionID]
+	if !ok || s.StudentID != studentID {
+		return nil, repository.ErrNotFound
+	}
+	cp := *s
+	return &cp, nil
+}
+
+func (f *fakeSessionRepo) GetExamSessionByID(_ context.Context, sessionID uuid.UUID) (*model.ExamSession, error) {
+	s, ok := f.sessions[sessionID]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	cp := *s
+	return &cp, nil
+}
+
+func (f *fakeSessionRepo) GetSessionWithQuestions(_ context.Context, _ uuid.UUID) ([]model.TestDetail, error) {
+	return nil, nil
+}
+
+func (f *fakeSessionRepo) GetSessionAnswers(_ context.Context, sessionID uuid.UUID) ([]model.ExamSessionAnswer, error) {
+	answers, ok := f.sessionAnswers[sessionID]
+	if !ok {
+		return []model.ExamSessionAnswer{}, nil
+	}
+	return answers, nil
+}
+
+func (f *fakeSessionRepo) SaveAnswers(_ context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer) error {
+	if f.sessionAnswers == nil {
+		f.sessionAnswers = make(map[uuid.UUID][]model.ExamSessionAnswer)
+	}
+	f.sessionAnswers[sessionID] = answers
+	return nil
+}
+
+func (f *fakeSessionRepo) SubmitSession(_ context.Context, sessionID uuid.UUID, graded []model.ExamSessionAnswer, score float64, adminSubmitted bool) (int64, error) {
+	s, ok := f.sessions[sessionID]
+	if !ok {
+		return 0, repository.ErrNotFound
+	}
+	if s.Status != "in_progress" {
+		return 0, nil
+	}
+	s.Status = "submitted"
+	now := time.Now()
+	s.SubmittedAt = &now
+	s.Score = &score
+	s.AdminSubmitted = adminSubmitted
+	f.sessionAnswers[sessionID] = graded
+	return 1, nil
+}
+
+func (f *fakeSessionRepo) LogViolation(_ context.Context, v model.SessionViolationLog) error {
+	return nil
+}
+
+func (f *fakeSessionRepo) ReopenSession(_ context.Context, sessionID uuid.UUID, minutes int) error {
+	s, ok := f.sessions[sessionID]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	if s.Status != "in_progress" && s.Status != "submitted" {
+		return repository.ErrNotFound
+	}
+	ext := time.Now().Add(time.Duration(minutes) * time.Minute)
+	s.ExtendedUntil = &ext
+	return nil
+}
+
+// ---------- shimSessionService ----------
+
+type shimSessionService struct {
+	repo *fakeSessionRepo
+	rdb  *redis.Client
+	mr   *miniredis.Miniredis
+}
+
+func newShimSessionService(t *testing.T) (*shimSessionService, *miniredis.Miniredis) {
+	t.Helper()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	return &shimSessionService{
+		repo: newFakeSessionRepo(),
+		rdb:  rdb,
+		mr:   mr,
+	}, mr
+}
+
+// ---------- CheckIn ----------
+
+func (s *shimSessionService) CheckIn(ctx context.Context, studentID, token, fp string) (CheckInResult, error) {
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return CheckInResult{}, fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+
+	reg, err := s.repo.GetExamRegistrationByToken(ctx, sid, token)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return CheckInResult{}, ErrRegistrationNotFound
+		}
+		return CheckInResult{}, err
+	}
+
+	exam, err := s.repo.GetExamForSession(ctx, reg.ExamID)
+	if err != nil {
+		return CheckInResult{}, err
+	}
+
+	// requires_checkin guard
+	if !exam.RequiresCheckin {
+		return CheckInResult{}, ErrNotCheckedIn
+	}
+
+	// Window check: now in [scheduled_at - window, scheduled_at)
+	if exam.ScheduledAt != nil && exam.CheckInWindowMinutes != nil {
+		now := time.Now()
+		windowStart := exam.ScheduledAt.Add(-time.Duration(*exam.CheckInWindowMinutes) * time.Minute)
+		if now.Before(windowStart) || !now.Before(*exam.ScheduledAt) {
+			return CheckInResult{}, ErrCheckinWindowClosed
+		}
+	}
+
+	if err := s.repo.CheckInExam(ctx, reg.ID); err != nil {
+		return CheckInResult{}, err
+	}
+
+	// Redis: device lock
+	key := "exam:device:" + reg.ID.String()
+	var ttl time.Duration
+	if exam.DurationMinutes != nil && *exam.DurationMinutes > 0 {
+		ttl = time.Duration(*exam.DurationMinutes) * time.Minute
+	} else {
+		ttl = 24 * time.Hour
+	}
+	if err := s.rdb.Set(ctx, key, fp, ttl).Err(); err != nil {
+		return CheckInResult{}, err
+	}
+
+	return CheckInResult{
+		RegistrationID: reg.ID,
+		ExamTitle:      exam.Title,
+		ScheduledAt:    exam.ScheduledAt,
+	}, nil
+}
+
+func newReg(regID uuid.UUID, studentID uuid.UUID, examID uuid.UUID, opts ...func(*model.RegistrationDetail)) model.RegistrationDetail {
+	d := model.RegistrationDetail{}
+	d.ExamRegistration.ID = regID
+	d.ExamRegistration.StudentID = studentID
+	d.ExamRegistration.ExamID = examID
+	d.ExamRegistration.Token = "TOKEN"
+	d.ExamRegistration.Status = "registered"
+	d.Exam.ID = examID
+	for _, fn := range opts {
+		fn(&d)
+	}
+	return d
+}
+
+func TestCheckIn_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, mr := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(10 * time.Minute)
+	windowMin := 30
+	durationMin := 120
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		CheckInWindowMinutes: &windowMin,
+		DurationMinutes:      &durationMin,
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.Token = "ABC123" },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	result, err := svc.CheckIn(ctx, regDetail.StudentID.String(), "ABC123", "device-fp")
+	if err != nil {
+		t.Fatalf("CheckIn: %v", err)
+	}
+
+	if result.RegistrationID == uuid.Nil {
+		t.Error("expected non-nil registration_id")
+	}
+	if result.ExamTitle != "Finals" {
+		t.Errorf("exam_title: want Finals, got %q", result.ExamTitle)
+	}
+	if result.ScheduledAt == nil || !result.ScheduledAt.Equal(scheduledAt) {
+		t.Errorf("scheduled_at mismatch")
+	}
+
+	// Verify Redis device key
+	key := "exam:device:" + result.RegistrationID.String()
+	val, err := svc.rdb.Get(ctx, key).Result()
+	if err != nil {
+		t.Fatalf("Redis device key not found: %v", err)
+	}
+	if val != "device-fp" {
+		t.Errorf("device fp: want device-fp, got %q", val)
+	}
+
+	// Verify TTL
+	ttl, err := svc.rdb.TTL(ctx, key).Result()
+	if err != nil {
+		t.Fatalf("TTL check failed: %v", err)
+	}
+	if ttl <= 0 {
+		t.Errorf("expected positive TTL, got %v", ttl)
+	}
+
+	// Ignore miniredis in the linter
+	_ = mr
+}
+
+func TestCheckIn_WindowClosed_BeforeWindow(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(60 * time.Minute) // 60 min out, window 30 = opens 30 min from now
+	windowMin := 30
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		CheckInWindowMinutes: &windowMin,
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.Token = "ABC123" },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.CheckIn(ctx, regDetail.StudentID.String(), "ABC123", "fp")
+	if !errors.Is(err, ErrCheckinWindowClosed) {
+		t.Errorf("want ErrCheckinWindowClosed, got %v", err)
+	}
+}
+
+func TestCheckIn_WindowClosed_AfterScheduled(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-10 * time.Minute) // already past
+	windowMin := 30
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		CheckInWindowMinutes: &windowMin,
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.Token = "ABC123" },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.CheckIn(ctx, regDetail.StudentID.String(), "ABC123", "fp")
+	if !errors.Is(err, ErrCheckinWindowClosed) {
+		t.Errorf("want ErrCheckinWindowClosed, got %v", err)
+	}
+}
+
+func TestCheckIn_TokenNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.CheckIn(ctx, "11111111-1111-1111-1111-111111111111", "WRONG", "fp")
+	if !errors.Is(err, ErrRegistrationNotFound) {
+		t.Errorf("want ErrRegistrationNotFound, got %v", err)
+	}
+}
+
+func TestCheckIn_InvalidStudentID(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.CheckIn(ctx, "not-a-uuid", "ABC123", "fp")
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("want ErrValidation, got %v", err)
+	}
+}
+
+// ---------- StartSession ----------
+
+func (s *shimSessionService) StartSession(ctx context.Context, studentID, registrationID, fp string) (SessionStartPayload, error) {
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return SessionStartPayload{}, fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+	rid, err := uuid.Parse(registrationID)
+	if err != nil {
+		return SessionStartPayload{}, fmt.Errorf("%w: invalid registration id", ErrValidation)
+	}
+
+	detail, err := s.repo.GetExamRegistrationByID(ctx, rid, sid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return SessionStartPayload{}, ErrRegistrationNotFound
+		}
+		return SessionStartPayload{}, err
+	}
+
+	// Load exam config from the exam repo (source of truth)
+	exam, err := s.repo.GetExamForSession(ctx, detail.ExamID)
+	if err != nil {
+		return SessionStartPayload{}, err
+	}
+
+	// Branch on requires_checkin
+	if exam.RequiresCheckin {
+		if exam.ScheduledAt != nil && time.Now().Before(*exam.ScheduledAt) {
+			return SessionStartPayload{}, ErrExamNotStarted
+		}
+		if detail.CheckedInAt == nil {
+			return SessionStartPayload{}, ErrNotCheckedIn
+		}
+
+		// Device fingerprint check
+		key := "exam:device:" + rid.String()
+		deviceFP, err := s.rdb.Get(ctx, key).Result()
+		if err == redis.Nil {
+			return SessionStartPayload{}, ErrDeviceMismatch
+		}
+		if err != nil {
+			return SessionStartPayload{}, err
+		}
+		if deviceFP != fp {
+			return SessionStartPayload{}, ErrDeviceMismatch
+		}
+	}
+
+	// Attempt limit
+	if detail.AttemptsUsed >= 1 {
+		return SessionStartPayload{}, ErrAlreadyAttempted
+	}
+
+	// Create session
+	sess, err := s.repo.CreateExamSession(ctx, rid)
+	if err != nil {
+		return SessionStartPayload{}, err
+	}
+
+	// Get questions
+	// TODO: implement question loading and stripping
+
+	duration := exam.DurationMinutes
+	var remaining int64
+	if duration != nil && *duration > 0 {
+		deadline := sess.StartedAt.Add(time.Duration(*duration) * time.Minute)
+		remaining = int64(math.Max(0, time.Until(deadline).Seconds()))
+	}
+
+	return SessionStartPayload{
+		SessionID:        sess.ID,
+		RemainingSeconds: remaining,
+		TimerMode:        exam.TimerMode,
+		DurationMinutes:  duration,
+		Questions:        nil,
+	}, nil
+}
+
+func TestStartSession_NoCheckin_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	regDetail.Exam.RequiresCheckin = false
+	regDetail.Exam.TimerMode = "overall"
+	regDetail.Exam.DurationMinutes = intptr(120)
+	svc.repo.seedRegistration(&regDetail)
+
+	result, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	if result.SessionID == uuid.Nil {
+		t.Error("expected non-nil session_id")
+	}
+	if result.TimerMode != "overall" {
+		t.Errorf("timer_mode: want overall, got %q", result.TimerMode)
+	}
+	if result.RemainingSeconds <= 0 {
+		t.Errorf("expected positive remaining_seconds, got %d", result.RemainingSeconds)
+	}
+
+	updated, _ := svc.repo.GetExamRegistrationByID(ctx, regDetail.ID, regDetail.StudentID)
+	if updated.AttemptsUsed != 1 {
+		t.Errorf("attempts_used: want 1, got %d", updated.AttemptsUsed)
+	}
+}
+
+func TestStartSession_NoCheckin_AlreadyAttempted(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.AttemptsUsed = 1 },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if !errors.Is(err, ErrAlreadyAttempted) {
+		t.Errorf("want ErrAlreadyAttempted, got %v", err)
+	}
+}
+
+func TestStartSession_RegNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.StartSession(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "fp")
+	if !errors.Is(err, ErrRegistrationNotFound) {
+		t.Errorf("want ErrRegistrationNotFound, got %v", err)
+	}
+}
+
+func TestStartSession_Checkin_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		CheckInWindowMinutes: intptr(30),
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	checkedInAt := now.Add(-10 * time.Minute)
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) {
+			d.CheckedInAt = &checkedInAt
+			d.Status = "checked_in"
+		},
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	// Set matching device fingerprint
+	key := "exam:device:" + regDetail.ID.String()
+	if err := svc.rdb.Set(ctx, key, "device-fp", time.Hour).Err(); err != nil {
+		t.Fatalf("set device key: %v", err)
+	}
+
+	result, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "device-fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	if result.SessionID == uuid.Nil {
+		t.Error("expected non-nil session_id")
+	}
+	if result.RemainingSeconds <= 0 {
+		t.Errorf("expected positive remaining_seconds, got %d", result.RemainingSeconds)
+	}
+}
+
+func TestStartSession_Checkin_DeviceMismatch(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		CheckInWindowMinutes: intptr(30),
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	checkedInAt := now.Add(-10 * time.Minute)
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) {
+			d.CheckedInAt = &checkedInAt
+			d.Status = "checked_in"
+		},
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	key := "exam:device:" + regDetail.ID.String()
+	if err := svc.rdb.Set(ctx, key, "different-fp", time.Hour).Err(); err != nil {
+		t.Fatalf("set device key: %v", err)
+	}
+
+	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "my-fp")
+	if !errors.Is(err, ErrDeviceMismatch) {
+		t.Errorf("want ErrDeviceMismatch, got %v", err)
+	}
+}
+
+func TestStartSession_Checkin_NotCheckedIn(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		CheckInWindowMinutes: intptr(30),
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if !errors.Is(err, ErrNotCheckedIn) {
+		t.Errorf("want ErrNotCheckedIn, got %v", err)
+	}
+}
+
+func TestStartSession_Checkin_NotStarted(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(30 * time.Minute)
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		CheckInWindowMinutes: intptr(30),
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	checkedInAt := now.Add(-10 * time.Minute)
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) {
+			d.CheckedInAt = &checkedInAt
+			d.Status = "checked_in"
+		},
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if !errors.Is(err, ErrExamNotStarted) {
+		t.Errorf("want ErrExamNotStarted, got %v", err)
+	}
+}
+
+// ---------- ReconnectSession ----------
+
+func (s *shimSessionService) ReconnectSession(ctx context.Context, studentID, sessionID string) (SessionStatePayload, error) {
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return SessionStatePayload{}, fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+	sessID, err := uuid.Parse(sessionID)
+	if err != nil {
+		return SessionStatePayload{}, fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+
+	sess, err := s.repo.GetExamSessionForStudent(ctx, sessID, sid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return SessionStatePayload{}, ErrSessionNotFound
+		}
+		return SessionStatePayload{}, err
+	}
+
+	exam, err := s.repo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return SessionStatePayload{}, err
+	}
+
+	duration := exam.DurationMinutes
+	var effectiveDeadline time.Time
+	if duration != nil && *duration > 0 {
+		effectiveDeadline = sess.StartedAt.Add(time.Duration(*duration) * time.Minute)
+	}
+	if sess.ExtendedUntil != nil && sess.ExtendedUntil.After(effectiveDeadline) {
+		effectiveDeadline = *sess.ExtendedUntil
+	}
+
+	remaining := int64(math.Max(0, time.Until(effectiveDeadline).Seconds()))
+
+	answers, _ := s.repo.GetSessionAnswers(ctx, sessID)
+
+	return SessionStatePayload{
+		SessionID:        sess.ID,
+		Status:           sess.Status,
+		RemainingSeconds: remaining,
+		TimerMode:        exam.TimerMode,
+		DurationMinutes:  duration,
+		Questions:        nil,
+		Answers:          answers,
+	}, nil
+}
+
+func TestReconnectSession_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-30 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	// Start a session first
+	result, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	// Reconnect
+	state, err := svc.ReconnectSession(ctx, regDetail.StudentID.String(), result.SessionID.String())
+	if err != nil {
+		t.Fatalf("ReconnectSession: %v", err)
+	}
+
+	if state.SessionID != result.SessionID {
+		t.Errorf("session_id mismatch")
+	}
+	if state.Status != "in_progress" {
+		t.Errorf("status: want in_progress, got %q", state.Status)
+	}
+	if state.RemainingSeconds <= 0 {
+		t.Errorf("expected positive remaining_seconds, got %d", state.RemainingSeconds)
+	}
+	if state.TimerMode != "overall" {
+		t.Errorf("timer_mode: want overall, got %q", state.TimerMode)
+	}
+	if state.DurationMinutes == nil || *state.DurationMinutes != 120 {
+		t.Errorf("duration_minutes: want 120, got %v", state.DurationMinutes)
+	}
+}
+
+func TestReconnectSession_NotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.ReconnectSession(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("want ErrSessionNotFound, got %v", err)
+	}
+}
+
+// ---------- SaveAnswers ----------
+
+func (s *shimSessionService) SaveAnswers(ctx context.Context, studentID, sessionID string, inputs []AnswerInput) error {
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+	sessID, err := uuid.Parse(sessionID)
+	if err != nil {
+		return fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+
+	sess, err := s.repo.GetExamSessionForStudent(ctx, sessID, sid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+
+	if sess.Status != "in_progress" {
+		return ErrAlreadySubmitted
+	}
+
+	answers := make([]model.ExamSessionAnswer, len(inputs))
+	for i, in := range inputs {
+		answers[i] = model.ExamSessionAnswer{
+			SessionID:        sessID,
+			QuestionID:       in.QuestionID,
+			Answer:           in.Answer,
+			FlaggedForReview: in.FlaggedForReview,
+		}
+	}
+
+	return s.repo.SaveAnswers(ctx, sessID, answers)
+}
+
+func TestSaveAnswers_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	qID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	answer := "Paris"
+	err = svc.SaveAnswers(ctx, regDetail.StudentID.String(), sess.SessionID.String(), []AnswerInput{
+		{QuestionID: qID, Answer: &answer},
+	})
+	if err != nil {
+		t.Fatalf("SaveAnswers: %v", err)
+	}
+
+	saved, _ := svc.repo.GetSessionAnswers(ctx, sess.SessionID)
+	if len(saved) != 1 {
+		t.Fatalf("want 1 saved answer, got %d", len(saved))
+	}
+	if saved[0].QuestionID != qID {
+		t.Errorf("question_id mismatch")
+	}
+	if saved[0].Answer == nil || *saved[0].Answer != "Paris" {
+		t.Errorf("answer: want Paris, got %v", saved[0].Answer)
+	}
+}
+
+func TestSaveAnswers_AlreadySubmitted(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	// Submit first
+	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	if err != nil {
+		t.Fatalf("SubmitSession: %v", err)
+	}
+
+	// Then try to save answers
+	answer := "test"
+	err = svc.SaveAnswers(ctx, regDetail.StudentID.String(), sess.SessionID.String(), []AnswerInput{
+		{QuestionID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), Answer: &answer},
+	})
+	if !errors.Is(err, ErrAlreadySubmitted) {
+		t.Errorf("want ErrAlreadySubmitted, got %v", err)
+	}
+}
+
+func TestSaveAnswers_SessionNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	answer := "test"
+	err := svc.SaveAnswers(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", []AnswerInput{
+		{QuestionID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), Answer: &answer},
+	})
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("want ErrSessionNotFound, got %v", err)
+	}
+}
+
+// ---------- SubmitSession ----------
+
+func (s *shimSessionService) SubmitSession(ctx context.Context, studentID, sessionID string) (SubmitResult, error) {
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return SubmitResult{}, fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+	sessID, err := uuid.Parse(sessionID)
+	if err != nil {
+		return SubmitResult{}, fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+
+	sess, err := s.repo.GetExamSessionForStudent(ctx, sessID, sid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return SubmitResult{}, ErrSessionNotFound
+		}
+		return SubmitResult{}, err
+	}
+
+	// Load questions and answers for grading
+	questions, _ := s.repo.GetSessionWithQuestions(ctx, sess.ExamID)
+	answers, _ := s.repo.GetSessionAnswers(ctx, sessID)
+
+	// Build answer map
+	answerMap := make(map[uuid.UUID]*string)
+	for _, a := range answers {
+		answerMap[a.QuestionID] = a.Answer
+	}
+
+	// Flatten questions for grading
+	var qs []model.QuestionWithOptions
+	for _, td := range questions {
+		qs = append(qs, td.Questions...)
+	}
+
+	graded, score := gradeObjective(qs, answerMap)
+
+	rows, err := s.repo.SubmitSession(ctx, sessID, graded, score, false)
+	if err != nil {
+		return SubmitResult{}, err
+	}
+	if rows == 0 {
+		return SubmitResult{}, ErrAlreadySubmitted
+	}
+
+	return SubmitResult{
+		Status: "submitted",
+		Score:  &score,
+	}, nil
+}
+
+func TestSubmitSession_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	result, err := svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	if err != nil {
+		t.Fatalf("SubmitSession: %v", err)
+	}
+
+	if result.Status != "submitted" {
+		t.Errorf("status: want submitted, got %q", result.Status)
+	}
+	if result.Score == nil || *result.Score != 0 {
+		t.Errorf("score: want 0 (no questions), got %v", result.Score)
+	}
+}
+
+func TestSubmitSession_AlreadySubmitted(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	// Submit once
+	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	if err != nil {
+		t.Fatalf("first SubmitSession: %v", err)
+	}
+
+	// Submit again
+	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	if !errors.Is(err, ErrAlreadySubmitted) {
+		t.Errorf("want ErrAlreadySubmitted, got %v", err)
+	}
+}
+
+// ---------- LogViolation ----------
+
+func (s *shimSessionService) LogViolation(ctx context.Context, studentID, sessionID, violationType string) error {
+	if !validViolationTypes[violationType] {
+		return ErrInvalidViolationType
+	}
+
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+	sessID, err := uuid.Parse(sessionID)
+	if err != nil {
+		return fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+
+	sess, err := s.repo.GetExamSessionForStudent(ctx, sessID, sid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+
+	if sess.Status != "in_progress" {
+		return ErrAlreadySubmitted
+	}
+
+	return s.repo.LogViolation(ctx, model.SessionViolationLog{
+		SessionID:     sessID,
+		StudentID:     sid,
+		ViolationType: violationType,
+		OccurredAt:    time.Now(),
+	})
+}
+
+func TestLogViolation_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	err = svc.LogViolation(ctx, regDetail.StudentID.String(), sess.SessionID.String(), "tab_switch")
+	if err != nil {
+		t.Errorf("LogViolation: %v", err)
+	}
+}
+
+func TestLogViolation_InvalidType(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	err := svc.LogViolation(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "unknown_type")
+	if !errors.Is(err, ErrInvalidViolationType) {
+		t.Errorf("want ErrInvalidViolationType, got %v", err)
+	}
+}
+
+func TestLogViolation_SessionNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	err := svc.LogViolation(ctx, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "tab_switch")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("want ErrSessionNotFound, got %v", err)
+	}
+}
+
+// ---------- ReopenSession (admin) ----------
+
+func (s *shimSessionService) ReopenSession(ctx context.Context, sessionID string, minutes int) error {
+	sessID, err := uuid.Parse(sessionID)
+	if err != nil {
+		return fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+
+	if err := s.repo.ReopenSession(ctx, sessID, minutes); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+	return nil
+}
+
+func TestReopenSession_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	err = svc.ReopenSession(ctx, sess.SessionID.String(), 30)
+	if err != nil {
+		t.Errorf("ReopenSession: %v", err)
+	}
+
+	// Verify the session has extended_until set
+	updated, _ := svc.repo.GetExamSessionForStudent(ctx, sess.SessionID, regDetail.StudentID)
+	if updated.ExtendedUntil == nil {
+		t.Error("expected extended_until to be set")
+	}
+}
+
+func TestReopenSession_NotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	err := svc.ReopenSession(ctx, "22222222-2222-2222-2222-222222222222", 30)
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("want ErrSessionNotFound, got %v", err)
+	}
+}
+
+// ---------- ForceSubmitSession (admin) ----------
+
+func (s *shimSessionService) ForceSubmitSession(ctx context.Context, sessionID string) (SubmitResult, error) {
+	sessID, err := uuid.Parse(sessionID)
+	if err != nil {
+		return SubmitResult{}, fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+
+	sess, err := s.repo.GetExamSessionByID(ctx, sessID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return SubmitResult{}, ErrSessionNotFound
+		}
+		return SubmitResult{}, err
+	}
+
+	questions, _ := s.repo.GetSessionWithQuestions(ctx, sess.ExamID)
+	answers, _ := s.repo.GetSessionAnswers(ctx, sessID)
+
+	answerMap := make(map[uuid.UUID]*string)
+	for _, a := range answers {
+		answerMap[a.QuestionID] = a.Answer
+	}
+
+	var qs []model.QuestionWithOptions
+	for _, td := range questions {
+		qs = append(qs, td.Questions...)
+	}
+
+	graded, score := gradeObjective(qs, answerMap)
+
+	rows, err := s.repo.SubmitSession(ctx, sessID, graded, score, true)
+	if err != nil {
+		return SubmitResult{}, err
+	}
+	if rows == 0 {
+		return SubmitResult{}, ErrAlreadySubmitted
+	}
+
+	return SubmitResult{
+		Status: "submitted",
+		Score:  &score,
+	}, nil
+}
+
+func TestForceSubmitSession_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	result, err := svc.ForceSubmitSession(ctx, sess.SessionID.String())
+	if err != nil {
+		t.Fatalf("ForceSubmitSession: %v", err)
+	}
+
+	if result.Status != "submitted" {
+		t.Errorf("status: want submitted, got %q", result.Status)
+	}
+	if result.Score == nil {
+		t.Error("expected non-nil score")
+	}
+}
+
+func TestForceSubmitSession_AlreadySubmitted(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	// Submit normally first
+	_, err = svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String())
+	if err != nil {
+		t.Fatalf("SubmitSession: %v", err)
+	}
+
+	// Force submit should fail with already submitted
+	_, err = svc.ForceSubmitSession(ctx, sess.SessionID.String())
+	if !errors.Is(err, ErrAlreadySubmitted) {
+		t.Errorf("want ErrAlreadySubmitted, got %v", err)
+	}
+}
+
+func TestForceSubmitSession_NotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.ForceSubmitSession(ctx, "22222222-2222-2222-2222-222222222222")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("want ErrSessionNotFound, got %v", err)
+	}
+}
+
+// ---------- Tests ----------
+
+func TestFingerprint_Deterministic(t *testing.T) {
+	fp1 := fingerprint("192.168.1.1", "Mozilla/5.0")
+	fp2 := fingerprint("192.168.1.1", "Mozilla/5.0")
+	if fp1 != fp2 {
+		t.Errorf("same input should produce same hash, got %q vs %q", fp1, fp2)
+	}
+}
+
+func TestFingerprint_VariesByIP(t *testing.T) {
+	fp1 := fingerprint("192.168.1.1", "Mozilla/5.0")
+	fp2 := fingerprint("10.0.0.1", "Mozilla/5.0")
+	if fp1 == fp2 {
+		t.Errorf("different IP should produce different hash")
+	}
+}
+
+func TestFingerprint_VariesByUA(t *testing.T) {
+	fp1 := fingerprint("192.168.1.1", "Mozilla/5.0")
+	fp2 := fingerprint("192.168.1.1", "curl/7.68")
+	if fp1 == fp2 {
+		t.Errorf("different UA should produce different hash")
+	}
+}
+
+func TestFingerprint_IsSHA256Hex(t *testing.T) {
+	fp := fingerprint("1.2.3.4", "test")
+	if len(fp) != 64 {
+		t.Errorf("SHA256 hex should be 64 chars, got %d: %q", len(fp), fp)
+	}
+	for _, c := range fp {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Errorf("non-hex character %c in fingerprint", c)
+		}
+	}
+}
