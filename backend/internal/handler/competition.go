@@ -29,7 +29,7 @@ func (h *Handler) StudentGetRegistration(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"data": detail})
+	return c.JSON(http.StatusOK, detail)
 }
 
 func (h *Handler) StudentGetExamCard(c echo.Context) error {

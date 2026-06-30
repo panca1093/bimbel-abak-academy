@@ -16,7 +16,12 @@ export const competitionKeys = {
 export function useRegistrations() {
   return useQuery({
     queryKey: competitionKeys.list(),
-    queryFn: () => authFetch<RegistrationListItem[]>("/competition/registrations"),
+    queryFn: async () => {
+      const res = await authFetch<{ data: RegistrationListItem[] }>(
+        "/competition/registrations"
+      );
+      return res.data ?? [];
+    },
   });
 }
 
