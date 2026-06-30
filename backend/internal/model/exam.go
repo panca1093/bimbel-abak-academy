@@ -182,3 +182,27 @@ type ExamDetail struct {
 	ProductStatus string           `json:"product_status"`
 	Tests         []ExamTestEntry  `json:"tests"`
 }
+
+// RegistrationListItem is the read shape returned by GET /api/v1/competition/registrations:
+// an ExamRegistration joined with exam.title and exam.scheduled_at.
+type RegistrationListItem struct {
+	ExamRegistration `json:",inline"`
+	ExamTitle        string     `json:"exam_title"`
+	ScheduledAt      *time.Time `json:"scheduled_at"`
+}
+
+// RegistrationDetail is the read shape returned by GET /api/v1/competition/registrations/:id:
+// an ExamRegistration joined with the nested exam config needed by the student detail page.
+type RegistrationDetail struct {
+	ExamRegistration `json:",inline"`
+	Exam             struct {
+		ID                   uuid.UUID  `json:"id"`
+		Title                string     `json:"title"`
+		ScheduledAt          *time.Time `json:"scheduled_at"`
+		RequiresCheckin      bool       `json:"requires_checkin"`
+		CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
+		TimerMode            string     `json:"timer_mode"`
+		DurationMinutes      *int       `json:"duration_minutes"`
+		ResultConfig         string     `json:"result_config"`
+	} `json:"exam"`
+}
