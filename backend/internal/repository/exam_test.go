@@ -49,6 +49,22 @@ var _ interface {
 	GetExamRegistrationByID(context.Context, uuid.UUID, uuid.UUID) (*model.RegistrationDetail, error)
 } = (*Repository)(nil)
 
+// Compile-time check: *Repository must implement all session repository
+// methods added by Task 3.
+var _ interface {
+	GetExamRegistrationByToken(context.Context, uuid.UUID, string) (*model.ExamRegistration, error)
+	CheckInExamTx(context.Context, pgx.Tx, uuid.UUID) error
+	CreateExamSessionTx(context.Context, pgx.Tx, model.ExamRegistration) (model.ExamSession, error)
+	GetExamSessionForStudent(context.Context, uuid.UUID, uuid.UUID) (*model.ExamSession, error)
+	GetSessionWithQuestions(context.Context, uuid.UUID) ([]model.TestDetail, error)
+	GetSessionAnswers(context.Context, uuid.UUID) ([]model.ExamSessionAnswer, error)
+	SaveAnswersTx(context.Context, uuid.UUID, []model.ExamSessionAnswer) error
+	SubmitSessionTx(context.Context, pgx.Tx, uuid.UUID, []model.ExamSessionAnswer, float64, bool) (int64, error)
+	LogViolation(context.Context, model.SessionViolationLog) error
+	ReopenSession(context.Context, uuid.UUID, int) error
+	GetExamForSession(context.Context, uuid.UUID) (*model.Exam, error)
+} = (*Repository)(nil)
+
 // Sentinel error from the package: uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
 var _ error = ErrSortOrderConflict
 
@@ -337,5 +353,108 @@ func TestRegistrationDetailShape(t *testing.T) {
 	}
 	if detail.Exam.CheckInWindowMinutes == nil || *detail.Exam.CheckInWindowMinutes != 15 {
 		t.Errorf("RegistrationDetail.Exam.CheckInWindowMinutes pointer not preserved: %+v", detail.Exam.CheckInWindowMinutes)
+	}
+}
+
+func TestScanExamSession_passes_expected_destinations(t *testing.T) {
+	var s model.ExamSession
+	s.ID = uuid.Nil
+
+	rec := &recordingScanner{}
+	if err := scanExamSession(rec, &s); err != nil {
+		t.Fatalf("scanExamSession returned error: %v", err)
+	}
+
+	if got := len(rec.dests); got != 14 {
+		t.Fatalf("scanExamSession passed %d destinations, want 14 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_url, last_saved_at, status, created_at)", got)
+	}
+
+	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
+		t.Errorf("dest[0] = %T, want *uuid.UUID (id)", rec.dests[0])
+	}
+	if _, ok := rec.dests[1].(*uuid.UUID); !ok {
+		t.Errorf("dest[1] = %T, want *uuid.UUID (registration_id)", rec.dests[1])
+	}
+	if _, ok := rec.dests[2].(*uuid.UUID); !ok {
+		t.Errorf("dest[2] = %T, want *uuid.UUID (student_id)", rec.dests[2])
+	}
+	if _, ok := rec.dests[3].(*uuid.UUID); !ok {
+		t.Errorf("dest[3] = %T, want *uuid.UUID (exam_id)", rec.dests[3])
+	}
+	if _, ok := rec.dests[4].(*int); !ok {
+		t.Errorf("dest[4] = %T, want *int (attempt_number)", rec.dests[4])
+	}
+	if _, ok := rec.dests[5].(*time.Time); !ok {
+		t.Errorf("dest[5] = %T, want *time.Time (started_at)", rec.dests[5])
+	}
+	if _, ok := rec.dests[6].(**time.Time); !ok {
+		t.Errorf("dest[6] = %T, want **time.Time (submitted_at, nullable)", rec.dests[6])
+	}
+	if _, ok := rec.dests[7].(**time.Time); !ok {
+		t.Errorf("dest[7] = %T, want **time.Time (extended_until, nullable)", rec.dests[7])
+	}
+	if _, ok := rec.dests[8].(*bool); !ok {
+		t.Errorf("dest[8] = %T, want *bool (admin_submitted)", rec.dests[8])
+	}
+	if _, ok := rec.dests[9].(**float64); !ok {
+		t.Errorf("dest[9] = %T, want **float64 (score, nullable)", rec.dests[9])
+	}
+	if _, ok := rec.dests[10].(**string); !ok {
+		t.Errorf("dest[10] = %T, want **string (certificate_url, nullable)", rec.dests[10])
+	}
+	if _, ok := rec.dests[11].(**time.Time); !ok {
+		t.Errorf("dest[11] = %T, want **time.Time (last_saved_at, nullable)", rec.dests[11])
+	}
+	if _, ok := rec.dests[12].(*string); !ok {
+		t.Errorf("dest[12] = %T, want *string (status)", rec.dests[12])
+	}
+	if _, ok := rec.dests[13].(*time.Time); !ok {
+		t.Errorf("dest[13] = %T, want *time.Time (created_at)", rec.dests[13])
+	}
+}
+
+func TestScanExamSessionAnswer_passes_expected_destinations(t *testing.T) {
+	var a model.ExamSessionAnswer
+	a.SessionID = uuid.Nil
+	a.QuestionID = uuid.Nil
+
+	rec := &recordingScanner{}
+	if err := scanExamSessionAnswer(rec, &a); err != nil {
+		t.Fatalf("scanExamSessionAnswer returned error: %v", err)
+	}
+
+	if got := len(rec.dests); got != 10 {
+		t.Fatalf("scanExamSessionAnswer passed %d destinations, want 10 (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)", got)
+	}
+
+	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
+		t.Errorf("dest[0] = %T, want *uuid.UUID (session_id)", rec.dests[0])
+	}
+	if _, ok := rec.dests[1].(*uuid.UUID); !ok {
+		t.Errorf("dest[1] = %T, want *uuid.UUID (question_id)", rec.dests[1])
+	}
+	if _, ok := rec.dests[2].(**string); !ok {
+		t.Errorf("dest[2] = %T, want **string (answer, nullable)", rec.dests[2])
+	}
+	if _, ok := rec.dests[3].(**bool); !ok {
+		t.Errorf("dest[3] = %T, want **bool (is_correct, nullable)", rec.dests[3])
+	}
+	if _, ok := rec.dests[4].(**float64); !ok {
+		t.Errorf("dest[4] = %T, want **float64 (score, nullable)", rec.dests[4])
+	}
+	if _, ok := rec.dests[5].(**uuid.UUID); !ok {
+		t.Errorf("dest[5] = %T, want **uuid.UUID (graded_by, nullable)", rec.dests[5])
+	}
+	if _, ok := rec.dests[6].(**time.Time); !ok {
+		t.Errorf("dest[6] = %T, want **time.Time (graded_at, nullable)", rec.dests[6])
+	}
+	if _, ok := rec.dests[7].(**string); !ok {
+		t.Errorf("dest[7] = %T, want **string (grader_comment, nullable)", rec.dests[7])
+	}
+	if _, ok := rec.dests[8].(*bool); !ok {
+		t.Errorf("dest[8] = %T, want *bool (flagged_for_review)", rec.dests[8])
+	}
+	if _, ok := rec.dests[9].(*time.Time); !ok {
+		t.Errorf("dest[9] = %T, want *time.Time (saved_at)", rec.dests[9])
 	}
 }

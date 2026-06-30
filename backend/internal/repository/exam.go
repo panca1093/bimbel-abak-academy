@@ -815,3 +815,308 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	}
 	return &detail, nil
 }
+// ---------- Session scan helpers ----------
+
+func scanExamSession(row interface{ Scan(dest ...any) error }, s *model.ExamSession) error {
+	return row.Scan(
+		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
+		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
+		&s.ExtendedUntil, &s.AdminSubmitted, &s.Score,
+		&s.CertificateURL, &s.LastSavedAt, &s.Status, &s.CreatedAt,
+	)
+}
+
+func scanExamSessionAnswer(row interface{ Scan(dest ...any) error }, a *model.ExamSessionAnswer) error {
+	return row.Scan(
+		&a.SessionID, &a.QuestionID, &a.Answer, &a.IsCorrect, &a.Score,
+		&a.GradedBy, &a.GradedAt, &a.GraderComment, &a.FlaggedForReview, &a.SavedAt,
+	)
+}
+
+// ---------- Session repository methods ----------
+
+// GetExamRegistrationByToken retrieves a registration by student ID and token.
+// Returns ErrNotFound when no match exists.
+func (r *Repository) GetExamRegistrationByToken(ctx context.Context, studentID uuid.UUID, token string) (*model.ExamRegistration, error) {
+	var reg model.ExamRegistration
+	var cardPDFURL *string
+	var checkedInAt *time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, student_id, exam_id, token, card_pdf_url, checked_in_at, attempts_used, status, created_at
+		FROM exam_registration
+		WHERE student_id = $1 AND token = $2`,
+		studentID, token,
+	).Scan(
+		&reg.ID, &reg.StudentID, &reg.ExamID, &reg.Token,
+		&cardPDFURL, &checkedInAt, &reg.AttemptsUsed, &reg.Status, &reg.CreatedAt,
+	)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if cardPDFURL != nil {
+		reg.CardPDFURL = cardPDFURL
+	}
+	if checkedInAt != nil {
+		reg.CheckedInAt = checkedInAt
+	}
+	return &reg, nil
+}
+
+// CheckInExamTx stamps checked_in_at (if NULL) and sets status='checked_in'.
+func (r *Repository) CheckInExamTx(ctx context.Context, tx pgx.Tx, regID uuid.UUID) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE exam_registration
+		SET checked_in_at = COALESCE(checked_in_at, now()), status = 'checked_in'
+		WHERE id = $1`,
+		regID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// CreateExamSessionTx increments attempts_used, sets status='in_progress',
+// optionally stamps checked_in_at when NULL, and inserts an exam_session row.
+func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) (model.ExamSession, error) {
+	_, err := tx.Exec(ctx,
+		`UPDATE exam_registration
+		SET attempts_used = attempts_used + 1,
+		    status = 'in_progress',
+		    checked_in_at = COALESCE(checked_in_at, now())
+		WHERE id = $1`,
+		reg.ID,
+	)
+	if err != nil {
+		return model.ExamSession{}, err
+	}
+
+	var s model.ExamSession
+	err = tx.QueryRow(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status)
+		VALUES ($1, $2, $3, 1, now(), 'in_progress')
+		RETURNING id, registration_id, student_id, exam_id, attempt_number, started_at,
+			submitted_at, extended_until, admin_submitted, score, certificate_url,
+			last_saved_at, status, created_at`,
+		reg.ID, reg.StudentID, reg.ExamID,
+	).Scan(
+		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
+		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
+		&s.ExtendedUntil, &s.AdminSubmitted, &s.Score,
+		&s.CertificateURL, &s.LastSavedAt, &s.Status, &s.CreatedAt,
+	)
+	if err != nil {
+		return model.ExamSession{}, err
+	}
+	return s, nil
+}
+
+// GetExamSessionForStudent returns a session scoped to the owning student.
+func (r *Repository) GetExamSessionForStudent(ctx context.Context, sessionID, studentID uuid.UUID) (*model.ExamSession, error) {
+	var s model.ExamSession
+	err := scanExamSession(r.pool.QueryRow(ctx,
+		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
+			submitted_at, extended_until, admin_submitted, score, certificate_url,
+			last_saved_at, status, created_at
+		FROM exam_session
+		WHERE id = $1 AND student_id = $2`,
+		sessionID, studentID,
+	), &s)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetSessionWithQuestions returns the ordered test->question->option tree for an exam.
+// Reuses GetTestDetail for each attached test.
+func (r *Repository) GetSessionWithQuestions(ctx context.Context, examID uuid.UUID) ([]model.TestDetail, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT et.test_id
+		FROM exam_test et
+		WHERE et.exam_id = $1
+		ORDER BY et.sort_order ASC`,
+		examID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var testIDs []uuid.UUID
+	for rows.Next() {
+		var testID uuid.UUID
+		if err := rows.Scan(&testID); err != nil {
+			return nil, err
+		}
+		testIDs = append(testIDs, testID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(testIDs) == 0 {
+		return nil, nil
+	}
+
+	result := make([]model.TestDetail, len(testIDs))
+	for i, tid := range testIDs {
+		detail, err := r.GetTestDetail(ctx, tid)
+		if err != nil {
+			return nil, err
+		}
+		result[i] = *detail
+	}
+	return result, nil
+}
+
+// GetSessionAnswers returns all answers for a session ordered by question_id.
+func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID) ([]model.ExamSessionAnswer, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT session_id, question_id, answer, is_correct, score, graded_by,
+			graded_at, grader_comment, flagged_for_review, saved_at
+		FROM exam_session_answer
+		WHERE session_id = $1
+		ORDER BY question_id`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var answers []model.ExamSessionAnswer
+	for rows.Next() {
+		var a model.ExamSessionAnswer
+		if err := scanExamSessionAnswer(rows, &a); err != nil {
+			return nil, err
+		}
+		answers = append(answers, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if answers == nil {
+		answers = []model.ExamSessionAnswer{}
+	}
+	return answers, nil
+}
+
+// SaveAnswersTx upserts answers and stamps last_saved_at on the session.
+func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer) error {
+	for _, a := range answers {
+		_, err := r.pool.Exec(ctx,
+			`INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+			ON CONFLICT (session_id, question_id) DO UPDATE SET
+				answer = EXCLUDED.answer,
+				is_correct = EXCLUDED.is_correct,
+				score = EXCLUDED.score,
+				graded_by = EXCLUDED.graded_by,
+				graded_at = EXCLUDED.graded_at,
+				grader_comment = EXCLUDED.grader_comment,
+				flagged_for_review = EXCLUDED.flagged_for_review,
+				saved_at = now()`,
+			sessionID, a.QuestionID, a.Answer, a.IsCorrect, a.Score,
+			a.GradedBy, a.GradedAt, a.GraderComment, a.FlaggedForReview,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err := r.pool.Exec(ctx,
+		`UPDATE exam_session SET last_saved_at = now() WHERE id = $1`,
+		sessionID,
+	)
+	return err
+}
+
+// SubmitSessionTx performs a CAS submit of a session, writes graded answers,
+// and sets the overall score. Returns the number of rows affected by the CAS update.
+func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, graded []model.ExamSessionAnswer, score float64, adminSubmitted bool) (int64, error) {
+	query := `UPDATE exam_session SET status = 'submitted', submitted_at = now()`
+	if adminSubmitted {
+		query += `, admin_submitted = true`
+	}
+	query += ` WHERE id = $1 AND status = 'in_progress'`
+
+	tag, err := tx.Exec(ctx, query, sessionID)
+	if err != nil {
+		return 0, err
+	}
+
+	if tag.RowsAffected() == 1 {
+		for _, a := range graded {
+			_, err := tx.Exec(ctx,
+				`INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+				ON CONFLICT (session_id, question_id) DO UPDATE SET
+					answer = EXCLUDED.answer,
+					is_correct = EXCLUDED.is_correct,
+					score = EXCLUDED.score,
+					graded_by = EXCLUDED.graded_by,
+					graded_at = now(),
+					grader_comment = EXCLUDED.grader_comment,
+					flagged_for_review = EXCLUDED.flagged_for_review,
+					saved_at = now()`,
+				sessionID, a.QuestionID, a.Answer, a.IsCorrect, a.Score,
+				a.GradedBy, a.GradedAt, a.GraderComment, a.FlaggedForReview,
+			)
+			if err != nil {
+				return 0, err
+			}
+		}
+
+		_, err = tx.Exec(ctx,
+			`UPDATE exam_session SET score = $1 WHERE id = $2`,
+			score, sessionID,
+		)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	return tag.RowsAffected(), nil
+}
+
+// LogViolation records an integrity event for a session.
+func (r *Repository) LogViolation(ctx context.Context, v model.SessionViolationLog) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO session_violation_log (session_id, student_id, violation_type, occurred_at)
+		VALUES ($1, $2, $3, $4)`,
+		v.SessionID, v.StudentID, v.ViolationType, v.OccurredAt,
+	)
+	return err
+}
+
+// ReopenSession extends a session by the given minutes. Only applies to
+// in_progress or submitted sessions. Returns ErrNotFound if no session matched.
+func (r *Repository) ReopenSession(ctx context.Context, sessionID uuid.UUID, minutes int) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE exam_session
+		SET extended_until = now() + make_interval(mins => $2)
+		WHERE id = $1 AND status IN ('in_progress', 'submitted')`,
+		sessionID, minutes,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// GetExamForSession retrieves an exam by ID. Delegates to GetExamByID.
+func (r *Repository) GetExamForSession(ctx context.Context, examID uuid.UUID) (*model.Exam, error) {
+	return r.GetExamByID(ctx, examID)
+}
