@@ -77,9 +77,9 @@ export async function downloadCard(id: string): Promise<void> {
 export function useCheckIn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ registrationId, token }: { registrationId: string; token: string }) =>
+    mutationFn: ({ token }: { token: string }) =>
       authFetch<CheckInResult>(
-        `/exam/registrations/${encodeURIComponent(registrationId)}/checkin`,
+        `/exam/checkin`,
         { method: "POST", body: JSON.stringify({ token }) },
       ),
     onSuccess: () => {
@@ -114,7 +114,7 @@ export function useSaveAnswers(sessionId: string) {
   return useMutation({
     mutationFn: (answers: SessionAnswerInput[]) =>
       authFetch<void>(`/exam/sessions/${encodeURIComponent(sessionId)}/answers`, {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify({ answers }),
       }),
     onSuccess: () => {

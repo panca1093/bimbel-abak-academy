@@ -268,7 +268,7 @@ describe("ExamDetailPage — check-in form (FR27)", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("calls check-in mutation with registrationId and token on submit", () => {
+  it("calls check-in mutation with token on submit", () => {
     vi.setSystemTime("2026-07-15T08:45:00Z");
     render(<ExamDetailPage />);
 
@@ -277,7 +277,7 @@ describe("ExamDetailPage — check-in form (FR27)", () => {
     fireEvent.click(screen.getByRole("button", { name: /check-in/i }));
 
     expect(checkInMutate).toHaveBeenCalledWith(
-      { registrationId: "reg-1", token: "MYTOKEN" },
+      { token: "MYTOKEN" },
       expect.any(Object)
     );
   });

@@ -526,7 +526,7 @@ func (s *shimSessionService) StartSession(ctx context.Context, studentID, regist
 		RemainingSeconds: remaining,
 		TimerMode:        exam.TimerMode,
 		DurationMinutes:  duration,
-		Questions:        nil,
+		Tests:            nil,
 	}, nil
 }
 
@@ -812,7 +812,7 @@ func (s *shimSessionService) ReconnectSession(ctx context.Context, studentID, se
 		RemainingSeconds: remaining,
 		TimerMode:        exam.TimerMode,
 		DurationMinutes:  duration,
-		Questions:        nil,
+		Tests:            nil,
 		Answers:          answers,
 	}, nil
 }

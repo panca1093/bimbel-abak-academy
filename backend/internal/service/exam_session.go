@@ -24,12 +24,19 @@ type CheckInResult struct {
 	ScheduledAt    *time.Time `json:"scheduled_at"`
 }
 
+type SessionTestPayload struct {
+	ID        uuid.UUID         `json:"id"`
+	Title     string            `json:"title"`
+	Subject   string            `json:"subject"`
+	Questions []SessionQuestion `json:"questions"`
+}
+
 type SessionStartPayload struct {
-	SessionID        uuid.UUID         `json:"session_id"`
-	RemainingSeconds int64             `json:"remaining_seconds"`
-	TimerMode        string            `json:"timer_mode"`
-	DurationMinutes  *int              `json:"duration_minutes"`
-	Questions        []SessionQuestion `json:"questions"`
+	SessionID        uuid.UUID            `json:"session_id"`
+	RemainingSeconds int64                `json:"remaining_seconds"`
+	TimerMode        string               `json:"timer_mode"`
+	DurationMinutes  *int                 `json:"duration_minutes"`
+	Tests            []SessionTestPayload `json:"tests"`
 }
 
 type SessionQuestion struct {
@@ -54,7 +61,7 @@ type SessionStatePayload struct {
 	RemainingSeconds int64                    `json:"remaining_seconds"`
 	TimerMode        string                   `json:"timer_mode"`
 	DurationMinutes  *int                     `json:"duration_minutes"`
-	Questions        []SessionQuestion        `json:"questions"`
+	Tests            []SessionTestPayload     `json:"tests"`
 	Answers          []model.ExamSessionAnswer `json:"answers"`
 }
 
@@ -84,11 +91,17 @@ var validViolationTypes = map[string]bool{
 
 // ---------- Shared helpers ----------
 
-// stripQuestions removes correct_answer and option is_correct from the question
-// payload returned to students.
-func stripQuestions(tests []model.TestDetail) []SessionQuestion {
-	var out []SessionQuestion
+// groupQuestionsByTest groups questions by their parent test and strips
+// correct_answer / is_correct from the student-facing payload.
+func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
+	var out []SessionTestPayload
 	for _, td := range tests {
+		st := SessionTestPayload{
+			ID:        td.Test.ID,
+			Title:     td.Test.Title,
+			Subject:   td.Test.Subject,
+			Questions: make([]SessionQuestion, 0, len(td.Questions)),
+		}
 		for _, q := range td.Questions {
 			sq := SessionQuestion{
 				ID:        q.Question.ID,
@@ -105,8 +118,9 @@ func stripQuestions(tests []model.TestDetail) []SessionQuestion {
 					SortOrder: o.SortOrder,
 				})
 			}
-			out = append(out, sq)
+			st.Questions = append(st.Questions, sq)
 		}
+		out = append(out, st)
 	}
 	return out
 }
@@ -262,7 +276,7 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 
 	// Load questions
 	tests, _ := s.storeRepo.GetSessionWithQuestions(ctx, detail.ExamID)
-	questions := stripQuestions(tests)
+	grouped := groupQuestionsByTest(tests)
 
 	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, nil)
 
@@ -271,7 +285,7 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		RemainingSeconds: remaining,
 		TimerMode:        exam.TimerMode,
 		DurationMinutes:  exam.DurationMinutes,
-		Questions:        questions,
+		Tests:            grouped,
 	}, nil
 }
 
@@ -305,7 +319,7 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, sess.ExtendedUntil)
 
 	tests, _ := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
-	questions := stripQuestions(tests)
+	grouped := groupQuestionsByTest(tests)
 
 	answers, _ := s.storeRepo.GetSessionAnswers(ctx, sessID)
 
@@ -315,7 +329,7 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 		RemainingSeconds: remaining,
 		TimerMode:        exam.TimerMode,
 		DurationMinutes:  exam.DurationMinutes,
-		Questions:        questions,
+		Tests:            grouped,
 		Answers:          answers,
 	}, nil
 }

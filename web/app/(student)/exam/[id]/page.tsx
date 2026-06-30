@@ -49,7 +49,7 @@ export default function ExamDetailPage() {
   const handleCheckIn = () => {
     if (!id || !token.trim()) return;
     checkInMutation.mutate(
-      { registrationId: id, token: token.trim() },
+      { token: token.trim() },
       {
         onSuccess: () => {
           toast.success(t("checkin_success"));
