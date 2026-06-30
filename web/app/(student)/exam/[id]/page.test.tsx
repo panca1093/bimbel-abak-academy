@@ -297,6 +297,47 @@ describe("ExamDetailPage — check-in form (FR27)", () => {
       expect.stringMatching(/token diterima/i)
     );
   });
+
+  it("transitions UI after check-in success (form hides, start gate appears)", async () => {
+    vi.setSystemTime("2026-07-15T08:45:00Z");
+    const { rerender } = render(<ExamDetailPage />);
+
+    // Check-in form visible
+    expect(
+      screen.getByPlaceholderText(/token dari kartu ujian/i)
+    ).toBeInTheDocument();
+
+    // Submit check-in
+    fireEvent.change(
+      screen.getByPlaceholderText(/token dari kartu ujian/i),
+      { target: { value: "MYTOKEN" } }
+    );
+    fireEvent.click(screen.getByRole("button", { name: /check-in/i }));
+
+    // Simulate success callback
+    const [, options] = checkInMutate.mock.calls[0];
+    options.onSuccess();
+
+    // Update mock to checked_in state and rerender to simulate refetch
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleWithCheckin,
+        status: "checked_in",
+        checked_in_at: "2026-07-15T08:45:00Z",
+      },
+    };
+    rerender(<ExamDetailPage />);
+
+    // Check-in form gone (synchronous after rerender with fake timers)
+    expect(
+      screen.queryByPlaceholderText(/token dari kartu ujian/i)
+    ).not.toBeInTheDocument();
+    // Start gate shown
+    expect(
+      screen.getByRole("button", { name: /mulai ujian/i })
+    ).toBeInTheDocument();
+  });
 });
 
 // ── Start gate (FR28) ───────────────────────────────────────────────────────

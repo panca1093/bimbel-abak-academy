@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { act } from "react";
 
 import SessionPage from "./page";
 import type { SessionState } from "@/lib/types";
@@ -154,6 +155,10 @@ describe("SessionPage", () => {
     logViolationMutate.mockReset();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   // ── Loading state ───────────────────────────────────────────────────────
 
   it("shows loading skeleton while reconnecting (FR29 reconnect)", () => {
@@ -297,5 +302,63 @@ describe("SessionPage", () => {
         screen.getByText(/yakin ingin mengumpulkan jawaban/i)
       ).toBeInTheDocument();
     });
+  });
+
+  // ── Answer updates state ────────────────────────────────────────────────
+
+  it("updates answer state when MCQ option is selected (FR29)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const radios = screen.getAllByRole("radio");
+    expect(radios[0]).not.toBeChecked();
+    expect(radios[1]).not.toBeChecked();
+
+    fireEvent.click(radios[1]);
+
+    expect(radios[0]).not.toBeChecked();
+    expect(radios[1]).toBeChecked();
+  });
+
+  // ── Submit flow (also tests save is triggered) ──────────────────────────
+
+  it("submit saves answers, calls hook, and shows result (FR29)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // Answer a question first so save is triggered
+    const radios = screen.getAllByRole("radio");
+    fireEvent.click(radios[1]);
+
+    // Open confirmation dialog
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/yakin ingin mengumpulkan jawaban/i)
+      ).toBeInTheDocument();
+    });
+
+    // Click submit in dialog (last Kumpulkan button, inside the dialog)
+    const btns = screen.getAllByRole("button", { name: /kumpulkan/i });
+    fireEvent.click(btns[btns.length - 1]);
+
+    // Verify save was triggered before submit
+    expect(saveAnswersMutateAsync).toHaveBeenCalledWith(
+      [{ question_id: "q-mcq", answer: "B" }],
+    );
+
+    // Verify submitSession was called
+    expect(submitSessionMutate).toHaveBeenCalled();
+
+    // Simulate success response inside act to flush React state updates
+    await act(async () => {
+      const [, opts] = submitSessionMutate.mock.calls[0];
+      opts.onSuccess({ submitted: true, score: 75 });
+    });
+
+    // Submitted state with score
+    expect(screen.getByText(/skor/i)).toBeInTheDocument();
+    expect(screen.getByText(/75/)).toBeInTheDocument();
   });
 });
