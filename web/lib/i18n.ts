@@ -714,6 +714,29 @@ export const DICT = {
     admin_exam_detail_publish: "Publish",
     admin_exam_detail_publish_confirm:
       "Publish paket ini? Tindakan ini tidak bisa dibatalkan.",
+
+    // Exam session — check-in
+    exam_checkin_title: "Check-in Ujian",
+    token_label: "Token",
+    window_closed_early: "Check-in belum dibuka",
+    window_closed_late: "Check-in sudah ditutup",
+
+    // Exam session — start gate
+    exam_start_button: "Mulai Ujian",
+    not_started: "Belum dimulai",
+    start_at: "Mulai {t}",
+
+    // Exam session — session UI
+    session_question: "Soal",
+    of: "dari",
+    flag: "Tandai",
+    unflag: "Hapus tanda",
+    submit_confirm: "Yakin ingin mengumpulkan jawaban?",
+    submit: "Kumpulkan",
+    time_remaining: "Sisa waktu",
+    fullscreen_required: "Mode layar penuh diperlukan",
+    violation_warning: "Peringatan pelanggaran",
+    submitted: "Terkumpul",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1424,6 +1447,29 @@ export const DICT = {
     admin_exam_detail_publish: "Publish",
     admin_exam_detail_publish_confirm:
       "Publish this package? This action cannot be undone.",
+
+    // Exam session — check-in
+    exam_checkin_title: "Exam Check-in",
+    token_label: "Token",
+    window_closed_early: "Check-in not yet open",
+    window_closed_late: "Check-in window has closed",
+
+    // Exam session — start gate
+    exam_start_button: "Start Exam",
+    not_started: "Not started",
+    start_at: "Starts {t}",
+
+    // Exam session — session UI
+    session_question: "Question",
+    of: "of",
+    flag: "Flag",
+    unflag: "Unflag",
+    submit_confirm: "Are you sure you want to submit?",
+    submit: "Submit",
+    time_remaining: "Time remaining",
+    fullscreen_required: "Fullscreen mode required",
+    violation_warning: "Violation warning",
+    submitted: "Submitted",
   },
 };
 
