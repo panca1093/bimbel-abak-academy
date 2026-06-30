@@ -5,20 +5,20 @@ import { API_BASE, authFetch, ApiError } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import type { RegistrationDetail, RegistrationListItem } from "@/lib/types";
 
-export const competitionKeys = {
-  all: ["competition"] as const,
-  lists: () => [...competitionKeys.all, "list"] as const,
-  list: () => [...competitionKeys.lists()] as const,
-  details: () => [...competitionKeys.all, "detail"] as const,
-  detail: (id: string) => [...competitionKeys.details(), id] as const,
+export const examKeys = {
+  all: ["exam"] as const,
+  lists: () => [...examKeys.all, "list"] as const,
+  list: () => [...examKeys.lists()] as const,
+  details: () => [...examKeys.all, "detail"] as const,
+  detail: (id: string) => [...examKeys.details(), id] as const,
 };
 
 export function useRegistrations() {
   return useQuery({
-    queryKey: competitionKeys.list(),
+    queryKey: examKeys.list(),
     queryFn: async () => {
       const res = await authFetch<{ data: RegistrationListItem[] }>(
-        "/competition/registrations"
+        "/exam/registrations"
       );
       return res.data ?? [];
     },
@@ -27,10 +27,10 @@ export function useRegistrations() {
 
 export function useRegistration(id: string | undefined) {
   return useQuery({
-    queryKey: competitionKeys.detail(id ?? ""),
+    queryKey: examKeys.detail(id ?? ""),
     queryFn: () =>
       authFetch<RegistrationDetail>(
-        `/competition/registrations/${encodeURIComponent(id!)}`
+        `/exam/registrations/${encodeURIComponent(id!)}`
       ),
     enabled: Boolean(id),
   });
@@ -39,7 +39,7 @@ export function useRegistration(id: string | undefined) {
 export async function downloadCard(id: string): Promise<void> {
   const token = useAuthStore.getState().token;
   const res = await fetch(
-    `${API_BASE}/competition/registrations/${encodeURIComponent(id)}/card`,
+    `${API_BASE}/exam/registrations/${encodeURIComponent(id)}/card`,
     {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     }

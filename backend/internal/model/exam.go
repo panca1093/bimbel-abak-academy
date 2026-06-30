@@ -183,7 +183,7 @@ type ExamDetail struct {
 	Tests         []ExamTestEntry  `json:"tests"`
 }
 
-// RegistrationListItem is the read shape returned by GET /api/v1/competition/registrations:
+// RegistrationListItem is the read shape returned by GET /api/v1/exam/registrations:
 // an ExamRegistration joined with exam.title and exam.scheduled_at.
 type RegistrationListItem struct {
 	ExamRegistration `json:",inline"`
@@ -191,7 +191,7 @@ type RegistrationListItem struct {
 	ScheduledAt      *time.Time `json:"scheduled_at"`
 }
 
-// RegistrationDetail is the read shape returned by GET /api/v1/competition/registrations/:id:
+// RegistrationDetail is the read shape returned by GET /api/v1/exam/registrations/:id:
 // an ExamRegistration joined with the nested exam config needed by the student detail page.
 type RegistrationDetail struct {
 	ExamRegistration `json:",inline"`
