@@ -2,6 +2,8 @@ package handler
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strconv"
 
@@ -10,6 +12,7 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
 )
 
 func (h *Handler) AdminListTests(c echo.Context) error {
@@ -291,4 +294,141 @@ func (h *Handler) StudentGetExamCard(c echo.Context) error {
 	c.Response().Header().Set("Content-Type", "application/pdf")
 	c.Response().Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	return c.Stream(http.StatusOK, "application/pdf", bytes.NewReader(pdf))
+}
+
+// fingerprint derives a device fingerprint from IP and User-Agent.
+func fingerprint(ip, ua string) string {
+	h := sha256.Sum256([]byte(ip + "|" + ua))
+	return hex.EncodeToString(h[:])
+}
+
+// StudentCheckIn validates the registration token and stamps check-in. FR2-FR5.
+func (h *Handler) StudentCheckIn(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	fp := fingerprint(c.RealIP(), c.Request().UserAgent())
+	result, err := h.svc.CheckIn(c.Request().Context(), claims.Sub, req.Token, fp)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+// StudentStartSession creates a new exam session. FR6-FR12.
+func (h *Handler) StudentStartSession(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	var req struct {
+		RegistrationID string `json:"registration_id"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	fp := fingerprint(c.RealIP(), c.Request().UserAgent())
+	result, err := h.svc.StartSession(c.Request().Context(), claims.Sub, req.RegistrationID, fp)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+// StudentReconnectSession returns current session state. FR13-FR14.
+func (h *Handler) StudentReconnectSession(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	sessionID := c.Param("id")
+	result, err := h.svc.ReconnectSession(c.Request().Context(), claims.Sub, sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+// StudentSaveAnswers upserts answers for a session. FR15-FR16.
+func (h *Handler) StudentSaveAnswers(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	sessionID := c.Param("id")
+	var req struct {
+		Answers []service.AnswerInput `json:"answers"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if err := h.svc.SaveAnswers(c.Request().Context(), claims.Sub, sessionID, req.Answers); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// StudentSubmitSession grades and submits the session. FR17-FR20.
+func (h *Handler) StudentSubmitSession(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	sessionID := c.Param("id")
+	result, err := h.svc.SubmitSession(c.Request().Context(), claims.Sub, sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+// StudentLogViolation records an integrity event. FR21-FR22.
+func (h *Handler) StudentLogViolation(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	sessionID := c.Param("id")
+	var req struct {
+		ViolationType string `json:"violation_type"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if err := h.svc.LogViolation(c.Request().Context(), claims.Sub, sessionID, req.ViolationType); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// AdminReopenSession extends a session's deadline. FR23.
+func (h *Handler) AdminReopenSession(c echo.Context) error {
+	sessionID := c.Param("id")
+	var req struct {
+		ExtendMinutes int `json:"extend_minutes"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if err := h.svc.ReopenSession(c.Request().Context(), sessionID, req.ExtendMinutes); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// AdminForceSubmitSession grades and submits an in-progress session. FR24.
+func (h *Handler) AdminForceSubmitSession(c echo.Context) error {
+	sessionID := c.Param("id")
+	result, err := h.svc.ForceSubmitSession(c.Request().Context(), sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
 }

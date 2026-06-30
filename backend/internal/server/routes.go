@@ -121,6 +121,18 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	exam.GET("/registrations", h.StudentListRegistrations)
 	exam.GET("/registrations/:id", h.StudentGetRegistration)
 	exam.GET("/registrations/:id/card", h.StudentGetExamCard)
+	exam.POST("/checkin", h.StudentCheckIn)
+	exam.POST("/sessions", h.StudentStartSession)
+	exam.GET("/sessions/:id", h.StudentReconnectSession)
+	exam.PATCH("/sessions/:id/answers", h.StudentSaveAnswers)
+	exam.POST("/sessions/:id/submit", h.StudentSubmitSession)
+	exam.POST("/sessions/:id/violations", h.StudentLogViolation)
+
+	// Admin session routes (exam proctoring)
+	adminSessions := admin.Group("/sessions")
+	adminSessions.Use(handler.RBACMiddleware("sessions:write"))
+	adminSessions.POST("/:id/reopen", h.AdminReopenSession)
+	adminSessions.POST("/:id/force-submit", h.AdminForceSubmitSession)
 
 	// Admin order routes
 	adminOrders := admin.Group("/orders")
