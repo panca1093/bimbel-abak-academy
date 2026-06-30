@@ -1,8 +1,12 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -400,5 +404,173 @@ func TestStalePaymentSweeperIdempotent(t *testing.T) {
 
 	if checkStatusCallCount == 0 {
 		t.Error("expected SetOrderStatus to be called at least once")
+	}
+}
+
+func TestGenerateToken_Returns8UppercaseAlphanumeric(t *testing.T) {
+	tokenRe := regexp.MustCompile(`^[A-Z0-9]{8}$`)
+	seen := make(map[string]struct{}, 100)
+
+	for i := 0; i < 100; i++ {
+		tok := generateToken()
+		if !tokenRe.MatchString(tok) {
+			t.Fatalf("token %q does not match %s", tok, tokenRe)
+		}
+		seen[tok] = struct{}{}
+	}
+
+	if len(seen) < 2 {
+		t.Errorf("expected at least 2 distinct tokens across 100 calls, got %d", len(seen))
+	}
+}
+
+func TestOrderPaidHandler_ExamItem_ProvisionsRegistration(t *testing.T) {
+	ctx := context.Background()
+	orderID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	studentID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	productID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	examID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	outboxID := int64(42)
+
+	var capturedRegistration model.ExamRegistration
+	var fulfilledOrderID, fulfilledProductID uuid.UUID
+	var fulfilledCalls int
+	var statusUpdate string
+
+	tokenRe := regexp.MustCompile(`^[A-Z0-9]{8}$`)
+
+	prevLogger := slog.Default()
+	buf := &bytes.Buffer{}
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	defer slog.SetDefault(prevLogger)
+
+	repo := &mockRepository{
+		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
+			payload, _ := json.Marshal(OrderPaidPayload{
+				OrderID: orderID,
+				Items:   []OrderItemMini{{ProductID: productID, ProductType: "exam"}},
+			})
+			return []model.OutboxEvent{
+				{ID: outboxID, AggregateID: orderID, EventType: "OrderPaid", Payload: payload, CreatedAt: time.Now().String()},
+			}, nil
+		},
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{ID: orderID, StudentID: studentID, Status: "paid"}, nil
+		},
+		getExamByProductIDFn: func(ctx context.Context, pid uuid.UUID) (*model.Exam, error) {
+			if pid != productID {
+				t.Errorf("GetExamByProductID called with %v, want %v", pid, productID)
+			}
+			return &model.Exam{ID: examID, Title: "Finals", ProductID: &productID}, nil
+		},
+		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
+			capturedRegistration = reg
+			return nil
+		},
+		stampOrderItemFulfilledFn: func(ctx context.Context, tx pgx.Tx, oid, pid uuid.UUID) error {
+			fulfilledCalls++
+			fulfilledOrderID = oid
+			fulfilledProductID = pid
+			return nil
+		},
+		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
+			statusUpdate = status
+			return nil
+		},
+		markOutboxProcessedFn: func(ctx context.Context, tx pgx.Tx, id int64) error {
+			return nil
+		},
+		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+			return &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}, nil
+		},
+	}
+
+	w := &Worker{repo: repo}
+	w.pollOutbox(ctx)
+
+	if capturedRegistration.StudentID != studentID {
+		t.Errorf("registration student_id = %v, want %v", capturedRegistration.StudentID, studentID)
+	}
+	if capturedRegistration.ExamID != examID {
+		t.Errorf("registration exam_id = %v, want %v", capturedRegistration.ExamID, examID)
+	}
+	if !tokenRe.MatchString(capturedRegistration.Token) {
+		t.Errorf("registration token %q does not match %s", capturedRegistration.Token, tokenRe)
+	}
+	if capturedRegistration.Status != "registered" {
+		t.Errorf("registration status = %q, want %q", capturedRegistration.Status, "registered")
+	}
+
+	if fulfilledCalls != 1 {
+		t.Fatalf("StampOrderItemFulfilledAt called %d times, want 1", fulfilledCalls)
+	}
+	if fulfilledOrderID != orderID || fulfilledProductID != productID {
+		t.Errorf("StampOrderItemFulfilledAt called with (%v,%v), want (%v,%v)", fulfilledOrderID, fulfilledProductID, orderID, productID)
+	}
+
+	if statusUpdate != "completed" {
+		t.Errorf("order status = %q, want %q (digital exam → auto-complete)", statusUpdate, "completed")
+	}
+
+	if strings.Contains(buf.String(), "level=ERROR") {
+		t.Errorf("expected no ERROR-level log lines, got:\n%s", buf.String())
+	}
+}
+
+func TestOrderPaidHandler_ExamItem_IdempotentOnReplay(t *testing.T) {
+	ctx := context.Background()
+	orderID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	studentID := uuid.MustParse("66666666-6666-6666-6666-666666666666")
+	productID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
+	examID := uuid.MustParse("88888888-8888-8888-8888-888888888888")
+	outboxID := int64(99)
+
+	var createCalls int
+	var fulfilledCalls int
+
+	repo := &mockRepository{
+		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
+			payload, _ := json.Marshal(OrderPaidPayload{
+				OrderID: orderID,
+				Items:   []OrderItemMini{{ProductID: productID, ProductType: "exam"}},
+			})
+			return []model.OutboxEvent{
+				{ID: outboxID, AggregateID: orderID, EventType: "OrderPaid", Payload: payload, CreatedAt: time.Now().String()},
+			}, nil
+		},
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{ID: orderID, StudentID: studentID, Status: "paid"}, nil
+		},
+		getExamByProductIDFn: func(ctx context.Context, pid uuid.UUID) (*model.Exam, error) {
+			return &model.Exam{ID: examID, Title: "Finals", ProductID: &productID}, nil
+		},
+		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
+			createCalls++
+			return nil
+		},
+		stampOrderItemFulfilledFn: func(ctx context.Context, tx pgx.Tx, oid, pid uuid.UUID) error {
+			fulfilledCalls++
+			return nil
+		},
+		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
+			return nil
+		},
+		markOutboxProcessedFn: func(ctx context.Context, tx pgx.Tx, id int64) error {
+			return nil
+		},
+		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+			return &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}, nil
+		},
+	}
+
+	w := &Worker{repo: repo}
+	w.pollOutbox(ctx)
+	w.pollOutbox(ctx)
+
+	if createCalls != 2 {
+		t.Errorf("CreateExamRegistration called %d times across two polls, want 2", createCalls)
+	}
+	if fulfilledCalls != 2 {
+		t.Errorf("StampOrderItemFulfilledAt called %d times across two polls, want 2", fulfilledCalls)
 	}
 }
