@@ -97,6 +97,23 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidDateFormat):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAlreadyAttempted):
+		status, apiErr = http.StatusConflict, APIError{Code: "already_attempted", Message: err.Error()}
+	case errors.Is(err, service.ErrExamNotStarted):
+		status, apiErr = http.StatusConflict, APIError{Code: "exam_not_started", Message: err.Error()}
+	case errors.Is(err, service.ErrDeviceMismatch):
+		status, apiErr = http.StatusForbidden, APIError{Code: "device_mismatch", Message: err.Error()}
+	case errors.Is(err, service.ErrCheckinWindowClosed):
+		status, apiErr = http.StatusConflict, APIError{Code: "checkin_window_closed", Message: err.Error()}
+	case errors.Is(err, service.ErrNotCheckedIn):
+		status, apiErr = http.StatusConflict, APIError{Code: "not_checked_in", Message: err.Error()}
+	case errors.Is(err, service.ErrAlreadySubmitted):
+		status, apiErr = http.StatusConflict, APIError{Code: "already_submitted", Message: err.Error()}
+	case errors.Is(err, service.ErrSessionNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "session_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidViolationType):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_violation_type", Message: err.Error()}
+
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}
