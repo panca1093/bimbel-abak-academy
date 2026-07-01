@@ -1084,7 +1084,7 @@ func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID u
 					is_correct = EXCLUDED.is_correct,
 					score = EXCLUDED.score,
 					graded_by = EXCLUDED.graded_by,
-					graded_at = now(),
+					graded_at = EXCLUDED.graded_at,
 					grader_comment = EXCLUDED.grader_comment,
 					flagged_for_review = EXCLUDED.flagged_for_review,
 					saved_at = now()`,
@@ -1106,6 +1106,138 @@ func (r *Repository) SubmitSessionTx(ctx context.Context, tx pgx.Tx, sessionID u
 	}
 
 	return tag.RowsAffected(), nil
+}
+
+// fullyGradedFilter is the shared "no ungraded essay" predicate for a submitted session,
+// reused by CountHigherScores and CountFullyGradedSessions to keep the rank/total derivation
+// consistent (FR-S5-15/18).
+const fullyGradedFilter = `NOT EXISTS (
+	SELECT 1 FROM exam_session_answer a
+	JOIN question q ON q.id = a.question_id
+	WHERE a.session_id = s.id AND q.format = 'essay' AND a.graded_at IS NULL
+)`
+
+// ListSessionsNeedingGrading returns submitted sessions for an exam that still have at
+// least one ungraded essay answer, joined to the student's name, with the ungraded-essay
+// count per session (FR-S5-16). Single query/GROUP BY — no N+1.
+func (r *Repository) ListSessionsNeedingGrading(ctx context.Context, examID uuid.UUID) ([]model.GradingSessionItem, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT s.id, s.student_id, u.name, s.submitted_at, COUNT(*) AS ungraded_count
+		FROM exam_session s
+		JOIN users u ON u.id = s.student_id
+		JOIN exam_session_answer a ON a.session_id = s.id
+		JOIN question q ON q.id = a.question_id
+		WHERE s.exam_id = $1 AND s.status = 'submitted'
+			AND q.format = 'essay' AND a.graded_at IS NULL
+		GROUP BY s.id, s.student_id, u.name, s.submitted_at
+		ORDER BY s.submitted_at ASC`,
+		examID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.GradingSessionItem
+	for rows.Next() {
+		var item model.GradingSessionItem
+		if err := rows.Scan(&item.SessionID, &item.StudentID, &item.StudentName, &item.SubmittedAt, &item.UngradedEssayCount); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.GradingSessionItem{}
+	}
+	return items, nil
+}
+
+// GetSessionEssayAnswers returns each essay answer for a session joined to its question
+// (body, point_correct), for the admin per-session grading read (FR-S5-17).
+func (r *Repository) GetSessionEssayAnswers(ctx context.Context, sessionID uuid.UUID) ([]model.GradingEssayItem, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT a.question_id, q.body, a.answer, q.point_correct, a.score, a.grader_comment, a.graded_at
+		FROM exam_session_answer a
+		JOIN question q ON q.id = a.question_id
+		WHERE a.session_id = $1 AND q.format = 'essay'
+		ORDER BY q.sort_order ASC`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.GradingEssayItem
+	for rows.Next() {
+		var item model.GradingEssayItem
+		if err := rows.Scan(&item.QuestionID, &item.Body, &item.Answer, &item.PointCorrect, &item.Score, &item.GraderComment, &item.GradedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.GradingEssayItem{}
+	}
+	return items, nil
+}
+
+// CountHigherScores counts fully-graded submitted sessions for an exam with a strictly
+// higher score than the given score — the rank aggregate (FR-S5-18), one query, no N+1.
+func (r *Repository) CountHigherScores(ctx context.Context, examID uuid.UUID, score float64) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*)
+		FROM exam_session s
+		WHERE s.exam_id = $1 AND s.status = 'submitted' AND s.score > $2
+			AND `+fullyGradedFilter,
+		examID, score,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountFullyGradedSessions counts submitted sessions for an exam with no ungraded essay
+// answers — used for total_participants.
+func (r *Repository) CountFullyGradedSessions(ctx context.Context, examID uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*)
+		FROM exam_session s
+		WHERE s.exam_id = $1 AND s.status = 'submitted'
+			AND `+fullyGradedFilter,
+		examID,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// GradeEssayAnswerTx persists an admin's grade for one essay answer inside an existing
+// transaction; caller recomputes and persists the session total in the same tx (FR-S5-12).
+func (r *Repository) GradeEssayAnswerTx(ctx context.Context, tx pgx.Tx, sessionID, questionID uuid.UUID, score float64, comment *string, gradedBy uuid.UUID) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE exam_session_answer
+		SET score = $1, grader_comment = $2, graded_by = $3, graded_at = now()
+		WHERE session_id = $4 AND question_id = $5`,
+		score, comment, gradedBy, sessionID, questionID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // LogViolation records an integrity event for a session.

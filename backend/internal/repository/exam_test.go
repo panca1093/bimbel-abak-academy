@@ -65,6 +65,16 @@ var _ interface {
 	GetExamForSession(context.Context, uuid.UUID) (*model.Exam, error)
 } = (*Repository)(nil)
 
+// Compile-time check: *Repository must implement all grading/rank/result
+// repository methods added by Slice 5 Task 3.
+var _ interface {
+	ListSessionsNeedingGrading(context.Context, uuid.UUID) ([]model.GradingSessionItem, error)
+	GetSessionEssayAnswers(context.Context, uuid.UUID) ([]model.GradingEssayItem, error)
+	CountHigherScores(context.Context, uuid.UUID, float64) (int, error)
+	CountFullyGradedSessions(context.Context, uuid.UUID) (int, error)
+	GradeEssayAnswerTx(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, float64, *string, uuid.UUID) error
+} = (*Repository)(nil)
+
 // Sentinel error from the package: uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
 var _ error = ErrSortOrderConflict
 
