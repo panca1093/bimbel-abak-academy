@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ClipboardList,
   ListChecks,
   Package,
   Pencil,
@@ -23,13 +22,17 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useExam,
+  useGradeEssay,
+  useGradingSessions,
   usePublishExam,
   useReplaceExamTests,
+  useSessionEssays,
   useUpdateExamPrice,
 } from "@/lib/hooks/admin-exams";
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
+import type { GradingEssayItem } from "@/lib/types";
 
 type Tab =
   | "overview"
@@ -95,6 +98,25 @@ export default function ExamPackageDetailPage() {
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [priceInput, setPriceInput] = useState("");
 
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [scoreInputs, setScoreInputs] = useState<
+    Record<string, { score: string; comment: string }>
+  >({});
+
+  const {
+    data: gradingResp,
+    isLoading: gradingLoading,
+    isError: gradingIsError,
+    error: gradingError,
+  } = useGradingSessions(id);
+  const {
+    data: essaysResp,
+    isLoading: essaysLoading,
+    isError: essaysIsError,
+    error: essaysError,
+  } = useSessionEssays(selectedSessionId ?? undefined);
+  const gradeEssay = useGradeEssay(selectedSessionId ?? "");
+
   useEffect(() => {
     if (!data) return;
     setAttachedIds(data.tests.map((entry) => entry.test_id));
@@ -104,6 +126,18 @@ export default function ExamPackageDetailPage() {
     if (!data) return;
     setPriceInput(String(data.product_price ?? 0));
   }, [data]);
+
+  useEffect(() => {
+    if (!essaysResp) return;
+    const next: Record<string, { score: string; comment: string }> = {};
+    for (const essay of essaysResp.data) {
+      next[essay.question_id] = {
+        score: essay.score != null ? String(essay.score) : "",
+        comment: essay.grader_comment ?? "",
+      };
+    }
+    setScoreInputs(next);
+  }, [essaysResp]);
 
   const availableToAdd = useMemo(() => {
     const attached = new Set(attachedIds);
@@ -141,6 +175,30 @@ export default function ExamPackageDetailPage() {
       refetch();
     } catch (e) {
       toast.error(errorMessage(e, t("error_generic")));
+    }
+  }
+
+  async function handleSaveEssay(essay: GradingEssayItem) {
+    const input = scoreInputs[essay.question_id];
+    const scoreNum = Number(input?.score);
+    if (
+      !input?.score ||
+      !Number.isInteger(scoreNum) ||
+      scoreNum < 0 ||
+      scoreNum > essay.point_correct
+    ) {
+      toast.error(t("grading_save_failed"));
+      return;
+    }
+    try {
+      await gradeEssay.mutateAsync({
+        question_id: essay.question_id,
+        score: scoreNum,
+        comment: input.comment.trim() ? input.comment.trim() : undefined,
+      });
+      toast.success(t("grading_saved"));
+    } catch (e) {
+      toast.error(errorMessage(e, t("grading_save_failed")));
     }
   }
 
@@ -432,7 +490,136 @@ export default function ExamPackageDetailPage() {
             <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
           )}
           {tab === "grading" && (
-            <UnderMaintenance icon={ClipboardList} title={t("admin_exam_detail_tab_grading")} />
+            <div className="md-card-outlined space-y-4 p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-title-large font-semibold">
+                  {t("grading_sessions_title")}
+                </h2>
+                {selectedSessionId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedSessionId(null)}
+                  >
+                    {t("grading_back")}
+                  </Button>
+                )}
+              </div>
+
+              {!selectedSessionId && (
+                <>
+                  {gradingLoading && (
+                    <div className="space-y-2">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <Skeleton key={i} className="h-10 w-full" />
+                      ))}
+                    </div>
+                  )}
+
+                  {gradingIsError && (
+                    <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+                      {errorMessage(gradingError, t("error_generic"))}
+                    </div>
+                  )}
+
+                  {!gradingLoading && !gradingIsError && (
+                    <div className="overflow-x-auto md-card-outlined">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium">
+                              {t("grading_col_student")}
+                            </th>
+                            <th className="px-4 py-3 text-left font-medium">
+                              {t("grading_col_submitted")}
+                            </th>
+                            <th className="px-4 py-3 text-left font-medium">
+                              {t("grading_col_ungraded")}
+                            </th>
+                            <th className="px-4 py-3 text-right font-medium" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(gradingResp?.data ?? []).map((session) => (
+                            <tr
+                              key={session.session_id}
+                              className="border-t transition-colors hover:bg-muted/40"
+                            >
+                              <td className="px-4 py-3 font-medium">
+                                {session.student_name}
+                              </td>
+                              <td className="px-4 py-3">
+                                {formatScheduled(session.submitted_at)}
+                              </td>
+                              <td className="px-4 py-3">
+                                {session.ungraded_essay_count}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setSelectedSessionId(session.session_id)}
+                                >
+                                  {t("competition_view_detail")}
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                          {(gradingResp?.data.length ?? 0) === 0 && (
+                            <tr>
+                              <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                                {t("grading_sessions_empty")}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {selectedSessionId && (
+                <>
+                  {essaysLoading && (
+                    <div className="space-y-2">
+                      {Array.from({ length: 2 }).map((_, i) => (
+                        <Skeleton key={i} className="h-24 w-full" />
+                      ))}
+                    </div>
+                  )}
+
+                  {essaysIsError && (
+                    <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+                      {errorMessage(essaysError, t("error_generic"))}
+                    </div>
+                  )}
+
+                  {!essaysLoading && !essaysIsError && (
+                    <ul className="space-y-4">
+                      {(essaysResp?.data ?? []).map((essay) => (
+                        <GradingEssayCard
+                          key={essay.question_id}
+                          essay={essay}
+                          input={scoreInputs[essay.question_id] ?? { score: "", comment: "" }}
+                          onChange={(next) =>
+                            setScoreInputs((prev) => ({ ...prev, [essay.question_id]: next }))
+                          }
+                          onSave={() => handleSaveEssay(essay)}
+                          saving={
+                            gradeEssay.isPending &&
+                            gradeEssay.variables?.question_id === essay.question_id
+                          }
+                          t={t}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
           )}
           {tab === "leaderboard" && (
             <UnderMaintenance icon={Trophy} title={t("admin_exam_detail_tab_leaderboard")} />
@@ -459,5 +646,74 @@ function OverviewRow({ label, value }: { label: string; value: React.ReactNode }
       <dt className="text-label text-muted-foreground">{label}</dt>
       <dd className="text-sm">{value}</dd>
     </div>
+  );
+}
+
+function GradingEssayCard({
+  essay,
+  input,
+  onChange,
+  onSave,
+  saving,
+  t,
+}: {
+  essay: GradingEssayItem;
+  input: { score: string; comment: string };
+  onChange: (next: { score: string; comment: string }) => void;
+  onSave: () => void;
+  saving: boolean;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  return (
+    <li className="space-y-3 rounded-md border p-4">
+      <div className="text-sm font-medium">{essay.body}</div>
+      <div className="space-y-1">
+        <div className="text-label text-muted-foreground">
+          {t("grading_essay_answer_label")}
+        </div>
+        <div className="whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-sm">
+          {essay.answer?.trim() ? essay.answer : t("grading_essay_no_answer")}
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
+        <div className="grid gap-2">
+          <Label htmlFor={`grading-score-${essay.question_id}`}>
+            {t("grading_score_label")}
+          </Label>
+          <Input
+            id={`grading-score-${essay.question_id}`}
+            type="number"
+            min={0}
+            max={essay.point_correct}
+            value={input.score}
+            onChange={(e) => onChange({ ...input, score: e.target.value })}
+            disabled={saving}
+          />
+          <div className="text-label text-muted-foreground">
+            {t("grading_score_range_hint").replace("{max}", String(essay.point_correct))}
+          </div>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor={`grading-comment-${essay.question_id}`}>
+            {t("grading_comment_label")}
+          </Label>
+          <textarea
+            id={`grading-comment-${essay.question_id}`}
+            data-slot="textarea"
+            value={input.comment}
+            onChange={(e) => onChange({ ...input, comment: e.target.value })}
+            placeholder={t("grading_comment_placeholder")}
+            rows={2}
+            disabled={saving}
+            className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+          />
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button type="button" size="sm" onClick={onSave} disabled={saving}>
+          {saving ? t("saving") : t("grading_save")}
+        </Button>
+      </div>
+    </li>
   );
 }
