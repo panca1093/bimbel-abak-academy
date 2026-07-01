@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AlertCircle, Trophy } from "lucide-react";
 
-import { useRegistrations } from "@/lib/hooks/competition";
+import { useRegistrations } from "@/lib/hooks/exam";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -40,7 +40,7 @@ function formatScheduled(scheduledAt: string | null): string {
   }).format(d);
 }
 
-export default function CompetitionPage() {
+export default function ExamPage() {
   const { t } = useTranslation();
   const { data, isLoading, isError, error, refetch } = useRegistrations();
 
@@ -71,7 +71,7 @@ export default function CompetitionPage() {
       )}
 
       {isLoading ? (
-        <CompetitionSkeleton />
+        <ExamSkeleton />
       ) : data && data.length > 0 ? (
         <div className="space-y-3">
           {data.map((reg) => (
@@ -79,7 +79,7 @@ export default function CompetitionPage() {
           ))}
         </div>
       ) : (
-        <EmptyCompetition />
+        <EmptyExam />
       )}
     </div>
   );
@@ -114,7 +114,7 @@ function RegistrationRow({ reg }: { reg: RegistrationListItem }) {
         </p>
       </div>
       <Button asChild variant="outline" size="sm" className="shrink-0">
-        <Link href={`/competition/${reg.id}`}>
+        <Link href={`/exam/${reg.id}`}>
           {t("competition_view_detail")}
         </Link>
       </Button>
@@ -122,7 +122,7 @@ function RegistrationRow({ reg }: { reg: RegistrationListItem }) {
   );
 }
 
-function EmptyCompetition() {
+function EmptyExam() {
   const { t } = useTranslation();
   return (
     <Card className="flex flex-col items-center justify-center gap-3 border-dashed border-line bg-surface-2 px-6 py-10 text-center">
@@ -134,7 +134,7 @@ function EmptyCompetition() {
   );
 }
 
-function CompetitionSkeleton() {
+function ExamSkeleton() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">

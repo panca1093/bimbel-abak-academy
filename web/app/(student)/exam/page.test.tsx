@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 
-import CompetitionPage from "./page";
+import ExamPage from "./page";
 import type { RegistrationListItem } from "@/lib/types";
 
 let uiStore = { lang: "id" as "id" | "en" };
@@ -18,7 +18,7 @@ let registrationsState = {
   refetch: vi.fn(),
 };
 
-vi.mock("@/lib/hooks/competition", () => ({
+vi.mock("@/lib/hooks/exam", () => ({
   useRegistrations: () => registrationsState,
 }));
 
@@ -51,7 +51,7 @@ const sample: RegistrationListItem[] = [
   },
 ];
 
-describe("CompetitionPage", () => {
+describe("ExamPage", () => {
   beforeEach(() => {
     uiStore = { lang: "id" };
     registrationsState = {
@@ -64,7 +64,7 @@ describe("CompetitionPage", () => {
   });
 
   it("renders the competition list with exam titles", async () => {
-    render(<CompetitionPage />);
+    render(<ExamPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Try Out UTBK Gratis #12")).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("CompetitionPage", () => {
 
   it("translates copy when language is en", () => {
     uiStore = { lang: "en" };
-    render(<CompetitionPage />);
+    render(<ExamPage />);
 
     expect(
       screen.getByRole("heading", { name: /Competition & Tryout/i })
