@@ -439,6 +439,74 @@ func TestGetSessionResult_Rank_HigherScoreSessions(t *testing.T) {
 	}
 }
 
+// TestGetSessionResult_Rank_TiedScores_ShareRank documents the tie semantic named in
+// FR-S5-18 explicitly: sessions with equal (non-strictly-higher) scores share a rank,
+// since CountHigherScores only counts strictly-higher scores.
+func TestGetSessionResult_Rank_TiedScores_ShareRank(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	examID := uuid.New()
+	svc.repo.seedExam(&model.Exam{ID: examID, ResultConfig: "score_only"})
+	svc.repo.seedTests(examID, nil) // no essay questions -> trivially fully graded
+
+	studentA := uuid.New()
+	sessA := uuid.New()
+	svc.repo.sessions[sessA] = &model.ExamSession{ID: sessA, StudentID: studentA, ExamID: examID, Status: "submitted", Score: floatPtr(5)}
+
+	studentB := uuid.New()
+	sessB := uuid.New()
+	svc.repo.sessions[sessB] = &model.ExamSession{ID: sessB, StudentID: studentB, ExamID: examID, Status: "submitted", Score: floatPtr(5)}
+
+	resultA, err := svc.GetSessionResult(ctx, studentA.String(), sessA.String())
+	if err != nil {
+		t.Fatalf("GetSessionResult A: %v", err)
+	}
+	resultB, err := svc.GetSessionResult(ctx, studentB.String(), sessB.String())
+	if err != nil {
+		t.Fatalf("GetSessionResult B: %v", err)
+	}
+
+	if resultA.Rank != 1 {
+		t.Errorf("rank A: want 1 (tied, no strictly-higher score), got %d", resultA.Rank)
+	}
+	if resultB.Rank != 1 {
+		t.Errorf("rank B: want 1 (tied, no strictly-higher score), got %d", resultB.Rank)
+	}
+}
+
+// TestGetSessionResult_Result_AllEssaysGraded_PassesFullyGradedGate exercises the
+// positive branch of isFullyGraded (FR-S5-15): a session with an essay question whose
+// answer has graded_at set must reach the "result" state, not "grading". Existing
+// coverage only exercised the negative branch (ungraded essay -> "grading"); the other
+// "result" state tests use pure-mcq fixtures that never enter the essay loop at all.
+func TestGetSessionResult_Result_AllEssaysGraded_PassesFullyGradedGate(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	studentID := uuid.New()
+	examID := uuid.New()
+	svc.repo.seedExam(&model.Exam{ID: examID, ResultConfig: "score_only"})
+
+	testID := uuid.New()
+	td, qID := essayTest(testID, 5)
+	svc.repo.seedTests(examID, []model.TestDetail{td})
+
+	sessID := uuid.New()
+	svc.repo.sessions[sessID] = &model.ExamSession{ID: sessID, StudentID: studentID, ExamID: examID, Status: "submitted", Score: floatPtr(3)}
+	svc.repo.sessionAnswers[sessID] = []model.ExamSessionAnswer{
+		{QuestionID: qID, Answer: strPtr("my essay"), Score: floatPtr(3), GradedAt: timePtr(time.Now())},
+	}
+
+	result, err := svc.GetSessionResult(ctx, studentID.String(), sessID.String())
+	if err != nil {
+		t.Fatalf("GetSessionResult: %v", err)
+	}
+	if result.State != "result" {
+		t.Errorf("state: want result (all essays graded), got %q", result.State)
+	}
+}
+
 func TestGetSessionResult_NotFound(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
