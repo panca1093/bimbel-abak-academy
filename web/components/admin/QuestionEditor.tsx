@@ -156,6 +156,8 @@ const FORMAT_LABELS: Record<QuestionFormat, "tests_format_mcq" | "tests_format_m
 
 const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay"];
 
+const DIFFICULTY_POINT_DEFAULTS: Record<string, string> = { easy: "1", medium: "2", hard: "3" };
+
 function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionInput[] {
   if (q.options.length === 0) {
     return [
@@ -180,12 +182,16 @@ function buildInput(
   explanation: string,
   imageUrl: string,
   correctAnswer: string,
-  options: AdminQuestionOptionInput[]
+  options: AdminQuestionOptionInput[],
+  pointCorrect: string,
+  pointWrong: string
 ): AdminQuestionInput {
   const base: AdminQuestionInput = {
     format,
     body: body.trim(),
     sort_order: Number(sortOrder) || 0,
+    point_correct: Number(pointCorrect) || 1,
+    point_wrong: Number(pointWrong) || 0,
   };
   if (difficulty) base.difficulty = difficulty;
   if (explanation.trim()) base.explanation = explanation.trim();
@@ -240,6 +246,9 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const [explanation, setExplanation] = useState(question?.question.explanation ?? "");
   const [imageUrl, setImageUrl] = useState(question?.question.image_url ?? "");
   const [correctAnswer, setCorrectAnswer] = useState(question?.question.correct_answer ?? "");
+  const [pointCorrect, setPointCorrect] = useState(String(question?.question.point_correct ?? 1));
+  const [pointWrong, setPointWrong] = useState(String(question?.question.point_wrong ?? 0));
+  const [pointCorrectTouched, setPointCorrectTouched] = useState(isEdit);
   const [options, setOptions] = useState<AdminQuestionOptionInput[]>(
     question ? buildOptionsFromQuestion(question) : [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
@@ -258,12 +267,23 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setExplanation("");
       setImageUrl("");
       setCorrectAnswer("");
+      setPointCorrect("1");
+      setPointWrong("0");
+      setPointCorrectTouched(false);
       setOptions([
         { key: "a", text: "", is_correct: true, sort_order: 1 },
         { key: "b", text: "", is_correct: false, sort_order: 2 },
       ]);
     }
   }, [question]);
+
+  function handleDifficultyChange(value: string) {
+    const next = value === "none" ? "" : value;
+    setDifficulty(next);
+    if (!pointCorrectTouched && DIFFICULTY_POINT_DEFAULTS[next]) {
+      setPointCorrect(DIFFICULTY_POINT_DEFAULTS[next]);
+    }
+  }
 
   async function handleSave() {
     const result = validate(format, body, correctAnswer, options);
@@ -272,7 +292,18 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       return;
     }
     setErrorKey(null);
-    const input = buildInput(format, body, sortOrder, difficulty, explanation, imageUrl, correctAnswer, options);
+    const input = buildInput(
+      format,
+      body,
+      sortOrder,
+      difficulty,
+      explanation,
+      imageUrl,
+      correctAnswer,
+      options,
+      pointCorrect,
+      pointWrong
+    );
     try {
       await save.mutateAsync({ question: question?.question.id, input });
       toast.success(t("tests_save_success"));
@@ -338,7 +369,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
           <select
             id="question-difficulty"
             value={difficulty || "none"}
-            onChange={(e) => setDifficulty(e.target.value === "none" ? "" : e.target.value)}
+            onChange={(e) => handleDifficultyChange(e.target.value)}
             disabled={save.isPending}
             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
           >
@@ -357,6 +388,39 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
             placeholder="https://..."
             disabled={save.isPending}
           />
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <Label>{t("tests_points_panel_title")}</Label>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="question-point-correct">{t("tests_field_point_correct")}</Label>
+            <Input
+              id="question-point-correct"
+              type="number"
+              min={1}
+              step={1}
+              value={pointCorrect}
+              onChange={(e) => {
+                setPointCorrect(e.target.value);
+                setPointCorrectTouched(true);
+              }}
+              disabled={save.isPending}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="question-point-wrong">{t("tests_field_point_wrong")}</Label>
+            <Input
+              id="question-point-wrong"
+              type="number"
+              min={0}
+              step={1}
+              value={pointWrong}
+              onChange={(e) => setPointWrong(e.target.value)}
+              disabled={save.isPending}
+            />
+          </div>
         </div>
       </div>
 
