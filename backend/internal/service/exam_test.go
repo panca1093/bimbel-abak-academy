@@ -445,6 +445,33 @@ func TestValidateExam_accepts_empty_timer_mode_legacy(t *testing.T) {
 	}
 }
 
+func TestValidateExam_rejects_invalid_result_config(t *testing.T) {
+	e := model.Exam{Title: "Finals", ResultConfig: "walkthrough"}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("invalid result_config should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "result_config must be hidden, score_only, or score_pembahasan") {
+		t.Errorf("invalid result_config msg should mention allowed values, got %q", err.Error())
+	}
+}
+
+func TestValidateExam_accepts_empty_result_config(t *testing.T) {
+	e := model.Exam{Title: "Finals", ResultConfig: ""}
+	if err := validateExam(e); err != nil {
+		t.Errorf("empty result_config should pass validateExam (defaulting happens in CreateExam), got %v", err)
+	}
+}
+
+func TestValidateExam_accepts_each_valid_result_config(t *testing.T) {
+	for _, rc := range []string{"hidden", "score_only", "score_pembahasan"} {
+		e := model.Exam{Title: "Finals", ResultConfig: rc}
+		if err := validateExam(e); err != nil {
+			t.Errorf("result_config=%q should pass, got %v", rc, err)
+		}
+	}
+}
+
 func TestCheckTypeRBAC_admin_exam_allows_exam(t *testing.T) {
 	if err := checkTypeRBAC(RoleAdminExam, "exam"); err != nil {
 		t.Errorf("admin_exam on exam type should be allowed, got %v", err)

@@ -219,11 +219,11 @@ type SessionResult struct {
 	State           string                 `json:"state"`
 	ResultConfig    string                 `json:"result_config,omitempty"`
 	ResultReleaseAt *time.Time             `json:"result_release_at,omitempty"`
-	Score           float64                `json:"score,omitempty"`
-	CorrectCount    int                    `json:"correct_count,omitempty"`
-	WrongCount      int                    `json:"wrong_count,omitempty"`
-	EmptyCount      int                    `json:"empty_count,omitempty"`
-	Rank            int                    `json:"rank,omitempty"`
+	Score           float64                `json:"score"`
+	CorrectCount    int                    `json:"correct_count"`
+	WrongCount      int                    `json:"wrong_count"`
+	EmptyCount      int                    `json:"empty_count"`
+	Rank            int                    `json:"rank"`
 	Breakdown       []ResultTopicRow       `json:"breakdown,omitempty"`
 	Pembahasan      []ResultPembahasanItem `json:"pembahasan,omitempty"`
 }
