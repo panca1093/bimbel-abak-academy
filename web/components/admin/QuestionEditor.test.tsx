@@ -23,6 +23,8 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     format: "mcq" as QuestionFormat,
     body: "Apa ibu kota Indonesia?",
     sort_order: 1,
+    point_correct: 1,
+    point_wrong: 0,
     ...overrides,
   };
 }

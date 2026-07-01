@@ -737,6 +737,42 @@ export const DICT = {
     fullscreen_required: "Mode layar penuh diperlukan",
     violation_warning: "Peringatan pelanggaran",
     submitted: "Terkumpul",
+
+    // Exam result page (Slice 5)
+    result_your_score: "Skor Anda",
+    result_correct: "Benar",
+    result_incorrect: "Salah",
+    result_empty: "Kosong",
+    result_rank: "Peringkat",
+    result_by_topic: "Berdasarkan Topik",
+    result_pembahasan: "Pembahasan",
+    result_your_answer: "Jawaban Anda",
+    result_correct_answer: "Jawaban Benar",
+    result_certificate_placeholder: "Sertifikat akan tersedia setelah dirilis",
+    result_grading: "Sedang dinilai",
+    result_locked: "Hasil tersedia pada {t}",
+
+    // Admin — essay grading tab (Slice 5)
+    grading_sessions_title: "Sesi Perlu Dinilai",
+    grading_sessions_empty: "Tidak ada sesi yang perlu dinilai.",
+    grading_col_student: "Siswa",
+    grading_col_submitted: "Dikumpulkan",
+    grading_col_ungraded: "Esai belum dinilai",
+    grading_back: "Kembali ke daftar",
+    grading_essay_answer_label: "Jawaban siswa",
+    grading_essay_no_answer: "Tidak dijawab",
+    grading_score_label: "Skor",
+    grading_score_range_hint: "Skor 0 sampai {max}",
+    grading_comment_label: "Komentar (opsional)",
+    grading_comment_placeholder: "Tulis komentar untuk siswa…",
+    grading_save: "Simpan Nilai",
+    grading_saved: "Nilai tersimpan",
+    grading_save_failed: "Gagal menyimpan nilai",
+
+    // Admin — points authoring (Slice 5)
+    tests_points_panel_title: "Penilaian",
+    tests_field_point_correct: "Poin benar",
+    tests_field_point_wrong: "Poin salah",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1470,6 +1506,42 @@ export const DICT = {
     fullscreen_required: "Fullscreen mode required",
     violation_warning: "Violation warning",
     submitted: "Submitted",
+
+    // Exam result page (Slice 5)
+    result_your_score: "Your Score",
+    result_correct: "Correct",
+    result_incorrect: "Incorrect",
+    result_empty: "Empty",
+    result_rank: "Rank",
+    result_by_topic: "By Topic",
+    result_pembahasan: "Explanation",
+    result_your_answer: "Your Answer",
+    result_correct_answer: "Correct Answer",
+    result_certificate_placeholder: "Certificate will be available after release",
+    result_grading: "Being graded",
+    result_locked: "Result available on {t}",
+
+    // Admin — essay grading tab (Slice 5)
+    grading_sessions_title: "Sessions Needing Grading",
+    grading_sessions_empty: "No sessions need grading.",
+    grading_col_student: "Student",
+    grading_col_submitted: "Submitted",
+    grading_col_ungraded: "Ungraded essays",
+    grading_back: "Back to list",
+    grading_essay_answer_label: "Student answer",
+    grading_essay_no_answer: "Not answered",
+    grading_score_label: "Score",
+    grading_score_range_hint: "Score 0 to {max}",
+    grading_comment_label: "Comment (optional)",
+    grading_comment_placeholder: "Write a comment for the student…",
+    grading_save: "Save Score",
+    grading_saved: "Score saved",
+    grading_save_failed: "Failed to save score",
+
+    // Admin — points authoring (Slice 5)
+    tests_points_panel_title: "Scoring",
+    tests_field_point_correct: "Points for correct",
+    tests_field_point_wrong: "Points for wrong",
   },
 };
 
