@@ -1240,6 +1240,16 @@ func (r *Repository) GradeEssayAnswerTx(ctx context.Context, tx pgx.Tx, sessionI
 	return nil
 }
 
+// UpdateSessionScoreTx persists a session's recomputed total inside an existing transaction;
+// used by the essay-grading write path after GradeEssayAnswerTx (FR-S5-12/14).
+func (r *Repository) UpdateSessionScoreTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, score float64) error {
+	_, err := tx.Exec(ctx,
+		`UPDATE exam_session SET score = $1 WHERE id = $2`,
+		score, sessionID,
+	)
+	return err
+}
+
 // LogViolation records an integrity event for a session.
 func (r *Repository) LogViolation(ctx context.Context, v model.SessionViolationLog) error {
 	_, err := r.pool.Exec(ctx,

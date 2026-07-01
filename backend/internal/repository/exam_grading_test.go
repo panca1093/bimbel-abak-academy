@@ -413,3 +413,39 @@ func TestSubmitSessionTx_leavesEssayGradedAtNull(t *testing.T) {
 		t.Errorf("graded_at = %v, want nil — essay must stay ungraded after submit", *gradedAt)
 	}
 }
+
+// TestUpdateSessionScoreTx verifies the essay-grading write path's score persistence step
+// (Task 5, FR-S5-12/14): after GradeEssayAnswerTx, the caller recomputes and persists the
+// session total via UpdateSessionScoreTx in the same transaction.
+func TestUpdateSessionScoreTx(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := insertGradingUser(t, pool, "student", "Student F")
+	testID := insertGradingTest(t, pool)
+	examID := insertGradingExam(t, pool, testID)
+	sessionID := insertGradingSession(t, pool, student, examID, "submitted", nil, f64PtrG(0))
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if err := repo.UpdateSessionScoreTx(ctx, tx, sessionID, 7); err != nil {
+		t.Fatalf("UpdateSessionScoreTx: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	var score float64
+	err = pool.QueryRow(ctx, `SELECT score FROM exam_session WHERE id = $1`, sessionID).Scan(&score)
+	if err != nil {
+		t.Fatalf("query score: %v", err)
+	}
+	if score != 7 {
+		t.Errorf("score = %v, want 7", score)
+	}
+}

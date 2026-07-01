@@ -23,6 +23,9 @@ type fakeSessionRepo struct {
 	exams          map[uuid.UUID]*model.Exam
 	sessions       map[uuid.UUID]*model.ExamSession
 	sessionAnswers map[uuid.UUID][]model.ExamSessionAnswer
+	testsByExam    map[uuid.UUID][]model.TestDetail
+	essays         map[uuid.UUID][]model.GradingEssayItem
+	gradingQueue   map[uuid.UUID][]model.GradingSessionItem
 }
 
 func newFakeSessionRepo() *fakeSessionRepo {
@@ -31,6 +34,9 @@ func newFakeSessionRepo() *fakeSessionRepo {
 		exams:          make(map[uuid.UUID]*model.Exam),
 		sessions:       make(map[uuid.UUID]*model.ExamSession),
 		sessionAnswers: make(map[uuid.UUID][]model.ExamSessionAnswer),
+		testsByExam:    make(map[uuid.UUID][]model.TestDetail),
+		essays:         make(map[uuid.UUID][]model.GradingEssayItem),
+		gradingQueue:   make(map[uuid.UUID][]model.GradingSessionItem),
 	}
 }
 
@@ -153,8 +159,8 @@ func (f *fakeSessionRepo) GetExamSessionByID(_ context.Context, sessionID uuid.U
 	return &cp, nil
 }
 
-func (f *fakeSessionRepo) GetSessionWithQuestions(_ context.Context, _ uuid.UUID) ([]model.TestDetail, error) {
-	return nil, nil
+func (f *fakeSessionRepo) GetSessionWithQuestions(_ context.Context, examID uuid.UUID) ([]model.TestDetail, error) {
+	return f.testsByExam[examID], nil
 }
 
 func (f *fakeSessionRepo) GetSessionAnswers(_ context.Context, sessionID uuid.UUID) ([]model.ExamSessionAnswer, error) {
