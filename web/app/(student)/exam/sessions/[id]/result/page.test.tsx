@@ -116,7 +116,7 @@ describe("SessionResultPage", () => {
     expect(screen.getByText("#3")).toBeInTheDocument();
     expect(screen.queryByText("Berdasarkan Topik")).not.toBeInTheDocument();
     expect(screen.queryByText("Pembahasan")).not.toBeInTheDocument();
-    expect(screen.getByText("Sertifikat")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sertifikat" })).toBeDisabled();
   });
 
   it("renders breakdown and pembahasan for score_pembahasan result (FR-S5-26)", () => {
