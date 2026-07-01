@@ -61,7 +61,7 @@ func scanQuestion(row interface{ Scan(dest ...any) error }, q *model.Question) e
 	err := row.Scan(
 		&q.ID, &q.TestID, &q.Format, &q.Body,
 		&correctAnswer, &explanation, &difficulty, &imageURL,
-		&q.SortOrder,
+		&q.SortOrder, &q.PointCorrect, &q.PointWrong,
 	)
 	if err != nil {
 		return err
@@ -233,7 +233,7 @@ func (r *Repository) DeleteTest(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]model.QuestionWithOptions, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order
+		`SELECT id, test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order, point_correct, point_wrong
 		FROM question
 		WHERE test_id = $1
 		ORDER BY sort_order`,
@@ -309,10 +309,10 @@ func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs [
 
 func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO question (test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order, point_correct, point_wrong)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id`,
-		q.TestID, q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder,
+		q.TestID, q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder, q.PointCorrect, q.PointWrong,
 	).Scan(&q.ID)
 	if err != nil {
 		if isSortOrderConflict(err) {
@@ -331,9 +331,9 @@ func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	var updatedID uuid.UUID
 	err := tx.QueryRow(ctx,
 		`UPDATE question
-		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, sort_order = $7
-		WHERE id = $8 RETURNING id`,
-		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder, q.ID,
+		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, sort_order = $7, point_correct = $8, point_wrong = $9
+		WHERE id = $10 RETURNING id`,
+		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder, q.PointCorrect, q.PointWrong, q.ID,
 	).Scan(&updatedID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

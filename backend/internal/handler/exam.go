@@ -219,6 +219,8 @@ type questionRequest struct {
 	ImageURL      *string         `json:"image_url,omitempty"`
 	CorrectAnswer *string         `json:"correct_answer,omitempty"`
 	Options       []optionRequest `json:"options,omitempty"`
+	PointCorrect  *int            `json:"point_correct,omitempty"`
+	PointWrong    *int            `json:"point_wrong,omitempty"`
 }
 
 type optionRequest struct {
@@ -230,6 +232,14 @@ type optionRequest struct {
 }
 
 func (r questionRequest) toQuestion() model.Question {
+	pointCorrect := 1
+	if r.PointCorrect != nil {
+		pointCorrect = *r.PointCorrect
+	}
+	pointWrong := 0
+	if r.PointWrong != nil {
+		pointWrong = *r.PointWrong
+	}
 	return model.Question{
 		Format:        r.Format,
 		Body:          r.Body,
@@ -238,6 +248,8 @@ func (r questionRequest) toQuestion() model.Question {
 		Difficulty:    r.Difficulty,
 		ImageURL:      r.ImageURL,
 		SortOrder:     r.SortOrder,
+		PointCorrect:  pointCorrect,
+		PointWrong:    pointWrong,
 	}
 }
 

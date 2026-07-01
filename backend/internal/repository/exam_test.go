@@ -185,8 +185,8 @@ func TestScanQuestion_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanQuestion returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 9 {
-		t.Fatalf("scanQuestion passed %d destinations, want 9 (id, test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order)", got)
+	if got := len(rec.dests); got != 11 {
+		t.Fatalf("scanQuestion passed %d destinations, want 11 (id, test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order, point_correct, point_wrong)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -215,6 +215,12 @@ func TestScanQuestion_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[8].(*int); !ok {
 		t.Errorf("dest[8] = %T, want *int (sort_order)", rec.dests[8])
+	}
+	if _, ok := rec.dests[9].(*int); !ok {
+		t.Errorf("dest[9] = %T, want *int (point_correct)", rec.dests[9])
+	}
+	if _, ok := rec.dests[10].(*int); !ok {
+		t.Errorf("dest[10] = %T, want *int (point_wrong)", rec.dests[10])
 	}
 }
 
