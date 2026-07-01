@@ -444,3 +444,79 @@ func (h *Handler) AdminForceSubmitSession(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, result)
 }
+
+// StudentGetSessionResult returns the gated result view for the caller's own session
+// (FR-S5-20..24).
+func (h *Handler) StudentGetSessionResult(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	sessionID := c.Param("id")
+	result, err := h.svc.GetSessionResult(c.Request().Context(), claims.Sub, sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+// AdminListGradingSessions returns the grading queue for an exam (FR-S5-16).
+func (h *Handler) AdminListGradingSessions(c echo.Context) error {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	items, err := h.svc.ListGradingSessions(c.Request().Context(), examID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": items})
+}
+
+// AdminGetSessionEssays returns the essay answers of a session for grading (FR-S5-17).
+func (h *Handler) AdminGetSessionEssays(c echo.Context) error {
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	items, err := h.svc.GetSessionEssays(c.Request().Context(), sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": items})
+}
+
+// AdminGradeEssay grades one essay answer and recomputes the session total (FR-S5-12..14).
+func (h *Handler) AdminGradeEssay(c echo.Context) error {
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	graderID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		return badRequest(c, "invalid grader id")
+	}
+
+	var req struct {
+		QuestionID string  `json:"question_id"`
+		Score      float64 `json:"score"`
+		Comment    *string `json:"comment,omitempty"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	questionID, err := uuid.Parse(req.QuestionID)
+	if err != nil {
+		return badRequest(c, "invalid question_id")
+	}
+
+	total, err := h.svc.GradeEssayAnswer(c.Request().Context(), sessionID, questionID, req.Score, req.Comment, graderID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"status": "ok", "score": total})
+}
