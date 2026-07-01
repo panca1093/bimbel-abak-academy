@@ -39,6 +39,16 @@ var _ interface {
 	UpdateProductPriceTx(context.Context, pgx.Tx, uuid.UUID, int64) error
 } = (*Repository)(nil)
 
+// Compile-time check: *Repository must implement all registration repository
+// methods added by Task 2 of Slice 3.
+var _ interface {
+	GetExamByProductID(context.Context, uuid.UUID) (*model.Exam, error)
+	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
+	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
+	GetExamRegistrationsByStudent(context.Context, uuid.UUID) ([]model.RegistrationListItem, error)
+	GetExamRegistrationByID(context.Context, uuid.UUID, uuid.UUID) (*model.RegistrationDetail, error)
+} = (*Repository)(nil)
+
 // Sentinel error from the package: uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
 var _ error = ErrSortOrderConflict
 
@@ -274,5 +284,58 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[19].(*time.Time); !ok {
 		t.Errorf("dest[19] = %T, want *time.Time (created_at)", rec.dests[19])
+	}
+}
+
+func TestRegistrationListItemShape(t *testing.T) {
+	scheduled := time.Now()
+	item := model.RegistrationListItem{
+		ExamRegistration: model.ExamRegistration{
+			ID:        uuid.New(),
+			StudentID: uuid.New(),
+			ExamID:    uuid.New(),
+			Token:     "ABCD1234",
+			Status:    "registered",
+			CreatedAt: time.Now(),
+		},
+		ExamTitle:   "Tryout Matematika",
+		ScheduledAt: &scheduled,
+	}
+	if item.ID == uuid.Nil || item.Token != "ABCD1234" || item.ExamTitle == "" {
+		t.Errorf("RegistrationListItem fields not round-tripping: %+v", item)
+	}
+	if item.ScheduledAt == nil || !item.ScheduledAt.Equal(scheduled) {
+		t.Errorf("RegistrationListItem.ScheduledAt pointer not preserved: %+v", item.ScheduledAt)
+	}
+}
+
+func TestRegistrationDetailShape(t *testing.T) {
+	scheduled := time.Now()
+	checkInWindow := 15
+	duration := 90
+	detail := model.RegistrationDetail{
+		ExamRegistration: model.ExamRegistration{
+			ID:        uuid.New(),
+			StudentID: uuid.New(),
+			ExamID:    uuid.New(),
+			Token:     "ABCD1234",
+			Status:    "registered",
+			CreatedAt: time.Now(),
+		},
+	}
+	detail.Exam.ID = uuid.New()
+	detail.Exam.Title = "Tryout Matematika"
+	detail.Exam.ScheduledAt = &scheduled
+	detail.Exam.RequiresCheckin = true
+	detail.Exam.CheckInWindowMinutes = &checkInWindow
+	detail.Exam.TimerMode = "overall"
+	detail.Exam.DurationMinutes = &duration
+	detail.Exam.ResultConfig = "hidden"
+
+	if detail.Exam.Title == "" || !detail.Exam.RequiresCheckin {
+		t.Errorf("RegistrationDetail.Exam fields not round-tripping: %+v", detail.Exam)
+	}
+	if detail.Exam.CheckInWindowMinutes == nil || *detail.Exam.CheckInWindowMinutes != 15 {
+		t.Errorf("RegistrationDetail.Exam.CheckInWindowMinutes pointer not preserved: %+v", detail.Exam.CheckInWindowMinutes)
 	}
 }

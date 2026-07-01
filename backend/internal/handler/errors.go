@@ -65,6 +65,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusNotFound, APIError{Code: "question_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrExamNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "exam_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrRegistrationNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "registration_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrValidation):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "validation_failed", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidPromo):
