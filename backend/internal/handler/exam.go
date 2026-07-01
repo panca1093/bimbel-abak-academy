@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -169,7 +170,10 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	q := req.toQuestion()
+	q, err := req.toQuestion()
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	q.TestID = testID
 	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions())
 	if err != nil {
@@ -189,7 +193,10 @@ func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	q := req.toQuestion()
+	q, err := req.toQuestion()
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	q.ID = qID
 	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions())
 	if err != nil {
@@ -219,8 +226,8 @@ type questionRequest struct {
 	ImageURL      *string         `json:"image_url,omitempty"`
 	CorrectAnswer *string         `json:"correct_answer,omitempty"`
 	Options       []optionRequest `json:"options,omitempty"`
-	PointCorrect  *int            `json:"point_correct,omitempty"`
-	PointWrong    *int            `json:"point_wrong,omitempty"`
+	PointCorrect  *float64        `json:"point_correct,omitempty"`
+	PointWrong    *float64        `json:"point_wrong,omitempty"`
 }
 
 type optionRequest struct {
@@ -231,14 +238,22 @@ type optionRequest struct {
 	SortOrder int     `json:"sort_order"`
 }
 
-func (r questionRequest) toQuestion() model.Question {
+func (r questionRequest) toQuestion() (model.Question, error) {
 	pointCorrect := 1
 	if r.PointCorrect != nil {
-		pointCorrect = *r.PointCorrect
+		v := *r.PointCorrect
+		if float64(int(v)) != v {
+			return model.Question{}, fmt.Errorf("%w: point_correct must be an integer", service.ErrValidation)
+		}
+		pointCorrect = int(v)
 	}
 	pointWrong := 0
 	if r.PointWrong != nil {
-		pointWrong = *r.PointWrong
+		v := *r.PointWrong
+		if float64(int(v)) != v {
+			return model.Question{}, fmt.Errorf("%w: point_wrong must be an integer", service.ErrValidation)
+		}
+		pointWrong = int(v)
 	}
 	return model.Question{
 		Format:        r.Format,
@@ -250,7 +265,7 @@ func (r questionRequest) toQuestion() model.Question {
 		SortOrder:     r.SortOrder,
 		PointCorrect:  pointCorrect,
 		PointWrong:    pointWrong,
-	}
+	}, nil
 }
 
 func (r questionRequest) toOptions() []model.QuestionOption {

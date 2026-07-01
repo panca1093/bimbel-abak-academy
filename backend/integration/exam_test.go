@@ -575,6 +575,40 @@ func TestExam_AdminCreateQuestion_negative_point_wrong_returns_422(t *testing.T)
 	assert.Equal(t, "validation_failed", out["code"])
 }
 
+func TestExam_AdminCreateQuestion_fractional_point_correct_returns_422(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	body := map[string]any{
+		"format":        "essay",
+		"body":          "explain gravity",
+		"sort_order":    1,
+		"point_correct": 1.5,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, "validation_failed", out["code"])
+}
+
+func TestExam_AdminCreateQuestion_fractional_point_wrong_returns_422(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	body := map[string]any{
+		"format":      "essay",
+		"body":        "explain gravity",
+		"sort_order":  1,
+		"point_wrong": 0.5,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, "validation_failed", out["code"])
+}
+
 func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
