@@ -11,6 +11,7 @@ import type {
   SessionAnswerInput,
   SubmitResult,
   CheckInResult,
+  SessionResult,
 } from "@/lib/types";
 
 export const examKeys = {
@@ -21,6 +22,8 @@ export const examKeys = {
   detail: (id: string) => [...examKeys.details(), id] as const,
   sessions: () => [...examKeys.all, "session"] as const,
   session: (id: string) => [...examKeys.sessions(), id] as const,
+  results: () => [...examKeys.all, "result"] as const,
+  result: (id: string) => [...examKeys.results(), id] as const,
 };
 
 export function useRegistrations() {
@@ -134,6 +137,17 @@ export function useSubmitSession(sessionId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: examKeys.session(sessionId) });
     },
+  });
+}
+
+export function useSessionResult(sessionId: string | undefined) {
+  return useQuery({
+    queryKey: examKeys.result(sessionId ?? ""),
+    queryFn: () =>
+      authFetch<SessionResult>(
+        `/exam/sessions/${encodeURIComponent(sessionId!)}/result`,
+      ),
+    enabled: Boolean(sessionId),
   });
 }
 

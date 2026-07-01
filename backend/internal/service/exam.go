@@ -104,6 +104,15 @@ func validateQuestion(q model.Question, options []model.QuestionOption) error {
 		}
 	}
 
+	// FR-S5-02: point_correct/point_wrong are unsigned magnitudes; the scoring
+	// engine (not the author) applies the sign for wrong answers.
+	if q.PointCorrect < 1 {
+		return fmt.Errorf("%w: point_correct must be >= 1", ErrValidation)
+	}
+	if q.PointWrong < 0 {
+		return fmt.Errorf("%w: point_wrong must be >= 0", ErrValidation)
+	}
+
 	return nil
 }
 
@@ -233,9 +242,18 @@ var validTimerModes = map[string]bool{
 	"per_question": true,
 }
 
+var validResultConfigs = map[string]bool{
+	"hidden":           true,
+	"score_only":       true,
+	"score_pembahasan": true,
+}
+
 // validateExam enforces exam-level invariants: title required, timer_mode
-// ∈ {overall, per_question} (empty allowed for legacy rows), and duration
-// required when timer_mode=overall.
+// ∈ {overall, per_question} (empty allowed for legacy rows), duration
+// required when timer_mode=overall, and result_config ∈ {hidden, score_only,
+// score_pembahasan} when set (empty allowed here — CreateExam defaults it
+// before this runs; the DB CHECK constraint added by migration 0015 rejects
+// empty string, so this must never reach validateExam still empty on create).
 func validateExam(e model.Exam) error {
 	if strings.TrimSpace(e.Title) == "" {
 		return fmt.Errorf("%w: exam title required", ErrValidation)
@@ -248,10 +266,16 @@ func validateExam(e model.Exam) error {
 			return fmt.Errorf("%w: duration_minutes required and positive when timer_mode=overall", ErrValidation)
 		}
 	}
+	if e.ResultConfig != "" && !validResultConfigs[e.ResultConfig] {
+		return fmt.Errorf("%w: result_config must be hidden, score_only, or score_pembahasan", ErrValidation)
+	}
 	return nil
 }
 
 func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, model.Product, error) {
+	if m.ResultConfig == "" {
+		m.ResultConfig = "hidden"
+	}
 	if err := validateExam(m); err != nil {
 		return model.Exam{}, model.Product{}, err
 	}

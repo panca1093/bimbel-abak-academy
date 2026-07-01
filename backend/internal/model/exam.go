@@ -35,6 +35,10 @@ type Question struct {
 	Difficulty    *string   `json:"difficulty"`
 	ImageURL      *string   `json:"image_url"`
 	SortOrder     int       `json:"sort_order"`
+	// PointCorrect and PointWrong are positive-integer magnitudes authored per question;
+	// the scoring engine (not the author) applies the sign for wrong answers.
+	PointCorrect int `json:"point_correct"`
+	PointWrong   int `json:"point_wrong"`
 }
 
 // QuestionOption has a composite PK (QuestionID, Key); no surrogate ID. `Key` is the
@@ -178,9 +182,9 @@ type ExamTestEntry struct {
 // joined with product price/status and an ordered list of attached tests.
 type ExamDetail struct {
 	Exam          `json:",inline"`
-	ProductPrice  int64            `json:"product_price"`
-	ProductStatus string           `json:"product_status"`
-	Tests         []ExamTestEntry  `json:"tests"`
+	ProductPrice  int64           `json:"product_price"`
+	ProductStatus string          `json:"product_status"`
+	Tests         []ExamTestEntry `json:"tests"`
 }
 
 // RegistrationListItem is the read shape returned by GET /api/v1/exam/registrations:
@@ -205,4 +209,65 @@ type RegistrationDetail struct {
 		DurationMinutes      *int       `json:"duration_minutes"`
 		ResultConfig         string     `json:"result_config"`
 	} `json:"exam"`
+}
+
+// SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the
+// gate discriminator ("hidden" | "grading" | "locked" | "result"); the remaining fields are
+// populated per state (score/counts/rank always on "result"; breakdown/pembahasan only on
+// "score_pembahasan"; ResultReleaseAt only on "locked").
+type SessionResult struct {
+	State           string                 `json:"state"`
+	ResultConfig    string                 `json:"result_config,omitempty"`
+	ResultReleaseAt *time.Time             `json:"result_release_at,omitempty"`
+	Score           float64                `json:"score"`
+	CorrectCount    int                    `json:"correct_count"`
+	WrongCount      int                    `json:"wrong_count"`
+	EmptyCount      int                    `json:"empty_count"`
+	Rank            int                    `json:"rank"`
+	Breakdown       []ResultTopicRow       `json:"breakdown,omitempty"`
+	Pembahasan      []ResultPembahasanItem `json:"pembahasan,omitempty"`
+}
+
+// ResultTopicRow is one per-Test row of the score_pembahasan breakdown (FR-S5-19).
+// Max is the sum of point_correct across the test's questions (objective + essay).
+type ResultTopicRow struct {
+	TestID  uuid.UUID `json:"test_id"`
+	Title   string    `json:"title"`
+	Subject string    `json:"subject"`
+	Topic   string    `json:"topic"`
+	Earned  float64   `json:"earned"`
+	Max     int       `json:"max"`
+}
+
+// ResultPembahasanItem is one objective-question row of the score_pembahasan pembahasan
+// list (FR-S5-23). Essay pembahasan is out of scope for Slice 5.
+type ResultPembahasanItem struct {
+	QuestionID    uuid.UUID `json:"question_id"`
+	Body          string    `json:"body"`
+	Format        string    `json:"format"`
+	YourAnswer    *string   `json:"your_answer"`
+	CorrectAnswer *string   `json:"correct_answer"`
+	IsCorrect     *bool     `json:"is_correct"`
+	Explanation   *string   `json:"explanation"`
+}
+
+// GradingSessionItem is one row of the admin grading queue (FR-S5-16): a submitted
+// session that still has at least one ungraded essay answer.
+type GradingSessionItem struct {
+	SessionID          uuid.UUID  `json:"session_id"`
+	StudentID          uuid.UUID  `json:"student_id"`
+	StudentName        string     `json:"student_name"`
+	SubmittedAt        *time.Time `json:"submitted_at"`
+	UngradedEssayCount int        `json:"ungraded_essay_count"`
+}
+
+// GradingEssayItem is one essay answer row of the per-session grading read (FR-S5-17).
+type GradingEssayItem struct {
+	QuestionID    uuid.UUID  `json:"question_id"`
+	Body          string     `json:"body"`
+	Answer        *string    `json:"answer"`
+	PointCorrect  int        `json:"point_correct"`
+	Score         *float64   `json:"score"`
+	GraderComment *string    `json:"grader_comment"`
+	GradedAt      *time.Time `json:"graded_at"`
 }

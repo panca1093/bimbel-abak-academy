@@ -383,6 +383,8 @@ export interface Question {
   difficulty?: string | null;
   image_url?: string | null;
   sort_order: number;
+  point_correct: number;
+  point_wrong: number;
 }
 
 export interface QuestionOption {
@@ -439,6 +441,8 @@ export interface AdminQuestionInput {
   image_url?: string;
   correct_answer?: string;
   options?: AdminQuestionOptionInput[];
+  point_correct?: number;
+  point_wrong?: number;
 }
 
 export interface TestListResponse {
@@ -623,4 +627,63 @@ export interface RegistrationDetail {
     duration_minutes: number | null;
     result_config: string;
   };
+}
+
+// ── Result & grading types (Slice 5) ─────────────────────────────────────
+
+export interface ResultTopicRow {
+  test_id: string;
+  title: string;
+  subject: string;
+  topic: string;
+  earned: number;
+  max: number;
+}
+
+export interface ResultPembahasanItem {
+  question_id: string;
+  body: string;
+  format: QuestionFormat;
+  your_answer?: string | null;
+  correct_answer?: string | null;
+  is_correct?: boolean | null;
+  explanation?: string | null;
+}
+
+interface SessionResultCounts {
+  score: number;
+  correct_count: number;
+  wrong_count: number;
+  empty_count: number;
+  rank: number;
+}
+
+export type SessionResult =
+  | { state: "hidden" }
+  | { state: "grading" }
+  | { state: "locked"; result_release_at: string }
+  | ({ state: "result"; result_config: "score_only" } & SessionResultCounts)
+  | ({
+      state: "result";
+      result_config: "score_pembahasan";
+      breakdown: ResultTopicRow[];
+      pembahasan: ResultPembahasanItem[];
+    } & SessionResultCounts);
+
+export interface GradingSessionItem {
+  session_id: string;
+  student_id: string;
+  student_name: string;
+  submitted_at?: string | null;
+  ungraded_essay_count: number;
+}
+
+export interface GradingEssayItem {
+  question_id: string;
+  body: string;
+  answer?: string | null;
+  point_correct: number;
+  score?: number | null;
+  grader_comment?: string | null;
+  graded_at?: string | null;
 }

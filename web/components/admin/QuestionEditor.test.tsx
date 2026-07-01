@@ -23,6 +23,8 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     format: "mcq" as QuestionFormat,
     body: "Apa ibu kota Indonesia?",
     sort_order: 1,
+    point_correct: 1,
+    point_wrong: 0,
     ...overrides,
   };
 }
@@ -282,5 +284,88 @@ describe("QuestionEditor", () => {
         expect.objectContaining({ question: "q1" })
       );
     });
+  });
+
+  // ── Penilaian panel (FR-S5-03, FR-S5-29) ─────────────────────────────────
+
+  it("renders the Penilaian panel with correct min/step attributes", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(screen.getByText(/^penilaian$/i)).toBeInTheDocument();
+
+    const pointCorrect = screen.getByLabelText(/poin benar/i);
+    expect(pointCorrect).toHaveAttribute("min", "1");
+    expect(pointCorrect).toHaveAttribute("step", "1");
+    expect(pointCorrect).toHaveValue(1);
+
+    const pointWrong = screen.getByLabelText(/poin salah/i);
+    expect(pointWrong).toHaveAttribute("min", "0");
+    expect(pointWrong).toHaveAttribute("step", "1");
+    expect(pointWrong).toHaveValue(0);
+  });
+
+  it("changing difficulty updates the point_correct default when untouched (easy→1/medium→2/hard→3)", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    const difficultySelect = screen.getByLabelText(/^tingkat kesulitan$/i);
+    const pointCorrect = screen.getByLabelText(/poin benar/i);
+
+    fireEvent.change(difficultySelect, { target: { value: "medium" } });
+    expect(pointCorrect).toHaveValue(2);
+
+    fireEvent.change(difficultySelect, { target: { value: "hard" } });
+    expect(pointCorrect).toHaveValue(3);
+
+    fireEvent.change(difficultySelect, { target: { value: "easy" } });
+    expect(pointCorrect).toHaveValue(1);
+  });
+
+  it("does not overwrite a manually-edited point_correct on a later difficulty change", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    const difficultySelect = screen.getByLabelText(/^tingkat kesulitan$/i);
+    const pointCorrect = screen.getByLabelText(/poin benar/i);
+
+    fireEvent.input(pointCorrect, { target: { value: "5" } });
+    expect(pointCorrect).toHaveValue(5);
+
+    fireEvent.change(difficultySelect, { target: { value: "hard" } });
+    expect(pointCorrect).toHaveValue(5);
+  });
+
+  it("save payload carries both point_correct and point_wrong", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    fireEvent.input(screen.getByLabelText(/poin benar/i), { target: { value: "4" } });
+    fireEvent.input(screen.getByLabelText(/poin salah/i), { target: { value: "2" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ point_correct: 4, point_wrong: 2 }),
+        })
+      );
+    });
+  });
+
+  it("edit mode initializes points from question.point_correct/point_wrong, not the difficulty default", () => {
+    const qwo = makeQuestionWithOptions({ difficulty: "easy", point_correct: 7, point_wrong: 3 });
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(screen.getByLabelText(/poin benar/i)).toHaveValue(7);
+    expect(screen.getByLabelText(/poin salah/i)).toHaveValue(3);
   });
 });

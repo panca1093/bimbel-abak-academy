@@ -21,6 +21,17 @@ func doJSONBody(t *testing.T, env *testEnv, method, path string, body any, token
 	return resp, out
 }
 
+// jsonNum reads a numeric field from a decoded JSON response map, treating a missing key
+// as zero. Some struct fields (e.g. model.SessionResult's score/correct_count/empty_count)
+// carry `omitempty`, so a legitimately-zero value is absent from the wire payload rather
+// than serialized as JSON `0`.
+func jsonNum(v any) float64 {
+	if v == nil {
+		return 0
+	}
+	return v.(float64)
+}
+
 // seedTest directly inserts a test row, returns the testID.
 func seedTest(t *testing.T, env *testEnv, title, subject, topic string, duration int) string {
 	t.Helper()
@@ -484,6 +495,120 @@ func TestExam_AdminCreateQuestion_essay_accepts_no_options_no_correct_answer_ret
 	assert.Len(t, options, 0)
 }
 
+func TestExam_AdminCreateQuestion_roundtrips_nondefault_points(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	body := map[string]any{
+		"format":        "essay",
+		"body":          "explain gravity",
+		"sort_order":    1,
+		"point_correct": 5,
+		"point_wrong":   3,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+	q := out["question"].(map[string]any)
+	assert.Equal(t, float64(5), q["point_correct"])
+	assert.Equal(t, float64(3), q["point_wrong"])
+
+	resp2, out2 := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests/"+testID+"/questions", nil, token)
+	require.Equal(t, http.StatusOK, resp2.StatusCode, "body=%v", out2)
+	data := out2["data"].([]any)
+	require.Len(t, data, 1)
+	readQ := data[0].(map[string]any)["question"].(map[string]any)
+	assert.Equal(t, float64(5), readQ["point_correct"])
+	assert.Equal(t, float64(3), readQ["point_wrong"])
+}
+
+func TestExam_AdminCreateQuestion_defaults_points_when_omitted(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	body := map[string]any{
+		"format":     "essay",
+		"body":       "explain gravity",
+		"sort_order": 1,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+	q := out["question"].(map[string]any)
+	assert.Equal(t, float64(1), q["point_correct"])
+	assert.Equal(t, float64(0), q["point_wrong"])
+}
+
+func TestExam_AdminCreateQuestion_point_correct_below_1_returns_422(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	body := map[string]any{
+		"format":        "essay",
+		"body":          "explain gravity",
+		"sort_order":    1,
+		"point_correct": 0,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, "validation_failed", out["code"])
+}
+
+func TestExam_AdminCreateQuestion_negative_point_wrong_returns_422(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	body := map[string]any{
+		"format":      "essay",
+		"body":        "explain gravity",
+		"sort_order":  1,
+		"point_wrong": -1,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, "validation_failed", out["code"])
+}
+
+func TestExam_AdminCreateQuestion_fractional_point_correct_returns_422(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	body := map[string]any{
+		"format":        "essay",
+		"body":          "explain gravity",
+		"sort_order":    1,
+		"point_correct": 1.5,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, "validation_failed", out["code"])
+}
+
+func TestExam_AdminCreateQuestion_fractional_point_wrong_returns_422(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	body := map[string]any{
+		"format":      "essay",
+		"body":        "explain gravity",
+		"sort_order":  1,
+		"point_wrong": 0.5,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, "validation_failed", out["code"])
+}
+
 func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
@@ -839,4 +964,393 @@ func TestExam_AdminPublishExam_marks_product_published(t *testing.T) {
 	err := env.pool.QueryRow(ctx, `SELECT status FROM product WHERE id = $1`, productID).Scan(&dbStatus)
 	require.NoError(t, err)
 	assert.Equal(t, "published", dbStatus, "product.status in DB must equal 'published'")
+}
+
+// ----- Slice 5 (Task 8): result endpoint + essay grading, end-to-end -----
+//
+// AdminCreateExam is a known, pre-existing, out-of-scope defect on this branch (empty
+// req.ResultConfig binds to "" and violates the migration-0015 CHECK(result_config IN (...))
+// constraint on INSERT, 500ing every one of the 7 TestExam_Admin{CreateExam,ListExams,GetExam,
+// UpdateExam,ReplaceExamTests,UpdateExamPrice,PublishExam}_* tests above). The tests below seed
+// `exam`/`exam_test`/`exam_registration` directly via SQL (same pattern seedTest/seedQuestion
+// already use) to sidestep that defect entirely and exercise only the Slice 5 student session +
+// result + admin grading endpoints, which do not go through AdminCreateExam.
+
+// seedQuestionWithPoints inserts a question row with explicit point_correct/point_wrong
+// (seedQuestion always takes the column defaults of 1/0) and returns its ID.
+func seedQuestionWithPoints(t *testing.T, env *testEnv, testID, format, body string, sortOrder, pointCorrect, pointWrong int) string {
+	t.Helper()
+	ctx := context.Background()
+	var id string
+	err := env.pool.QueryRow(ctx,
+		`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
+		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		testID, format, body, sortOrder, pointCorrect, pointWrong,
+	).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+// seedMCQOptions inserts two options ("a", "b") for a mcq question; correctKey marks which
+// option key is_correct=true.
+func seedMCQOptions(t *testing.T, env *testEnv, questionID, correctKey string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := env.pool.Exec(ctx,
+		`INSERT INTO question_option (question_id, key, text, is_correct, sort_order)
+		 VALUES ($1, 'a', 'Option A', $2, 1), ($1, 'b', 'Option B', $3, 2)`,
+		questionID, correctKey == "a", correctKey == "b",
+	)
+	require.NoError(t, err)
+}
+
+// seedExam inserts an exam row directly via SQL (bypassing the broken AdminCreateExam —
+// see comment above), giving the caller full control over result_config/result_release_at.
+func seedExam(t *testing.T, env *testEnv, title, resultConfig string, resultReleaseAt *time.Time) string {
+	t.Helper()
+	ctx := context.Background()
+	var id string
+	err := env.pool.QueryRow(ctx,
+		`INSERT INTO exam (title, is_free, requires_checkin, timer_mode, result_config, result_release_at)
+		 VALUES ($1, true, false, 'per_question', $2, $3) RETURNING id`,
+		title, resultConfig, resultReleaseAt,
+	).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+// linkExamTest inserts an exam_test join row.
+func linkExamTest(t *testing.T, env *testEnv, examID, testID string, sortOrder int) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := env.pool.Exec(ctx,
+		`INSERT INTO exam_test (exam_id, test_id, sort_order) VALUES ($1, $2, $3)`,
+		examID, testID, sortOrder,
+	)
+	require.NoError(t, err)
+}
+
+// seedExamRegistration inserts an exam_registration row for a student, returns registrationID.
+func seedExamRegistration(t *testing.T, env *testEnv, studentID, examID string) string {
+	t.Helper()
+	ctx := context.Background()
+	var id string
+	token := fmt.Sprintf("tok-%d", time.Now().UnixNano())
+	err := env.pool.QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3) RETURNING id`,
+		studentID, examID, token,
+	).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+// startSubmitSession drives the student session flow over HTTP (start -> save answers ->
+// submit) and returns the sessionID.
+func startSubmitSession(t *testing.T, env *testEnv, studentToken, registrationID string, answers []map[string]any) string {
+	t.Helper()
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/exam/sessions",
+		map[string]any{"registration_id": registrationID}, studentToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "start session body=%v", out)
+	sessionID, ok := out["session_id"].(string)
+	require.True(t, ok, "expected session_id string, got %T", out["session_id"])
+
+	saveResp, saveOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/exam/sessions/"+sessionID+"/answers",
+		map[string]any{"answers": answers}, studentToken)
+	require.Equal(t, http.StatusOK, saveResp.StatusCode, "save answers body=%v", saveOut)
+
+	submitResp, submitOut := doJSONBody(t, env, http.MethodPost, "/api/v1/exam/sessions/"+sessionID+"/submit", nil, studentToken)
+	require.Equal(t, http.StatusOK, submitResp.StatusCode, "submit body=%v", submitOut)
+	require.Equal(t, "submitted", submitOut["status"])
+
+	return sessionID
+}
+
+// TestExam_EssayFlow_EndToEnd_GradingAndResultGating drives the full student+admin flow for
+// a session with one wrong mcq and one ungraded essay: register/start/submit (asserting the
+// essay's graded_at stays NULL post-submit — PG note 1 regression), the admin grading queue +
+// essays read, grading the essay (asserting the session total is recomputed by folding raw
+// persisted per-answer scores and re-clamped at 0, not just added on top of the already-
+// clamped submit-time total), the result endpoint's grading->result gate transition, the
+// score_pembahasan breakdown/pembahasan visibility, and the ownership 404.
+func TestExam_EssayFlow_EndToEnd_GradingAndResultGating(t *testing.T) {
+	env := newTestEnv(t)
+
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	adminToken := authToken(t, env, adminID, "admin_exam")
+	studentID := seedUser(t, env, "student", "active", false)
+	studentToken := authToken(t, env, studentID, "student")
+
+	testID := seedTest(t, env, "Essay Mix", "bahasa", "menulis", 60)
+	mcqQID := seedQuestionWithPoints(t, env, testID, "mcq", "2+2", 1, 1, 8)
+	seedMCQOptions(t, env, mcqQID, "a")
+	essayQID := seedQuestionWithPoints(t, env, testID, "essay", "Explain gravity", 2, 5, 0)
+
+	examID := seedExam(t, env, "Essay Paket", "score_pembahasan", nil)
+	linkExamTest(t, env, examID, testID, 0)
+	regID := seedExamRegistration(t, env, studentID, examID)
+
+	sessionID := startSubmitSession(t, env, studentToken, regID, []map[string]any{
+		{"question_id": mcqQID, "answer": "b"}, // wrong: correct key is "a"
+		{"question_id": essayQID, "answer": "my essay answer text"},
+	})
+
+	ctx := context.Background()
+
+	t.Run("submit leaves the essay ungraded (PG note 1 fix) and grades the mcq", func(t *testing.T) {
+		var essayAnswer string
+		var essayGradedAt *time.Time
+		err := env.pool.QueryRow(ctx,
+			`SELECT answer, graded_at FROM exam_session_answer WHERE session_id = $1 AND question_id = $2`,
+			sessionID, essayQID,
+		).Scan(&essayAnswer, &essayGradedAt)
+		require.NoError(t, err)
+		assert.Equal(t, "my essay answer text", essayAnswer)
+		assert.Nil(t, essayGradedAt, "essay graded_at must stay NULL right after submit")
+
+		var mcqScore float64
+		var mcqCorrect bool
+		var mcqGradedAt *time.Time
+		err = env.pool.QueryRow(ctx,
+			`SELECT score, is_correct, graded_at FROM exam_session_answer WHERE session_id = $1 AND question_id = $2`,
+			sessionID, mcqQID,
+		).Scan(&mcqScore, &mcqCorrect, &mcqGradedAt)
+		require.NoError(t, err)
+		assert.Equal(t, -8.0, mcqScore, "wrong mcq stores the raw negative point_wrong magnitude, unclamped")
+		assert.False(t, mcqCorrect)
+		assert.NotNil(t, mcqGradedAt, "objective answers are graded at submit time")
+	})
+
+	t.Run("result is gated to grading while the essay is ungraded", func(t *testing.T) {
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sessionID+"/result", nil, studentToken)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		assert.Equal(t, "grading", out["state"])
+	})
+
+	t.Run("admin grading queue lists the session with its ungraded essay count", func(t *testing.T) {
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID+"/grading", nil, adminToken)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		data, ok := out["data"].([]any)
+		require.True(t, ok, "expected data array, got %T", out["data"])
+		require.Len(t, data, 1)
+		row := data[0].(map[string]any)
+		assert.Equal(t, sessionID, row["session_id"])
+		assert.Equal(t, studentID, row["student_id"])
+		assert.Equal(t, float64(1), row["ungraded_essay_count"])
+	})
+
+	t.Run("admin session essays read returns the ungraded essay with question metadata", func(t *testing.T) {
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/sessions/"+sessionID+"/essays", nil, adminToken)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		data, ok := out["data"].([]any)
+		require.True(t, ok, "expected data array, got %T", out["data"])
+		require.Len(t, data, 1)
+		row := data[0].(map[string]any)
+		assert.Equal(t, essayQID, row["question_id"])
+		assert.Equal(t, "Explain gravity", row["body"])
+		assert.Equal(t, "my essay answer text", row["answer"])
+		assert.Equal(t, float64(5), row["point_correct"])
+		assert.Nil(t, row["score"])
+		assert.Nil(t, row["graded_at"])
+	})
+
+	t.Run("grading the essay recomputes the session total by folding raw scores and re-clamps", func(t *testing.T) {
+		resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/sessions/"+sessionID+"/grade",
+			map[string]any{"question_id": essayQID, "score": 2, "comment": "Needs more detail"}, adminToken)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		assert.Equal(t, "ok", out["status"])
+		// Raw persisted scores are mcq=-8 and essay=2 -> fold = -6 -> clamp(0, -6) = 0.
+		// A buggy "add on top of the already-clamped submit total" (0 + 2 = 2) would fail this.
+		assert.Equal(t, float64(0), out["score"], "recompute must fold raw persisted scores, not add onto the clamped submit total")
+
+		var gradedAt *time.Time
+		var score float64
+		var comment string
+		var gradedBy string
+		err := env.pool.QueryRow(ctx,
+			`SELECT graded_at, score, grader_comment, graded_by FROM exam_session_answer WHERE session_id = $1 AND question_id = $2`,
+			sessionID, essayQID,
+		).Scan(&gradedAt, &score, &comment, &gradedBy)
+		require.NoError(t, err)
+		assert.NotNil(t, gradedAt, "essay graded_at must be set after grading")
+		assert.Equal(t, 2.0, score)
+		assert.Equal(t, "Needs more detail", comment)
+		assert.Equal(t, adminID, gradedBy)
+
+		var sessScore float64
+		err = env.pool.QueryRow(ctx, `SELECT score FROM exam_session WHERE id = $1`, sessionID).Scan(&sessScore)
+		require.NoError(t, err)
+		assert.Equal(t, 0.0, sessScore, "exam_session.score must persist the recomputed clamped total")
+	})
+
+	t.Run("result transitions to result state with score_pembahasan breakdown and pembahasan", func(t *testing.T) {
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sessionID+"/result", nil, studentToken)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		assert.Equal(t, "result", out["state"])
+		assert.Equal(t, "score_pembahasan", out["result_config"])
+		// score/correct_count/empty_count carry `omitempty` on model.SessionResult, so a
+		// legitimate zero value is absent from the wire payload rather than JSON `0`.
+		assert.Equal(t, float64(0), jsonNum(out["score"]))
+		assert.Equal(t, float64(0), jsonNum(out["correct_count"]))
+		assert.Equal(t, float64(1), out["wrong_count"])
+		assert.Equal(t, float64(0), jsonNum(out["empty_count"]))
+		assert.Equal(t, float64(1), out["rank"], "only fully-graded submitted session for this exam")
+
+		breakdown, ok := out["breakdown"].([]any)
+		require.True(t, ok, "expected breakdown array, got %T", out["breakdown"])
+		require.Len(t, breakdown, 1)
+		row := breakdown[0].(map[string]any)
+		assert.Equal(t, testID, row["test_id"])
+		assert.Equal(t, -6.0, row["earned"], "breakdown earned is the raw unclamped fold (mcq -8 + essay 2)")
+		assert.Equal(t, float64(6), row["max"], "max sums point_correct across the test (mcq 1 + essay 5)")
+
+		pembahasan, ok := out["pembahasan"].([]any)
+		require.True(t, ok, "expected pembahasan array, got %T", out["pembahasan"])
+		require.Len(t, pembahasan, 1, "essay is excluded from pembahasan, only the mcq remains")
+		pRow := pembahasan[0].(map[string]any)
+		assert.Equal(t, mcqQID, pRow["question_id"])
+		assert.Equal(t, "b", pRow["your_answer"])
+		assert.Equal(t, "a", pRow["correct_answer"])
+		assert.Equal(t, false, pRow["is_correct"])
+	})
+
+	t.Run("result is 404 session_not_found for a different student", func(t *testing.T) {
+		otherStudentID := seedUser(t, env, "student", "active", false)
+		otherToken := authToken(t, env, otherStudentID, "student")
+
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sessionID+"/result", nil, otherToken)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode, "body=%v", out)
+		assert.Equal(t, "session_not_found", out["code"])
+	})
+}
+
+// TestExam_Result_ScoreOnly_HidesBreakdownAndPembahasan covers FR-S5-22: score_only never
+// includes breakdown/pembahasan, only score/counts/rank.
+func TestExam_Result_ScoreOnly_HidesBreakdownAndPembahasan(t *testing.T) {
+	env := newTestEnv(t)
+
+	studentID := seedUser(t, env, "student", "active", false)
+	studentToken := authToken(t, env, studentID, "student")
+
+	testID := seedTest(t, env, "Score Only", "math", "aljabar", 30)
+	mcqQID := seedQuestionWithPoints(t, env, testID, "mcq", "2+2", 1, 3, 1)
+	seedMCQOptions(t, env, mcqQID, "a")
+
+	examID := seedExam(t, env, "Score Only Paket", "score_only", nil)
+	linkExamTest(t, env, examID, testID, 0)
+	regID := seedExamRegistration(t, env, studentID, examID)
+
+	sessionID := startSubmitSession(t, env, studentToken, regID, []map[string]any{
+		{"question_id": mcqQID, "answer": "a"}, // correct
+	})
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sessionID+"/result", nil, studentToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, "result", out["state"])
+	assert.Equal(t, "score_only", out["result_config"])
+	assert.Equal(t, float64(3), out["score"])
+	assert.Equal(t, float64(1), out["correct_count"])
+	assert.Equal(t, float64(1), out["rank"])
+
+	_, hasBreakdown := out["breakdown"]
+	assert.False(t, hasBreakdown, "score_only must not include a breakdown key")
+	_, hasPembahasan := out["pembahasan"]
+	assert.False(t, hasPembahasan, "score_only must not include a pembahasan key")
+}
+
+// TestExam_Result_HiddenAndLocked_Gates covers FR-S5-21 gates 1 and 3: hidden always wins,
+// and a future result_release_at locks an otherwise-visible result.
+func TestExam_Result_HiddenAndLocked_Gates(t *testing.T) {
+	env := newTestEnv(t)
+
+	testID := seedTest(t, env, "Gates", "math", "aljabar", 30)
+	mcqQID := seedQuestionWithPoints(t, env, testID, "mcq", "2+2", 1, 1, 0)
+	seedMCQOptions(t, env, mcqQID, "a")
+
+	t.Run("hidden", func(t *testing.T) {
+		studentID := seedUser(t, env, "student", "active", false)
+		studentToken := authToken(t, env, studentID, "student")
+
+		examID := seedExam(t, env, "Hidden Paket", "hidden", nil)
+		linkExamTest(t, env, examID, testID, 0)
+		regID := seedExamRegistration(t, env, studentID, examID)
+
+		sessionID := startSubmitSession(t, env, studentToken, regID, []map[string]any{
+			{"question_id": mcqQID, "answer": "a"},
+		})
+
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sessionID+"/result", nil, studentToken)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		assert.Equal(t, "hidden", out["state"])
+	})
+
+	t.Run("locked", func(t *testing.T) {
+		studentID := seedUser(t, env, "student", "active", false)
+		studentToken := authToken(t, env, studentID, "student")
+
+		releaseAt := time.Now().Add(24 * time.Hour)
+		examID := seedExam(t, env, "Locked Paket", "score_only", &releaseAt)
+		linkExamTest(t, env, examID, testID, 0)
+		regID := seedExamRegistration(t, env, studentID, examID)
+
+		sessionID := startSubmitSession(t, env, studentToken, regID, []map[string]any{
+			{"question_id": mcqQID, "answer": "a"},
+		})
+
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sessionID+"/result", nil, studentToken)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		assert.Equal(t, "locked", out["state"])
+		assert.NotEmpty(t, out["result_release_at"])
+	})
+}
+
+// TestExam_Result_Rank_MultipleSessionsWithTies covers FR-S5-18 end-to-end: rank is 1 +
+// count of strictly-higher fully-graded submitted sessions for the same exam, and ties share
+// a rank.
+func TestExam_Result_Rank_MultipleSessionsWithTies(t *testing.T) {
+	env := newTestEnv(t)
+
+	testID := seedTest(t, env, "Ranked", "math", "aljabar", 30)
+	q1 := seedQuestionWithPoints(t, env, testID, "mcq", "q1", 1, 1, 0)
+	seedMCQOptions(t, env, q1, "a")
+	q2 := seedQuestionWithPoints(t, env, testID, "mcq", "q2", 2, 1, 0)
+	seedMCQOptions(t, env, q2, "a")
+
+	examID := seedExam(t, env, "Ranked Paket", "score_only", nil)
+	linkExamTest(t, env, examID, testID, 0)
+
+	newSession := func(bothCorrect bool) (string, string) {
+		studentID := seedUser(t, env, "student", "active", false)
+		studentToken := authToken(t, env, studentID, "student")
+		regID := seedExamRegistration(t, env, studentID, examID)
+		secondAnswer := "b"
+		if bothCorrect {
+			secondAnswer = "a"
+		}
+		sessionID := startSubmitSession(t, env, studentToken, regID, []map[string]any{
+			{"question_id": q1, "answer": "a"},
+			{"question_id": q2, "answer": secondAnswer},
+		})
+		return sessionID, studentToken
+	}
+
+	topSession, topToken := newSession(true)    // score 2
+	midSessionB, midTokenB := newSession(false) // score 1
+	midSessionC, midTokenC := newSession(false) // score 1, tied with B
+	_ = midSessionB
+	_ = midSessionC
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+topSession+"/result", nil, topToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, float64(2), out["score"])
+	assert.Equal(t, float64(1), out["rank"], "top scorer has no strictly-higher sessions")
+
+	respB, outB := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+midSessionB+"/result", nil, midTokenB)
+	require.Equal(t, http.StatusOK, respB.StatusCode, "body=%v", outB)
+	assert.Equal(t, float64(1), outB["score"])
+	assert.Equal(t, float64(2), outB["rank"], "one strictly-higher session (top scorer)")
+
+	respC, outC := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+midSessionC+"/result", nil, midTokenC)
+	require.Equal(t, http.StatusOK, respC.StatusCode, "body=%v", outC)
+	assert.Equal(t, float64(1), outC["score"])
+	assert.Equal(t, float64(2), outC["rank"], "tied with session B, shares the same rank")
 }

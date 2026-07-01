@@ -127,12 +127,15 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	exam.PATCH("/sessions/:id/answers", h.StudentSaveAnswers)
 	exam.POST("/sessions/:id/submit", h.StudentSubmitSession)
 	exam.POST("/sessions/:id/violations", h.StudentLogViolation)
+	exam.GET("/sessions/:id/result", h.StudentGetSessionResult)
 
 	// Admin session routes (exam proctoring)
 	adminSessions := admin.Group("/sessions")
 	adminSessions.Use(handler.RBACMiddleware("sessions:write"))
 	adminSessions.POST("/:id/reopen", h.AdminReopenSession)
 	adminSessions.POST("/:id/force-submit", h.AdminForceSubmitSession)
+	adminSessions.GET("/:id/essays", h.AdminGetSessionEssays)
+	adminSessions.POST("/:id/grade", h.AdminGradeEssay)
 
 	// Admin order routes
 	adminOrders := admin.Group("/orders")
@@ -189,6 +192,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExams.PUT("/:id/tests", h.AdminReplaceExamTests)
 	adminExams.PATCH("/:id/price", h.AdminUpdateExamPrice)
 	adminExams.POST("/:id/publish", h.AdminPublishExam)
+	adminExams.GET("/:id/grading", h.AdminListGradingSessions)
 
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")

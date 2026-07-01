@@ -5,8 +5,11 @@ import { act } from "react";
 import SessionPage from "./page";
 import type { SessionState } from "@/lib/types";
 
+const routerReplace = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "session-1" }),
+  useRouter: () => ({ replace: routerReplace }),
 }));
 
 let uiStore = { lang: "id" as "id" | "en" };
@@ -153,6 +156,7 @@ describe("SessionPage", () => {
     saveAnswersMutateAsync.mockReset();
     submitSessionMutate.mockReset();
     logViolationMutate.mockReset();
+    routerReplace.mockReset();
   });
 
   afterEach(() => {
@@ -183,10 +187,12 @@ describe("SessionPage", () => {
 
   // ── Submitted state ─────────────────────────────────────────────────────
 
-  it("shows submitted state when session is already submitted (FR29)", () => {
+  it("redirects to the result route when session is already submitted (FR29, FR-S5-25)", () => {
     sessionState = { ...sessionState, data: submittedSession };
     render(<SessionPage />);
-    expect(screen.getByText("Terkumpul")).toBeInTheDocument();
+    expect(routerReplace).toHaveBeenCalledWith(
+      "/exam/sessions/session-1/result",
+    );
   });
 
   // ── Fullscreen gate ─────────────────────────────────────────────────────
@@ -322,7 +328,7 @@ describe("SessionPage", () => {
 
   // ── Submit flow (also tests save is triggered) ──────────────────────────
 
-  it("submit saves answers, calls hook, and shows result (FR29)", async () => {
+  it("submit saves answers, calls hook, and redirects to result (FR29, FR-S5-25)", async () => {
     render(<SessionPage />);
     await enterFullscreen();
 
@@ -357,8 +363,9 @@ describe("SessionPage", () => {
       opts.onSuccess({ submitted: true, score: 75 });
     });
 
-    // Submitted state with score
-    expect(screen.getByText(/skor/i)).toBeInTheDocument();
-    expect(screen.getByText(/75/)).toBeInTheDocument();
+    // Redirects to the result route instead of rendering an inline card
+    expect(routerReplace).toHaveBeenCalledWith(
+      "/exam/sessions/session-1/result",
+    );
   });
 });
