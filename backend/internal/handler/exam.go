@@ -535,3 +535,80 @@ func (h *Handler) AdminGradeEssay(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"status": "ok", "score": total})
 }
+
+// AdminGetExamLeaderboard returns cursor-paginated leaderboard for an exam.
+func (h *Handler) AdminGetExamLeaderboard(c echo.Context) error {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	cursor := c.QueryParam("cursor")
+
+	entries, nextCursor, err := h.svc.AdminGetLeaderboard(c.Request().Context(), examID, cursor, limit)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data":        entries,
+		"next_cursor": nextCursor,
+	})
+}
+
+// AdminGetExamAnalytics returns exam analytics (completion rate, avg score, distribution).
+func (h *Handler) AdminGetExamAnalytics(c echo.Context) error {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	analytics, err := h.svc.GetExamAnalytics(c.Request().Context(), examID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, analytics)
+}
+
+// AdminGetExamCertificatePreview streams a preview certificate PDF.
+func (h *Handler) AdminGetExamCertificatePreview(c echo.Context) error {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	template := c.QueryParam("template")
+	pdf, err := h.svc.GetCertificatePreview(c.Request().Context(), examID, template)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	c.Response().Header().Set("Content-Type", "application/pdf")
+	return c.Stream(http.StatusOK, "application/pdf", bytes.NewReader(pdf))
+}
+
+// StudentGetSessionLeaderboard returns the exam leaderboard scoped to the caller's session.
+func (h *Handler) StudentGetSessionLeaderboard(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	cursor := c.QueryParam("cursor")
+	sessionID := c.Param("id")
+
+	entries, nextCursor, err := h.svc.StudentGetSessionLeaderboard(c.Request().Context(), claims.Sub, sessionID, cursor, limit)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data":        entries,
+		"next_cursor": nextCursor,
+	})
+}

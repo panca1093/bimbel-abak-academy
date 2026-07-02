@@ -128,6 +128,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	exam.POST("/sessions/:id/submit", h.StudentSubmitSession)
 	exam.POST("/sessions/:id/violations", h.StudentLogViolation)
 	exam.GET("/sessions/:id/result", h.StudentGetSessionResult)
+	exam.GET("/sessions/:id/leaderboard", h.StudentGetSessionLeaderboard)
 
 	// Admin session routes (exam proctoring)
 	adminSessions := admin.Group("/sessions")
@@ -193,6 +194,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExams.PATCH("/:id/price", h.AdminUpdateExamPrice)
 	adminExams.POST("/:id/publish", h.AdminPublishExam)
 	adminExams.GET("/:id/grading", h.AdminListGradingSessions)
+	adminExams.GET("/:id/leaderboard", h.AdminGetExamLeaderboard)
+	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)
+	adminExams.GET("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
 
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")

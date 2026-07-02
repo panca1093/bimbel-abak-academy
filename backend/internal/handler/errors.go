@@ -123,6 +123,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "result_not_released", Message: err.Error()}
 	case errors.Is(err, service.ErrSessionNotGraded):
 		status, apiErr = http.StatusConflict, APIError{Code: "session_not_graded", Message: err.Error()}
+	case errors.Is(err, service.ErrLeaderboardNotAvailable):
+		status, apiErr = http.StatusForbidden, APIError{Code: "leaderboard_not_available", Message: err.Error()}
 
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
