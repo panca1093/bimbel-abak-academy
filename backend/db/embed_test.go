@@ -129,6 +129,102 @@ func TestEmbed_0014_up_cascades_authoring_deletes(t *testing.T) {
 	}
 }
 
+func TestEmbed_0016_contains_certificate_migration(t *testing.T) {
+	for _, p := range []string{
+		"migrations/0016_exam_certificate.up.sql",
+		"migrations/0016_exam_certificate.down.sql",
+	} {
+		entries, err := fs.Glob(FS, p)
+		if err != nil {
+			t.Fatalf("Glob %s: %v", p, err)
+		}
+		if len(entries) == 0 {
+			t.Fatalf("%s not found in embedded FS", p)
+		}
+	}
+}
+
+func TestEmbed_0016_sorts_after_0015(t *testing.T) {
+	entries, err := fs.Glob(FS, "migrations/*.up.sql")
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	sort.Strings(entries)
+
+	var found bool
+	for _, e := range entries {
+		if e == "migrations/0015_exam_scoring.up.sql" {
+			found = true
+		}
+		if e == "migrations/0016_exam_certificate.up.sql" {
+			if !found {
+				t.Fatal("0016_exam_certificate.up.sql appears before 0015_exam_scoring.up.sql in sorted order")
+			}
+			return
+		}
+	}
+	t.Fatal("0016_exam_certificate.up.sql not found in sorted migration list after 0015")
+}
+
+func TestEmbed_0016_up_adds_certificate_columns(t *testing.T) {
+	body, err := fs.ReadFile(FS, "migrations/0016_exam_certificate.up.sql")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	s := string(body)
+
+	if !strings.Contains(s, "ALTER TABLE exam ADD COLUMN IF NOT EXISTS certificate_template") {
+		t.Error("up.sql missing ALTER TABLE exam ADD COLUMN IF NOT EXISTS certificate_template")
+	}
+	if !strings.Contains(s, "ALTER TABLE exam_session ADD COLUMN IF NOT EXISTS certificate_generated_at") {
+		t.Error("up.sql missing ALTER TABLE exam_session ADD COLUMN IF NOT EXISTS certificate_generated_at")
+	}
+	if !strings.Contains(s, "TEXT NOT NULL DEFAULT 'classic'") {
+		t.Error("certificate_template missing TEXT NOT NULL DEFAULT 'classic'")
+	}
+	if !strings.Contains(s, "TIMESTAMPTZ") {
+		t.Error("certificate_generated_at missing TIMESTAMPTZ type")
+	}
+}
+
+func TestEmbed_0016_up_enforces_certificate_template_check(t *testing.T) {
+	body, err := fs.ReadFile(FS, "migrations/0016_exam_certificate.up.sql")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	s := string(body)
+
+	if !strings.Contains(s, "chk_certificate_template") {
+		t.Error("up.sql missing named constraint chk_certificate_template")
+	}
+	if !strings.Contains(s, "DROP CONSTRAINT IF EXISTS chk_certificate_template") {
+		t.Error("up.sql missing DROP CONSTRAINT IF EXISTS chk_certificate_template before ADD CONSTRAINT")
+	}
+	for _, v := range []string{"classic", "modern", "elegant"} {
+		if !strings.Contains(s, v) {
+			t.Errorf("chk_certificate_template CHECK missing value %q", v)
+		}
+	}
+}
+
+func TestEmbed_0016_down_drops_certificate_columns(t *testing.T) {
+	body, err := fs.ReadFile(FS, "migrations/0016_exam_certificate.down.sql")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	s := string(body)
+
+	if !strings.Contains(s, "DROP CONSTRAINT IF EXISTS chk_certificate_template") {
+		t.Error("down.sql missing DROP CONSTRAINT IF EXISTS chk_certificate_template")
+	}
+	if !strings.Contains(s, "DROP COLUMN IF EXISTS certificate_template") {
+		t.Error("down.sql missing DROP COLUMN IF EXISTS certificate_template")
+	}
+	if !strings.Contains(s, "DROP COLUMN IF EXISTS certificate_generated_at") {
+		t.Error("down.sql missing DROP COLUMN IF EXISTS certificate_generated_at")
+	}
+}
+
 func TestEmbed_0014_down_drops_in_reverse_dependency_order(t *testing.T) {
 	body, err := fs.ReadFile(FS, "migrations/0014_exam.down.sql")
 	if err != nil {
