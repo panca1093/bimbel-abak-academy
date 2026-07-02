@@ -75,6 +75,7 @@ type Exam struct {
 	Status               string     `json:"status"`
 	ProductID            *uuid.UUID `json:"product_id"`
 	CreatedAt            time.Time  `json:"created_at"`
+	CertificateTemplate  string     `json:"certificate_template"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -111,8 +112,9 @@ type ExamSession struct {
 	ExtendedUntil  *time.Time `json:"extended_until"`
 	AdminSubmitted bool       `json:"admin_submitted"`
 	Score          *float64   `json:"score"`
-	CertificateURL *string    `json:"certificate_url"`
-	LastSavedAt    *time.Time `json:"last_saved_at"`
+	CertificateURL      *string    `json:"certificate_url"`
+	CertificateGeneratedAt *time.Time `json:"certificate_generated_at"`
+	LastSavedAt         *time.Time `json:"last_saved_at"`
 	Status         string     `json:"status"`
 	CreatedAt      time.Time  `json:"created_at"`
 }
@@ -226,6 +228,7 @@ type SessionResult struct {
 	Rank            int                    `json:"rank"`
 	Breakdown       []ResultTopicRow       `json:"breakdown,omitempty"`
 	Pembahasan      []ResultPembahasanItem `json:"pembahasan,omitempty"`
+	CertificateURL  *string                `json:"certificate_url,omitempty"`
 }
 
 // ResultTopicRow is one per-Test row of the score_pembahasan breakdown (FR-S5-19).
@@ -270,4 +273,25 @@ type GradingEssayItem struct {
 	Score         *float64   `json:"score"`
 	GraderComment *string    `json:"grader_comment"`
 	GradedAt      *time.Time `json:"graded_at"`
+}
+
+// ExamLeaderboardEntry is one row of the exam leaderboard — rank, student, score.
+type ExamLeaderboardEntry struct {
+	Rank        int       `json:"rank"`
+	StudentID   uuid.UUID `json:"student_id"`
+	StudentName string    `json:"student_name"`
+	Score       float64   `json:"score"`
+}
+
+// ScoreBucket is one band of the exam analytics score distribution.
+type ScoreBucket struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+// ExamAnalytics is the read shape for GET /admin/exams/:id/analytics.
+type ExamAnalytics struct {
+	AverageScore   float64      `json:"average_score"`
+	CompletionRate float64      `json:"completion_rate"`
+	Distribution   []ScoreBucket `json:"distribution"`
 }
