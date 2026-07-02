@@ -76,11 +76,11 @@ export default function SessionResultPage() {
   // ── Non-result states (hidden / grading / locked) ─────────────────────
 
   if (result.state === "hidden") {
-    return <NonResultCard icon={EyeOff} title={t("result_hidden")} />;
+    return <NonResultCard icon={EyeOff} title={t("result_hidden")} certificateUrl={result.certificate_url} />;
   }
 
   if (result.state === "grading") {
-    return <NonResultCard icon={Clock} title={t("result_grading")} />;
+    return <NonResultCard icon={Clock} title={t("result_grading")} certificateUrl={result.certificate_url} />;
   }
 
   if (result.state === "locked") {
@@ -91,6 +91,7 @@ export default function SessionResultPage() {
           "{t}",
           formatDate(result.result_release_at),
         )}
+        certificateUrl={result.certificate_url}
       />
     );
   }
@@ -172,14 +173,19 @@ export default function SessionResultPage() {
         </>
       )}
 
-      <Button
-        variant="outline"
-        className="w-full"
-        disabled
-        title={t("result_certificate_placeholder")}
-      >
-        <Award className="size-4" />
-        {t("certificate")}
+      {result.certificate_url && (
+        <Button variant="outline" className="w-full" asChild>
+          <a href={result.certificate_url} target="_blank" rel="noreferrer">
+            <Award className="size-4" />
+            {t("certificate")}
+          </a>
+        </Button>
+      )}
+
+      <Button variant="outline" className="w-full" asChild>
+        <a href={`/exam/sessions/${sessionId}/leaderboard`}>
+          {t("view_leaderboard")}
+        </a>
       </Button>
     </div>
   );
@@ -188,14 +194,25 @@ export default function SessionResultPage() {
 function NonResultCard({
   icon: Icon,
   title,
+  certificateUrl,
 }: {
   icon: LucideIcon;
   title: string;
+  certificateUrl?: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto flex max-w-md flex-col items-center justify-center px-4 py-24 text-center">
       <Icon className="mb-4 size-12 text-ink-400" />
       <h1 className="text-xl font-bold text-ink-900">{title}</h1>
+      {certificateUrl && (
+        <Button variant="outline" className="mt-6 w-full" asChild>
+          <a href={certificateUrl} target="_blank" rel="noreferrer">
+            <Award className="size-4" />
+            {t("certificate")}
+          </a>
+        </Button>
+      )}
     </div>
   );
 }
