@@ -513,6 +513,155 @@ func TestGetExamAnalytics_WithSessions(t *testing.T) {
 	}
 }
 
+func TestStudentGetLeaderboard_NotFullyGraded(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	studentID := uuid.New()
+	examID := uuid.New()
+	svc.repo.seedExam(&model.Exam{ID: examID, AllowLeaderboard: true, ResultConfig: "score_only"})
+
+	testID := uuid.New()
+	td, qID := essayTest(testID, 5)
+	svc.repo.seedTests(examID, []model.TestDetail{td})
+
+	sessID := uuid.New()
+	svc.repo.sessions[sessID] = &model.ExamSession{
+		ID: sessID, StudentID: studentID, ExamID: examID,
+		Status: "submitted", Score: floatPtr(0),
+	}
+	svc.repo.sessionAnswers[sessID] = []model.ExamSessionAnswer{
+		{QuestionID: qID, Answer: strPtr("my essay"), GradedAt: nil},
+	}
+
+	_, _, err := svc.StudentGetSessionLeaderboard(ctx, studentID.String(), sessID.String(), "", 20)
+	if !errors.Is(err, ErrLeaderboardNotAvailable) {
+		t.Errorf("want ErrLeaderboardNotAvailable for ungraded essay, got %v", err)
+	}
+}
+
+func TestStudentGetLeaderboard_NotOwnedByCaller(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	ownerID := uuid.New()
+	callerID := uuid.New()
+	examID := uuid.New()
+	svc.repo.seedExam(&model.Exam{ID: examID})
+
+	sessID := uuid.New()
+	svc.repo.sessions[sessID] = &model.ExamSession{
+		ID: sessID, StudentID: ownerID, ExamID: examID,
+		Status: "submitted",
+	}
+
+	_, _, err := svc.StudentGetSessionLeaderboard(ctx, callerID.String(), sessID.String(), "", 20)
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Errorf("want ErrSessionNotFound for session owned by another student, got %v", err)
+	}
+}
+
+func TestGetExamAnalytics_NoQualifyingScores_ZeroAverage(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	examID := uuid.New()
+	svc.repo.seedExam(&model.Exam{ID: examID})
+
+	// Submitted session with an ungraded essay → not fully graded → excluded from scores.
+	testID := uuid.New()
+	td, qID := essayTest(testID, 5)
+	svc.repo.seedTests(examID, []model.TestDetail{td})
+
+	s1 := uuid.New()
+	svc.repo.sessions[s1] = &model.ExamSession{
+		ID: s1, ExamID: examID, Status: "submitted", Score: floatPtr(50),
+	}
+	svc.repo.seedEssays(s1, []model.GradingEssayItem{
+		{QuestionID: qID, Body: "Explain X", PointCorrect: 5, GradedAt: nil},
+	})
+	svc.repo.sessionAnswers[s1] = []model.ExamSessionAnswer{
+		{QuestionID: qID, Answer: strPtr("my essay"), GradedAt: nil},
+	}
+
+	analytics, err := svc.GetExamAnalytics(ctx, examID)
+	if err != nil {
+		t.Fatalf("GetExamAnalytics: %v", err)
+	}
+	// total=1, submitted=1 → completion_rate = 1.0
+	if analytics.CompletionRate != 1.0 {
+		t.Errorf("completion_rate: want 1.0, got %v", analytics.CompletionRate)
+	}
+	// 0 fully-graded submitted sessions → average = 0
+	if analytics.AverageScore != 0 {
+		t.Errorf("average_score: want 0, got %v", analytics.AverageScore)
+	}
+}
+
+func TestGetExamAnalytics_BucketBoundaries(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	examID := uuid.New()
+	svc.repo.seedExam(&model.Exam{ID: examID})
+
+	// Single question with PointCorrect=100 → maxPossible=100.
+	testID := uuid.New()
+	td := model.TestDetail{
+		Test: model.Test{ID: testID, Title: "Math", Subject: "Math", Topic: "Algebra"},
+		Questions: []model.QuestionWithOptions{
+			{Question: model.Question{ID: uuid.New(), TestID: testID, Format: "mcq", PointCorrect: 100}},
+		},
+	}
+	svc.repo.seedTests(examID, []model.TestDetail{td})
+
+	// Score 60 → 60% → bucket "41-60" (index 2)
+	svc.repo.sessions[uuid.New()] = &model.ExamSession{
+		ID: uuid.New(), ExamID: examID, Status: "submitted", Score: floatPtr(60),
+	}
+	// Score 80 → 80% → bucket "61-80" (index 3)
+	svc.repo.sessions[uuid.New()] = &model.ExamSession{
+		ID: uuid.New(), ExamID: examID, Status: "submitted", Score: floatPtr(80),
+	}
+	// Score 0 → 0-20 (index 0)
+	svc.repo.sessions[uuid.New()] = &model.ExamSession{
+		ID: uuid.New(), ExamID: examID, Status: "submitted", Score: floatPtr(0),
+	}
+	// Score 40 → 21-40 (index 1)
+	svc.repo.sessions[uuid.New()] = &model.ExamSession{
+		ID: uuid.New(), ExamID: examID, Status: "submitted", Score: floatPtr(40),
+	}
+	// Score 100 → 81-100 (index 4)
+	svc.repo.sessions[uuid.New()] = &model.ExamSession{
+		ID: uuid.New(), ExamID: examID, Status: "submitted", Score: floatPtr(100),
+	}
+
+	analytics, err := svc.GetExamAnalytics(ctx, examID)
+	if err != nil {
+		t.Fatalf("GetExamAnalytics: %v", err)
+	}
+
+	if len(analytics.Distribution) != 5 {
+		t.Fatalf("want 5 buckets, got %d", len(analytics.Distribution))
+	}
+	checks := []struct {
+		idx   int
+		label string
+		want  int
+	}{
+		{0, "0-20", 1},    // score 0
+		{1, "21-40", 1},   // score 40
+		{2, "41-60", 1},   // score 60
+		{3, "61-80", 1},   // score 80
+		{4, "81-100", 1},  // score 100
+	}
+	for _, c := range checks {
+		if analytics.Distribution[c.idx].Count != c.want {
+			t.Errorf("bucket %q: want %d, got %d", c.label, c.want, analytics.Distribution[c.idx].Count)
+		}
+	}
+}
+
 func TestGetExamAnalytics_ZeroMaxPossible(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
