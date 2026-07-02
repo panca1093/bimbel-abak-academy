@@ -269,12 +269,20 @@ func validateExam(e model.Exam) error {
 	if e.ResultConfig != "" && !validResultConfigs[e.ResultConfig] {
 		return fmt.Errorf("%w: result_config must be hidden, score_only, or score_pembahasan", ErrValidation)
 	}
+	if e.CertificateTemplate != "" {
+		if err := validateCertificateTemplate(e.CertificateTemplate); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, model.Product, error) {
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"
+	}
+	if m.CertificateTemplate == "" {
+		m.CertificateTemplate = "classic"
 	}
 	if err := validateExam(m); err != nil {
 		return model.Exam{}, model.Product{}, err

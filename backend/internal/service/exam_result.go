@@ -57,9 +57,19 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 		qs = append(qs, td.Questions...)
 	}
 
+	// Resolve certificate URL (FR-5..8, FR-4). Must happen before the gate check so
+	// certificate_url is present in any result-visibility state for submitted sessions.
+	user, err := s.Me(ctx, studentID)
+	studentName := ""
+	if err == nil && user != nil {
+		studentName = user.Name
+	}
+	certURL := s.resolveCertificateURL(ctx, exam, sess, answers, studentName)
+
 	// Gates 1-3 (FR-S5-21): hidden -> grading -> locked. Short-circuits before the
 	// rank aggregate query when the full result isn't visible yet.
 	if gated, ok := resultGate(*exam, sess.Status == "submitted", isFullyGraded(qs, answers)); ok {
+		gated.CertificateURL = certURL
 		return gated, nil
 	}
 
@@ -89,6 +99,7 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 		result.Pembahasan = buildPembahasan(qs, answers)
 	}
 
+	result.CertificateURL = certURL
 	return result, nil
 }
 
