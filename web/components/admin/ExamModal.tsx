@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
-import { useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
+import { fetchCertificatePreview, useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
 import type { ExamListItem, CreateExamPayload, UpdateExamPayload } from "@/lib/types";
 
 interface ExamModalProps {
@@ -23,6 +23,7 @@ interface ExamModalProps {
 }
 
 type TimerMode = "overall" | "per_question";
+type CertificateTemplate = "classic" | "modern" | "elegant";
 
 function scheduledAtInputValue(iso?: string | null): string {
   if (!iso) return "";
@@ -53,6 +54,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [requiresCheckin, setRequiresCheckin] = useState(false);
   const [allowLeaderboard, setAllowLeaderboard] = useState(false);
   const [randomize, setRandomize] = useState(false);
+  const [certificateTemplate, setCertificateTemplate] = useState<CertificateTemplate>("classic");
+  const previewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -65,6 +68,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setRequiresCheckin(Boolean(exam.requires_checkin));
       setAllowLeaderboard(Boolean(exam.allow_leaderboard));
       setRandomize(Boolean(exam.randomize));
+      setCertificateTemplate((exam.certificate_template as CertificateTemplate) ?? "classic");
     } else {
       setTitle("");
       setScheduledAt("");
@@ -74,6 +78,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setRequiresCheckin(false);
       setAllowLeaderboard(false);
       setRandomize(false);
+      setCertificateTemplate("classic");
     }
   }, [open, exam]);
 
@@ -99,6 +104,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       requires_checkin: requiresCheckin,
       allow_leaderboard: allowLeaderboard,
       randomize,
+      certificate_template: certificateTemplate,
     };
 
     try {
@@ -122,6 +128,25 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       onClose();
     } catch {
       // mutation hook handles errors via global state; close on success only
+    }
+  }
+
+  async function handlePreview() {
+    if (!exam || isPending) return;
+    try {
+      const blob = await fetchCertificatePreview(exam.id, certificateTemplate);
+      const url = URL.createObjectURL(blob);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = url;
+      window.open(url, "_blank");
+      setTimeout(() => {
+        if (previewUrlRef.current === url) {
+          URL.revokeObjectURL(url);
+          previewUrlRef.current = null;
+        }
+      }, 30000);
+    } catch {
+      // fetchCertificatePreview throws ApiError on failure
     }
   }
 
@@ -244,6 +269,54 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                 />
                 <span>{t("exam_packages_modal_randomize")}</span>
               </label>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>{t("exam_packages_modal_certificate_template")}</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="certificate_template"
+                    value="classic"
+                    checked={certificateTemplate === "classic"}
+                    onChange={() => setCertificateTemplate("classic")}
+                    disabled={isPending}
+                  />
+                  <span>{t("certificate_template_classic")}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="certificate_template"
+                    value="modern"
+                    checked={certificateTemplate === "modern"}
+                    onChange={() => setCertificateTemplate("modern")}
+                    disabled={isPending}
+                  />
+                  <span>{t("certificate_template_modern")}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="certificate_template"
+                    value="elegant"
+                    checked={certificateTemplate === "elegant"}
+                    onChange={() => setCertificateTemplate("elegant")}
+                    disabled={isPending}
+                  />
+                  <span>{t("certificate_template_elegant")}</span>
+                </label>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handlePreview}
+                disabled={!isEdit || isPending}
+              >
+                {t("admin_exam_certificate_preview")}
+              </Button>
             </div>
           </div>
 
