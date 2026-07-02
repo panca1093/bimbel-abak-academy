@@ -18,7 +18,7 @@ import (
 func strPtr(s string) *string { return &s }
 
 func TestValidateQuestion_mcq_accepts_exactly_one_correct(t *testing.T) {
-	q := model.Question{Format: "mcq", Body: "2+2"}
+	q := model.Question{Format: "mcq", Body: "2+2", PointCorrect: 1}
 	options := []model.QuestionOption{
 		{Key: "a", Text: "4", IsCorrect: true, SortOrder: 1},
 		{Key: "b", Text: "5", SortOrder: 2},
@@ -73,7 +73,7 @@ func TestValidateQuestion_mcq_rejects_fewer_than_2_options(t *testing.T) {
 }
 
 func TestValidateQuestion_multi_answer_accepts_one_or_more_correct(t *testing.T) {
-	q := model.Question{Format: "multi_answer", Body: "primes"}
+	q := model.Question{Format: "multi_answer", Body: "primes", PointCorrect: 1}
 	// one correct
 	opts1 := []model.QuestionOption{
 		{Key: "a", Text: "2", IsCorrect: true, SortOrder: 1},
@@ -146,7 +146,7 @@ func TestValidateQuestion_fill_blank_requires_correct_answer(t *testing.T) {
 }
 
 func TestValidateQuestion_essay_accepts_no_options_no_correct_answer(t *testing.T) {
-	q := model.Question{Format: "essay", Body: "explain gravity"}
+	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 1}
 	if err := validateQuestion(q, nil); err != nil {
 		t.Errorf("essay with no options + no correct_answer should pass, got %v", err)
 	}
@@ -286,7 +286,7 @@ func TestValidateTest_accepts_valid(t *testing.T) {
 
 // sanity: validateQuestion for a short question with non-empty correct_answer passes
 func TestValidateQuestion_short_accepts_valid(t *testing.T) {
-	q := model.Question{Format: "short", Body: "capital of France", CorrectAnswer: strPtr("Paris")}
+	q := model.Question{Format: "short", Body: "capital of France", CorrectAnswer: strPtr("Paris"), PointCorrect: 1}
 	if err := validateQuestion(q, nil); err != nil {
 		t.Errorf("valid short should pass, got %v", err)
 	}
@@ -355,6 +355,35 @@ func TestValidateQuestion_multi_answer_rejects_correct_answer_set(t *testing.T) 
 	}
 }
 
+func TestValidateQuestion_rejects_point_correct_below_1(t *testing.T) {
+	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 0, PointWrong: 0}
+	err := validateQuestion(q, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("point_correct=0 should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "point_correct must be >= 1") {
+		t.Errorf("point_correct=0 msg should mention 'point_correct must be >= 1', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_rejects_negative_point_wrong(t *testing.T) {
+	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 1, PointWrong: -1}
+	err := validateQuestion(q, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("point_wrong=-1 should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "point_wrong must be >= 0") {
+		t.Errorf("point_wrong=-1 msg should mention 'point_wrong must be >= 0', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_accepts_valid_points(t *testing.T) {
+	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 2, PointWrong: 1}
+	if err := validateQuestion(q, nil); err != nil {
+		t.Errorf("point_correct=2, point_wrong=1 should pass, got %v", err)
+	}
+}
+
 func TestValidateExam_rejects_empty_title(t *testing.T) {
 	e := model.Exam{Title: "   "}
 	err := validateExam(e)
@@ -413,6 +442,33 @@ func TestValidateExam_accepts_empty_timer_mode_legacy(t *testing.T) {
 	e := model.Exam{Title: "Legacy", TimerMode: ""}
 	if err := validateExam(e); err != nil {
 		t.Errorf("empty timer_mode (legacy) should pass, got %v", err)
+	}
+}
+
+func TestValidateExam_rejects_invalid_result_config(t *testing.T) {
+	e := model.Exam{Title: "Finals", ResultConfig: "walkthrough"}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("invalid result_config should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "result_config must be hidden, score_only, or score_pembahasan") {
+		t.Errorf("invalid result_config msg should mention allowed values, got %q", err.Error())
+	}
+}
+
+func TestValidateExam_accepts_empty_result_config(t *testing.T) {
+	e := model.Exam{Title: "Finals", ResultConfig: ""}
+	if err := validateExam(e); err != nil {
+		t.Errorf("empty result_config should pass validateExam (defaulting happens in CreateExam), got %v", err)
+	}
+}
+
+func TestValidateExam_accepts_each_valid_result_config(t *testing.T) {
+	for _, rc := range []string{"hidden", "score_only", "score_pembahasan"} {
+		e := model.Exam{Title: "Finals", ResultConfig: rc}
+		if err := validateExam(e); err != nil {
+			t.Errorf("result_config=%q should pass, got %v", rc, err)
+		}
 	}
 }
 

@@ -23,6 +23,9 @@ type fakeSessionRepo struct {
 	exams          map[uuid.UUID]*model.Exam
 	sessions       map[uuid.UUID]*model.ExamSession
 	sessionAnswers map[uuid.UUID][]model.ExamSessionAnswer
+	testsByExam    map[uuid.UUID][]model.TestDetail
+	essays         map[uuid.UUID][]model.GradingEssayItem
+	gradingQueue   map[uuid.UUID][]model.GradingSessionItem
 }
 
 func newFakeSessionRepo() *fakeSessionRepo {
@@ -31,6 +34,9 @@ func newFakeSessionRepo() *fakeSessionRepo {
 		exams:          make(map[uuid.UUID]*model.Exam),
 		sessions:       make(map[uuid.UUID]*model.ExamSession),
 		sessionAnswers: make(map[uuid.UUID][]model.ExamSessionAnswer),
+		testsByExam:    make(map[uuid.UUID][]model.TestDetail),
+		essays:         make(map[uuid.UUID][]model.GradingEssayItem),
+		gradingQueue:   make(map[uuid.UUID][]model.GradingSessionItem),
 	}
 }
 
@@ -153,8 +159,8 @@ func (f *fakeSessionRepo) GetExamSessionByID(_ context.Context, sessionID uuid.U
 	return &cp, nil
 }
 
-func (f *fakeSessionRepo) GetSessionWithQuestions(_ context.Context, _ uuid.UUID) ([]model.TestDetail, error) {
-	return nil, nil
+func (f *fakeSessionRepo) GetSessionWithQuestions(_ context.Context, examID uuid.UUID) ([]model.TestDetail, error) {
+	return f.testsByExam[examID], nil
 }
 
 func (f *fakeSessionRepo) GetSessionAnswers(_ context.Context, sessionID uuid.UUID) ([]model.ExamSessionAnswer, error) {
@@ -1447,6 +1453,141 @@ func TestForceSubmitSession_NotFound(t *testing.T) {
 	_, err := svc.ForceSubmitSession(ctx, "22222222-2222-2222-2222-222222222222")
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("want ErrSessionNotFound, got %v", err)
+	}
+}
+
+// TestSubmitSession_GradedAt_ObjectiveStamped_EssayNil is a regression guard for the
+// SubmitSessionTx upsert bug fixed in this slice (PG note 1, spec.md): the objective
+// answer must come out graded (graded_at set) while the essay answer stays ungraded
+// (graded_at nil) end-to-end through SubmitSession, not just at the gradeObjective unit level.
+func TestSubmitSession_GradedAt_ObjectiveStamped_EssayNil(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	mcqTD := mcqTest(uuid.New(), e.ID)
+	mcqQID := mcqTD.Questions[0].Question.ID
+	essayTD, essayQID := essayTest(uuid.New(), 5)
+	svc.repo.seedTests(e.ID, []model.TestDetail{mcqTD, essayTD})
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	mcqAnswer := "b"
+	essayAnswer := "my essay answer"
+	err = svc.SaveAnswers(ctx, regDetail.StudentID.String(), sess.SessionID.String(), []AnswerInput{
+		{QuestionID: mcqQID, Answer: &mcqAnswer},
+		{QuestionID: essayQID, Answer: &essayAnswer},
+	})
+	if err != nil {
+		t.Fatalf("SaveAnswers: %v", err)
+	}
+
+	if _, err := svc.SubmitSession(ctx, regDetail.StudentID.String(), sess.SessionID.String()); err != nil {
+		t.Fatalf("SubmitSession: %v", err)
+	}
+
+	answers, err := svc.repo.GetSessionAnswers(ctx, sess.SessionID)
+	if err != nil {
+		t.Fatalf("GetSessionAnswers: %v", err)
+	}
+	byQuestion := make(map[uuid.UUID]model.ExamSessionAnswer, len(answers))
+	for _, a := range answers {
+		byQuestion[a.QuestionID] = a
+	}
+
+	if byQuestion[mcqQID].GradedAt == nil {
+		t.Error("objective answer: want graded_at stamped, got nil")
+	}
+	if byQuestion[essayQID].GradedAt != nil {
+		t.Error("essay answer: want graded_at nil (awaits manual grading), got stamped")
+	}
+}
+
+// TestForceSubmitSession_GradedAt_ObjectiveStamped_EssayNil mirrors
+// TestSubmitSession_GradedAt_ObjectiveStamped_EssayNil for the admin force-submit path,
+// which independently calls gradeObjective before SubmitSessionTx.
+func TestForceSubmitSession_GradedAt_ObjectiveStamped_EssayNil(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-5 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Finals",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	mcqTD := mcqTest(uuid.New(), e.ID)
+	mcqQID := mcqTD.Questions[0].Question.ID
+	essayTD, essayQID := essayTest(uuid.New(), 5)
+	svc.repo.seedTests(e.ID, []model.TestDetail{mcqTD, essayTD})
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	mcqAnswer := "b"
+	essayAnswer := "my essay answer"
+	err = svc.SaveAnswers(ctx, regDetail.StudentID.String(), sess.SessionID.String(), []AnswerInput{
+		{QuestionID: mcqQID, Answer: &mcqAnswer},
+		{QuestionID: essayQID, Answer: &essayAnswer},
+	})
+	if err != nil {
+		t.Fatalf("SaveAnswers: %v", err)
+	}
+
+	if _, err := svc.ForceSubmitSession(ctx, sess.SessionID.String()); err != nil {
+		t.Fatalf("ForceSubmitSession: %v", err)
+	}
+
+	answers, err := svc.repo.GetSessionAnswers(ctx, sess.SessionID)
+	if err != nil {
+		t.Fatalf("GetSessionAnswers: %v", err)
+	}
+	byQuestion := make(map[uuid.UUID]model.ExamSessionAnswer, len(answers))
+	for _, a := range answers {
+		byQuestion[a.QuestionID] = a
+	}
+
+	if byQuestion[mcqQID].GradedAt == nil {
+		t.Error("objective answer: want graded_at stamped, got nil")
+	}
+	if byQuestion[essayQID].GradedAt != nil {
+		t.Error("essay answer: want graded_at nil (awaits manual grading), got stamped")
 	}
 }
 

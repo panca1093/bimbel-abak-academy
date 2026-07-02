@@ -57,6 +57,8 @@ const sampleQuestions: QuestionWithOptions[] = [
       format: "mcq",
       body: "Apa ibu kota Indonesia?",
       sort_order: 1,
+      point_correct: 1,
+      point_wrong: 0,
     },
     options: [
       { question_id: "q1", key: "a", text: "Jakarta", is_correct: true, sort_order: 1 },
@@ -71,6 +73,8 @@ const sampleQuestions: QuestionWithOptions[] = [
       body: "Sebutkan 1+1",
       sort_order: 2,
       correct_answer: "2",
+      point_correct: 1,
+      point_wrong: 0,
     },
     options: [],
   },

@@ -11,4 +11,14 @@ var (
 	ErrAlreadySubmitted     = errors.New("already submitted")
 	ErrSessionNotFound      = errors.New("session not found")
 	ErrInvalidViolationType = errors.New("invalid violation type")
+
+	// Result gating (FR-S5-21) and essay grading (FR-S5-13) sentinels.
+	// The gating non-result states (hidden/grading/locked) are returned as data on
+	// SessionResult, not as errors — these are for the grading write path and any
+	// hard-fail result cases.
+	ErrResultHidden      = errors.New("result hidden")
+	ErrResultNotReleased = errors.New("result not released")
+	ErrSessionNotGraded  = errors.New("session not fully graded")
+	ErrGradeOutOfRange   = errors.New("grade out of range")
+	ErrNotEssayQuestion  = errors.New("question is not an essay")
 )

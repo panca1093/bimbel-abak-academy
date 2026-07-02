@@ -2,11 +2,14 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
+import { examKeys } from "@/lib/hooks/exam";
 import type {
   ExamListItem,
   ExamDetail,
   CreateExamPayload,
   UpdateExamPayload,
+  GradingSessionItem,
+  GradingEssayItem,
 } from "@/lib/types";
 
 export const adminExamsKeys = {
@@ -16,7 +19,17 @@ export const adminExamsKeys = {
     [...adminExamsKeys.lists(), filter ?? {}] as const,
   details: () => [...adminExamsKeys.all, "detail"] as const,
   detail: (id: string) => [...adminExamsKeys.details(), id] as const,
+  gradingLists: () => [...adminExamsKeys.all, "grading"] as const,
+  grading: (examId: string) => [...adminExamsKeys.gradingLists(), examId] as const,
+  sessionEssays: (sessionId: string) =>
+    [...adminExamsKeys.all, "sessionEssays", sessionId] as const,
 };
+
+export interface GradeEssayInput {
+  question_id: string;
+  score: number;
+  comment?: string;
+}
 
 export interface AdminExamsFilters {
   cursor?: string;
@@ -125,6 +138,47 @@ export function usePublishExam(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
       qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });
+    },
+  });
+}
+
+export function useGradingSessions(examId: string | undefined) {
+  return useQuery({
+    queryKey: adminExamsKeys.grading(examId ?? ""),
+    queryFn: () =>
+      authFetch<{ data: GradingSessionItem[] }>(
+        `/admin/exams/${encodeURIComponent(examId!)}/grading`,
+      ),
+    enabled: Boolean(examId),
+  });
+}
+
+export function useSessionEssays(sessionId: string | undefined) {
+  return useQuery({
+    queryKey: adminExamsKeys.sessionEssays(sessionId ?? ""),
+    queryFn: () =>
+      authFetch<{ data: GradingEssayItem[] }>(
+        `/admin/sessions/${encodeURIComponent(sessionId!)}/essays`,
+      ),
+    enabled: Boolean(sessionId),
+  });
+}
+
+export function useGradeEssay(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: GradeEssayInput) =>
+      authFetch<{ status: string; score: number }>(
+        `/admin/sessions/${encodeURIComponent(sessionId)}/grade`,
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminExamsKeys.sessionEssays(sessionId) });
+      qc.invalidateQueries({ queryKey: adminExamsKeys.gradingLists() });
+      qc.invalidateQueries({ queryKey: examKeys.result(sessionId) });
     },
   });
 }

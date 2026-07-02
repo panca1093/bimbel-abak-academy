@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
-  CheckCircle2,
   Maximize2,
   ChevronLeft,
   ChevronRight,
@@ -32,10 +31,7 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import type {
-  SessionQuestion,
-  SubmitResult,
-} from "@/lib/types";
+import type { SessionQuestion } from "@/lib/types";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -46,6 +42,7 @@ function formatTime(seconds: number): string {
 export default function SessionPage() {
   const { t } = useTranslation();
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const sessionId = params?.id ?? "";
 
   const {
@@ -59,7 +56,7 @@ export default function SessionPage() {
   const submitSession = useSubmitSession(sessionId);
   const logViolation = useLogViolation(sessionId);
 
-  const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
   const [fullscreenGranted, setFullscreenGranted] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
@@ -87,8 +84,10 @@ export default function SessionPage() {
     setRemaining(session.remaining_seconds);
     autoSubmittedRef.current = false;
     if (session.status === "submitted") {
-      setSubmitResult({ submitted: true });
+      setRedirecting(true);
+      router.replace(`/exam/sessions/${sessionId}/result`);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // Timer countdown
@@ -126,7 +125,10 @@ export default function SessionPage() {
         }
       }
       submitSession.mutate(undefined, {
-        onSuccess: (result) => setSubmitResult(result),
+        onSuccess: () => {
+          setRedirecting(true);
+          router.replace(`/exam/sessions/${sessionId}/result`);
+        },
       });
     };
     doSubmit();
@@ -206,20 +208,21 @@ export default function SessionPage() {
       }
     }
     submitSession.mutate(undefined, {
-      onSuccess: (result) => {
-        setSubmitResult(result);
+      onSuccess: () => {
         setShowConfirm(false);
         setSubmitting(false);
+        setRedirecting(true);
         if (document.fullscreenElement) {
           document.exitFullscreen().catch(() => {});
         }
+        router.replace(`/exam/sessions/${sessionId}/result`);
       },
       onError: () => {
         setSubmitting(false);
         setShowConfirm(false);
       },
     });
-  }, [submitting, saveAnswers, submitSession]);
+  }, [submitting, saveAnswers, submitSession, router, sessionId]);
 
   // ── Error state (check before !session to handle query error) ────────
 
@@ -257,20 +260,13 @@ export default function SessionPage() {
     );
   }
 
-  // ── Submitted state ───────────────────────────────────────────────────
+  // ── Redirecting to result ───────────────────────────────────────────────
 
-  if (submitResult) {
+  if (redirecting) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <CheckCircle2 className="mx-auto mb-4 size-12 text-success" />
-        <h1 className="mb-2 text-2xl font-bold text-ink-900">
-          {t("submitted")}
-        </h1>
-        {submitResult.score != null && (
-          <p className="text-lg text-ink-700">
-            {t("score")}: {submitResult.score}
-          </p>
-        )}
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <p className="mb-4 text-sm text-ink-500">{t("sys_loading")}</p>
+        <Skeleton className="h-40 w-full rounded-lg" />
       </div>
     );
   }

@@ -101,9 +101,10 @@ func TestQuestionStruct(t *testing.T) {
 	typ := reflect.TypeOf((*Question)(nil)).Elem()
 	v := newModel(typ)
 
-	// Question has NO created_at (migration doesn't define one).
-	if typ.NumField() != 9 {
-		t.Fatalf("Question struct: got %d fields, want 9", typ.NumField())
+	// Question has NO created_at (migration doesn't define one). 11 fields since
+	// migration 0015_exam_scoring adds point_correct/point_wrong.
+	if typ.NumField() != 11 {
+		t.Fatalf("Question struct: got %d fields, want 11", typ.NumField())
 	}
 	if _, ok := typ.FieldByName("CreatedAt"); ok {
 		t.Errorf("Question must NOT have CreatedAt — migration 0014_exam.up.sql does not define it")
@@ -114,11 +115,15 @@ func TestQuestionStruct(t *testing.T) {
 	jsonTag(t, v, "CorrectAnswer", "correct_answer")
 	jsonTag(t, v, "ImageURL", "image_url")
 	jsonTag(t, v, "SortOrder", "sort_order")
+	jsonTag(t, v, "PointCorrect", "point_correct")
+	jsonTag(t, v, "PointWrong", "point_wrong")
 
 	fieldType(t, v, "ID", reflect.TypeOf(uuid.UUID{}))
 	fieldType(t, v, "TestID", reflect.TypeOf(uuid.UUID{}))
 	fieldKind(t, v, "Format", reflect.String)
 	fieldKind(t, v, "Body", reflect.String)
+	fieldKind(t, v, "PointCorrect", reflect.Int)
+	fieldKind(t, v, "PointWrong", reflect.Int)
 
 	// Nullable pointers
 	for _, name := range []string{"CorrectAnswer", "Explanation", "Difficulty", "ImageURL"} {

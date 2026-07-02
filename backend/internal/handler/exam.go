@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -169,7 +170,10 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	q := req.toQuestion()
+	q, err := req.toQuestion()
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	q.TestID = testID
 	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions())
 	if err != nil {
@@ -189,7 +193,10 @@ func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	q := req.toQuestion()
+	q, err := req.toQuestion()
+	if err != nil {
+		return mapServiceError(c, err)
+	}
 	q.ID = qID
 	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions())
 	if err != nil {
@@ -219,6 +226,8 @@ type questionRequest struct {
 	ImageURL      *string         `json:"image_url,omitempty"`
 	CorrectAnswer *string         `json:"correct_answer,omitempty"`
 	Options       []optionRequest `json:"options,omitempty"`
+	PointCorrect  *float64        `json:"point_correct,omitempty"`
+	PointWrong    *float64        `json:"point_wrong,omitempty"`
 }
 
 type optionRequest struct {
@@ -229,7 +238,23 @@ type optionRequest struct {
 	SortOrder int     `json:"sort_order"`
 }
 
-func (r questionRequest) toQuestion() model.Question {
+func (r questionRequest) toQuestion() (model.Question, error) {
+	pointCorrect := 1
+	if r.PointCorrect != nil {
+		v := *r.PointCorrect
+		if float64(int(v)) != v {
+			return model.Question{}, fmt.Errorf("%w: point_correct must be an integer", service.ErrValidation)
+		}
+		pointCorrect = int(v)
+	}
+	pointWrong := 0
+	if r.PointWrong != nil {
+		v := *r.PointWrong
+		if float64(int(v)) != v {
+			return model.Question{}, fmt.Errorf("%w: point_wrong must be an integer", service.ErrValidation)
+		}
+		pointWrong = int(v)
+	}
 	return model.Question{
 		Format:        r.Format,
 		Body:          r.Body,
@@ -238,7 +263,9 @@ func (r questionRequest) toQuestion() model.Question {
 		Difficulty:    r.Difficulty,
 		ImageURL:      r.ImageURL,
 		SortOrder:     r.SortOrder,
-	}
+		PointCorrect:  pointCorrect,
+		PointWrong:    pointWrong,
+	}, nil
 }
 
 func (r questionRequest) toOptions() []model.QuestionOption {
@@ -431,4 +458,80 @@ func (h *Handler) AdminForceSubmitSession(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, result)
+}
+
+// StudentGetSessionResult returns the gated result view for the caller's own session
+// (FR-S5-20..24).
+func (h *Handler) StudentGetSessionResult(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	sessionID := c.Param("id")
+	result, err := h.svc.GetSessionResult(c.Request().Context(), claims.Sub, sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+// AdminListGradingSessions returns the grading queue for an exam (FR-S5-16).
+func (h *Handler) AdminListGradingSessions(c echo.Context) error {
+	examID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	items, err := h.svc.ListGradingSessions(c.Request().Context(), examID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": items})
+}
+
+// AdminGetSessionEssays returns the essay answers of a session for grading (FR-S5-17).
+func (h *Handler) AdminGetSessionEssays(c echo.Context) error {
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	items, err := h.svc.GetSessionEssays(c.Request().Context(), sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": items})
+}
+
+// AdminGradeEssay grades one essay answer and recomputes the session total (FR-S5-12..14).
+func (h *Handler) AdminGradeEssay(c echo.Context) error {
+	sessionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	graderID, err := uuid.Parse(claims.Sub)
+	if err != nil {
+		return badRequest(c, "invalid grader id")
+	}
+
+	var req struct {
+		QuestionID string  `json:"question_id"`
+		Score      float64 `json:"score"`
+		Comment    *string `json:"comment,omitempty"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	questionID, err := uuid.Parse(req.QuestionID)
+	if err != nil {
+		return badRequest(c, "invalid question_id")
+	}
+
+	total, err := h.svc.GradeEssayAnswer(c.Request().Context(), sessionID, questionID, req.Score, req.Comment, graderID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"status": "ok", "score": total})
 }
