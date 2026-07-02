@@ -129,6 +129,17 @@ func TestGenerateCertificatePDF_DifferentTemplates_Distinguishable(t *testing.T)
 	if bytes.Equal(classicPDF, modernPDF) {
 		t.Error("classic and modern should produce different PDF bytes")
 	}
+
+	elegantPDF, err := generateCertificatePDF("elegant", "Budi", "Test Exam", now)
+	if err != nil {
+		t.Fatalf("elegant: %v", err)
+	}
+	if bytes.Equal(elegantPDF, classicPDF) {
+		t.Error("elegant and classic should produce different PDF bytes")
+	}
+	if bytes.Equal(elegantPDF, modernPDF) {
+		t.Error("elegant and modern should produce different PDF bytes")
+	}
 }
 
 func TestGenerateCertificatePDF_InvalidTemplate(t *testing.T) {
