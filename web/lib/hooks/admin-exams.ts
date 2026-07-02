@@ -197,11 +197,11 @@ export function useExamLeaderboard(
     queryKey: adminExamsKeys.leaderboard(examId ?? "", filter),
     queryFn: () => {
       const base = `/admin/exams/${encodeURIComponent(examId!)}/leaderboard`;
-      if (!filter) return authFetch<{ data: ExamLeaderboardEntry[] }>(base);
+      if (!filter) return authFetch<{ data: ExamLeaderboardEntry[]; next_cursor?: string }>(base);
       const params = new URLSearchParams();
       if (filter.cursor) params.set("cursor", filter.cursor);
       if (filter.limit !== undefined) params.set("limit", String(filter.limit));
-      return authFetch<{ data: ExamLeaderboardEntry[] }>(`${base}?${params.toString()}`);
+      return authFetch<{ data: ExamLeaderboardEntry[]; next_cursor?: string }>(`${base}?${params.toString()}`);
     },
     enabled: Boolean(examId),
   });
