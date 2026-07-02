@@ -517,6 +517,7 @@ export const DICT = {
     /* System — shared */
     sys_loading: "Memuat…",
     sys_loading_data: "Memuat data…",
+    sys_load_more: "Muat lebih banyak",
     sys_error_title: "Terjadi kesalahan",
     sys_error_forbidden: "Akses ditolak. Hanya Super Admin yang dapat mengakses halaman ini.",
     sys_error_load: "Gagal memuat data. Coba refresh halaman.",
@@ -696,6 +697,10 @@ export const DICT = {
     exam_packages_modal_randomize: "Acak Soal",
     exam_packages_modal_save: "Simpan",
     exam_packages_modal_cancel: "Batal",
+    exam_packages_modal_certificate_template: "Template Sertifikat",
+    certificate_template_classic: "Klasik",
+    certificate_template_modern: "Modern",
+    certificate_template_elegant: "Elegan",
     admin_exam_detail_tab_overview: "Ringkasan",
     admin_exam_detail_tab_tests: "Tes",
     admin_exam_detail_tab_price: "Harga",
@@ -714,6 +719,14 @@ export const DICT = {
     admin_exam_detail_publish: "Publish",
     admin_exam_detail_publish_confirm:
       "Publish paket ini? Tindakan ini tidak bisa dibatalkan.",
+    admin_exam_certificate_preview: "Pratinjau Sertifikat",
+    admin_exam_leaderboard_col_rank: "Peringkat",
+    admin_exam_leaderboard_col_student: "Peserta",
+    admin_exam_leaderboard_col_score: "Skor",
+    admin_exam_leaderboard_empty: "Belum ada data peringkat",
+    admin_exam_analytics_average_score: "Rata-rata Skor",
+    admin_exam_analytics_completion_rate: "Tingkat Penyelesaian",
+    admin_exam_analytics_distribution: "Distribusi Skor",
 
     // Exam session — check-in
     exam_checkin_title: "Check-in Ujian",
@@ -748,9 +761,9 @@ export const DICT = {
     result_pembahasan: "Pembahasan",
     result_your_answer: "Jawaban Anda",
     result_correct_answer: "Jawaban Benar",
-    result_certificate_placeholder: "Sertifikat akan tersedia setelah dirilis",
     result_grading: "Sedang dinilai",
     result_locked: "Hasil tersedia pada {t}",
+    result_leaderboard_not_available: "Peringkat belum tersedia",
 
     // Admin — essay grading tab (Slice 5)
     grading_sessions_title: "Sesi Perlu Dinilai",
@@ -1286,6 +1299,7 @@ export const DICT = {
     /* System — shared */
     sys_loading: "Loading…",
     sys_loading_data: "Loading data…",
+    sys_load_more: "Load more",
     sys_error_title: "An error occurred",
     sys_error_forbidden: "Access denied. Only Super Admin can access this page.",
     sys_error_load: "Failed to load data. Try refreshing the page.",
@@ -1465,6 +1479,10 @@ export const DICT = {
     exam_packages_modal_randomize: "Randomize Questions",
     exam_packages_modal_save: "Save",
     exam_packages_modal_cancel: "Cancel",
+    exam_packages_modal_certificate_template: "Certificate Template",
+    certificate_template_classic: "Classic",
+    certificate_template_modern: "Modern",
+    certificate_template_elegant: "Elegant",
     admin_exam_detail_tab_overview: "Overview",
     admin_exam_detail_tab_tests: "Tests",
     admin_exam_detail_tab_price: "Price",
@@ -1483,6 +1501,14 @@ export const DICT = {
     admin_exam_detail_publish: "Publish",
     admin_exam_detail_publish_confirm:
       "Publish this package? This action cannot be undone.",
+    admin_exam_certificate_preview: "Preview Certificate",
+    admin_exam_leaderboard_col_rank: "Rank",
+    admin_exam_leaderboard_col_student: "Student",
+    admin_exam_leaderboard_col_score: "Score",
+    admin_exam_leaderboard_empty: "No leaderboard data yet",
+    admin_exam_analytics_average_score: "Average Score",
+    admin_exam_analytics_completion_rate: "Completion Rate",
+    admin_exam_analytics_distribution: "Score Distribution",
 
     // Exam session — check-in
     exam_checkin_title: "Exam Check-in",
@@ -1517,9 +1543,9 @@ export const DICT = {
     result_pembahasan: "Explanation",
     result_your_answer: "Your Answer",
     result_correct_answer: "Correct Answer",
-    result_certificate_placeholder: "Certificate will be available after release",
     result_grading: "Being graded",
     result_locked: "Result available on {t}",
+    result_leaderboard_not_available: "Leaderboard not available",
 
     // Admin — essay grading tab (Slice 5)
     grading_sessions_title: "Sessions Needing Grading",
