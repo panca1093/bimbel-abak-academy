@@ -12,6 +12,7 @@ import type {
   SubmitResult,
   CheckInResult,
   SessionResult,
+  ExamLeaderboardEntry,
 } from "@/lib/types";
 
 export const examKeys = {
@@ -24,6 +25,9 @@ export const examKeys = {
   session: (id: string) => [...examKeys.sessions(), id] as const,
   results: () => [...examKeys.all, "result"] as const,
   result: (id: string) => [...examKeys.results(), id] as const,
+  leaderboards: () => [...examKeys.all, "leaderboard"] as const,
+  leaderboard: (id: string, filter?: { cursor?: string; limit?: number }) =>
+    [...examKeys.leaderboards(), id, filter ?? {}] as const,
 };
 
 export function useRegistrations() {
@@ -161,5 +165,23 @@ export function useLogViolation(sessionId: string) {
           body: JSON.stringify({ violation_type: violationType }),
         },
       ),
+  });
+}
+
+export function useSessionLeaderboard(
+  sessionId: string | undefined,
+  filter?: { cursor?: string; limit?: number },
+) {
+  return useQuery({
+    queryKey: examKeys.leaderboard(sessionId ?? "", filter),
+    queryFn: () => {
+      const base = `/exam/sessions/${encodeURIComponent(sessionId!)}/leaderboard`;
+      if (!filter) return authFetch<{ data: ExamLeaderboardEntry[] }>(base);
+      const params = new URLSearchParams();
+      if (filter.cursor) params.set("cursor", filter.cursor);
+      if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+      return authFetch<{ data: ExamLeaderboardEntry[] }>(`${base}?${params.toString()}`);
+    },
+    enabled: Boolean(sessionId),
   });
 }

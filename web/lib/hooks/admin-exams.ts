@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authFetch } from "@/lib/api";
+import { API_BASE, authFetch, ApiError } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
 import { examKeys } from "@/lib/hooks/exam";
 import type {
   ExamListItem,
@@ -10,6 +11,8 @@ import type {
   UpdateExamPayload,
   GradingSessionItem,
   GradingEssayItem,
+  ExamLeaderboardEntry,
+  ExamAnalytics,
 } from "@/lib/types";
 
 export const adminExamsKeys = {
@@ -23,6 +26,9 @@ export const adminExamsKeys = {
   grading: (examId: string) => [...adminExamsKeys.gradingLists(), examId] as const,
   sessionEssays: (sessionId: string) =>
     [...adminExamsKeys.all, "sessionEssays", sessionId] as const,
+  leaderboardLists: () => [...adminExamsKeys.all, "leaderboard"] as const,
+  leaderboard: (examId: string, filter?: AdminExamsFilters) =>
+    [...adminExamsKeys.leaderboardLists(), examId, filter ?? {}] as const,
 };
 
 export interface GradeEssayInput {
@@ -181,4 +187,55 @@ export function useGradeEssay(sessionId: string) {
       qc.invalidateQueries({ queryKey: examKeys.result(sessionId) });
     },
   });
+}
+
+export function useExamLeaderboard(
+  examId: string | undefined,
+  filter?: AdminExamsFilters,
+) {
+  return useQuery({
+    queryKey: adminExamsKeys.leaderboard(examId ?? "", filter),
+    queryFn: () => {
+      const base = `/admin/exams/${encodeURIComponent(examId!)}/leaderboard`;
+      if (!filter) return authFetch<{ data: ExamLeaderboardEntry[] }>(base);
+      const params = new URLSearchParams();
+      if (filter.cursor) params.set("cursor", filter.cursor);
+      if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+      return authFetch<{ data: ExamLeaderboardEntry[] }>(`${base}?${params.toString()}`);
+    },
+    enabled: Boolean(examId),
+  });
+}
+
+export function useExamAnalytics(examId: string | undefined) {
+  return useQuery({
+    queryKey: [...adminExamsKeys.all, "analytics", examId ?? ""] as const,
+    queryFn: () =>
+      authFetch<ExamAnalytics>(
+        `/admin/exams/${encodeURIComponent(examId!)}/analytics`,
+      ),
+    enabled: Boolean(examId),
+  });
+}
+
+export async function fetchCertificatePreview(
+  examId: string,
+  template?: string,
+): Promise<Blob> {
+  const token = useAuthStore.getState().token;
+  const params = template ? `?template=${encodeURIComponent(template)}` : "";
+  const res = await fetch(
+    `${API_BASE}/admin/exams/${encodeURIComponent(examId)}/certificate-preview${params}`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    },
+  );
+  if (!res.ok) {
+    throw new ApiError(
+      `HTTP_${res.status}`,
+      `Failed to fetch certificate preview: ${res.status}`,
+      res.status,
+    );
+  }
+  return res.blob();
 }
