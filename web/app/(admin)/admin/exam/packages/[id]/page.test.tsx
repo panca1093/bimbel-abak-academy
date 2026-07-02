@@ -2,7 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import { useParams } from "next/navigation";
 import ExamPackageDetailPage from "./page";
-import type { ExamDetail, GradingSessionItem, GradingEssayItem, Test } from "@/lib/types";
+import type {
+  ExamDetail,
+  GradingSessionItem,
+  GradingEssayItem,
+  Test,
+  ExamAnalytics,
+  ExamLeaderboardEntry,
+} from "@/lib/types";
 
 vi.mock("next/navigation", () => ({
   useParams: vi.fn(),
@@ -48,6 +55,39 @@ let gradeEssayState: {
   variables?: { question_id: string };
 } = { mutateAsync: mockGradeEssay, isPending: false, variables: undefined };
 
+const sampleAnalytics: ExamAnalytics = {
+  average_score: 75.5,
+  completion_rate: 0.85,
+  distribution: [
+    { label: "0-20", count: 1 },
+    { label: "21-40", count: 2 },
+    { label: "41-60", count: 3 },
+    { label: "61-80", count: 5 },
+    { label: "81-100", count: 4 },
+  ],
+};
+
+const sampleLeaderboardEntries: ExamLeaderboardEntry[] = [
+  { rank: 1, student_id: "s1", student_name: "Budi Santoso", score: 95 },
+  { rank: 2, student_id: "s2", student_name: "Siti Aminah", score: 88 },
+  { rank: 3, student_id: "s3", student_name: "Agus Wijaya", score: 82 },
+];
+
+let analyticsState: { data: ExamAnalytics | undefined; isLoading: boolean } = {
+  data: sampleAnalytics,
+  isLoading: false,
+};
+
+let leaderboardState: {
+  data: { data: ExamLeaderboardEntry[]; next_cursor?: string } | undefined;
+  isLoading: boolean;
+  isFetching: boolean;
+} = {
+  data: { data: sampleLeaderboardEntries, next_cursor: undefined },
+  isLoading: false,
+  isFetching: false,
+};
+
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useExam: () => examState,
   useReplaceExamTests: () => ({ mutateAsync: mockReplaceTests, isPending: false }),
@@ -58,6 +98,8 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useGradingSessions: () => gradingSessionsState,
   useSessionEssays: () => sessionEssaysState,
   useGradeEssay: () => gradeEssayState,
+  useExamAnalytics: () => analyticsState,
+  useExamLeaderboard: () => leaderboardState,
 }));
 
 vi.mock("@/lib/hooks/admin-tests", () => ({
@@ -276,5 +318,69 @@ describe("ExamPackageDetailPage — grading tab", () => {
       expect(screen.queryByText("Budi Santoso")).not.toBeInTheDocument();
     });
     expect(screen.getByText("Siti Aminah")).toBeInTheDocument();
+  });
+});
+
+describe("ExamPackageDetailPage — leaderboard tab", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    examState = {
+      data: sampleExam,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    analyticsState = { data: sampleAnalytics, isLoading: false };
+    leaderboardState = {
+      data: { data: sampleLeaderboardEntries, next_cursor: undefined },
+      isLoading: false,
+      isFetching: false,
+    };
+  });
+
+  function openLeaderboardTab() {
+    fireEvent.click(screen.getByRole("button", { name: "Leaderboard" }));
+  }
+
+  it("renders analytics tiles instead of UnderMaintenance", async () => {
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    expect(screen.getByText("75.5")).toBeInTheDocument();
+    expect(screen.getByText("85%")).toBeInTheDocument();
+    expect(screen.getByText("0-20")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("81-100")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.queryByText(/Under Maintenance/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a leaderboard table with entries", async () => {
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    expect(screen.getByText("#1")).toBeInTheDocument();
+    expect(screen.getByText("95")).toBeInTheDocument();
+    expect(screen.getByText("Siti Aminah")).toBeInTheDocument();
+    expect(screen.getByText("Agus Wijaya")).toBeInTheDocument();
+  });
+
+  it("shows empty-state message when no leaderboard rows", async () => {
+    leaderboardState = {
+      data: { data: [], next_cursor: undefined },
+      isLoading: false,
+      isFetching: false,
+    };
+
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Belum ada data peringkat")).toBeInTheDocument();
+    });
   });
 });
