@@ -216,9 +216,10 @@ func (f *fakeSessionRepo) ReopenSession(_ context.Context, sessionID uuid.UUID, 
 // ---------- shimSessionService ----------
 
 type shimSessionService struct {
-	repo *fakeSessionRepo
-	rdb  *redis.Client
-	mr   *miniredis.Miniredis
+	repo          *fakeSessionRepo
+	rdb           *redis.Client
+	mr            *miniredis.Miniredis
+	uploadCertErr error
 }
 
 func newShimSessionService(t *testing.T) (*shimSessionService, *miniredis.Miniredis) {

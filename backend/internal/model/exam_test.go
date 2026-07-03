@@ -526,6 +526,7 @@ func TestExamLeaderboardEntryStruct(t *testing.T) {
 	v := newModel(typ)
 
 	jsonTag(t, v, "Rank", "rank")
+	jsonTag(t, v, "SessionID", "session_id")
 	jsonTag(t, v, "StudentID", "student_id")
 	jsonTag(t, v, "StudentName", "student_name")
 	jsonTag(t, v, "Score", "score")
@@ -533,6 +534,7 @@ func TestExamLeaderboardEntryStruct(t *testing.T) {
 	fieldKind(t, v, "Rank", reflect.Int)
 	fieldKind(t, v, "StudentName", reflect.String)
 	fieldKind(t, v, "Score", reflect.Float64)
+	fieldType(t, v, "SessionID", reflect.TypeOf(uuid.UUID{}))
 	fieldType(t, v, "StudentID", reflect.TypeOf(uuid.UUID{}))
 }
 

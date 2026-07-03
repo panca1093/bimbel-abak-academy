@@ -18,6 +18,9 @@ import (
 // ErrSortOrderConflict — uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
 var ErrSortOrderConflict = errors.New("sort order conflict")
 
+// ErrInvalidCursor — malformed pagination cursor — surfaced for service-layer mapping to 4xx.
+var ErrInvalidCursor = errors.New("invalid pagination cursor")
+
 func scanTest(row interface{ Scan(dest ...any) error }, t *model.Test) error {
 	var audioURL *string
 	var audioPlayLimit *int
@@ -1316,19 +1319,22 @@ func (r *Repository) ListExamLeaderboard(ctx context.Context, examID uuid.UUID, 
 
 	if cursor != "" {
 		scoreStr, idStr, found := strings.Cut(cursor, ",")
-		if found {
-			cursorScore, err := strconv.ParseFloat(scoreStr, 64)
-			if err != nil {
-				return nil, "", fmt.Errorf("invalid leaderboard cursor: %w", err)
-			}
-			cursorID, err := uuid.Parse(idStr)
-			if err != nil {
-				return nil, "", fmt.Errorf("invalid leaderboard cursor: %w", err)
-			}
-			query += fmt.Sprintf(` WHERE (ranked.score, ranked.id) < ($%d::numeric, $%d::uuid)`, argIdx, argIdx+1)
-			args = append(args, cursorScore, cursorID)
-			argIdx += 2
+		if !found {
+			return nil, "", fmt.Errorf("%w: %q", ErrInvalidCursor, cursor)
 		}
+		cursorScore, err := strconv.ParseFloat(scoreStr, 64)
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+		}
+		cursorID, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+		}
+		// Strictly after the last returned row under ORDER BY score DESC, id ASC —
+		// a single tuple compare cannot express the mixed sort directions.
+		query += fmt.Sprintf(` WHERE (ranked.score < $%d::numeric OR (ranked.score = $%d::numeric AND ranked.id > $%d::uuid))`, argIdx, argIdx, argIdx+1)
+		args = append(args, cursorScore, cursorID)
+		argIdx += 2
 	}
 
 	query += ` ORDER BY ranked.score DESC, ranked.id ASC LIMIT $` + fmt.Sprintf("%d", argIdx)
@@ -1341,19 +1347,12 @@ func (r *Repository) ListExamLeaderboard(ctx context.Context, examID uuid.UUID, 
 	defer rows.Close()
 
 	var entries []model.ExamLeaderboardEntry
-	var extraScore float64
-	var extraSessionID uuid.UUID
 	for rows.Next() {
 		var e model.ExamLeaderboardEntry
-		var sid uuid.UUID
-		if err := rows.Scan(&sid, &e.StudentID, &e.StudentName, &e.Score, &e.Rank); err != nil {
+		if err := rows.Scan(&e.SessionID, &e.StudentID, &e.StudentName, &e.Score, &e.Rank); err != nil {
 			return nil, "", err
 		}
 		entries = append(entries, e)
-		if len(entries) == limit+1 {
-			extraScore = e.Score
-			extraSessionID = sid
-		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, "", err
@@ -1361,8 +1360,9 @@ func (r *Repository) ListExamLeaderboard(ctx context.Context, examID uuid.UUID, 
 
 	var nextCursor string
 	if len(entries) > limit {
-		nextCursor = strconv.FormatFloat(extraScore, 'f', 2, 64) + "," + extraSessionID.String()
 		entries = entries[:limit]
+		last := entries[limit-1]
+		nextCursor = strconv.FormatFloat(last.Score, 'f', -1, 64) + "," + last.SessionID.String()
 	}
 
 	return entries, nextCursor, nil

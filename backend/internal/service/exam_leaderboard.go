@@ -14,7 +14,17 @@ import (
 // AdminGetLeaderboard returns a cursor-paginated ranked list of fully-graded submitted
 // sessions for an exam (FR-10). No gating — RBAC middleware restricts this to admins.
 func (s *Service) AdminGetLeaderboard(ctx context.Context, examID uuid.UUID, cursor string, limit int) ([]model.ExamLeaderboardEntry, string, error) {
-	return s.storeRepo.ListExamLeaderboard(ctx, examID, cursor, limit)
+	entries, next, err := s.storeRepo.ListExamLeaderboard(ctx, examID, cursor, limit)
+	return entries, next, mapCursorErr(err)
+}
+
+// mapCursorErr surfaces a malformed pagination cursor as a validation error (422)
+// instead of an opaque internal error (500).
+func mapCursorErr(err error) error {
+	if errors.Is(err, repository.ErrInvalidCursor) {
+		return fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	return err
 }
 
 // StudentGetSessionLeaderboard returns the exam leaderboard scoped to the calling
@@ -65,7 +75,8 @@ func (s *Service) StudentGetSessionLeaderboard(ctx context.Context, studentID, s
 		return nil, "", ErrLeaderboardNotAvailable
 	}
 
-	return s.storeRepo.ListExamLeaderboard(ctx, sess.ExamID, cursor, limit)
+	entries, next, err := s.storeRepo.ListExamLeaderboard(ctx, sess.ExamID, cursor, limit)
+	return entries, next, mapCursorErr(err)
 }
 
 // GetExamAnalytics computes completion rate, average score, and score distribution

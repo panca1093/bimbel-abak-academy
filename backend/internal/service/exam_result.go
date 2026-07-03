@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"strings"
@@ -64,7 +65,12 @@ func (s *Service) GetSessionResult(ctx context.Context, studentID, sessionID str
 	if err == nil && user != nil {
 		studentName = user.Name
 	}
-	certURL := s.resolveCertificateURL(ctx, exam, sess, answers, studentName)
+	// A certificate failure (MinIO down, PDF error) must not block the result view —
+	// log it and degrade to a nil certificate_url.
+	certURL, certErr := s.resolveCertificateURL(ctx, exam, sess, answers, studentName)
+	if certErr != nil {
+		slog.Error("resolve certificate url", "session_id", sessID, "err", certErr)
+	}
 
 	// Gates 1-3 (FR-S5-21): hidden -> grading -> locked. Short-circuits before the
 	// rank aggregate query when the full result isn't visible yet.

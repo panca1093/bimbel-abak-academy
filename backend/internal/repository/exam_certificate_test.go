@@ -162,6 +162,85 @@ func TestLeaderboard_ListExamLeaderboard(t *testing.T) {
 			t.Errorf("expected empty cursor (all rows returned), got %q", cursor2)
 		}
 	})
+
+	t.Run("page 2 resumes after a tied page 1 without loss or duplication", func(t *testing.T) {
+		page1, cursor, err := repo.ListExamLeaderboard(ctx, examID, "", 2)
+		if err != nil {
+			t.Fatalf("page 1: %v", err)
+		}
+		if len(page1) != 2 || page1[0].Score != 90 || page1[1].Score != 90 {
+			t.Fatalf("page 1 should be the two tied 90s, got %+v", page1)
+		}
+		if cursor == "" {
+			t.Fatal("page 1 should return a cursor")
+		}
+
+		page2, cursor2, err := repo.ListExamLeaderboard(ctx, examID, cursor, 2)
+		if err != nil {
+			t.Fatalf("page 2: %v", err)
+		}
+		if len(page2) != 1 {
+			t.Fatalf("page 2 should have exactly 1 entry (Student B, 80), got %d: %+v", len(page2), page2)
+		}
+		if page2[0].StudentName != "Student B" || page2[0].Score != 80 || page2[0].Rank != 3 {
+			t.Errorf("page 2 entry should be Student B score=80 rank=3, got %+v", page2[0])
+		}
+		if cursor2 != "" {
+			t.Errorf("page 2 is the last page, cursor should be empty, got %q", cursor2)
+		}
+	})
+
+	t.Run("malformed cursor returns ErrInvalidCursor", func(t *testing.T) {
+		for _, bad := range []string{"90,notauuid", "notanumber,00000000-0000-0000-0000-000000000001", "nocomma"} {
+			_, _, err := repo.ListExamLeaderboard(ctx, examID, bad, 20)
+			if !errors.Is(err, ErrInvalidCursor) {
+				t.Errorf("cursor %q: want ErrInvalidCursor, got %v", bad, err)
+			}
+		}
+	})
+
+	t.Run("limit=1 walk visits every row exactly once", func(t *testing.T) {
+		seenNames := map[string]int{}
+		seenSessions := map[uuid.UUID]int{}
+		var ranks []int
+		cursor := ""
+		for page := 0; page < 10; page++ {
+			entries, next, err := repo.ListExamLeaderboard(ctx, examID, cursor, 1)
+			if err != nil {
+				t.Fatalf("walk page %d: %v", page, err)
+			}
+			for _, e := range entries {
+				seenNames[e.StudentName]++
+				if e.SessionID == uuid.Nil {
+					t.Errorf("entry %q has zero session_id", e.StudentName)
+				}
+				seenSessions[e.SessionID]++
+				ranks = append(ranks, e.Rank)
+			}
+			if next == "" {
+				break
+			}
+			cursor = next
+		}
+
+		if len(seenNames) != 3 {
+			t.Errorf("walk should visit 3 distinct students, got %v", seenNames)
+		}
+		for _, name := range []string{"Student A", "Student B", "Student C"} {
+			if seenNames[name] != 1 {
+				t.Errorf("%s should appear exactly once, got %d (all: %v)", name, seenNames[name], seenNames)
+			}
+		}
+		for sid, n := range seenSessions {
+			if n != 1 {
+				t.Errorf("session %s appeared %d times", sid, n)
+			}
+		}
+		wantRanks := []int{1, 1, 3}
+		if len(ranks) != 3 || ranks[0] != wantRanks[0] || ranks[1] != wantRanks[1] || ranks[2] != wantRanks[2] {
+			t.Errorf("ranks across walk should be %v, got %v", wantRanks, ranks)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

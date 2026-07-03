@@ -276,8 +276,10 @@ type GradingEssayItem struct {
 }
 
 // ExamLeaderboardEntry is one row of the exam leaderboard — rank, student, score.
+// SessionID identifies the row (a student can hold several sessions when retakes are allowed).
 type ExamLeaderboardEntry struct {
 	Rank        int       `json:"rank"`
+	SessionID   uuid.UUID `json:"session_id"`
 	StudentID   uuid.UUID `json:"student_id"`
 	StudentName string    `json:"student_name"`
 	Score       float64   `json:"score"`

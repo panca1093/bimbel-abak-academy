@@ -28,15 +28,18 @@ func (f *fakeSessionRepo) UpdateSessionCertificate(_ context.Context, sessionID 
 // ---------- shimSessionService: certificate shim ----------
 
 func (s *shimSessionService) uploadCertificatePDF(_ context.Context, sessionID uuid.UUID, _ []byte) (string, error) {
+	if s.uploadCertErr != nil {
+		return "", s.uploadCertErr
+	}
 	return "http://minio.example.com/certificates/" + sessionID.String() + ".pdf", nil
 }
 
 // resolveCertificateURL mirrors the real Service.resolveCertificateURL using the fake repo
 // and a fake upload function — follows the shimSessionService convention from
 // exam_session_test.go / exam_result_test.go.
-func (s *shimSessionService) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer, studentName string) *string {
+func (s *shimSessionService) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer, studentName string) (*string, error) {
 	if sess.Status != "submitted" {
-		return nil
+		return nil, nil
 	}
 
 	gradedAt := latestGradedAt(answers)
@@ -44,20 +47,20 @@ func (s *shimSessionService) resolveCertificateURL(ctx context.Context, exam *mo
 	if sess.CertificateURL == nil || sess.CertificateGeneratedAt == nil || (gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) {
 		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		url, err := s.uploadCertificatePDF(ctx, sess.ID, pdf)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		now := time.Now()
 		if err := s.repo.UpdateSessionCertificate(ctx, sess.ID, url, now); err != nil {
-			return nil
+			return nil, err
 		}
-		return &url
+		return &url, nil
 	}
 
-	return sess.CertificateURL
+	return sess.CertificateURL, nil
 }
 
 // ---------- tests: latestGradedAt ----------
@@ -162,7 +165,10 @@ func TestResolveCertificateURL_NotSubmitted(t *testing.T) {
 	svc.repo.sessions[sess.ID] = sess
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "Test"}
 
-	url := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if url != nil {
 		t.Errorf("want nil for non-submitted session, got %q", *url)
 	}
@@ -185,7 +191,10 @@ func TestResolveCertificateURL_FirstTimeGeneration(t *testing.T) {
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
 	wantURL := "http://minio.example.com/certificates/" + sess.ID.String() + ".pdf"
 
-	url := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if url == nil {
 		t.Fatal("want non-nil URL for first-time generation")
 	}
@@ -220,7 +229,10 @@ func TestResolveCertificateURL_NoRegenerationWhenNotStale(t *testing.T) {
 	gradedAt := time.Date(2026, 6, 30, 10, 0, 0, 0, time.UTC)
 	answers := []model.ExamSessionAnswer{{GradedAt: &gradedAt}}
 
-	url := svc.resolveCertificateURL(ctx, exam, sess, answers, "Budi")
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, answers, "Budi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if url == nil {
 		t.Fatal("want non-nil URL (existing)")
 	}
@@ -252,7 +264,10 @@ func TestResolveCertificateURL_RegenerationWhenStale(t *testing.T) {
 	gradedAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
 	answers := []model.ExamSessionAnswer{{GradedAt: &gradedAt}}
 
-	url := svc.resolveCertificateURL(ctx, exam, sess, answers, "Budi")
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, answers, "Budi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if url == nil {
 		t.Fatal("want non-nil URL (regenerated)")
 	}
@@ -269,5 +284,51 @@ func TestResolveCertificateURL_RegenerationWhenStale(t *testing.T) {
 	}
 	if updated.CertificateGeneratedAt == nil {
 		t.Error("session CertificateGeneratedAt should be set")
+	}
+}
+
+func TestResolveCertificateURL_UploadFailure_ReturnsError(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+	svc.uploadCertErr = errors.New("minio down")
+
+	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	sess := &model.ExamSession{
+		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
+		CertificateURL: nil, CertificateGeneratedAt: nil,
+	}
+	svc.repo.sessions[sess.ID] = sess
+	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
+
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
+	if err == nil {
+		t.Fatal("want error when upload fails, got nil")
+	}
+	if url != nil {
+		t.Errorf("want nil URL on upload failure, got %q", *url)
+	}
+	if svc.repo.sessions[sess.ID].CertificateURL != nil {
+		t.Error("must not persist a certificate URL when upload failed")
+	}
+}
+
+func TestResolveCertificateURL_PersistFailure_ReturnsError(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	// Session NOT seeded in the repo → UpdateSessionCertificate returns ErrNotFound.
+	sess := &model.ExamSession{
+		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
+		CertificateURL: nil, CertificateGeneratedAt: nil,
+	}
+	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
+
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("want ErrNotFound from persist step, got %v", err)
+	}
+	if url != nil {
+		t.Errorf("want nil URL on persist failure, got %q", *url)
 	}
 }

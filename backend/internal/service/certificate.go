@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
@@ -311,11 +312,11 @@ func latestGradedAt(answers []model.ExamSessionAnswer) *time.Time {
 }
 
 // resolveCertificateURL determines the certificate URL for a session, regenerating when
-// missing or stale (latest graded-at is newer than generated-at). Returns nil when the
-// session is not submitted or on any error (MinIO failure, PDF generation error).
-func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer, studentName string) *string {
+// missing or stale (latest graded-at is newer than generated-at). A non-submitted session
+// resolves to (nil, nil); generation/upload/persist failures are returned to the caller.
+func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer, studentName string) (*string, error) {
 	if sess.Status != "submitted" {
-		return nil
+		return nil, nil
 	}
 
 	gradedAt := latestGradedAt(answers)
@@ -324,20 +325,20 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 	if sess.CertificateURL == nil || sess.CertificateGeneratedAt == nil || (gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) {
 		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt)
 		if err != nil {
-			return nil
+			return nil, fmt.Errorf("generate certificate pdf: %w", err)
 		}
 		url, err := s.uploadCertificatePDF(ctx, sess.ID, pdf)
 		if err != nil {
-			return nil
+			return nil, fmt.Errorf("upload certificate pdf: %w", err)
 		}
 		now := time.Now()
 		if err := s.storeRepo.UpdateSessionCertificate(ctx, sess.ID, url, now); err != nil {
-			return nil
+			return nil, fmt.Errorf("persist certificate url: %w", err)
 		}
-		return &url
+		return &url, nil
 	}
 
-	return sess.CertificateURL
+	return sess.CertificateURL, nil
 }
 
 // GetCertificatePreview generates a preview certificate for admin display using a dummy
@@ -346,6 +347,9 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, templateOverride string) ([]byte, error) {
 	exam, err := s.storeRepo.GetExamByID(ctx, examID)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
 		return nil, err
 	}
 

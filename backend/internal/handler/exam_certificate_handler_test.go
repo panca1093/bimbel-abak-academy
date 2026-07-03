@@ -386,6 +386,24 @@ func TestAdminGetExamLeaderboard_AdminToken_Returns200(t *testing.T) {
 	}
 }
 
+func TestAdminGetExamLeaderboard_MalformedCursor_Returns422(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Bad Cursor")
+
+	examID := seedExam(t, env.pool, "Bad Cursor Exam", true, "score_only", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/leaderboard?cursor=90,notauuid", token)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "validation_failed" {
+		t.Errorf("code: want validation_failed, got %v", resp["code"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // AdminGetExamAnalytics tests
 // ---------------------------------------------------------------------------
@@ -528,6 +546,22 @@ func TestAdminGetExamCertificatePreview_InvalidTemplate_Returns422(t *testing.T)
 	}
 }
 
+func TestAdminGetExamCertificatePreview_UnknownExam_Returns404(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert 404")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-preview", token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "exam_not_found" {
+		t.Errorf("code: want exam_not_found, got %v", resp["code"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // StudentGetSessionLeaderboard tests
 // ---------------------------------------------------------------------------
@@ -591,6 +625,33 @@ func TestStudentGetSessionLeaderboard_LeaderboardNotAvailable_Returns403(t *test
 	json.NewDecoder(rec.Body).Decode(&resp)
 	if resp["code"] != "leaderboard_not_available" {
 		t.Errorf("code: want leaderboard_not_available, got %v", resp["code"])
+	}
+}
+
+func TestStudentGetSessionLeaderboard_MalformedCursor_Returns422(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	student := seedUser(t, env.pool, "student", "Student Bad Cursor")
+
+	testID := seedTest(t, env.pool)
+	qID := seedMCQuestion(t, env.pool, testID, "2+2", 1, 1)
+
+	examID := seedExam(t, env.pool, "Student Bad Cursor Exam", true, "score_only", "classic")
+	seedExamTest(t, env.pool, examID, testID, 1)
+
+	regID := seedRegistration(t, env.pool, student, examID)
+	submittedAt := time.Now()
+	sessionID := seedSession(t, env.pool, regID, student, examID, "submitted", 85, &submittedAt)
+	seedAnswer(t, env.pool, sessionID, qID, "a", 1)
+
+	token := mintTokenForEnv(t, env, student.String(), service.RoleStudent)
+	rec := getRequest(t, env.e, "/api/v1/exam/sessions/"+sessionID.String()+"/leaderboard?cursor=nocomma", token)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "validation_failed" {
+		t.Errorf("code: want validation_failed, got %v", resp["code"])
 	}
 }
 
