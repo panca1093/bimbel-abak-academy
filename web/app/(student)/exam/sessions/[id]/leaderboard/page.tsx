@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, ArrowLeft, Medal, Trophy } from "lucide-react";
 
 import { useSessionLeaderboard } from "@/lib/hooks/exam";
+import type { ExamLeaderboardEntry } from "@/lib/types";
 import { ApiError } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -16,13 +18,33 @@ export default function SessionLeaderboardPage() {
   const params = useParams<{ id: string }>();
   const sessionId = params?.id ?? "";
 
+  const [entries, setEntries] = useState<ExamLeaderboardEntry[]>([]);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+
   const {
     data,
     isLoading,
     isError,
     error,
     refetch,
-  } = useSessionLeaderboard(sessionId);
+    isFetching,
+  } = useSessionLeaderboard(sessionId, cursor ? { cursor } : undefined);
+
+  // Reset pagination when navigating to a different session
+  useEffect(() => {
+    setEntries([]);
+    setCursor(undefined);
+  }, [sessionId]);
+
+  // Accumulate leaderboard pages
+  useEffect(() => {
+    if (!data) return;
+    if (!cursor) {
+      setEntries(data.data);
+    } else {
+      setEntries((prev) => [...prev, ...data.data]);
+    }
+  }, [data]);
 
   // ── 403: leaderboard not available ─────────────────────────────────────────
 
@@ -65,9 +87,9 @@ export default function SessionLeaderboardPage() {
     );
   }
 
-  // ── Loading ────────────────────────────────────────────────────────────────
+  // ── Loading (first page only — keep accumulated rows during load-more) ────
 
-  if (isLoading || !data) {
+  if (entries.length === 0 && (isLoading || !data)) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
         <p className="mb-4 text-sm text-ink-500">{t("sys_loading")}</p>
@@ -78,8 +100,6 @@ export default function SessionLeaderboardPage() {
       </div>
     );
   }
-
-  const entries = data.data;
 
   // ── Empty state ───────────────────────────────────────────────────────────
 
@@ -124,7 +144,7 @@ export default function SessionLeaderboardPage() {
           const isTop3 = entry.rank <= 3;
           return (
             <Card
-              key={entry.student_id}
+              key={entry.session_id}
               className={`flex items-center gap-2 px-4 py-3 ${
                 isTop3 ? "border-brand-200 bg-brand-50/50" : ""
               }`}
@@ -156,6 +176,20 @@ export default function SessionLeaderboardPage() {
           );
         })}
       </div>
+
+      {/* Load more */}
+      {data?.next_cursor && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setCursor(data.next_cursor)}
+            disabled={isFetching}
+          >
+            {isFetching ? t("sys_loading") : t("sys_load_more")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

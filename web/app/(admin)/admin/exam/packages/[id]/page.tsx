@@ -750,7 +750,7 @@ export default function ExamPackageDetailPage() {
                     )}
                     {lbEntries.map((entry) => (
                       <tr
-                        key={entry.student_id}
+                        key={entry.session_id}
                         className="border-t transition-colors hover:bg-muted/40"
                       >
                         <td className="px-4 py-3 font-medium">

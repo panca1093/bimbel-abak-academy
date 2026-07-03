@@ -68,9 +68,9 @@ const sampleAnalytics: ExamAnalytics = {
 };
 
 const sampleLeaderboardEntries: ExamLeaderboardEntry[] = [
-  { rank: 1, student_id: "s1", student_name: "Budi Santoso", score: 95 },
-  { rank: 2, student_id: "s2", student_name: "Siti Aminah", score: 88 },
-  { rank: 3, student_id: "s3", student_name: "Agus Wijaya", score: 82 },
+  { rank: 1, session_id: "sess1", student_id: "s1", student_name: "Budi Santoso", score: 95 },
+  { rank: 2, session_id: "sess2", student_id: "s2", student_name: "Siti Aminah", score: 88 },
+  { rank: 3, session_id: "sess3", student_id: "s3", student_name: "Agus Wijaya", score: 82 },
 ];
 
 let analyticsState: { data: ExamAnalytics | undefined; isLoading: boolean } = {
@@ -382,5 +382,33 @@ describe("ExamPackageDetailPage — leaderboard tab", () => {
     await waitFor(() => {
       expect(screen.getByText("Belum ada data peringkat")).toBeInTheDocument();
     });
+  });
+
+  it("renders retake rows (same student twice) without duplicate React keys", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    leaderboardState = {
+      data: {
+        data: [
+          { rank: 1, session_id: "sess1", student_id: "s1", student_name: "Budi Santoso", score: 95 },
+          { rank: 2, session_id: "sess9", student_id: "s1", student_name: "Budi Santoso", score: 88 },
+        ],
+        next_cursor: undefined,
+      },
+      isLoading: false,
+      isFetching: false,
+    };
+
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Budi Santoso")).toHaveLength(2);
+    });
+
+    const dupKeyWarning = errSpy.mock.calls.some((args) =>
+      String(args[0]).includes("same key"),
+    );
+    errSpy.mockRestore();
+    expect(dupKeyWarning).toBe(false);
   });
 });

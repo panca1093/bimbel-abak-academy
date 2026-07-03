@@ -693,6 +693,7 @@ export interface GradingEssayItem {
 
 export interface ExamLeaderboardEntry {
   rank: number;
+  session_id: string;
   student_id: string;
   student_name: string;
   score: number;
