@@ -2,20 +2,29 @@ package integration_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"akademi-bimbel/internal/service"
 
 	"github.com/stretchr/testify/require"
 )
 
-// authTokenWithSchool returns a JWT with a schoolID claim for admin_school users.
+// authTokenWithSchool returns a JWT with a schoolID claim and writes the
+// session key to Redis, mirroring authToken's contract.
 func authTokenWithSchool(t *testing.T, env *testEnv, userID, role, schoolID string) string {
 	t.Helper()
-	token, _, err := env.signer.SignAccess(userID, role, &schoolID, nil)
+	ctx := context.Background()
+	caps := service.Capabilities(role)
+	tokenStr, jti, err := env.signer.SignAccess(userID, role, &schoolID, caps)
 	require.NoError(t, err)
-	return token
+	err = env.rdb.Set(ctx, "session:access:"+jti, userID, 15*time.Minute).Err()
+	require.NoError(t, err)
+	return tokenStr
 }
 
 func TestSchoolCRUD_Integration(t *testing.T) {
@@ -32,7 +41,8 @@ func TestSchoolCRUD_Integration(t *testing.T) {
 	require.NotEmpty(t, schoolID)
 
 	// 2. Create an admin_school account bound to the school
-	superToken := authToken(t, env, "super-1", "super_admin")
+	superUserID := seedUser(t, env, "super_admin", "active", false)
+	superToken := authToken(t, env, superUserID, "super_admin")
 	createBody := map[string]interface{}{
 		"email":     "schooladmin@test.com",
 		"name":      "School Admin",
@@ -114,7 +124,8 @@ func TestSchoolCodeLock_Integration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Register a student
-	adminToken := authTokenWithSchool(t, env, "als", "admin_school", schoolID)
+	alsUserID := seedUser(t, env, "admin_school", "active", false)
+	adminToken := authTokenWithSchool(t, env, alsUserID, "admin_school", schoolID)
 	studentBody := map[string]string{"name": "Stu", "nis": "locktest"}
 	b, _ := json.Marshal(studentBody)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
@@ -125,7 +136,8 @@ func TestSchoolCodeLock_Integration(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code)
 
 	// Attempt to change code — should fail with 409
-	superToken := authToken(t, env, "su", "super_admin")
+	suUserID := seedUser(t, env, "super_admin", "active", false)
+	superToken := authToken(t, env, suUserID, "super_admin")
 	updateBody := map[string]string{"code": "newcode"}
 	b, _ = json.Marshal(updateBody)
 	req = httptest.NewRequest(http.MethodPut, "/api/v1/admin/schools/"+schoolID, bytes.NewReader(b))
@@ -153,7 +165,8 @@ func TestRowScoping_Integration(t *testing.T) {
 	).Scan(&schoolB)
 
 	// Admin A registers a student
-	tokenA := authTokenWithSchool(t, env, "admin-a", "admin_school", schoolA)
+	adminAUserID := seedUser(t, env, "admin_school", "active", false)
+	tokenA := authTokenWithSchool(t, env, adminAUserID, "admin_school", schoolA)
 	studentBody := map[string]string{"name": "Student A", "nis": "a001"}
 	b, _ := json.Marshal(studentBody)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
@@ -167,7 +180,8 @@ func TestRowScoping_Integration(t *testing.T) {
 	studentID := regResp["id"].(string)
 
 	// Admin B tries to access Admin A's student → 404
-	tokenB := authTokenWithSchool(t, env, "admin-b", "admin_school", schoolB)
+	adminBUserID := seedUser(t, env, "admin_school", "active", false)
+	tokenB := authTokenWithSchool(t, env, adminBUserID, "admin_school", schoolB)
 	req = httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+studentID,
 		bytes.NewReader([]byte(`{"status":"deactivated"}`)))
 	req.Header.Set("Content-Type", "application/json")
