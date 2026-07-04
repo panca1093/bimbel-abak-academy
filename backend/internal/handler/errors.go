@@ -87,6 +87,22 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidDateFormat):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrSchoolNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "school_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrSchoolCodeLocked):
+		status, apiErr = http.StatusConflict, APIError{Code: "school_code_locked", Message: err.Error()}
+	case errors.Is(err, service.ErrSchoolCodeTaken):
+		status, apiErr = http.StatusConflict, APIError{Code: "school_code_taken", Message: err.Error()}
+	case errors.Is(err, service.ErrSchoolRequired):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "school_required", Message: err.Error()}
+	case errors.Is(err, service.ErrSchoolNotAllowed):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "school_not_allowed", Message: err.Error()}
+	case errors.Is(err, service.ErrDuplicateNIS):
+		status, apiErr = http.StatusConflict, APIError{Code: "duplicate_nis", Message: err.Error()}
+	case errors.Is(err, service.ErrSchoolDeactivated):
+		status, apiErr = http.StatusConflict, APIError{Code: "school_deactivated", Message: err.Error()}
+	case errors.Is(err, service.ErrStudentNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "student_not_found", Message: err.Error()}
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}
