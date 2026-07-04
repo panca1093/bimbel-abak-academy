@@ -22,6 +22,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useExam,
+  useExamAnalytics,
+  useExamLeaderboard,
   useGradeEssay,
   useGradingSessions,
   usePublishExam,
@@ -32,7 +34,7 @@ import {
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
-import type { GradingEssayItem } from "@/lib/types";
+import type { ExamLeaderboardEntry, GradingEssayItem } from "@/lib/types";
 
 type Tab =
   | "overview"
@@ -94,6 +96,15 @@ export default function ExamPackageDetailPage() {
   const publish = usePublishExam(id);
   const { data: availableResp, isLoading: availableLoading } = useAdminTests();
   const availableTests = availableResp?.data ?? [];
+
+  const [lbEntries, setLbEntries] = useState<ExamLeaderboardEntry[]>([]);
+  const [lbCursor, setLbCursor] = useState<string | undefined>(undefined);
+
+  const { data: analytics, isLoading: analyticsLoading } = useExamAnalytics(id);
+  const lb = useExamLeaderboard(
+    id,
+    lbCursor ? { cursor: lbCursor, limit: 20 } : { limit: 20 },
+  );
 
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [priceInput, setPriceInput] = useState("");
@@ -199,6 +210,28 @@ export default function ExamPackageDetailPage() {
       toast.success(t("grading_saved"));
     } catch (e) {
       toast.error(errorMessage(e, t("grading_save_failed")));
+    }
+  }
+
+  // Reset leaderboard pagination when exam changes
+  useEffect(() => {
+    setLbEntries([]);
+    setLbCursor(undefined);
+  }, [id]);
+
+  // Accumulate leaderboard pages
+  useEffect(() => {
+    if (!lb.data) return;
+    if (!lbCursor) {
+      setLbEntries(lb.data.data);
+    } else {
+      setLbEntries((prev) => [...prev, ...lb.data.data]);
+    }
+  }, [lb.data]);
+
+  function handleLoadMore() {
+    if (lb.data?.next_cursor) {
+      setLbCursor(lb.data.next_cursor);
     }
   }
 
@@ -622,7 +655,131 @@ export default function ExamPackageDetailPage() {
             </div>
           )}
           {tab === "leaderboard" && (
-            <UnderMaintenance icon={Trophy} title={t("admin_exam_detail_tab_leaderboard")} />
+            <div className="space-y-6">
+              {/* Analytics summary */}
+              <div className="md-card-outlined p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <Trophy className="size-5" />
+                  <h2 className="text-title-large font-semibold">
+                    {t("admin_exam_detail_tab_leaderboard")}
+                  </h2>
+                </div>
+
+                {analyticsLoading && (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} className="h-24 w-full" />
+                    ))}
+                  </div>
+                )}
+
+                {analytics && (
+                  <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="rounded-lg border p-4">
+                      <div className="text-label text-sm text-muted-foreground">
+                        {t("admin_exam_analytics_average_score")}
+                      </div>
+                      <div className="mt-1 text-2xl font-bold">
+                        {analytics.average_score.toFixed(1)}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-4">
+                      <div className="text-label text-sm text-muted-foreground">
+                        {t("admin_exam_analytics_completion_rate")}
+                      </div>
+                      <div className="mt-1 text-2xl font-bold">
+                        {Math.round(analytics.completion_rate * 100)}%
+                      </div>
+                    </div>
+                    <div className="rounded-lg border p-4">
+                      <div className="mb-2 text-label text-sm text-muted-foreground">
+                        {t("admin_exam_analytics_distribution")}
+                      </div>
+                      <div className="space-y-1">
+                        {analytics.distribution.map((bucket) => (
+                          <div
+                            key={bucket.label}
+                            className="flex justify-between text-sm"
+                          >
+                            <span>{bucket.label}</span>
+                            <span className="font-medium">{bucket.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Leaderboard table */}
+              <div className="overflow-x-auto md-card-outlined">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium">
+                        {t("admin_exam_leaderboard_col_rank")}
+                      </th>
+                      <th className="px-4 py-3 text-left font-medium">
+                        {t("admin_exam_leaderboard_col_student")}
+                      </th>
+                      <th className="px-4 py-3 text-right font-medium">
+                        {t("admin_exam_leaderboard_col_score")}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lb.isLoading && lbEntries.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-4 py-8 text-center text-muted-foreground"
+                        >
+                          {t("sys_loading")}
+                        </td>
+                      </tr>
+                    )}
+                    {!lb.isLoading && lbEntries.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-4 py-8 text-center text-muted-foreground"
+                        >
+                          {t("admin_exam_leaderboard_empty")}
+                        </td>
+                      </tr>
+                    )}
+                    {lbEntries.map((entry) => (
+                      <tr
+                        key={entry.session_id}
+                        className="border-t transition-colors hover:bg-muted/40"
+                      >
+                        <td className="px-4 py-3 font-medium">
+                          #{entry.rank}
+                        </td>
+                        <td className="px-4 py-3">{entry.student_name}</td>
+                        <td className="px-4 py-3 text-right font-medium">
+                          {entry.score}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Load more */}
+              {lb.data?.next_cursor && (
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleLoadMore}
+                    disabled={lb.isFetching}
+                  >
+                    {lb.isFetching ? t("sys_loading") : t("sys_load_more")}
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
         </>
       )}

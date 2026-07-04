@@ -95,7 +95,57 @@ describe("SessionResultPage", () => {
     expect(screen.getByText(/2026/)).toBeInTheDocument();
   });
 
-  it("renders score card for score_only result without breakdown (FR-S5-26)", () => {
+  // ── Certificate link behaviours (FR-8 / resolved-discrepancy §2) ──────────
+
+  it("shows certificate link on non-result state when certificate_url present (FR-8)", () => {
+    resultState = {
+      data: {
+        state: "locked",
+        result_release_at: "2026-08-01T10:00:00Z",
+        certificate_url: "https://cdn/cert.pdf",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.getByRole("link", { name: "Sertifikat" })).toBeInTheDocument();
+  });
+
+  it("hides certificate link on non-result state when certificate_url absent", () => {
+    resultState = {
+      data: {
+        state: "locked",
+        result_release_at: "2026-08-01T10:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.queryByRole("link", { name: "Sertifikat" })).not.toBeInTheDocument();
+  });
+
+  // ── Leaderboard link (result state only) ──────────────────────────────────
+
+  it("hides leaderboard link on non-result state", () => {
+    resultState = {
+      data: {
+        state: "locked",
+        result_release_at: "2026-08-01T10:00:00Z",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.queryByRole("link", { name: "Peringkat" })).not.toBeInTheDocument();
+  });
+
+  it("renders leaderboard link on result state", () => {
     resultState = {
       data: {
         state: "result",
@@ -112,11 +162,34 @@ describe("SessionResultPage", () => {
       refetch: vi.fn(),
     };
     render(<SessionResultPage />);
+    expect(screen.getByRole("link", { name: "Peringkat" })).toBeInTheDocument();
+  });
+
+  // ── Result state (pre-existing, adjusted for certificate URL) ──────────
+
+  it("renders score card for score_only result without breakdown and with certificate link (FR-S5-26)", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_only",
+        score: 80,
+        correct_count: 8,
+        wrong_count: 1,
+        empty_count: 1,
+        rank: 3,
+        certificate_url: "https://cdn/cert.pdf",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
     expect(screen.getByText("80")).toBeInTheDocument();
     expect(screen.getByText("#3")).toBeInTheDocument();
     expect(screen.queryByText("Berdasarkan Topik")).not.toBeInTheDocument();
     expect(screen.queryByText("Pembahasan")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sertifikat" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Sertifikat" })).toBeInTheDocument();
   });
 
   it("renders breakdown and pembahasan for score_pembahasan result (FR-S5-26)", () => {

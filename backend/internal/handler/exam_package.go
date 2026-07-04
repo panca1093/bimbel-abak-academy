@@ -119,6 +119,9 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	if req.BundleGeneratedAt != nil {
 		overlay.BundleGeneratedAt = req.BundleGeneratedAt
 	}
+	if req.CertificateTemplate != "" {
+		overlay.CertificateTemplate = req.CertificateTemplate
+	}
 	overlay.IsFree = req.IsFree
 	overlay.RequiresCheckin = req.RequiresCheckin
 	overlay.AllowLeaderboard = req.AllowLeaderboard

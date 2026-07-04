@@ -473,6 +473,7 @@ export interface Exam {
   randomize?: boolean;
   result_config?: string;
   result_release_at?: string | null;
+  certificate_template?: string;
   status?: string;
   product_id?: string | null;
   created_at?: string;
@@ -511,6 +512,7 @@ export interface CreateExamPayload {
   requires_checkin?: boolean;
   allow_leaderboard?: boolean;
   randomize?: boolean;
+  certificate_template?: string;
 }
 
 export interface UpdateExamPayload {
@@ -522,6 +524,7 @@ export interface UpdateExamPayload {
   requires_checkin?: boolean;
   allow_leaderboard?: boolean;
   randomize?: boolean;
+  certificate_template?: string;
 }
 
 // ── Session engine types (FR26) ──────────────────────────────────────────
@@ -659,16 +662,16 @@ interface SessionResultCounts {
 }
 
 export type SessionResult =
-  | { state: "hidden" }
-  | { state: "grading" }
-  | { state: "locked"; result_release_at: string }
-  | ({ state: "result"; result_config: "score_only" } & SessionResultCounts)
+  | { state: "hidden"; certificate_url?: string | null }
+  | { state: "grading"; certificate_url?: string | null }
+  | { state: "locked"; result_release_at: string; certificate_url?: string | null }
+  | ({ state: "result"; result_config: "score_only" } & SessionResultCounts & { certificate_url?: string | null })
   | ({
       state: "result";
       result_config: "score_pembahasan";
       breakdown: ResultTopicRow[];
       pembahasan: ResultPembahasanItem[];
-    } & SessionResultCounts);
+    } & SessionResultCounts & { certificate_url?: string | null });
 
 export interface GradingSessionItem {
   session_id: string;
@@ -686,4 +689,23 @@ export interface GradingEssayItem {
   score?: number | null;
   grader_comment?: string | null;
   graded_at?: string | null;
+}
+
+export interface ExamLeaderboardEntry {
+  rank: number;
+  session_id: string;
+  student_id: string;
+  student_name: string;
+  score: number;
+}
+
+export interface ScoreBucket {
+  label: string;
+  count: number;
+}
+
+export interface ExamAnalytics {
+  average_score: number;
+  completion_rate: number;
+  distribution: ScoreBucket[];
 }

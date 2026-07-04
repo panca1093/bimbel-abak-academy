@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +17,9 @@ import (
 
 // ErrSortOrderConflict — uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
 var ErrSortOrderConflict = errors.New("sort order conflict")
+
+// ErrInvalidCursor — malformed pagination cursor — surfaced for service-layer mapping to 4xx.
+var ErrInvalidCursor = errors.New("invalid pagination cursor")
 
 func scanTest(row interface{ Scan(dest ...any) error }, t *model.Test) error {
 	var audioURL *string
@@ -402,6 +407,7 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.CheckInWindowMinutes, &e.GraceWindowMinutes, &e.MaxAttempts,
 		&e.TimerMode, &e.DurationMinutes, &e.Randomize,
 		&e.ResultConfig, &e.ResultReleaseAt, &e.Status, &e.ProductID, &e.CreatedAt,
+		&e.CertificateTemplate,
 	)
 	if err != nil {
 		return err
@@ -419,6 +425,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, out *model.ExamL
 		&out.CheckInWindowMinutes, &out.GraceWindowMinutes, &out.MaxAttempts,
 		&out.TimerMode, &out.DurationMinutes, &out.Randomize,
 		&out.ResultConfig, &out.ResultReleaseAt, &out.Status, &out.ProductID, &out.CreatedAt,
+		&out.CertificateTemplate,
 		&productPrice, &productStatus,
 	)
 	if err != nil {
@@ -487,13 +494,13 @@ func createExam(ctx context.Context, tx pgx.Tx, e *model.Exam, productID *uuid.U
 		`INSERT INTO exam (title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+			status, product_id, certificate_template)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		RETURNING id, created_at`,
 		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt, e.CheckInWindowMinutes, e.GraceWindowMinutes,
 		e.MaxAttempts, e.TimerMode, e.DurationMinutes, e.Randomize, e.ResultConfig, e.ResultReleaseAt,
-		e.Status, productID,
+		e.Status, productID, e.CertificateTemplate,
 	).Scan(&e.ID, &e.CreatedAt)
 }
 
@@ -503,7 +510,7 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id, created_at
+			status, product_id, created_at, certificate_template
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -525,7 +532,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	query := `SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-		e.status, e.product_id, e.created_at, p.price, p.status
+		e.status, e.product_id, e.created_at, e.certificate_template, p.price, p.status
 	FROM exam e
 	LEFT JOIN product p ON p.id = e.product_id
 	WHERE 1=1`
@@ -574,7 +581,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-			e.status, e.product_id, e.created_at
+			e.status, e.product_id, e.created_at, e.certificate_template
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -652,13 +659,14 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 			cdn_bundle = $6, bundle_url = $7, bundle_generated_at = $8,
 			check_in_window_minutes = $9, grace_window_minutes = $10, max_attempts = $11,
 			timer_mode = $12, duration_minutes = $13, randomize = $14,
-			result_config = $15, result_release_at = $16, status = $17
-		WHERE id = $18`,
+			result_config = $15, result_release_at = $16, status = $17,
+			certificate_template = $18
+		WHERE id = $19`,
 		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
 		e.TimerMode, e.DurationMinutes, e.Randomize,
-		e.ResultConfig, e.ResultReleaseAt, e.Status, id,
+		e.ResultConfig, e.ResultReleaseAt, e.Status, e.CertificateTemplate, id,
 	)
 	if err != nil {
 		return err
@@ -701,7 +709,7 @@ func (r *Repository) GetExamByProductID(ctx context.Context, productID uuid.UUID
 		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id, created_at
+			status, product_id, created_at, certificate_template
 		FROM exam
 		WHERE product_id = $1`,
 		productID,
@@ -822,7 +830,7 @@ func scanExamSession(row interface{ Scan(dest ...any) error }, s *model.ExamSess
 		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
 		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
 		&s.ExtendedUntil, &s.AdminSubmitted, &s.Score,
-		&s.CertificateURL, &s.LastSavedAt, &s.Status, &s.CreatedAt,
+		&s.CertificateURL, &s.CertificateGeneratedAt, &s.LastSavedAt, &s.Status, &s.CreatedAt,
 	)
 }
 
@@ -903,13 +911,13 @@ func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg mod
 		VALUES ($1, $2, $3, 1, now(), 'in_progress')
 		RETURNING id, registration_id, student_id, exam_id, attempt_number, started_at,
 			submitted_at, extended_until, admin_submitted, score, certificate_url,
-			last_saved_at, status, created_at`,
+			certificate_generated_at, last_saved_at, status, created_at`,
 		reg.ID, reg.StudentID, reg.ExamID,
 	).Scan(
 		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
 		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
 		&s.ExtendedUntil, &s.AdminSubmitted, &s.Score,
-		&s.CertificateURL, &s.LastSavedAt, &s.Status, &s.CreatedAt,
+		&s.CertificateURL, &s.CertificateGeneratedAt, &s.LastSavedAt, &s.Status, &s.CreatedAt,
 	)
 	if err != nil {
 		return model.ExamSession{}, err
@@ -923,7 +931,7 @@ func (r *Repository) GetExamSessionForStudent(ctx context.Context, sessionID, st
 	err := scanExamSession(r.pool.QueryRow(ctx,
 		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
 			submitted_at, extended_until, admin_submitted, score, certificate_url,
-			last_saved_at, status, created_at
+			certificate_generated_at, last_saved_at, status, created_at
 		FROM exam_session
 		WHERE id = $1 AND student_id = $2`,
 		sessionID, studentID,
@@ -943,7 +951,7 @@ func (r *Repository) GetExamSessionByID(ctx context.Context, sessionID uuid.UUID
 	err := scanExamSession(r.pool.QueryRow(ctx,
 		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
 			submitted_at, extended_until, admin_submitted, score, certificate_url,
-			last_saved_at, status, created_at
+			certificate_generated_at, last_saved_at, status, created_at
 		FROM exam_session
 		WHERE id = $1`,
 		sessionID,
@@ -1281,4 +1289,121 @@ func (r *Repository) ReopenSession(ctx context.Context, sessionID uuid.UUID, min
 // GetExamForSession retrieves an exam by ID. Delegates to GetExamByID.
 func (r *Repository) GetExamForSession(ctx context.Context, examID uuid.UUID) (*model.Exam, error) {
 	return r.GetExamByID(ctx, examID)
+}
+
+// UpdateSessionCertificate persists a certificate URL and generation timestamp for a session.
+func (r *Repository) UpdateSessionCertificate(ctx context.Context, sessionID uuid.UUID, url string, generatedAt time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE exam_session SET certificate_url = $1, certificate_generated_at = $2 WHERE id = $3`,
+		url, generatedAt, sessionID,
+	)
+	return err
+}
+
+// ListExamLeaderboard returns a cursor-paginated ranked list of fully-graded submitted
+// sessions for an exam, ordered by score descending with ties sharing a rank.
+func (r *Repository) ListExamLeaderboard(ctx context.Context, examID uuid.UUID, cursor string, limit int) ([]model.ExamLeaderboardEntry, string, error) {
+	if limit == 0 {
+		limit = 20
+	}
+
+	query := `SELECT id, student_id, student_name, score, rank FROM (
+		SELECT s.id, s.student_id, u.name AS student_name, s.score,
+		       RANK() OVER (ORDER BY s.score DESC) AS rank
+		FROM exam_session s
+		JOIN users u ON u.id = s.student_id
+		WHERE s.exam_id = $1 AND s.status = 'submitted' AND ` + fullyGradedFilter + `
+	) ranked`
+	args := []interface{}{examID}
+	argIdx := 2
+
+	if cursor != "" {
+		scoreStr, idStr, found := strings.Cut(cursor, ",")
+		if !found {
+			return nil, "", fmt.Errorf("%w: %q", ErrInvalidCursor, cursor)
+		}
+		cursorScore, err := strconv.ParseFloat(scoreStr, 64)
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+		}
+		cursorID, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+		}
+		// Strictly after the last returned row under ORDER BY score DESC, id ASC —
+		// a single tuple compare cannot express the mixed sort directions.
+		query += fmt.Sprintf(` WHERE (ranked.score < $%d::numeric OR (ranked.score = $%d::numeric AND ranked.id > $%d::uuid))`, argIdx, argIdx, argIdx+1)
+		args = append(args, cursorScore, cursorID)
+		argIdx += 2
+	}
+
+	query += ` ORDER BY ranked.score DESC, ranked.id ASC LIMIT $` + fmt.Sprintf("%d", argIdx)
+	args = append(args, limit+1)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	var entries []model.ExamLeaderboardEntry
+	for rows.Next() {
+		var e model.ExamLeaderboardEntry
+		if err := rows.Scan(&e.SessionID, &e.StudentID, &e.StudentName, &e.Score, &e.Rank); err != nil {
+			return nil, "", err
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+
+	var nextCursor string
+	if len(entries) > limit {
+		entries = entries[:limit]
+		last := entries[limit-1]
+		nextCursor = strconv.FormatFloat(last.Score, 'f', -1, 64) + "," + last.SessionID.String()
+	}
+
+	return entries, nextCursor, nil
+}
+
+// GetExamCompletionStats returns total and submitted session counts for an exam.
+func (r *Repository) GetExamCompletionStats(ctx context.Context, examID uuid.UUID) (total int, submitted int, err error) {
+	err = r.pool.QueryRow(ctx,
+		`SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'submitted') FROM exam_session WHERE exam_id = $1`,
+		examID,
+	).Scan(&total, &submitted)
+	if err != nil {
+		return 0, 0, err
+	}
+	return total, submitted, nil
+}
+
+// GetFullyGradedScores returns scores for all fully-graded submitted sessions for an exam.
+func (r *Repository) GetFullyGradedScores(ctx context.Context, examID uuid.UUID) ([]float64, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT s.score FROM exam_session s WHERE s.exam_id = $1 AND s.status = 'submitted' AND `+fullyGradedFilter,
+		examID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var scores []float64
+	for rows.Next() {
+		var score float64
+		if err := rows.Scan(&score); err != nil {
+			return nil, err
+		}
+		scores = append(scores, score)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if scores == nil {
+		scores = []float64{}
+	}
+	return scores, nil
 }

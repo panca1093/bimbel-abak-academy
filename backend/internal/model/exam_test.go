@@ -203,8 +203,10 @@ func TestExamStruct(t *testing.T) {
 	jsonTag(t, v, "Status", "status")
 	jsonTag(t, v, "ProductID", "product_id")
 	jsonTag(t, v, "CreatedAt", "created_at")
+	jsonTag(t, v, "CertificateTemplate", "certificate_template")
 
 	fieldType(t, v, "ID", reflect.TypeOf(uuid.UUID{}))
+	fieldKind(t, v, "CertificateTemplate", reflect.String)
 	fieldKind(t, v, "IsFree", reflect.Bool)
 	fieldKind(t, v, "Title", reflect.String)
 	fieldKind(t, v, "TimerMode", reflect.String)
@@ -310,6 +312,7 @@ func TestExamSessionStruct(t *testing.T) {
 	jsonTag(t, v, "AdminSubmitted", "admin_submitted")
 	jsonTag(t, v, "Score", "score")
 	jsonTag(t, v, "CertificateURL", "certificate_url")
+	jsonTag(t, v, "CertificateGeneratedAt", "certificate_generated_at")
 	jsonTag(t, v, "LastSavedAt", "last_saved_at")
 	jsonTag(t, v, "Status", "status")
 	jsonTag(t, v, "CreatedAt", "created_at")
@@ -327,7 +330,7 @@ func TestExamSessionStruct(t *testing.T) {
 	fieldType(t, v, "CreatedAt", reflect.TypeOf(time.Time{}))
 
 	// Nullable pointers
-	for _, name := range []string{"SubmittedAt", "ExtendedUntil", "LastSavedAt"} {
+	for _, name := range []string{"SubmittedAt", "ExtendedUntil", "CertificateGeneratedAt", "LastSavedAt"} {
 		fieldKind(t, v, name, reflect.Ptr)
 		if mustField(t, v, name).Type != reflect.TypeOf((*time.Time)(nil)) {
 			t.Errorf("ExamSession.%s should be *time.Time, got %s", name, mustField(t, v, name).Type)
@@ -458,12 +461,128 @@ func TestQuestionWithOptionsStruct(t *testing.T) {
 	}
 }
 
-// All nine main + two composite structs must be reachable
+// ---- SessionResult ----
+
+func TestSessionResultStruct(t *testing.T) {
+	typ := reflect.TypeOf((*SessionResult)(nil)).Elem()
+	v := newModel(typ)
+
+	jsonTag(t, v, "State", "state")
+	jsonTag(t, v, "ResultConfig", "result_config,omitempty")
+	jsonTag(t, v, "ResultReleaseAt", "result_release_at,omitempty")
+	jsonTag(t, v, "Score", "score")
+	jsonTag(t, v, "CorrectCount", "correct_count")
+	jsonTag(t, v, "WrongCount", "wrong_count")
+	jsonTag(t, v, "EmptyCount", "empty_count")
+	jsonTag(t, v, "Rank", "rank")
+	jsonTag(t, v, "Breakdown", "breakdown,omitempty")
+	jsonTag(t, v, "Pembahasan", "pembahasan,omitempty")
+	jsonTag(t, v, "CertificateURL", "certificate_url,omitempty")
+
+	fieldKind(t, v, "State", reflect.String)
+	fieldKind(t, v, "ResultConfig", reflect.String)
+	fieldKind(t, v, "Score", reflect.Float64)
+	fieldKind(t, v, "CorrectCount", reflect.Int)
+	fieldKind(t, v, "WrongCount", reflect.Int)
+	fieldKind(t, v, "EmptyCount", reflect.Int)
+	fieldKind(t, v, "Rank", reflect.Int)
+
+	fieldKind(t, v, "ResultReleaseAt", reflect.Ptr)
+	if mustField(t, v, "ResultReleaseAt").Type != reflect.TypeOf((*time.Time)(nil)) {
+		t.Errorf("SessionResult.ResultReleaseAt should be *time.Time, got %s", mustField(t, v, "ResultReleaseAt").Type)
+	}
+	fieldKind(t, v, "CertificateURL", reflect.Ptr)
+	if mustField(t, v, "CertificateURL").Type.Elem().Kind() != reflect.String {
+		t.Errorf("SessionResult.CertificateURL pointer base type should be string")
+	}
+
+	brk, ok := typ.FieldByName("Breakdown")
+	if !ok {
+		t.Fatal("SessionResult missing Breakdown field")
+	}
+	if brk.Type.Kind() != reflect.Slice {
+		t.Errorf("SessionResult.Breakdown should be a slice, got %s", brk.Type.Kind())
+	}
+	if brk.Type.Elem() != reflect.TypeOf(ResultTopicRow{}) {
+		t.Errorf("SessionResult.Breakdown element should be ResultTopicRow, got %s", brk.Type.Elem())
+	}
+
+	pem, ok := typ.FieldByName("Pembahasan")
+	if !ok {
+		t.Fatal("SessionResult missing Pembahasan field")
+	}
+	if pem.Type.Kind() != reflect.Slice {
+		t.Errorf("SessionResult.Pembahasan should be a slice, got %s", pem.Type.Kind())
+	}
+	if pem.Type.Elem() != reflect.TypeOf(ResultPembahasanItem{}) {
+		t.Errorf("SessionResult.Pembahasan element should be ResultPembahasanItem, got %s", pem.Type.Elem())
+	}
+}
+
+// ---- ExamLeaderboardEntry ----
+
+func TestExamLeaderboardEntryStruct(t *testing.T) {
+	typ := reflect.TypeOf((*ExamLeaderboardEntry)(nil)).Elem()
+	v := newModel(typ)
+
+	jsonTag(t, v, "Rank", "rank")
+	jsonTag(t, v, "SessionID", "session_id")
+	jsonTag(t, v, "StudentID", "student_id")
+	jsonTag(t, v, "StudentName", "student_name")
+	jsonTag(t, v, "Score", "score")
+
+	fieldKind(t, v, "Rank", reflect.Int)
+	fieldKind(t, v, "StudentName", reflect.String)
+	fieldKind(t, v, "Score", reflect.Float64)
+	fieldType(t, v, "SessionID", reflect.TypeOf(uuid.UUID{}))
+	fieldType(t, v, "StudentID", reflect.TypeOf(uuid.UUID{}))
+}
+
+// ---- ScoreBucket ----
+
+func TestScoreBucketStruct(t *testing.T) {
+	typ := reflect.TypeOf((*ScoreBucket)(nil)).Elem()
+	v := newModel(typ)
+
+	jsonTag(t, v, "Label", "label")
+	jsonTag(t, v, "Count", "count")
+
+	fieldKind(t, v, "Label", reflect.String)
+	fieldKind(t, v, "Count", reflect.Int)
+}
+
+// ---- ExamAnalytics ----
+
+func TestExamAnalyticsStruct(t *testing.T) {
+	typ := reflect.TypeOf((*ExamAnalytics)(nil)).Elem()
+	v := newModel(typ)
+
+	jsonTag(t, v, "AverageScore", "average_score")
+	jsonTag(t, v, "CompletionRate", "completion_rate")
+	jsonTag(t, v, "Distribution", "distribution")
+
+	fieldKind(t, v, "AverageScore", reflect.Float64)
+	fieldKind(t, v, "CompletionRate", reflect.Float64)
+
+	dist, ok := typ.FieldByName("Distribution")
+	if !ok {
+		t.Fatal("ExamAnalytics missing Distribution field")
+	}
+	if dist.Type.Kind() != reflect.Slice {
+		t.Errorf("ExamAnalytics.Distribution should be a slice, got %s", dist.Type.Kind())
+	}
+	if dist.Type.Elem() != reflect.TypeOf(ScoreBucket{}) {
+		t.Errorf("ExamAnalytics.Distribution element should be ScoreBucket, got %s", dist.Type.Elem())
+	}
+}
+
+// All main + composite structs must be reachable
 func TestExamTypesRegistered(t *testing.T) {
 	names := []string{
 		"Test", "Question", "QuestionOption", "Exam", "ExamTest",
 		"ExamRegistration", "ExamSession", "ExamSessionAnswer", "SessionViolationLog",
-		"TestDetail", "QuestionWithOptions",
+		"SessionResult", "TestDetail", "QuestionWithOptions",
+		"ExamLeaderboardEntry", "ScoreBucket", "ExamAnalytics",
 	}
 	for _, n := range names {
 		if _, ok := typesByName[n]; !ok {
@@ -485,8 +604,12 @@ var typesByName = func() map[string]reflect.Type {
 		reflect.TypeOf((*ExamSession)(nil)).Elem(),
 		reflect.TypeOf((*ExamSessionAnswer)(nil)).Elem(),
 		reflect.TypeOf((*SessionViolationLog)(nil)).Elem(),
-		reflect.TypeOf((*TestDetail)(nil)).Elem(),
-		reflect.TypeOf((*QuestionWithOptions)(nil)).Elem(),
+			reflect.TypeOf((*TestDetail)(nil)).Elem(),
+			reflect.TypeOf((*SessionResult)(nil)).Elem(),
+			reflect.TypeOf((*ExamLeaderboardEntry)(nil)).Elem(),
+			reflect.TypeOf((*ScoreBucket)(nil)).Elem(),
+			reflect.TypeOf((*ExamAnalytics)(nil)).Elem(),
+			reflect.TypeOf((*QuestionWithOptions)(nil)).Elem(),
 	} {
 		m[t.Name()] = t
 	}

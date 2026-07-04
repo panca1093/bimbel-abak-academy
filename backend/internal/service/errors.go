@@ -21,4 +21,6 @@ var (
 	ErrSessionNotGraded  = errors.New("session not fully graded")
 	ErrGradeOutOfRange   = errors.New("grade out of range")
 	ErrNotEssayQuestion  = errors.New("question is not an essay")
+
+	ErrLeaderboardNotAvailable = errors.New("leaderboard not available")
 )
