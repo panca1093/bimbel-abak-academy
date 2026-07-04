@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 )
 
 func TestIsValidAdminRole(t *testing.T) {
@@ -136,4 +137,41 @@ func TestCheckEmailUniqueness(t *testing.T) {
 			t.Errorf("want ErrEmailTaken for case-insensitive match, got %v", err)
 		}
 	})
+}
+
+func TestAdminAccountResponse_SchoolID(t *testing.T) {
+	sid := "s-1"
+	row := repository.AdminUserRow{
+		ID:       "u1",
+		Name:     "Admin",
+		Role:     RoleAdminSchool,
+		Status:   "active",
+		SchoolID: &sid,
+	}
+	resp := toAdminAccountResponse(row)
+	if resp.SchoolID == nil || *resp.SchoolID != "s-1" {
+		t.Errorf("SchoolID: want s-1, got %v", resp.SchoolID)
+	}
+}
+
+func TestAdminAccountResponse_SchoolIDNil(t *testing.T) {
+	row := repository.AdminUserRow{
+		ID:     "u2",
+		Name:   "Super Admin",
+		Role:   RoleSuperAdmin,
+		Status: "active",
+	}
+	resp := toAdminAccountResponse(row)
+	if resp.SchoolID != nil {
+		t.Errorf("SchoolID: want nil for non-admin_school role, got %v", resp.SchoolID)
+	}
+}
+
+func TestSchoolBindingSentinels(t *testing.T) {
+	if ErrSchoolRequired == nil {
+		t.Error("ErrSchoolRequired is nil")
+	}
+	if ErrSchoolNotAllowed == nil {
+		t.Error("ErrSchoolNotAllowed is nil")
+	}
 }
