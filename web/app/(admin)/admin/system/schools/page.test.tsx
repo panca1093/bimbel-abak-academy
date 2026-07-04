@@ -233,4 +233,91 @@ describe("SystemSchoolsPage", () => {
       expect(screen.getByText("Muat lebih banyak")).toBeInTheDocument();
     });
   });
+
+  it("opens edit dialog and calls update mutation with only changed fields", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: "s1", name: "SMAN 1 Jakarta Baru" });
+
+    render(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const s1Row = rows.find((r) => within(r).queryByText("SMAN 1 Jakarta"));
+    expect(s1Row).toBeTruthy();
+    fireEvent.pointerDown(
+      within(s1Row as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 }
+    );
+
+    fireEvent.click(await screen.findByText("Edit"));
+
+    const dialog = await screen.findByRole("dialog");
+    const nameInput = within(dialog).getByDisplayValue("SMAN 1 Jakarta");
+    fireEvent.input(nameInput, { target: { value: "SMAN 1 Jakarta Baru" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({ id: "s1", name: "SMAN 1 Jakarta Baru" });
+      expect(toast.success).toHaveBeenCalledWith("Perubahan disimpan.");
+    });
+  });
+
+  it("toggles a school's status from the row menu", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ status: "deactivated" });
+
+    render(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const s1Row = rows.find((r) => within(r).queryByText("SMAN 1 Jakarta"));
+    expect(s1Row).toBeTruthy();
+    fireEvent.pointerDown(
+      within(s1Row as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 }
+    );
+
+    fireEvent.click(await screen.findByText("Nonaktifkan"));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({ id: "s1", status: "deactivated" });
+      expect(toast.success).toHaveBeenCalledWith("Nonaktifkan berhasil");
+    });
+  });
+
+  it("disables the school code input when the school has students, enables it otherwise", async () => {
+    render(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const s1Row = rows.find((r) => within(r).queryByText("SMAN 1 Jakarta"));
+    const s2Row = rows.find((r) => within(r).queryByText("SMAN 2 Jakarta"));
+    expect(s1Row).toBeTruthy();
+    expect(s2Row).toBeTruthy();
+
+    fireEvent.pointerDown(
+      within(s1Row as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 }
+    );
+    fireEvent.click(await screen.findByText("Edit"));
+
+    let dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByDisplayValue("SMAN1JKT")).toBeDisabled();
+    expect(screen.getByText(/Kode tidak dapat diubah/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^batal$/i }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.pointerDown(
+      within(s2Row as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 }
+    );
+    fireEvent.click(await screen.findByText("Edit"));
+
+    dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByDisplayValue("SMAN2JKT")).not.toBeDisabled();
+  });
 });

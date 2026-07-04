@@ -153,6 +153,10 @@ export default function SystemAccountsPage() {
 
   const handleRoleChange = async () => {
     if (!roleChangeTarget) return;
+    if (roleChangeRole === "admin_school" && !roleChangeSchoolId) {
+      toast.error(t("accounts_toast_school_required"));
+      return;
+    }
     try {
       await changeRole.mutateAsync({
         id: roleChangeTarget.id,

@@ -176,4 +176,94 @@ describe("SystemAccountsPage", () => {
     expect(screen.getByText("Buat akun admin")).toBeInTheDocument();
     expect(screen.queryByText(/sekolah/i)).not.toBeInTheDocument();
   });
+
+  it("shows the school picker in create dialog when role=admin_school is selected", async () => {
+    render(<SystemAccountsPage />);
+
+    await waitFor(() => expect(screen.getByText("Admin Store")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /buat/i }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.click(within(dialog).getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: "School Operator" }));
+
+    expect(within(dialog).getByText("Sekolah")).toBeInTheDocument();
+  });
+
+  it("blocks create submission with a required-school toast when admin_school role has no school selected", async () => {
+    render(<SystemAccountsPage />);
+
+    await waitFor(() => expect(screen.getByText("Admin Store")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /buat/i }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.input(within(dialog).getByPlaceholderText("Nama lengkap"), {
+      target: { value: "Operator Baru" },
+    });
+    fireEvent.input(within(dialog).getByPlaceholderText("email@example.com"), {
+      target: { value: "operator@test.com" },
+    });
+    fireEvent.input(within(dialog).getByPlaceholderText("Minimal 8 karakter"), {
+      target: { value: "password123" },
+    });
+
+    fireEvent.click(within(dialog).getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: "School Operator" }));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^buat$/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Sekolah wajib dipilih untuk peran School Operator");
+    });
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("shows and pre-fills the school picker in the role-change dialog for an existing admin_school account", async () => {
+    render(<SystemAccountsPage />);
+
+    await waitFor(() => expect(screen.getByText("Admin School")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const targetRow = rows.find((r) => within(r).queryByText("Admin School"));
+    expect(targetRow).toBeTruthy();
+    fireEvent.pointerDown(
+      within(targetRow as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 }
+    );
+
+    fireEvent.click(await screen.findByText("Ganti peran"));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Sekolah")).toBeInTheDocument();
+    expect(within(dialog).getByText("SMAN 1 Jakarta")).toBeInTheDocument();
+  });
+
+  it("blocks role-change submission with a required-school toast when admin_school has no school selected", async () => {
+    render(<SystemAccountsPage />);
+
+    await waitFor(() => expect(screen.getByText("Admin Store")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const targetRow = rows.find((r) => within(r).queryByText("Admin Store"));
+    expect(targetRow).toBeTruthy();
+    fireEvent.pointerDown(
+      within(targetRow as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 }
+    );
+
+    fireEvent.click(await screen.findByText("Ganti peran"));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: "School Operator" }));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Sekolah wajib dipilih untuk peran School Operator");
+    });
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
 });
