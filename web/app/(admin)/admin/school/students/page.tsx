@@ -124,7 +124,7 @@ export default function SchoolStudentsPage() {
     email: "",
     dob: "",
     gender: "",
-    grade: "",
+    grade: undefined,
     alamat_domisili: "",
     target_exam: "",
   });
@@ -220,7 +220,7 @@ export default function SchoolStudentsPage() {
       email: "",
       dob: "",
       gender: "",
-      grade: "",
+      grade: undefined,
       alamat_domisili: "",
       target_exam: "",
     });
@@ -646,7 +646,7 @@ export default function SchoolStudentsPage() {
                       onChange={(e) =>
                         setRegisterForm((f) => ({
                           ...f,
-                          grade: e.target.value || undefined,
+                          grade: e.target.value ? Number(e.target.value) : undefined,
                         }))
                       }
                       placeholder={t("students_field_grade")}

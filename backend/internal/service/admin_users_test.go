@@ -7,6 +7,8 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 func TestIsValidAdminRole(t *testing.T) {
@@ -174,4 +176,75 @@ func TestSchoolBindingSentinels(t *testing.T) {
 	if ErrSchoolNotAllowed == nil {
 		t.Error("ErrSchoolNotAllowed is nil")
 	}
+}
+
+// FR-ACC-03/FR-ACC-04: ChangeAccountRole's school_id binding, exercised through
+// the real Service against a valid UUID target (the pre-existing handler tests
+// for this used a non-UUID id, so they short-circuited on ErrInvalidUUID before
+// ever reaching this validation — a coverage gap, not a behavior defect).
+func TestChangeAccountRole_SchoolBinding_Integration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	actorID := uuid.NewString()
+
+	newTarget := func(t *testing.T) string {
+		t.Helper()
+		email := "acc-" + uniqueSuffix() + "@test.com"
+		acc, err := svc.CreateAdminAccount(ctx, actorID, email, "Target Admin", RoleAdminStore, "password123", nil)
+		if err != nil {
+			t.Fatalf("CreateAdminAccount: %v", err)
+		}
+		return acc.ID
+	}
+
+	newSchool := func(t *testing.T) string {
+		t.Helper()
+		code := "acc_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "Binding School "+code, code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		return school.ID
+	}
+
+	t.Run("schoolID required when role changes to admin_school", func(t *testing.T) {
+		targetID := newTarget(t)
+		err := svc.ChangeAccountRole(ctx, actorID, targetID, RoleAdminSchool, nil)
+		if !errors.Is(err, ErrSchoolRequired) {
+			t.Errorf("want ErrSchoolRequired, got %v", err)
+		}
+	})
+
+	t.Run("valid schoolID sets school_id on the account", func(t *testing.T) {
+		targetID := newTarget(t)
+		schoolID := newSchool(t)
+		if err := svc.ChangeAccountRole(ctx, actorID, targetID, RoleAdminSchool, &schoolID); err != nil {
+			t.Fatalf("ChangeAccountRole: %v", err)
+		}
+		u, err := repo.GetAdminUserByID(ctx, targetID)
+		if err != nil {
+			t.Fatalf("GetAdminUserByID: %v", err)
+		}
+		if u.SchoolID == nil || *u.SchoolID != schoolID {
+			t.Errorf("SchoolID: want %s, got %v", schoolID, u.SchoolID)
+		}
+	})
+
+	t.Run("schoolID cleared when role changes away from admin_school", func(t *testing.T) {
+		targetID := newTarget(t)
+		schoolID := newSchool(t)
+		if err := svc.ChangeAccountRole(ctx, actorID, targetID, RoleAdminSchool, &schoolID); err != nil {
+			t.Fatalf("ChangeAccountRole (to admin_school): %v", err)
+		}
+		if err := svc.ChangeAccountRole(ctx, actorID, targetID, RoleAdminStore, nil); err != nil {
+			t.Fatalf("ChangeAccountRole (away from admin_school): %v", err)
+		}
+		u, err := repo.GetAdminUserByID(ctx, targetID)
+		if err != nil {
+			t.Fatalf("GetAdminUserByID: %v", err)
+		}
+		if u.SchoolID != nil {
+			t.Errorf("SchoolID: want nil after moving away from admin_school, got %v", *u.SchoolID)
+		}
+	})
 }

@@ -111,6 +111,63 @@ func TestSchoolCRUD_Integration(t *testing.T) {
 		"reissue should return a different password")
 }
 
+// TestAdminCreateSchool_OmittedSchoolTypes_Integration reproduces the
+// FR-SCH-02 blocker: omitting school_types (a spec-optional field) must not
+// 500 — the NOT NULL column has no default applied when an explicit NULL is
+// inserted, so nil []string must be coerced to []string{} before the INSERT.
+func TestAdminCreateSchool_OmittedSchoolTypes_Integration(t *testing.T) {
+	env := newTestEnv(t)
+
+	superUserID := seedUser(t, env, "super_admin", "active", false)
+	superToken := authToken(t, env, superUserID, "super_admin")
+
+	body := map[string]interface{}{
+		"name": "SMAN Omitted Types",
+		"code": "smanomitted",
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/schools", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+superToken)
+	rec := httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	types, _ := resp["school_types"].([]interface{})
+	require.Empty(t, types, "school_types should default to an empty array, not null")
+}
+
+// TestAdminCreateSchool_ResponseStatusActive_Integration reproduces the
+// FR-SCH-02 blocker where a successful create response reported status:""
+// instead of "active", even though the DB row persisted correctly.
+func TestAdminCreateSchool_ResponseStatusActive_Integration(t *testing.T) {
+	env := newTestEnv(t)
+
+	superUserID := seedUser(t, env, "super_admin", "active", false)
+	superToken := authToken(t, env, superUserID, "super_admin")
+
+	body := map[string]interface{}{
+		"name":         "SMAN Status Check",
+		"code":         "smanstatuschk",
+		"school_types": []string{"SMA"},
+	}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/schools", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+superToken)
+	rec := httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code, "body: %s", rec.Body.String())
+
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	require.Equal(t, "active", resp["status"])
+}
+
 func TestSchoolCodeLock_Integration(t *testing.T) {
 	env := newTestEnv(t)
 

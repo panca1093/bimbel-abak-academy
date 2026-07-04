@@ -42,7 +42,7 @@ const sampleStudents: AdminStudent[] = [
     nis: "12345",
     email: "budi@test.com",
     status: "active",
-    grade: "XII IPA",
+    grade: 12,
     created_at: "2026-01-15T00:00:00Z",
   },
   {
@@ -51,7 +51,7 @@ const sampleStudents: AdminStudent[] = [
     username: "siti",
     nis: "67890",
     status: "deactivated",
-    grade: "XI IPS",
+    grade: 11,
     created_at: "2026-02-20T00:00:00Z",
   },
 ];
@@ -124,8 +124,8 @@ describe("SchoolStudentsPage", () => {
 
     expect(screen.getByText(/NIS: 12345/)).toBeInTheDocument();
     expect(screen.getByText(/NIS: 67890/)).toBeInTheDocument();
-    expect(screen.getByText("XII IPA")).toBeInTheDocument();
-    expect(screen.getByText("XI IPS")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.getByText("11")).toBeInTheDocument();
     expect(screen.getAllByText("Aktif").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Nonaktif").length).toBeGreaterThanOrEqual(1);
   });
@@ -219,6 +219,66 @@ describe("SchoolStudentsPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Muat lebih")).toBeInTheDocument();
+    });
+  });
+
+  it("opens reissue-credentials flow from the row menu and shows new credentials", async () => {
+    const credentials: StudentCredentials = {
+      username: "budi",
+      temp_password: "newTempPass999",
+    };
+    mockMutateAsync.mockResolvedValueOnce(credentials);
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const budiRow = rows.find((r) => within(r).queryByText("Budi Santoso"));
+    expect(budiRow).toBeTruthy();
+    fireEvent.pointerDown(
+      within(budiRow as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 }
+    );
+
+    const reissueItem = await screen.findByText("Terbitkan Ulang Kredensial");
+    fireEvent.click(reissueItem);
+
+    const dialog = await screen.findByRole("dialog");
+    const confirmBtn = within(dialog).getByRole("button", { name: "Terbitkan Ulang Kredensial" });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith("st1");
+      expect(toast.success).toHaveBeenCalledWith("Kredensial baru berhasil diterbitkan.");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("newTempPass999")).toBeInTheDocument();
+    });
+  });
+
+  it("toggles a student's status from the row menu", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ message: "status updated" });
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const budiRow = rows.find((r) => within(r).queryByText("Budi Santoso"));
+    expect(budiRow).toBeTruthy();
+    fireEvent.pointerDown(
+      within(budiRow as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 }
+    );
+
+    const toggleItem = await screen.findByText("Nonaktifkan siswa");
+    fireEvent.click(toggleItem);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({ id: "st1", status: "deactivated" });
+      expect(toast.success).toHaveBeenCalledWith("Siswa dinonaktifkan.");
     });
   });
 

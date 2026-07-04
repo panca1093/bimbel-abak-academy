@@ -73,6 +73,13 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 		return nil, ErrSchoolCodeTaken
 	}
 
+	// school_types is TEXT[] NOT NULL with no default applied to an explicit
+	// NULL — coerce a nil (omitted in the request) to an empty slice so the
+	// INSERT doesn't violate the NOT NULL constraint.
+	if schoolTypes == nil {
+		schoolTypes = []string{}
+	}
+
 	school := &model.School{
 		Name:        name,
 		Code:        code,
@@ -91,7 +98,7 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 		NPSN:         school.NPSN,
 		SchoolTypes:  school.SchoolTypes,
 		Alamat:       school.Alamat,
-		Status:       school.Status,
+		Status:       "active",
 		StudentCount: 0,
 		CreatedAt:    school.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:    school.UpdatedAt.Format(time.RFC3339),

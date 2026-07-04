@@ -2,263 +2,252 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
-	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
 
-// fakeSchoolStore is an in-memory stub for school-related repository methods.
-type fakeSchoolStore struct {
-	schools       map[string]*model.School
-	studentCounts map[string]int
-	nextIdx       int
-}
-
-func newFakeSchoolStore() *fakeSchoolStore {
-	return &fakeSchoolStore{
-		schools:       make(map[string]*model.School),
-		studentCounts: make(map[string]int),
-	}
-}
-
-func (f *fakeSchoolStore) add(name, code string) *model.School {
-	f.nextIdx++
-	id := fmt.Sprintf("school-%d", f.nextIdx)
-	s := &model.School{
-		ID:        id,
-		Name:      name,
-		Code:      code,
-		Status:    "active",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	f.schools[id] = s
-	f.studentCounts[id] = 0
-	return s
-}
-
-// Repository method stubs used by Service methods under test.
-
-func (f *fakeSchoolStore) ListSchoolsAdmin(_ context.Context, limit int, cursor string) ([]repository.SchoolAdminRow, string, error) {
-	var rows []repository.SchoolAdminRow
-	for _, s := range f.schools {
-		rows = append(rows, repository.SchoolAdminRow{School: *s, StudentCount: f.studentCounts[s.ID]})
-	}
-	return rows, "", nil
-}
-
-func (f *fakeSchoolStore) GetSchoolByID(_ context.Context, id string) (*model.School, error) {
-	s, ok := f.schools[id]
-	if !ok {
-		return nil, nil
-	}
-	return s, nil
-}
-
-func (f *fakeSchoolStore) SchoolCodeExists(_ context.Context, code string, excludeID *string) (bool, error) {
-	for id, s := range f.schools {
-		if s.Code == code {
-			if excludeID != nil && id == *excludeID {
-				continue
-			}
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (f *fakeSchoolStore) CreateSchool(_ context.Context, s *model.School) error {
-	f.nextIdx++
-	s.ID = fmt.Sprintf("school-%d", f.nextIdx)
-	s.Status = "active"
-	s.CreatedAt = time.Now()
-	s.UpdatedAt = time.Now()
-	f.schools[s.ID] = s
-	f.studentCounts[s.ID] = 0
-	return nil
-}
-
-func (f *fakeSchoolStore) UpdateSchool(_ context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code *string) error {
-	s := f.schools[id]
-	if name != nil {
-		s.Name = *name
-	}
-	if npsn != nil {
-		s.NPSN = npsn
-	}
-	if alamat != nil {
-		s.Alamat = alamat
-	}
-	if schoolTypes != nil {
-		s.SchoolTypes = schoolTypes
-	}
-	if code != nil {
-		s.Code = *code
-	}
-	s.UpdatedAt = time.Now()
-	f.schools[id] = s
-	return nil
-}
-
-func (f *fakeSchoolStore) UpdateSchoolStatus(_ context.Context, id, status string) error {
-	s := f.schools[id]
-	s.Status = status
-	s.UpdatedAt = time.Now()
-	f.schools[id] = s
-	return nil
-}
-
-func (f *fakeSchoolStore) CountStudentsBySchool(_ context.Context, schoolID string) (int, error) {
-	return f.studentCounts[schoolID], nil
-}
-
-// schoolTestService is a thin adapter that wires fakeSchoolStore into a Service
-// so school-domain service methods can be tested without a real DB.
-type schoolTestService struct {
-	svc   *Service
-	store *fakeSchoolStore
-}
-
-func newSchoolTestService(t *testing.T) *schoolTestService {
+// findSchool pages through AdminListSchools looking for a school by ID. The
+// real-DB fixture is shared across every test in this package, so a single
+// page isn't guaranteed to contain a school created by this test.
+func findSchool(t *testing.T, svc *Service, id string) SchoolResponse {
 	t.Helper()
-	repo := newFakeUserRepo()
-	svc, _ := newTestService(t, repo)
-	store := newFakeSchoolStore()
-	return &schoolTestService{svc: svc, store: store}
-}
-
-// — tests —
-
-func TestAdminListSchools_Empty(t *testing.T) {
-	ts := newSchoolTestService(t)
-	rows, nextCursor, err := ts.store.ListSchoolsAdmin(context.Background(), 20, "")
-	if err != nil {
-		t.Fatalf("ListSchoolsAdmin: %v", err)
-	}
-	if len(rows) != 0 {
-		t.Errorf("want 0 schools, got %d", len(rows))
-	}
-	if nextCursor != "" {
-		t.Errorf("next cursor: want empty, got %s", nextCursor)
+	ctx := context.Background()
+	cursor := ""
+	for {
+		rows, next, err := svc.AdminListSchools(ctx, 100, cursor)
+		if err != nil {
+			t.Fatalf("AdminListSchools: %v", err)
+		}
+		for _, r := range rows {
+			if r.ID == id {
+				return r
+			}
+		}
+		if next == "" {
+			t.Fatalf("school %s not found in AdminListSchools", id)
+		}
+		cursor = next
 	}
 }
 
-func TestAdminListSchools_WithData(t *testing.T) {
-	ts := newSchoolTestService(t)
-	ts.store.add("SMAN 1 Jakarta", "sman1jkt")
-	ts.store.add("SMAN 3 Bandung", "sman3bdg")
-	ts.store.studentCounts["school-1"] = 10
-	ts.store.studentCounts["school-2"] = 5
+func TestCreateSchool_Integration(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
 
-	rows, next, err := ts.store.ListSchoolsAdmin(context.Background(), 20, "")
+	t.Run("happy path creates active school with zero student count", func(t *testing.T) {
+		code := "cs_" + uniqueSuffix()
+		npsn := "20000001"
+		alamat := "Jl. Test No.1"
+		resp, err := svc.CreateSchool(ctx, "Test School "+code, code, &npsn, []string{"SMA"}, &alamat)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		if resp.Status != "active" {
+			t.Errorf("Status: want active, got %q", resp.Status)
+		}
+		if resp.StudentCount != 0 {
+			t.Errorf("StudentCount: want 0, got %d", resp.StudentCount)
+		}
+		if resp.ID == "" {
+			t.Error("want non-empty ID")
+		}
+		if resp.Code != code {
+			t.Errorf("Code: want %s, got %s", code, resp.Code)
+		}
+	})
+
+	t.Run("omitted school_types defaults to empty slice not null", func(t *testing.T) {
+		code := "cs_" + uniqueSuffix()
+		resp, err := svc.CreateSchool(ctx, "No Types School "+code, code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool with omitted school_types: %v", err)
+		}
+		if resp.SchoolTypes == nil {
+			t.Error("SchoolTypes: want empty slice, got nil")
+		}
+		if len(resp.SchoolTypes) != 0 {
+			t.Errorf("SchoolTypes: want empty, got %v", resp.SchoolTypes)
+		}
+
+		// Persisted row must also carry {} not NULL, and remain listable.
+		found := findSchool(t, svc, resp.ID)
+		if found.SchoolTypes == nil || len(found.SchoolTypes) != 0 {
+			t.Errorf("persisted SchoolTypes: want empty slice, got %v", found.SchoolTypes)
+		}
+	})
+
+	t.Run("missing name returns ErrMissingField", func(t *testing.T) {
+		_, err := svc.CreateSchool(ctx, "", "somecode", nil, nil, nil)
+		if !errors.Is(err, ErrMissingField) {
+			t.Errorf("want ErrMissingField, got %v", err)
+		}
+	})
+
+	t.Run("missing code returns ErrMissingField", func(t *testing.T) {
+		_, err := svc.CreateSchool(ctx, "Some School", "", nil, nil, nil)
+		if !errors.Is(err, ErrMissingField) {
+			t.Errorf("want ErrMissingField, got %v", err)
+		}
+	})
+
+	t.Run("duplicate code returns ErrSchoolCodeTaken", func(t *testing.T) {
+		code := "cs_" + uniqueSuffix()
+		if _, err := svc.CreateSchool(ctx, "First", code, nil, nil, nil); err != nil {
+			t.Fatalf("CreateSchool (first): %v", err)
+		}
+		_, err := svc.CreateSchool(ctx, "Second", code, nil, nil, nil)
+		if !errors.Is(err, ErrSchoolCodeTaken) {
+			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
+		}
+	})
+}
+
+func TestUpdateSchool_Integration(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	t.Run("happy path patches fields", func(t *testing.T) {
+		code := "us_" + uniqueSuffix()
+		created, err := svc.CreateSchool(ctx, "Before Update", code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		newName := "After Update"
+		updated, err := svc.UpdateSchool(ctx, created.ID, &newName, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("UpdateSchool: %v", err)
+		}
+		if updated.Name != newName {
+			t.Errorf("Name: want %s, got %s", newName, updated.Name)
+		}
+		if updated.Code != code {
+			t.Errorf("Code should be unchanged: want %s, got %s", code, updated.Code)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		newName := "Doesn't Matter"
+		_, err := svc.UpdateSchool(ctx, "00000000-0000-0000-0000-000000000000", &newName, nil, nil, nil, nil)
+		if !errors.Is(err, ErrSchoolNotFound) {
+			t.Errorf("want ErrSchoolNotFound, got %v", err)
+		}
+	})
+
+	t.Run("code uniqueness on update", func(t *testing.T) {
+		codeA := "us_" + uniqueSuffix()
+		codeB := "us_" + uniqueSuffix()
+		if _, err := svc.CreateSchool(ctx, "School A", codeA, nil, nil, nil); err != nil {
+			t.Fatalf("CreateSchool A: %v", err)
+		}
+		schoolB, err := svc.CreateSchool(ctx, "School B", codeB, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool B: %v", err)
+		}
+		_, err = svc.UpdateSchool(ctx, schoolB.ID, nil, nil, nil, nil, &codeA)
+		if !errors.Is(err, ErrSchoolCodeTaken) {
+			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
+		}
+	})
+
+	t.Run("code lock when students exist", func(t *testing.T) {
+		code := "us_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "Locked School", code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		nis := "nis_" + uniqueSuffix()
+		if _, err := svc.RegisterStudent(ctx, school.ID, "Stu Dent", nis, nil, nil, nil, nil, nil, nil); err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
+		}
+		newCode := "us_" + uniqueSuffix()
+		_, err = svc.UpdateSchool(ctx, school.ID, nil, nil, nil, nil, &newCode)
+		if !errors.Is(err, ErrSchoolCodeLocked) {
+			t.Errorf("want ErrSchoolCodeLocked, got %v", err)
+		}
+
+		// Same code (no-op change) and omitted code must still succeed regardless of student count.
+		if _, err := svc.UpdateSchool(ctx, school.ID, nil, nil, nil, nil, &code); err != nil {
+			t.Errorf("update with unchanged code should succeed, got %v", err)
+		}
+		unchangedName := "Locked School Renamed"
+		if _, err := svc.UpdateSchool(ctx, school.ID, &unchangedName, nil, nil, nil, nil); err != nil {
+			t.Errorf("update omitting code should succeed, got %v", err)
+		}
+	})
+}
+
+func TestChangeSchoolStatus_Integration(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	t.Run("happy path toggles status", func(t *testing.T) {
+		code := "st_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "Status School", code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		updated, err := svc.ChangeSchoolStatus(ctx, school.ID, "deactivated")
+		if err != nil {
+			t.Fatalf("ChangeSchoolStatus: %v", err)
+		}
+		if updated.Status != "deactivated" {
+			t.Errorf("Status: want deactivated, got %s", updated.Status)
+		}
+		updated, err = svc.ChangeSchoolStatus(ctx, school.ID, "active")
+		if err != nil {
+			t.Fatalf("ChangeSchoolStatus back to active: %v", err)
+		}
+		if updated.Status != "active" {
+			t.Errorf("Status: want active, got %s", updated.Status)
+		}
+	})
+
+	t.Run("invalid status value", func(t *testing.T) {
+		code := "st_" + uniqueSuffix()
+		school, err := svc.CreateSchool(ctx, "Invalid Status School", code, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool: %v", err)
+		}
+		_, err = svc.ChangeSchoolStatus(ctx, school.ID, "pending")
+		if !errors.Is(err, ErrInvalidStatusFilter) {
+			t.Errorf("want ErrInvalidStatusFilter, got %v", err)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		_, err := svc.ChangeSchoolStatus(ctx, "00000000-0000-0000-0000-000000000000", "active")
+		if !errors.Is(err, ErrSchoolNotFound) {
+			t.Errorf("want ErrSchoolNotFound, got %v", err)
+		}
+	})
+}
+
+func TestAdminListSchools_Integration(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	code := "ls_" + uniqueSuffix()
+	name := "Listable School " + code
+	school, err := svc.CreateSchool(ctx, name, code, nil, nil, nil)
 	if err != nil {
-		t.Fatalf("ListSchoolsAdmin: %v", err)
+		t.Fatalf("CreateSchool: %v", err)
 	}
-	if len(rows) != 2 {
-		t.Fatalf("want 2 schools, got %d", len(rows))
-	}
-	if next != "" {
-		t.Errorf("next cursor: want empty, got %s", next)
-	}
-	found := false
-	for _, r := range rows {
-		if r.School.Name == "SMAN 1 Jakarta" && r.StudentCount == 10 {
-			found = true
+	for i := 0; i < 2; i++ {
+		nis := "nis_" + uniqueSuffix()
+		if _, err := svc.RegisterStudent(ctx, school.ID, "Stu Dent", nis, nil, nil, nil, nil, nil, nil); err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
 		}
 	}
-	if !found {
-		t.Error("did not find SMAN 1 Jakarta with student_count=10")
-	}
-}
 
-func TestSchoolCodeExists_True(t *testing.T) {
-	ts := newSchoolTestService(t)
-	ts.store.add("SMAN 1", "sman1")
-	exists, err := ts.store.SchoolCodeExists(context.Background(), "sman1", nil)
-	if err != nil {
-		t.Fatalf("SchoolCodeExists: %v", err)
+	found := findSchool(t, svc, school.ID)
+	if found.Name != name {
+		t.Errorf("Name: want %s, got %s", name, found.Name)
 	}
-	if !exists {
-		t.Error("sman1 should exist")
-	}
-}
-
-func TestSchoolCodeExists_False(t *testing.T) {
-	ts := newSchoolTestService(t)
-	exists, err := ts.store.SchoolCodeExists(context.Background(), "nonexistent", nil)
-	if err != nil {
-		t.Fatalf("SchoolCodeExists: %v", err)
-	}
-	if exists {
-		t.Error("nonexistent should not exist")
-	}
-}
-
-func TestSchoolCodeExists_ExcludeSelf(t *testing.T) {
-	ts := newSchoolTestService(t)
-	s := ts.store.add("SMAN 1", "sman1")
-	// Passing excludeID=s.ID means "don't count this school as a conflict"
-	id := s.ID
-	exists, err := ts.store.SchoolCodeExists(context.Background(), "sman1", &id)
-	if err != nil {
-		t.Fatalf("SchoolCodeExists: %v", err)
-	}
-	if exists {
-		t.Error("sman1 should not conflict when excluding self")
-	}
-}
-
-func TestGetSchoolByID_NotFound(t *testing.T) {
-	ts := newSchoolTestService(t)
-	sch, err := ts.store.GetSchoolByID(context.Background(), "nonexistent")
-	if err != nil {
-		t.Fatalf("GetSchoolByID: %v", err)
-	}
-	if sch != nil {
-		t.Error("want nil for nonexistent school")
-	}
-}
-
-func TestGetSchoolByID_Found(t *testing.T) {
-	ts := newSchoolTestService(t)
-	s := ts.store.add("SMAN 1", "sman1")
-	sch, err := ts.store.GetSchoolByID(context.Background(), s.ID)
-	if err != nil {
-		t.Fatalf("GetSchoolByID: %v", err)
-	}
-	if sch == nil {
-		t.Fatal("want non-nil for existing school")
-	}
-	if sch.Name != "SMAN 1" {
-		t.Errorf("Name: want SMAN 1, got %s", sch.Name)
-	}
-}
-
-func TestCountStudentsBySchool_Zero(t *testing.T) {
-	ts := newSchoolTestService(t)
-	s := ts.store.add("SMAN 1", "sman1")
-	count, err := ts.store.CountStudentsBySchool(context.Background(), s.ID)
-	if err != nil {
-		t.Fatalf("CountStudentsBySchool: %v", err)
-	}
-	if count != 0 {
-		t.Errorf("want 0, got %d", count)
-	}
-}
-
-func TestCountStudentsBySchool_NonZero(t *testing.T) {
-	ts := newSchoolTestService(t)
-	s := ts.store.add("SMAN 1", "sman1")
-	ts.store.studentCounts[s.ID] = 15
-	count, err := ts.store.CountStudentsBySchool(context.Background(), s.ID)
-	if err != nil {
-		t.Fatalf("CountStudentsBySchool: %v", err)
-	}
-	if count != 15 {
-		t.Errorf("want 15, got %d", count)
+	if found.StudentCount != 2 {
+		t.Errorf("StudentCount: want 2, got %d", found.StudentCount)
 	}
 }
 
