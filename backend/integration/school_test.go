@@ -1,0 +1,178 @@
+package integration_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+// authTokenWithSchool returns a JWT with a schoolID claim for admin_school users.
+func authTokenWithSchool(t *testing.T, env *testEnv, userID, role, schoolID string) string {
+	t.Helper()
+	token, _, err := env.signer.SignAccess(userID, role, &schoolID, nil)
+	require.NoError(t, err)
+	return token
+}
+
+func TestSchoolCRUD_Integration(t *testing.T) {
+	env := newTestEnv(t)
+
+	// 1. Seed a school
+	var schoolID string
+	err := env.pool.QueryRow(t.Context(),
+		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
+		 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
+		"SMAN Test", "smantest", "20000000", []string{"SMA"}, "Jl. Test No.1",
+	).Scan(&schoolID)
+	require.NoError(t, err)
+	require.NotEmpty(t, schoolID)
+
+	// 2. Create an admin_school account bound to the school
+	superToken := authToken(t, env, "super-1", "super_admin")
+	createBody := map[string]interface{}{
+		"email":     "schooladmin@test.com",
+		"name":      "School Admin",
+		"role":      "admin_school",
+		"password":  "password123",
+		"school_id": schoolID,
+	}
+	b, _ := json.Marshal(createBody)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/system/accounts", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+superToken)
+	rec := httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var createResp map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&createResp))
+	createdAdminID := createResp["id"].(string)
+	require.NotEmpty(t, createdAdminID)
+
+	// 3. Register a student as the school admin
+	adminToken := authTokenWithSchool(t, env, createdAdminID, "admin_school", schoolID)
+	studentBody := map[string]interface{}{
+		"name": "Test Student",
+		"nis":  "12345",
+	}
+	b, _ = json.Marshal(studentBody)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec = httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var regResp map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&regResp))
+	require.NotEmpty(t, regResp["temp_password"])
+	require.Equal(t, "smantest_12345", regResp["username"])
+	studentID := regResp["id"].(string)
+
+	// 4. Student can log in with username + temp_password (FR-STU-10)
+	loginBody := map[string]string{
+		"identifier": "smantest_12345",
+		"password":   regResp["temp_password"].(string),
+	}
+	b, _ = json.Marshal(loginBody)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	// 5. Credential reissue returns a new password
+	req = httptest.NewRequest(http.MethodGet,
+		"/api/v1/admin/students/"+studentID+"/credentials", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec = httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var credResp map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&credResp))
+	require.NotEqual(t, regResp["temp_password"], credResp["temp_password"],
+		"reissue should return a different password")
+}
+
+func TestSchoolCodeLock_Integration(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Seed a school
+	var schoolID string
+	err := env.pool.QueryRow(t.Context(),
+		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
+		 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
+		"Code Lock School", "codelock", "20000001", []string{"SMA"}, "Jl. Test",
+	).Scan(&schoolID)
+	require.NoError(t, err)
+
+	// Register a student
+	adminToken := authTokenWithSchool(t, env, "als", "admin_school", schoolID)
+	studentBody := map[string]string{"name": "Stu", "nis": "locktest"}
+	b, _ := json.Marshal(studentBody)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	// Attempt to change code — should fail with 409
+	superToken := authToken(t, env, "su", "super_admin")
+	updateBody := map[string]string{"code": "newcode"}
+	b, _ = json.Marshal(updateBody)
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/admin/schools/"+schoolID, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+superToken)
+	rec = httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestRowScoping_Integration(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Two schools
+	var schoolA, schoolB string
+	env.pool.QueryRow(t.Context(),
+		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
+		 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
+		"School A", "schoola", "20000002", []string{"SMA"}, "Jl. A",
+	).Scan(&schoolA)
+	env.pool.QueryRow(t.Context(),
+		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
+		 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
+		"School B", "schoolb", "20000003", []string{"SMA"}, "Jl. B",
+	).Scan(&schoolB)
+
+	// Admin A registers a student
+	tokenA := authTokenWithSchool(t, env, "admin-a", "admin_school", schoolA)
+	studentBody := map[string]string{"name": "Student A", "nis": "a001"}
+	b, _ := json.Marshal(studentBody)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenA)
+	rec := httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var regResp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&regResp)
+	studentID := regResp["id"].(string)
+
+	// Admin B tries to access Admin A's student → 404
+	tokenB := authTokenWithSchool(t, env, "admin-b", "admin_school", schoolB)
+	req = httptest.NewRequest(http.MethodPatch, "/api/v1/admin/students/"+studentID,
+		bytes.NewReader([]byte(`{"status":"deactivated"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenB)
+	rec = httptest.NewRecorder()
+	env.server.Config.Handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
