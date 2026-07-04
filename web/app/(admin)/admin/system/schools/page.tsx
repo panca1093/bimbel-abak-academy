@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Plus,
   Building,
   Users,
-  MapPin,
   MoreHorizontal,
   Edit,
-  Trash2,
+  Lock,
+  Search,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -31,67 +33,35 @@ import {
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatCard } from "@/components/admin/StatCard";
+import {
+  useAdminSchools,
+  useCreateSchool,
+  useUpdateSchool,
+  useChangeSchoolStatus,
+} from "@/lib/hooks/admin-schools";
+import type { School } from "@/lib/types";
 
-type SchoolStatus = "active" | "inactive" | "pending";
-
-interface SchoolOrg {
-  id: string;
-  name: string;
-  city: string;
-  province: string;
-  status: SchoolStatus;
-  students: number;
-  classes: number;
-  exams: number;
-}
-
-const INITIAL_SCHOOLS: SchoolOrg[] = [
-  {
-    id: "SCH-501",
-    name: "SMAN 1 Jakarta",
-    city: "Jakarta",
-    province: "DKI Jakarta",
-    status: "active",
-    students: 142,
-    classes: 6,
-    exams: 24,
-  },
-  {
-    id: "SCH-502",
-    name: "SMAN 3 Bandung",
-    city: "Bandung",
-    province: "Jawa Barat",
-    status: "active",
-    students: 98,
-    classes: 4,
-    exams: 18,
-  },
-  {
-    id: "SCH-503",
-    name: "SMAN 2 Surabaya",
-    city: "Surabaya",
-    province: "Jawa Timur",
-    status: "active",
-    students: 76,
-    classes: 3,
-    exams: 15,
-  },
-  {
-    id: "SCH-504",
-    name: "SMAN 5 Yogyakarta",
-    city: "Yogyakarta",
-    province: "DI Yogyakarta",
-    status: "pending",
-    students: 0,
-    classes: 0,
-    exams: 0,
-  },
-];
+type SchoolStatus = "active" | "deactivated";
 
 const STATUS_TONE: Record<SchoolStatus, string> = {
   active: "bg-success-bg text-success border-success",
-  inactive: "bg-ink-100 text-ink-600 border-line",
-  pending: "bg-warn-bg text-warn border-warn",
+  deactivated: "bg-danger-bg text-danger border-danger",
+};
+
+interface SchoolForm {
+  name: string;
+  code: string;
+  npsn: string;
+  school_types: string;
+  alamat: string;
+}
+
+const EMPTY_FORM: SchoolForm = {
+  name: "",
+  code: "",
+  npsn: "",
+  school_types: "",
+  alamat: "",
 };
 
 export default function SystemSchoolsPage() {
@@ -100,29 +70,180 @@ export default function SystemSchoolsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
   const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<School | null>(null);
+  const [createForm, setCreateForm] = useState<SchoolForm>({ ...EMPTY_FORM });
+  const [editForm, setEditForm] = useState<SchoolForm>({ ...EMPTY_FORM });
+
+  // Cursor-based pagination
+  const [schools, setSchools] = useState<School[]>([]);
+  const [fetchCursor, setFetchCursor] = useState<string | undefined>(undefined);
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+
+  const { data, isLoading, error } = useAdminSchools(fetchCursor);
+  const createSchool = useCreateSchool();
+  const updateSchool = useUpdateSchool();
+  const changeStatus = useChangeSchoolStatus();
+
+  useEffect(() => {
+    if (data) {
+      if (fetchCursor === undefined) {
+        setSchools(data.data);
+      } else {
+        setSchools((prev) => [...prev, ...data.data]);
+      }
+      setNextCursor(data.next_cursor);
+    }
+  }, [data]);
 
   const rows = useMemo(() => {
-    return INITIAL_SCHOOLS.filter((s) => {
+    let filtered = schools;
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((s) => s.status === statusFilter);
+    }
+    if (search.trim() !== "") {
       const q = search.toLowerCase();
-      const matchesSearch =
-        search.trim() === "" ||
-        s.name.toLowerCase().includes(q) ||
-        s.city.toLowerCase().includes(q) ||
-        s.province.toLowerCase().includes(q);
-      const matchesStatus = statusFilter === "all" || s.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [search, statusFilter]);
+      filtered = filtered.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.code ?? "").toLowerCase().includes(q),
+      );
+    }
+    return filtered;
+  }, [search, statusFilter, schools]);
 
-  const stats = useMemo(() => {
-    const students = INITIAL_SCHOOLS.reduce((sum, s) => sum + s.students, 0);
-    const active = INITIAL_SCHOOLS.filter((s) => s.status === "active").length;
-    return {
-      total: INITIAL_SCHOOLS.length,
-      students,
-      active,
-    };
-  }, []);
+  const stats = useMemo(
+    () => ({
+      total: schools.length,
+      active: schools.filter((s) => s.status === "active").length,
+      students: schools.reduce((sum, s) => sum + (s.student_count ?? 0), 0),
+    }),
+    [schools],
+  );
+
+  const handleCreate = async () => {
+    if (!createForm.name || !createForm.code) {
+      toast.error(t("accounts_toast_required"));
+      return;
+    }
+    try {
+      await createSchool.mutateAsync({
+        name: createForm.name,
+        code: createForm.code,
+        npsn: createForm.npsn || undefined,
+        school_types: createForm.school_types
+          ? createForm.school_types
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : undefined,
+        alamat: createForm.alamat || undefined,
+      });
+      toast.success(t("changes_saved"));
+      setCreateOpen(false);
+      setCreateForm({ ...EMPTY_FORM });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("sys_save_failed");
+      toast.error(msg);
+    }
+  };
+
+  const handleEditOpen = (school: School) => {
+    setEditTarget(school);
+    setEditForm({
+      name: school.name,
+      code: school.code ?? "",
+      npsn: school.npsn ?? "",
+      school_types: (school.school_types ?? []).join(", "),
+      alamat: school.alamat ?? "",
+    });
+  };
+
+  const handleEdit = async () => {
+    if (!editTarget) return;
+    try {
+      const payload: Record<string, unknown> = {};
+
+      if (editForm.name !== editTarget.name) payload.name = editForm.name;
+      if (editForm.code !== (editTarget.code ?? "")) payload.code = editForm.code;
+      if (editForm.npsn !== (editTarget.npsn ?? "")) payload.npsn = editForm.npsn || undefined;
+
+      const types = editForm.school_types
+        ? editForm.school_types
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+      if (JSON.stringify(types) !== JSON.stringify(editTarget.school_types ?? []))
+        payload.school_types = types;
+
+      if (editForm.alamat !== (editTarget.alamat ?? ""))
+        payload.alamat = editForm.alamat || undefined;
+
+      if (Object.keys(payload).length === 0) {
+        setEditTarget(null);
+        return;
+      }
+
+      await updateSchool.mutateAsync({ id: editTarget.id, ...payload });
+      toast.success(t("changes_saved"));
+      setEditTarget(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("sys_save_failed");
+      toast.error(msg);
+    }
+  };
+
+  const handleStatusToggle = async (school: School) => {
+    const newStatus: SchoolStatus =
+      school.status === "active" ? "deactivated" : "active";
+    try {
+      await changeStatus.mutateAsync({ id: school.id, status: newStatus });
+      toast.success(
+        newStatus === "active"
+          ? t("accounts_toast_activated")
+          : t("accounts_toast_deactivated"),
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("sys_save_failed");
+      toast.error(msg);
+    }
+  };
+
+  const handleLoadMore = () => {
+    if (nextCursor) setFetchCursor(nextCursor);
+  };
+
+  if (isLoading && schools.length === 0) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+        <AdminPageHeader
+          icon={Building}
+          title={t("schools_title")}
+          description={t("sys_loading")}
+        />
+        <div className="py-12 text-center text-ink-500">
+          {t("sys_loading_data")}
+        </div>
+      </div>
+    );
+  }
+
+  if (error && schools.length === 0) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+        <AdminPageHeader
+          icon={Building}
+          title={t("schools_title")}
+          description={t("sys_error_title")}
+        />
+        <div className="py-12 text-center text-ink-500">
+          {t("sys_error_load")}
+        </div>
+      </div>
+    );
+  }
+
+  const codeLocked = (editTarget?.student_count ?? 0) > 0;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
@@ -140,31 +261,46 @@ export default function SystemSchoolsPage() {
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label={t("schools_stat_total")} value={String(stats.total)} />
-        <StatCard label={t("status_label_active")} value={String(stats.active)} />
-        <StatCard label={t("schools_stat_students")} value={stats.students.toLocaleString(numberLocale)} />
+        <StatCard
+          label={t("status_label_active")}
+          value={String(stats.active)}
+        />
+        <StatCard
+          label={t("schools_stat_students")}
+          value={stats.students.toLocaleString(numberLocale)}
+        />
       </div>
 
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex flex-wrap gap-2">
-          <FilterChip active={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
+          <FilterChip
+            active={statusFilter === "all"}
+            onClick={() => setStatusFilter("all")}
+          >
             {t("tab_all")}
           </FilterChip>
-          <FilterChip active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+          <FilterChip
+            active={statusFilter === "active"}
+            onClick={() => setStatusFilter("active")}
+          >
             {t("status_label_active")}
           </FilterChip>
-          <FilterChip active={statusFilter === "pending"} onClick={() => setStatusFilter("pending")}>
-            {t("schools_status_pending")}
-          </FilterChip>
-          <FilterChip active={statusFilter === "inactive"} onClick={() => setStatusFilter("inactive")}>
+          <FilterChip
+            active={statusFilter === "deactivated"}
+            onClick={() => setStatusFilter("deactivated")}
+          >
             {t("status_label_inactive")}
           </FilterChip>
         </div>
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("schools_search_placeholder")}
-          className="h-9 w-[260px] text-xs sm:ml-auto"
-        />
+        <div className="flex items-center gap-2 lg:ml-auto">
+          <Search className="size-4 text-ink-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("schools_search_placeholder")}
+            className="h-9 w-[200px] text-xs"
+          />
+        </div>
       </div>
 
       <div className="md-card-outlined">
@@ -173,46 +309,84 @@ export default function SystemSchoolsPage() {
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
               <tr>
                 <th className="px-4 py-3">{t("schools_th_school")}</th>
-                <th className="px-4 py-3">{t("schools_th_location")}</th>
+                <th className="px-4 py-3">{t("schools_field_code")}</th>
+                <th className="px-4 py-3">NPSN</th>
+                <th className="px-4 py-3">{t("schools_field_school_types")}</th>
+                <th className="px-4 py-3">{t("schools_field_alamat")}</th>
                 <th className="px-4 py-3">{t("accounts_th_status")}</th>
-                <th className="px-4 py-3">{t("schools_th_students")}</th>
-                <th className="px-4 py-3">{t("schools_th_classes")}</th>
-                <th className="px-4 py-3">{t("schools_th_exams")}</th>
-                <th className="px-4 py-3 text-right"></th>
+                <th className="px-4 py-3">{t("schools_field_student_count")}</th>
+                <th className="px-4 py-3 text-right" />
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
+              {rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-4 py-8 text-center text-sm text-ink-500"
+                  >
+                    {lang === "en" ? "No schools found." : "Tidak ada sekolah ditemukan."}
+                  </td>
+                </tr>
+              )}
               {rows.map((s) => (
                 <tr key={s.id} className="group hover:bg-surface-2">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 font-medium text-ink-900">
-                      <Building className="size-4 text-brand-600" />
-                      {s.name}
+                      <Building className="size-4 shrink-0 text-brand-600" />
+                      <span className="max-w-[160px] truncate">{s.name}</span>
                     </div>
-                    <div className="font-mono text-[11px] text-ink-500">{s.id}</div>
+                    <div className="font-mono text-[11px] text-ink-500">
+                      {s.id}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 text-xs text-ink-700">
-                      <MapPin className="size-3.5 text-ink-400" />
-                      {s.city}, {s.province}
+                    <span className="font-mono text-xs text-ink-700">
+                      {s.code ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-ink-600">
+                    {s.npsn ?? "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {s.school_types && s.school_types.length > 0
+                        ? s.school_types.map((st) => (
+                            <Badge
+                              key={st}
+                              variant="outline"
+                              className="bg-surface-2 text-[11px] text-ink-700"
+                            >
+                              {st}
+                            </Badge>
+                          ))
+                        : (
+                            <span className="text-xs text-ink-400">—</span>
+                          )}
                     </div>
+                  </td>
+                  <td className="max-w-[160px] truncate px-4 py-3 text-xs text-ink-600">
+                    {s.alamat ?? "—"}
                   </td>
                   <td className="px-4 py-3">
                     <Badge
                       variant="outline"
-                      className={cn("text-[11px] font-semibold capitalize", STATUS_TONE[s.status])}
+                      className={cn(
+                        "text-[11px] font-semibold capitalize",
+                        STATUS_TONE[s.status as SchoolStatus],
+                      )}
                     >
-                      {s.status}
+                      {s.status === "active"
+                        ? t("status_label_active")
+                        : t("status_label_inactive")}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
                     <span className="inline-flex items-center gap-1">
                       <Users className="size-3" />
-                      {s.students.toLocaleString(numberLocale)}
+                      {(s.student_count ?? 0).toLocaleString(numberLocale)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">{s.classes}</td>
-                  <td className="px-4 py-3 text-xs text-ink-600">{s.exams}</td>
                   <td className="px-4 py-3 text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -221,11 +395,19 @@ export default function SystemSchoolsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setCreateOpen(true)}>
-                          <Edit className="mr-2 size-4" />{t("schools_action_edit")}
+                        <DropdownMenuItem
+                          onClick={() => handleEditOpen(s)}
+                        >
+                          <Edit className="mr-2 size-4" />
+                          {t("schools_action_edit")}
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-danger">
-                          <Trash2 className="mr-2 size-4" />{t("schools_action_delete")}
+                        <DropdownMenuItem
+                          onClick={() => handleStatusToggle(s)}
+                        >
+                          <Lock className="mr-2 size-4" />
+                          {s.status === "active"
+                            ? t("accounts_action_deactivate")
+                            : t("accounts_action_activate")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -237,34 +419,174 @@ export default function SystemSchoolsPage() {
         </div>
       </div>
 
+      {nextCursor && (
+        <div className="mt-4 text-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLoadMore}
+            disabled={isLoading}
+          >
+            {isLoading
+              ? t("sys_loading")
+              : lang === "en"
+              ? "Load more"
+              : "Muat lebih banyak"}
+          </Button>
+        </div>
+      )}
+
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="font-serif">{t("schools_dialog_create_title")}</DialogTitle>
-            <DialogDescription>{t("schools_dialog_create_desc")}</DialogDescription>
+            <DialogTitle className="font-serif">
+              {t("schools_dialog_create_title")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("schools_dialog_create_desc")}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>{t("schools_field_name")}</Label>
-              <Input placeholder={t("schools_placeholder_name")} />
+              <Input
+                value={createForm.name}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder={t("schools_placeholder_name")}
+              />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>{t("schools_field_city")}</Label>
-                <Input placeholder={t("schools_field_city")} />
-              </div>
-              <div>
-                <Label>{t("schools_field_province")}</Label>
-                <Input placeholder={t("schools_field_province")} />
-              </div>
+            <div>
+              <Label>{t("schools_field_code")}</Label>
+              <Input
+                value={createForm.code}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, code: e.target.value }))}
+                placeholder={t("schools_field_code")}
+              />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button onClick={() => setCreateOpen(false)}>{t("create")}</Button>
+            <div>
+              <Label>{t("schools_field_npsn")}</Label>
+              <Input
+                value={createForm.npsn}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, npsn: e.target.value }))}
+                placeholder="NPSN"
+              />
+            </div>
+            <div>
+              <Label>{t("schools_field_school_types")}</Label>
+              <Input
+                value={createForm.school_types}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, school_types: e.target.value }))}
+                placeholder={t("schools_field_school_types")}
+              />
+            </div>
+            <div>
+              <Label>{t("schools_field_alamat")}</Label>
+              <Input
+                value={createForm.alamat}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, alamat: e.target.value }))}
+                placeholder={t("schools_field_alamat")}
+              />
             </div>
           </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button onClick={handleCreate} disabled={createSchool.isPending}>
+              {createSchool.isPending ? t("saving") : t("create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={editTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-serif">
+              {t("schools_action_edit")}
+            </DialogTitle>
+            <DialogDescription>
+              {editTarget
+                ? (lang === "en"
+                    ? `Edit school: ${editTarget.name}`
+                    : `Edit sekolah: ${editTarget.name}`)
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>{t("schools_field_name")}</Label>
+              <Input
+                value={editForm.name}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder={t("schools_placeholder_name")}
+              />
+            </div>
+            <div>
+              <Label>{t("schools_field_code")}</Label>
+              <Input
+                value={editForm.code}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, code: e.target.value }))}
+                disabled={codeLocked}
+                placeholder={t("schools_field_code")}
+              />
+              {codeLocked && (
+                <p className="mt-1 text-[11px] text-ink-500">
+                  {t("schools_code_locked_tooltip").replace(
+                    "{count}",
+                    String(editTarget?.student_count ?? 0),
+                  )}
+                </p>
+              )}
+            </div>
+            <div>
+              <Label>{t("schools_field_npsn")}</Label>
+              <Input
+                value={editForm.npsn}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, npsn: e.target.value }))}
+                placeholder="NPSN"
+              />
+            </div>
+            <div>
+              <Label>{t("schools_field_school_types")}</Label>
+              <Input
+                value={editForm.school_types}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, school_types: e.target.value }))}
+                placeholder={t("schools_field_school_types")}
+              />
+            </div>
+            <div>
+              <Label>{t("schools_field_alamat")}</Label>
+              <Input
+                value={editForm.alamat}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, alamat: e.target.value }))}
+                placeholder={t("schools_field_alamat")}
+              />
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setEditTarget(null)}>
+              {t("cancel")}
+            </Button>
+            <Button onClick={handleEdit} disabled={updateSchool.isPending}>
+              {updateSchool.isPending ? t("saving") : t("save")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -287,7 +609,7 @@ function FilterChip({
         "rounded-lg border px-3 py-[7px] text-xs font-semibold transition-colors",
         active
           ? "border-brand-600 bg-brand-600 text-white"
-          : "border-line bg-surface text-ink-600 hover:text-ink-900"
+          : "border-line bg-surface text-ink-600 hover:text-ink-900",
       )}
     >
       {children}

@@ -50,7 +50,7 @@ export interface AdminStudent {
   nis: string;
   email?: string;
   status: string;
-  grade?: string;
+  grade?: number;
   created_at: string;
 }
 
@@ -60,7 +60,7 @@ export interface StudentRegistrationInput {
   email?: string;
   dob?: string;
   gender?: string;
-  grade?: string;
+  grade?: number;
   alamat_domisili?: string;
   target_exam?: string;
 }

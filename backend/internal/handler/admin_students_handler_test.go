@@ -140,16 +140,22 @@ func TestAdminGetStudentCredentials_NilSchoolID_403(t *testing.T) {
 	}
 }
 
-func TestAdminListStudents_ViaGet(t *testing.T) {
+func TestAdminListStudents_RBAC_403(t *testing.T) {
 	env := newAdminSystemEnv(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/students", nil)
 	rec := httptest.NewRecorder()
 	c := env.e.NewContext(req, rec)
-	setAdminSchoolClaims(c, "u1", "s1")
+	setAdminClaims(c, "u1") // super_admin without schoolID — should be rejected
 
-	// This will panic (storeRepo nil) but we verify the handler routing works.
-	// In a full integration test, this returns paginated data.
-	_ = env
-	c.JSON(200, map[string]interface{}{"data": []interface{}{}, "next_cursor": ""})
+	// Route guard: RBACMiddleware("students:*") allows admin_school but
+	// AdminListStudents checks Claims.SchoolID != nil.
+	// Without a proper token with admin_school + schoolID, we get 403.
+	err := env.h.AdminListStudents(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code == http.StatusOK {
+		t.Error("admin_school without schoolID should be rejected")
+	}
 }
