@@ -159,6 +159,13 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminStudents.POST("", h.AdminRegisterStudent)
 	adminStudents.PATCH("/:id", h.AdminChangeStudentStatus)
 	adminStudents.GET("/:id/credentials", h.AdminGetStudentCredentials)
+	adminStudents.POST("/bulk/presign", h.AdminPresignStudentBulkUpload)
+	adminStudents.POST("/bulk", h.AdminBulkImportStudents)
+	adminStudents.POST("/bulk/credentials", h.AdminBulkReissueCredentials)
+
+	// Admin job routes (JWT-only; any authenticated user may poll their own job)
+	adminJobs := admin.Group("/jobs")
+	adminJobs.GET("/:id", h.AdminGetJob)
 
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")
