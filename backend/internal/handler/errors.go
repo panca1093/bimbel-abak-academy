@@ -59,6 +59,16 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_editable", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "order_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrTestNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "test_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrQuestionNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "question_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrExamNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "exam_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrRegistrationNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "registration_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrValidation):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "validation_failed", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidPromo):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_promo", Message: err.Error()}
 	case errors.Is(err, service.ErrPromoMinOrder):
@@ -113,6 +123,34 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "row_limit_exceeded", Message: err.Error()}
 	case errors.Is(err, service.ErrJobNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "job_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrAlreadyAttempted):
+		status, apiErr = http.StatusConflict, APIError{Code: "already_attempted", Message: err.Error()}
+	case errors.Is(err, service.ErrExamNotStarted):
+		status, apiErr = http.StatusConflict, APIError{Code: "exam_not_started", Message: err.Error()}
+	case errors.Is(err, service.ErrDeviceMismatch):
+		status, apiErr = http.StatusForbidden, APIError{Code: "device_mismatch", Message: err.Error()}
+	case errors.Is(err, service.ErrCheckinWindowClosed):
+		status, apiErr = http.StatusConflict, APIError{Code: "checkin_window_closed", Message: err.Error()}
+	case errors.Is(err, service.ErrNotCheckedIn):
+		status, apiErr = http.StatusConflict, APIError{Code: "not_checked_in", Message: err.Error()}
+	case errors.Is(err, service.ErrAlreadySubmitted):
+		status, apiErr = http.StatusConflict, APIError{Code: "already_submitted", Message: err.Error()}
+	case errors.Is(err, service.ErrSessionNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "session_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidViolationType):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_violation_type", Message: err.Error()}
+	case errors.Is(err, service.ErrGradeOutOfRange):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "grade_out_of_range", Message: err.Error()}
+	case errors.Is(err, service.ErrNotEssayQuestion):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "not_essay_question", Message: err.Error()}
+	case errors.Is(err, service.ErrResultHidden):
+		status, apiErr = http.StatusForbidden, APIError{Code: "result_hidden", Message: err.Error()}
+	case errors.Is(err, service.ErrResultNotReleased):
+		status, apiErr = http.StatusConflict, APIError{Code: "result_not_released", Message: err.Error()}
+	case errors.Is(err, service.ErrSessionNotGraded):
+		status, apiErr = http.StatusConflict, APIError{Code: "session_not_graded", Message: err.Error()}
+	case errors.Is(err, service.ErrLeaderboardNotAvailable):
+		status, apiErr = http.StatusForbidden, APIError{Code: "leaderboard_not_available", Message: err.Error()}
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}

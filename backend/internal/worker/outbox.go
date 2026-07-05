@@ -2,8 +2,11 @@ package worker
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base32"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +39,9 @@ type outboxRepository interface {
 	GetCoursesByProductID(context.Context, uuid.UUID) ([]model.Course, error)
 	BeginTx(context.Context) (pgx.Tx, error)
 	GetExpiredPaymentOrders(context.Context, int) ([]uuid.UUID, error)
+	GetExamByProductID(context.Context, uuid.UUID) (*model.Exam, error)
+	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
+	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 }
 
 type Worker struct {
@@ -150,7 +156,7 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 	hasPhysicalItem := false
 	for _, item := range payload.Items {
 		switch item.ProductType {
-		case "course", "package":
+		case "course":
 			courses, err := w.repo.GetCoursesByProductID(ctx, item.ProductID)
 			if err != nil {
 				slog.Error("get courses by product id", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
@@ -173,6 +179,25 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 					slog.Error("create course session", "order_id", payload.OrderID, "course_id", course.ID, "err", err)
 					return
 				}
+			}
+		case "exam":
+			exam, err := w.repo.GetExamByProductID(ctx, item.ProductID)
+			if err != nil {
+				slog.Error("get exam by product id", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
+				return
+			}
+			if err := w.repo.CreateExamRegistration(ctx, tx, model.ExamRegistration{
+				StudentID: order.StudentID,
+				ExamID:    exam.ID,
+				Token:     generateToken(),
+				Status:    "registered",
+			}); err != nil {
+				slog.Error("create exam registration", "order_id", payload.OrderID, "err", err)
+				return
+			}
+			if err := w.repo.StampOrderItemFulfilledAt(ctx, tx, payload.OrderID, item.ProductID); err != nil {
+				slog.Error("stamp order_item fulfilled_at", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
+				return
 			}
 		case "book":
 			hasPhysicalItem = true
@@ -259,4 +284,12 @@ func (w *Worker) sweepStalePayments(ctx context.Context) {
 
 		slog.Info("stale payment expired", "order_id", orderID)
 	}
+}
+
+func generateToken() string {
+	b := make([]byte, 5)
+	if _, err := rand.Read(b); err != nil {
+		return "ABCD1234"
+	}
+	return strings.ToUpper(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b)[:8])
 }

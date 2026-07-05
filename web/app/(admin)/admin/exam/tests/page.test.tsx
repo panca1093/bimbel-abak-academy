@@ -1,0 +1,208 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { toast } from "sonner";
+import TestsPage from "./page";
+import type { Test } from "@/lib/types";
+
+const mockMutateAsync = vi.fn();
+
+let testsState = {
+  data: null as { data: Test[]; next_cursor?: string } | null,
+  isLoading: true,
+  isError: false,
+  error: null as Error | null,
+  refetch: vi.fn(),
+};
+
+let createState = { mutateAsync: mockMutateAsync, isPending: false };
+let updateState = { mutateAsync: mockMutateAsync, isPending: false };
+let deleteState = { mutateAsync: mockMutateAsync, isPending: false };
+
+vi.mock("@/lib/hooks/admin-tests", () => ({
+  useAdminTests: () => testsState,
+  useCreateTest: () => createState,
+  useUpdateTest: () => updateState,
+  useDeleteTest: () => deleteState,
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+const sampleTests: Test[] = [
+  {
+    id: "t1",
+    title: "Tryout UTBK Saintek",
+    subject: "Matematika",
+    topic: "Aljabar",
+    duration_minutes: 90,
+  },
+  {
+    id: "t2",
+    title: "Tryout Bahasa Inggris",
+    subject: "Bahasa Inggris",
+    topic: "Reading",
+    duration_minutes: 60,
+  },
+];
+
+describe("TestsPage", () => {
+  beforeEach(() => {
+    testsState = {
+      data: { data: sampleTests },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    createState = { mutateAsync: mockMutateAsync, isPending: false };
+    updateState = { mutateAsync: mockMutateAsync, isPending: false };
+    deleteState = { mutateAsync: mockMutateAsync, isPending: false };
+    mockMutateAsync.mockReset();
+    (toast.success as ReturnType<typeof vi.fn>).mockReset();
+    (toast.error as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("renders the tests table with subject, topic, duration", async () => {
+    render(<TestsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument();
+      expect(screen.getByText("Tryout Bahasa Inggris")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Matematika")).toBeInTheDocument();
+    expect(screen.getByText("Aljabar")).toBeInTheDocument();
+    expect(screen.getByText("90")).toBeInTheDocument();
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.getByText("60")).toBeInTheDocument();
+  });
+
+  it("shows skeleton rows while loading", () => {
+    testsState = {
+      data: null,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<TestsPage />);
+
+    expect(document.querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(0);
+  });
+
+  it("surfaces an API error as inline error text", async () => {
+    testsState = {
+      data: null,
+      isLoading: false,
+      isError: true,
+      error: new Error("gagal memuat tes"),
+      refetch: vi.fn(),
+    };
+
+    render(<TestsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/gagal memuat tes/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows empty state when no tests exist", async () => {
+    testsState = {
+      data: { data: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<TestsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/belum ada tes/i)).toBeInTheDocument();
+    });
+  });
+
+  it("opens the create modal on New Test click and calls create mutation on save", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: "t3", title: "Tryout Baru" });
+
+    render(<TestsPage />);
+
+    await waitFor(() => expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /tes baru/i }));
+
+    expect(screen.getByRole("dialog", { name: /tes baru/i })).toBeInTheDocument();
+
+    fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Tryout Baru" } });
+    fireEvent.input(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Matematika" } });
+    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Aljabar" } });
+    fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Tryout Baru",
+          subject: "Matematika",
+          topic: "Aljabar",
+          duration_minutes: 60,
+        })
+      );
+      expect(toast.success).toHaveBeenCalledWith("Tes dibuat");
+    });
+  });
+
+  it("opens the edit modal prefilled and calls update mutation on save", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: "t1", title: "Tryout UTBK Saintek Revisi" });
+
+    render(<TestsPage />);
+
+    await waitFor(() => expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument());
+
+    const row = screen.getByText("Tryout UTBK Saintek").closest("tr");
+    expect(row).toBeTruthy();
+    const editButton = within(row!).getByRole("button", { name: /^edit$/i });
+    fireEvent.click(editButton);
+
+    expect(screen.getByRole("dialog", { name: /sunting tes/i })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Tryout UTBK Saintek")).toBeInTheDocument();
+
+    fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Tryout UTBK Saintek Revisi" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Tryout UTBK Saintek Revisi" })
+      );
+      expect(toast.success).toHaveBeenCalledWith("Tes diperbarui");
+    });
+  });
+
+  it("deletes a test after confirm and shows a success toast", async () => {
+    mockMutateAsync.mockResolvedValueOnce(undefined);
+    vi.stubGlobal("confirm", () => true);
+
+    render(<TestsPage />);
+
+    await waitFor(() => expect(screen.getByText("Tryout Bahasa Inggris")).toBeInTheDocument());
+
+    const row = screen.getByText("Tryout Bahasa Inggris").closest("tr");
+    expect(row).toBeTruthy();
+    const deleteButton = within(row!).getByRole("button", { name: /hapus/i });
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith();
+      expect(toast.success).toHaveBeenCalledWith("Tes dihapus");
+    });
+
+    vi.unstubAllGlobals();
+  });
+});

@@ -1,0 +1,492 @@
+package service
+
+import (
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+
+	"akademi-bimbel/internal/model"
+)
+
+func floatPtr(f float64) *float64 { return &f }
+
+func TestGrading_mcq_caseInsensitive(t *testing.T) {
+	options := []model.QuestionOption{
+		{Key: "a", Text: "Option A", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "Option B", SortOrder: 2},
+	}
+
+	tests := []struct {
+		name   string
+		answer *string
+		want   bool
+	}{
+		{"exact match", strPtr("a"), true},
+		{"case-insensitive", strPtr("A"), true},
+		{"wrong answer", strPtr("b"), false},
+		{"nil answer", nil, false},
+		{"empty answer", strPtr(""), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := gradeAnswer("mcq", tt.answer, nil, options)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGrading_mcq_trim(t *testing.T) {
+	options := []model.QuestionOption{
+		{Key: "a", Text: "Option A", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "Option B", SortOrder: 2},
+	}
+
+	got := gradeAnswer("mcq", strPtr("  a  "), nil, options)
+	assert.True(t, got, "mcq should trim whitespace")
+}
+
+func TestGrading_mcq_noCorrectOption(t *testing.T) {
+	got := gradeAnswer("mcq", strPtr("a"), nil, nil)
+	assert.False(t, got, "mcq with no options should return false")
+}
+
+func TestGrading_multiAnswer_setEquality(t *testing.T) {
+	options := []model.QuestionOption{
+		{Key: "a", Text: "A", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "B", IsCorrect: true, SortOrder: 2},
+		{Key: "c", Text: "C", IsCorrect: true, SortOrder: 3},
+		{Key: "d", Text: "D", SortOrder: 4},
+	}
+
+	tests := []struct {
+		name   string
+		answer *string
+		want   bool
+	}{
+		{"all correct order a,b,c", strPtr("a,b,c"), true},
+		{"all correct order c,b,a", strPtr("c,b,a"), true},
+		{"all correct with spaces", strPtr("  a , b , c  "), true},
+		{"missing one option", strPtr("a,b"), false},
+		{"extra option", strPtr("a,b,c,d"), false},
+		{"empty answer", strPtr(""), false},
+		{"nil answer", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := gradeAnswer("multi_answer", tt.answer, nil, options)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGrading_short_trimLower(t *testing.T) {
+	tests := []struct {
+		name          string
+		answer        *string
+		correctAnswer *string
+		want          bool
+	}{
+		{"exact match", strPtr("hello"), strPtr("hello"), true},
+		{"case-insensitive", strPtr("Hello"), strPtr("hello"), true},
+		{"trimmed", strPtr("  hello  "), strPtr("hello"), true},
+		{"wrong answer", strPtr("world"), strPtr("hello"), false},
+		{"nil answer", nil, strPtr("hello"), false},
+		{"empty answer", strPtr(""), strPtr("hello"), false},
+		{"nil correctAnswer", strPtr("hello"), nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := gradeAnswer("short", tt.answer, tt.correctAnswer, nil)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGrading_fillBlank_trimLower(t *testing.T) {
+	tests := []struct {
+		name          string
+		answer        *string
+		correctAnswer *string
+		want          bool
+	}{
+		{"exact match", strPtr("jakarta"), strPtr("jakarta"), true},
+		{"case-insensitive", strPtr("Jakarta"), strPtr("jakarta"), true},
+		{"wrong answer", strPtr("bandung"), strPtr("jakarta"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := gradeAnswer("fill_blank", tt.answer, tt.correctAnswer, nil)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestGrading_essay_returnsFalse(t *testing.T) {
+	got := gradeAnswer("essay", strPtr("some long essay"), nil, nil)
+	assert.False(t, got, "essay should not be auto-graded")
+}
+
+func TestGrading_unknownFormat(t *testing.T) {
+	got := gradeAnswer("unknown_format", strPtr("anything"), nil, nil)
+	assert.False(t, got, "unknown format should return false")
+}
+
+// ---- gradeObjective: points model (FR-S5-06..10) ----
+
+func mcqQuestion(id uuid.UUID, pointCorrect, pointWrong int) model.QuestionWithOptions {
+	return model.QuestionWithOptions{
+		Question: model.Question{ID: id, Format: "mcq", Body: "2+2", PointCorrect: pointCorrect, PointWrong: pointWrong},
+		Options: []model.QuestionOption{
+			{Key: "a", Text: "3", SortOrder: 1},
+			{Key: "b", Text: "4", IsCorrect: true, SortOrder: 2},
+		},
+	}
+}
+
+func TestGradingObjective_correct_earnsPointCorrect(t *testing.T) {
+	q := mcqQuestion(uuid.New(), 2, 1)
+	answers := map[uuid.UUID]*string{q.Question.ID: strPtr("b")}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 2.0, score)
+	assert.Len(t, graded, 1)
+	assert.True(t, *graded[0].IsCorrect)
+	assert.Equal(t, 2.0, *graded[0].Score)
+	assert.NotNil(t, graded[0].GradedAt, "objective answer should be stamped graded_at")
+}
+
+func TestGradingObjective_wrong_subtractsPointWrong(t *testing.T) {
+	q := mcqQuestion(uuid.New(), 2, 1)
+	answers := map[uuid.UUID]*string{q.Question.ID: strPtr("a")} // wrong option
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score, "session total is clamped even though the per-answer score is negative")
+	assert.Len(t, graded, 1)
+	assert.False(t, *graded[0].IsCorrect)
+	assert.Equal(t, -1.0, *graded[0].Score, "per-answer score stores the raw (unclamped) penalty")
+	assert.NotNil(t, graded[0].GradedAt)
+}
+
+func TestGradingObjective_wrong_pointWrongZero_noPenalty(t *testing.T) {
+	q := mcqQuestion(uuid.New(), 1, 0)
+	answers := map[uuid.UUID]*string{q.Question.ID: strPtr("a")} // wrong option
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score)
+	assert.False(t, *graded[0].IsCorrect)
+	assert.Equal(t, 0.0, *graded[0].Score)
+}
+
+func TestGradingObjective_empty_scoresZero_neverPenalized(t *testing.T) {
+	q := mcqQuestion(uuid.New(), 2, 1)
+	answers := map[uuid.UUID]*string{} // unanswered
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score)
+	assert.Len(t, graded, 1)
+	assert.False(t, *graded[0].IsCorrect, "empty answer is not correct")
+	assert.Equal(t, 0.0, *graded[0].Score)
+	assert.NotNil(t, graded[0].GradedAt, "empty objective answer is still auto-graded now")
+}
+
+func TestGradingObjective_essay_leftUngraded(t *testing.T) {
+	qEssay := model.Question{ID: uuid.New(), Format: "essay", Body: "Write about X"}
+	questions := []model.QuestionWithOptions{{Question: qEssay}}
+	answers := map[uuid.UUID]*string{qEssay.ID: strPtr("My essay")}
+
+	graded, score := gradeObjective(questions, answers)
+
+	assert.Equal(t, 0.0, score)
+	assert.Len(t, graded, 1)
+	assert.Nil(t, graded[0].IsCorrect, "essay IsCorrect should be nil")
+	assert.Nil(t, graded[0].Score, "essay Score should be nil")
+	assert.Nil(t, graded[0].GradedAt, "essay GradedAt should be nil until manually graded")
+	assert.Equal(t, qEssay.ID, graded[0].QuestionID)
+	assert.NotNil(t, graded[0].Answer)
+}
+
+func TestGradingObjective_worked_threeCorrect(t *testing.T) {
+	// spec worked example: 3 correct, 0 wrong, 0 empty (pc=2, pw=1) -> score 6
+	var questions []model.QuestionWithOptions
+	answers := map[uuid.UUID]*string{}
+	for i := 0; i < 3; i++ {
+		q := mcqQuestion(uuid.New(), 2, 1)
+		questions = append(questions, q)
+		answers[q.Question.ID] = strPtr("b")
+	}
+
+	_, score := gradeObjective(questions, answers)
+
+	assert.Equal(t, 6.0, score)
+}
+
+func TestGradingObjective_worked_clampedAtZero(t *testing.T) {
+	// spec worked example: 1 correct, 4 wrong (pc=2, pw=1) -> sum -2 -> clamp 0
+	var questions []model.QuestionWithOptions
+	answers := map[uuid.UUID]*string{}
+
+	correctQ := mcqQuestion(uuid.New(), 2, 1)
+	questions = append(questions, correctQ)
+	answers[correctQ.Question.ID] = strPtr("b")
+
+	for i := 0; i < 4; i++ {
+		q := mcqQuestion(uuid.New(), 2, 1)
+		questions = append(questions, q)
+		answers[q.Question.ID] = strPtr("a") // wrong
+	}
+
+	_, score := gradeObjective(questions, answers)
+
+	assert.Equal(t, 0.0, score)
+}
+
+func TestGradingObjective_worked_allEmpty(t *testing.T) {
+	// spec worked example: 0 correct, 0 wrong, 5 empty -> score 0
+	var questions []model.QuestionWithOptions
+	for i := 0; i < 5; i++ {
+		questions = append(questions, mcqQuestion(uuid.New(), 2, 1))
+	}
+
+	_, score := gradeObjective(questions, map[uuid.UUID]*string{})
+
+	assert.Equal(t, 0.0, score)
+}
+
+func TestGradingObjective_worked_pointWrongZero(t *testing.T) {
+	// spec worked example: 2 correct (pc=1), 1 wrong (pw=0) -> score 2
+	var questions []model.QuestionWithOptions
+	answers := map[uuid.UUID]*string{}
+
+	for i := 0; i < 2; i++ {
+		q := mcqQuestion(uuid.New(), 1, 0)
+		questions = append(questions, q)
+		answers[q.Question.ID] = strPtr("b")
+	}
+	wrongQ := mcqQuestion(uuid.New(), 1, 0)
+	questions = append(questions, wrongQ)
+	answers[wrongQ.Question.ID] = strPtr("a")
+
+	_, score := gradeObjective(questions, answers)
+
+	assert.Equal(t, 2.0, score)
+}
+
+func TestGradingObjective_multiAnswerCorrect(t *testing.T) {
+	qID := uuid.New()
+	questions := []model.QuestionWithOptions{
+		{
+			Question: model.Question{ID: qID, Format: "multi_answer", Body: "Select A B C", PointCorrect: 1, PointWrong: 0},
+			Options: []model.QuestionOption{
+				{Key: "a", Text: "A", IsCorrect: true, SortOrder: 1},
+				{Key: "b", Text: "B", IsCorrect: true, SortOrder: 2},
+				{Key: "c", Text: "C", IsCorrect: true, SortOrder: 3},
+				{Key: "d", Text: "D", SortOrder: 4},
+			},
+		},
+	}
+	answers := map[uuid.UUID]*string{
+		qID: strPtr("c,a,b"),
+	}
+
+	graded, score := gradeObjective(questions, answers)
+
+	assert.Equal(t, 1.0, score)
+	assert.Len(t, graded, 1)
+	assert.True(t, *graded[0].IsCorrect)
+}
+
+func TestGradingObjective_noQuestions_scoreZero(t *testing.T) {
+	graded, score := gradeObjective([]model.QuestionWithOptions{}, map[uuid.UUID]*string{})
+
+	assert.Equal(t, 0.0, score)
+	assert.Empty(t, graded)
+}
+
+// ---- clampScore (FR-S5-10) ----
+
+func TestClampScore_positive_unchanged(t *testing.T) {
+	assert.Equal(t, 6.0, clampScore(6.0))
+}
+
+func TestClampScore_negative_clampedToZero(t *testing.T) {
+	assert.Equal(t, 0.0, clampScore(-2.0))
+}
+
+func TestClampScore_zero_unchanged(t *testing.T) {
+	assert.Equal(t, 0.0, clampScore(0.0))
+}
+
+// ---- computeSessionTotal (FR-S5-14) ----
+
+func TestComputeSessionTotal_foldsPersistedScores(t *testing.T) {
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: uuid.New(), Score: floatPtr(2)},
+		{QuestionID: uuid.New(), Score: floatPtr(3)},
+		{QuestionID: uuid.New(), Score: nil}, // ungraded essay
+	}
+
+	assert.Equal(t, 5.0, computeSessionTotal(answers))
+}
+
+func TestComputeSessionTotal_clampsNegativeSum(t *testing.T) {
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: uuid.New(), Score: floatPtr(1)},
+		{QuestionID: uuid.New(), Score: floatPtr(-5)},
+	}
+
+	assert.Equal(t, 0.0, computeSessionTotal(answers))
+}
+
+func TestComputeSessionTotal_idempotent(t *testing.T) {
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: uuid.New(), Score: floatPtr(4)},
+		{QuestionID: uuid.New(), Score: floatPtr(1)},
+	}
+
+	first := computeSessionTotal(answers)
+	second := computeSessionTotal(answers)
+
+	assert.Equal(t, first, second)
+}
+
+// ---- computeRank (FR-S5-18) ----
+
+func TestComputeRank_zeroHigher_rankOne(t *testing.T) {
+	assert.Equal(t, 1, computeRank(0))
+}
+
+func TestComputeRank_higherCount_addsOne(t *testing.T) {
+	assert.Equal(t, 4, computeRank(3))
+}
+
+// ---- topicBreakdown (FR-S5-19) ----
+
+func TestTopicBreakdown_onePerTest_earnedAndMax(t *testing.T) {
+	testID := uuid.New()
+	q1 := model.Question{ID: uuid.New(), TestID: testID, Format: "mcq", PointCorrect: 2, PointWrong: 1}
+	q2 := model.Question{ID: uuid.New(), TestID: testID, Format: "essay", PointCorrect: 5, PointWrong: 0}
+	tests := []model.TestDetail{
+		{
+			Test: model.Test{ID: testID, Title: "Math", Subject: "Math", Topic: "Algebra"},
+			Questions: []model.QuestionWithOptions{
+				{Question: q1},
+				{Question: q2},
+			},
+		},
+	}
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: q1.ID, Score: floatPtr(2)},
+		{QuestionID: q2.ID, Score: floatPtr(3)},
+	}
+
+	rows := topicBreakdown(tests, answers)
+
+	assert.Len(t, rows, 1)
+	assert.Equal(t, testID, rows[0].TestID)
+	assert.Equal(t, "Math", rows[0].Title)
+	assert.Equal(t, "Math", rows[0].Subject)
+	assert.Equal(t, "Algebra", rows[0].Topic)
+	assert.Equal(t, 5.0, rows[0].Earned, "earned sums answer scores within the test")
+	assert.Equal(t, 7, rows[0].Max, "max sums point_correct across objective + essay")
+}
+
+func TestTopicBreakdown_ungradedEssay_earnedZeroContribution(t *testing.T) {
+	testID := uuid.New()
+	qEssay := model.Question{ID: uuid.New(), TestID: testID, Format: "essay", PointCorrect: 5, PointWrong: 0}
+	tests := []model.TestDetail{
+		{
+			Test:      model.Test{ID: testID, Title: "Essay Test", Subject: "Bahasa", Topic: "Writing"},
+			Questions: []model.QuestionWithOptions{{Question: qEssay}},
+		},
+	}
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: qEssay.ID, Score: nil}, // not yet graded
+	}
+
+	rows := topicBreakdown(tests, answers)
+
+	assert.Len(t, rows, 1)
+	assert.Equal(t, 0.0, rows[0].Earned)
+	assert.Equal(t, 5, rows[0].Max)
+}
+
+func TestTopicBreakdown_multipleTests_oneRowEach(t *testing.T) {
+	test1 := uuid.New()
+	test2 := uuid.New()
+	q1 := model.Question{ID: uuid.New(), TestID: test1, Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	q2 := model.Question{ID: uuid.New(), TestID: test2, Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	tests := []model.TestDetail{
+		{Test: model.Test{ID: test1, Title: "T1", Subject: "S1", Topic: "Top1"}, Questions: []model.QuestionWithOptions{{Question: q1}}},
+		{Test: model.Test{ID: test2, Title: "T2", Subject: "S2", Topic: "Top2"}, Questions: []model.QuestionWithOptions{{Question: q2}}},
+	}
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: q1.ID, Score: floatPtr(1)},
+		{QuestionID: q2.ID, Score: floatPtr(0)},
+	}
+
+	rows := topicBreakdown(tests, answers)
+
+	assert.Len(t, rows, 2)
+}
+
+// ---- objectiveCounts (FR-S5-24) ----
+
+func TestObjectiveCounts_correctWrongEmpty(t *testing.T) {
+	qCorrect := model.Question{ID: uuid.New(), Format: "mcq"}
+	qWrong := model.Question{ID: uuid.New(), Format: "mcq"}
+	qEmpty := model.Question{ID: uuid.New(), Format: "mcq"}
+	qEssay := model.Question{ID: uuid.New(), Format: "essay"}
+	questions := []model.QuestionWithOptions{
+		{Question: qCorrect}, {Question: qWrong}, {Question: qEmpty}, {Question: qEssay},
+	}
+
+	trueVal := true
+	falseVal := false
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: qCorrect.ID, Answer: strPtr("b"), IsCorrect: &trueVal},
+		{QuestionID: qWrong.ID, Answer: strPtr("a"), IsCorrect: &falseVal},
+		{QuestionID: qEmpty.ID, Answer: nil, IsCorrect: &falseVal},
+		{QuestionID: qEssay.ID, Answer: strPtr("essay text")}, // essay excluded from counts
+	}
+
+	correct, wrong, empty := objectiveCounts(questions, answers)
+
+	assert.Equal(t, 1, correct)
+	assert.Equal(t, 1, wrong)
+	assert.Equal(t, 1, empty)
+}
+
+func TestObjectiveCounts_emptyStringAnswer_countsAsEmpty(t *testing.T) {
+	q := model.Question{ID: uuid.New(), Format: "short"}
+	questions := []model.QuestionWithOptions{{Question: q}}
+	falseVal := false
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: q.ID, Answer: strPtr(""), IsCorrect: &falseVal},
+	}
+
+	correct, wrong, empty := objectiveCounts(questions, answers)
+
+	assert.Equal(t, 0, correct)
+	assert.Equal(t, 0, wrong)
+	assert.Equal(t, 1, empty)
+}
+
+func TestObjectiveCounts_missingAnswerRow_countsAsEmpty(t *testing.T) {
+	q := model.Question{ID: uuid.New(), Format: "mcq"}
+	questions := []model.QuestionWithOptions{{Question: q}}
+
+	correct, wrong, empty := objectiveCounts(questions, []model.ExamSessionAnswer{})
+
+	assert.Equal(t, 0, correct)
+	assert.Equal(t, 0, wrong)
+	assert.Equal(t, 1, empty)
+}

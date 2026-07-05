@@ -129,6 +129,25 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "order_invoice", id: "Invoice", en: "Invoice" },
   { key: "order_tracking", id: "No. resi", en: "Tracking no." },
   { key: "order_view_invoice", id: "Lihat invoice", en: "View invoice" },
+
+  // Competition / Registration (competition/page.tsx + competition/[id]/page.tsx)
+  { key: "competition_list_subtitle", id: "Paket ujian yang Anda ikuti", en: "Exam packages you are enrolled in" },
+  { key: "competition_status_upcoming", id: "Akan Datang", en: "Upcoming" },
+  { key: "competition_status_ongoing", id: "Berlangsung", en: "Ongoing" },
+  { key: "competition_status_completed", id: "Selesai", en: "Completed" },
+  { key: "competition_view_detail", id: "Lihat Detail", en: "View Detail" },
+  { key: "competition_empty", id: "Anda belum terdaftar pada ujian apapun", en: "You are not enrolled in any exams" },
+  { key: "competition_error", id: "Gagal memuat data ujian", en: "Failed to load exam data" },
+  { key: "competition_detail_back", id: "Kembali", en: "Back" },
+  { key: "competition_detail_exam_info", id: "Informasi Ujian", en: "Exam Information" },
+  { key: "competition_detail_scheduled_at", id: "Jadwal", en: "Scheduled" },
+  { key: "competition_detail_token_label", id: "Token", en: "Token" },
+  { key: "competition_detail_show_token", id: "Tampilkan Token", en: "Show Token" },
+  { key: "competition_detail_hide_token", id: "Sembunyikan Token", en: "Hide Token" },
+  { key: "competition_detail_download_card", id: "Unduh Kartu Peserta", en: "Download Participant Card" },
+  { key: "competition_detail_checkin_heading", id: "Petunjuk Check-in", en: "Check-in Instructions" },
+  { key: "competition_detail_checkin_body", id: "Harap check-in dalam waktu {N} menit sebelum ujian dimulai.", en: "Please check in within {N} minutes before the exam starts." },
+  { key: "competition_detail_not_found", id: "Pendaftaran tidak ditemukan", en: "Registration not found" },
 ];
 
 describe("i18n keys for student page migration", () => {
