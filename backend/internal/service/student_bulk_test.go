@@ -210,6 +210,44 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("unexpected error (not one of the 3 known sentinels) is a row failure, not a batch abort", func(t *testing.T) {
+		schoolID := createTestSchool(t, svc)
+		cancelCtx, cancel := context.WithCancel(ctx)
+		rows := []StudentBulkRow{
+			{Name: "First", NIS: "b_" + uniqueSuffix()},
+			{Name: "Second", NIS: "b_" + uniqueSuffix()},
+			{Name: "Third", NIS: "b_" + uniqueSuffix()},
+		}
+
+		callCount := 0
+		results, successCount, err := svc.ProcessStudentBulkRows(cancelCtx, schoolID, rows, func(int) {
+			callCount++
+			if callCount == 1 {
+				cancel()
+			}
+		})
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: want nil error (row failures must not abort the batch), got %v", err)
+		}
+		if len(results) != len(rows) {
+			t.Fatalf("want a report row for every input row, got %d", len(results))
+		}
+		if successCount != 1 {
+			t.Errorf("want successCount=1 (only the row processed before cancellation), got %d", successCount)
+		}
+		if results[0].Status != "success" {
+			t.Errorf("want first row to succeed before cancellation, got %+v", results[0])
+		}
+		for _, r := range results[1:] {
+			if r.Status != "failed" || r.Error == "" {
+				t.Errorf("want rows after cancellation to be reported as failed with a non-empty error, got %+v", r)
+			}
+			if r.Error == ErrDuplicateNIS.Error() || r.Error == ErrSchoolDeactivated.Error() || r.Error == ErrMissingField.Error() {
+				t.Errorf("this row's failure must be the unexpected context-cancellation error, not one of the 3 known sentinels: %+v", r)
+			}
+		}
+	})
+
 	t.Run("progress callback: monotonic non-decreasing, checkpoint every 5 rows for a 50-row batch", func(t *testing.T) {
 		schoolID := createTestSchool(t, svc)
 		rows := make([]StudentBulkRow, 50)

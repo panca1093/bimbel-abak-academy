@@ -87,9 +87,11 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 }
 
 // ProcessStudentBulkRows applies the existing RegisterStudent to each row,
-// assembling a per-row report. Only the known per-row validation failures
-// (duplicate NIS, deactivated school, missing field) are captured as row
-// errors; anything else aborts the batch and propagates.
+// assembling a per-row report. Every RegisterStudent error — known sentinels
+// (duplicate NIS, deactivated school, missing field) and anything else
+// (transient DB errors, context cancellation) alike — is captured as a row
+// failure; row-level failure is expected/normal and must never abort the
+// batch, per this slice's spec (partial success is a success, not an error).
 func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolID string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
 	results := make([]StudentBulkResultRow, len(rows))
 	successCount := 0
@@ -106,17 +108,14 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolID string, r
 		}
 
 		resp, err := s.RegisterStudent(ctx, schoolID, r.Name, r.NIS, r.Email, nil, nil, nil, nil, nil)
-		switch {
-		case err == nil:
+		if err == nil {
 			result.Status = "success"
 			result.Username = resp.Username
 			result.TempPassword = resp.TempPassword
 			successCount++
-		case errors.Is(err, ErrDuplicateNIS), errors.Is(err, ErrSchoolDeactivated), errors.Is(err, ErrMissingField):
+		} else {
 			result.Status = "failed"
 			result.Error = err.Error()
-		default:
-			return nil, 0, err
 		}
 
 		results[i] = result
