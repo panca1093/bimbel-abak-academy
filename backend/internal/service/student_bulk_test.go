@@ -209,4 +209,35 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("progress callback: monotonic non-decreasing, checkpoint every 5 rows for a 50-row batch", func(t *testing.T) {
+		schoolID := createTestSchool(t, svc)
+		rows := make([]StudentBulkRow, 50)
+		for i := range rows {
+			rows[i] = StudentBulkRow{Name: "Student", NIS: "b_" + uniqueSuffix()}
+		}
+		var progressCalls []int
+		_, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolID, rows, func(pct int) {
+			progressCalls = append(progressCalls, pct)
+		})
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != len(rows) {
+			t.Fatalf("want successCount=%d, got %d", len(rows), successCount)
+		}
+		// checkpoint math: max(1, 50/10) = 5 -> called every 5 rows (>= 10 calls) plus the final forced 100.
+		if len(progressCalls) < 10 {
+			t.Fatalf("want at least 10 progress calls for a 50-row batch, got %d: %v", len(progressCalls), progressCalls)
+		}
+		for i := 1; i < len(progressCalls); i++ {
+			if progressCalls[i] < progressCalls[i-1] {
+				t.Errorf("want monotonically non-decreasing progress, got %v", progressCalls)
+				break
+			}
+		}
+		if progressCalls[len(progressCalls)-1] != 100 {
+			t.Errorf("want final progress call to be 100, got %v", progressCalls)
+		}
+	})
 }
