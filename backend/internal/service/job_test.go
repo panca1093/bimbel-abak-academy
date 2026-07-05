@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"akademi-bimbel/internal/model"
@@ -126,4 +127,128 @@ func TestGetJobStatus_Integration(t *testing.T) {
 			t.Errorf("want ErrJobNotFound, got %v", err)
 		}
 	})
+}
+
+// TestGetJobStatus_SucceededWithResultURL_Integration drives a job to
+// succeeded with a result_url key set via a direct FinishJob call, then reads
+// it back through GetJobStatus. newRealDBService wires storage=nil and
+// cfg=nil (see realdb_test.go), so this can't observe a real presigned URL
+// (NFR-3 acknowledges MinIO wire calls stay untested). What it does pin down:
+// GetJobStatus currently panics (nil pointer dereference inside
+// presignStorage(), which dereferences s.cfg before any nil check) rather
+// than returning an error — unlike GeneratePresignedUploadURL and
+// GeneratePresignedPrivateUploadURL, which both guard with `if s.storage ==
+// nil`. Confirmed empirically: this panics every run, deterministically,
+// since no other test in this package exercises presignStorage() first.
+// If this stops panicking (e.g. a future guard is added to job.go), that's a
+// fix — update this test to assert the new graceful behavior instead of
+// re-enshrining the panic.
+func TestGetJobStatus_SucceededWithResultURL_Integration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	schoolID := createTestSchool(t, svc)
+	owner, err := svc.RegisterStudent(ctx, schoolID, "Result Owner", "ro_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+
+	fileKey := "student-bulk/" + schoolID + "/" + uniqueSuffix() + "-students.csv"
+	job := &model.Job{Type: "student_bulk", InputURL: &fileKey, CreatedBy: owner.ID}
+	if err := repo.CreateJob(ctx, job); err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+
+	resultKey := "student-bulk/" + schoolID + "/" + uniqueSuffix() + "-report.csv"
+	if err := repo.FinishJob(ctx, job.ID, "succeeded", 100, &resultKey, nil); err != nil {
+		t.Fatalf("FinishJob: %v", err)
+	}
+
+	var (
+		resp    *JobResponse
+		callErr error
+	)
+	panicVal := func() (p any) {
+		defer func() { p = recover() }()
+		resp, callErr = svc.GetJobStatus(ctx, job.ID, owner.ID)
+		return nil
+	}()
+
+	if panicVal == nil {
+		t.Fatalf("expected GetJobStatus to panic minting a presigned result_url with unconfigured storage/cfg (documented known gap); got resp=%+v err=%v instead — see this test's doc comment", resp, callErr)
+	}
+}
+
+// TestClaimNextJob_ConcurrentClaims_Integration proves ClaimNextJob's
+// single-statement UPDATE...WHERE id=(SELECT...FOR UPDATE SKIP LOCKED) claim
+// is safe under concurrent pollers: only one of many simultaneous callers can
+// ever claim a given queued row. Run with -race.
+func TestClaimNextJob_ConcurrentClaims_Integration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	// This package's shared DB fixture is never reset between tests, and
+	// earlier tests in this file leave jobs behind in 'queued' status. Drain
+	// them first so the only queued row the race below can claim is the one
+	// seeded here.
+	for {
+		leftover, err := repo.ClaimNextJob(ctx)
+		if err != nil {
+			t.Fatalf("draining pre-existing queued jobs: %v", err)
+		}
+		if leftover == nil {
+			break
+		}
+	}
+
+	schoolID := createTestSchool(t, svc)
+	owner, err := svc.RegisterStudent(ctx, schoolID, "Claimer", "cl_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+	fileKey := "student-bulk/" + schoolID + "/" + uniqueSuffix() + "-students.csv"
+	seeded := &model.Job{Type: "student_bulk", InputURL: &fileKey, CreatedBy: owner.ID}
+	if err := repo.CreateJob(ctx, seeded); err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+
+	const goroutines = 20
+	var (
+		wg        sync.WaitGroup
+		mu        sync.Mutex
+		claimed   int
+		nilClaims int
+		firstErr  error
+	)
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			job, err := repo.ClaimNextJob(ctx)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				return
+			}
+			if job == nil {
+				nilClaims++
+				return
+			}
+			claimed++
+		}()
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		t.Fatalf("ClaimNextJob returned an error: %v", firstErr)
+	}
+	if claimed != 1 {
+		t.Errorf("want exactly 1 goroutine to claim the seeded job, got %d", claimed)
+	}
+	if nilClaims != goroutines-1 {
+		t.Errorf("want %d goroutines to get (nil, nil), got %d", goroutines-1, nilClaims)
+	}
 }
