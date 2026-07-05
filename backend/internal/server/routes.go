@@ -144,6 +144,22 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminNotifs.GET("", h.AdminListNotifications)
 	adminNotifs.PATCH("/:id/read", h.AdminMarkNotificationRead)
 
+	// Admin school routes
+	adminSchools := admin.Group("/schools")
+	adminSchools.Use(handler.RBACMiddleware("schools:write"))
+	adminSchools.GET("", h.AdminListSchools)
+	adminSchools.POST("", h.AdminCreateSchool)
+	adminSchools.PUT("/:id", h.AdminUpdateSchool)
+	adminSchools.PATCH("/:id", h.AdminChangeSchoolStatus)
+
+	// Admin student routes (row-scoped via JWT schoolID)
+	adminStudents := admin.Group("/students")
+	adminStudents.Use(handler.RBACMiddleware("students:*"))
+	adminStudents.GET("", h.AdminListStudents)
+	adminStudents.POST("", h.AdminRegisterStudent)
+	adminStudents.PATCH("/:id", h.AdminChangeStudentStatus)
+	adminStudents.GET("/:id/credentials", h.AdminGetStudentCredentials)
+
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")
 	adminSystem.Use(handler.RBACMiddleware("system:admin"))

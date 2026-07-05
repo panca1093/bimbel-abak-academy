@@ -47,10 +47,10 @@ export function useCreateAdminAccount() {
 export function useChangeAccountRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, role }: { id: string; role: AdminAccountRole }) =>
+    mutationFn: ({ id, role, school_id }: { id: string; role: AdminAccountRole; school_id?: string }) =>
       authFetch<{ message: string }>(`/admin/system/accounts/${encodeURIComponent(id)}/role`, {
         method: "PATCH",
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role, ...(school_id !== undefined ? { school_id } : {}) }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminAccountsKeys.all });

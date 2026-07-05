@@ -15,7 +15,6 @@ import {
   ClipboardList,
   BarChart,
   Users,
-  School,
   Calendar,
   FileText,
   Building,
@@ -113,7 +112,6 @@ const ADMIN_SCHOOL_NAV: RoleNavConfig = [
     titleKey: "role_admin_school",
     items: [
       { labelKey: "students", href: "/admin/school/students", icon: Users },
-      { labelKey: "classes", href: "/admin/school/classes", icon: School },
       { labelKey: "reports", href: "/admin/school/reports", icon: FileText },
     ],
   },
