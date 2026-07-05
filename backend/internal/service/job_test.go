@@ -133,16 +133,11 @@ func TestGetJobStatus_Integration(t *testing.T) {
 // succeeded with a result_url key set via a direct FinishJob call, then reads
 // it back through GetJobStatus. newRealDBService wires storage=nil and
 // cfg=nil (see realdb_test.go), so this can't observe a real presigned URL
-// (NFR-3 acknowledges MinIO wire calls stay untested). What it does pin down:
-// GetJobStatus currently panics (nil pointer dereference inside
-// presignStorage(), which dereferences s.cfg before any nil check) rather
-// than returning an error — unlike GeneratePresignedUploadURL and
-// GeneratePresignedPrivateUploadURL, which both guard with `if s.storage ==
-// nil`. Confirmed empirically: this panics every run, deterministically,
-// since no other test in this package exercises presignStorage() first.
-// If this stops panicking (e.g. a future guard is added to job.go), that's a
-// fix — update this test to assert the new graceful behavior instead of
-// re-enshrining the panic.
+// (NFR-3 acknowledges MinIO wire calls stay untested). GetJobStatus guards
+// `s.storage == nil` before minting a presigned result_url (matching
+// GeneratePresignedUploadURL/GeneratePresignedPrivateUploadURL's existing
+// pattern), so with storage unconfigured this asserts a graceful error
+// rather than a nil-pointer panic.
 func TestGetJobStatus_SucceededWithResultURL_Integration(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
@@ -164,18 +159,9 @@ func TestGetJobStatus_SucceededWithResultURL_Integration(t *testing.T) {
 		t.Fatalf("FinishJob: %v", err)
 	}
 
-	var (
-		resp    *JobResponse
-		callErr error
-	)
-	panicVal := func() (p any) {
-		defer func() { p = recover() }()
-		resp, callErr = svc.GetJobStatus(ctx, job.ID, owner.ID)
-		return nil
-	}()
-
-	if panicVal == nil {
-		t.Fatalf("expected GetJobStatus to panic minting a presigned result_url with unconfigured storage/cfg (documented known gap); got resp=%+v err=%v instead — see this test's doc comment", resp, callErr)
+	_, err = svc.GetJobStatus(ctx, job.ID, owner.ID)
+	if err == nil || err.Error() != "storage not configured" {
+		t.Fatalf(`expected GetJobStatus to return a graceful "storage not configured" error with unconfigured storage/cfg, got %v`, err)
 	}
 }
 

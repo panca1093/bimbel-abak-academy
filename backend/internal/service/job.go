@@ -145,6 +145,9 @@ func (s *Service) GetJobStatus(ctx context.Context, jobID, requesterID string) (
 	}
 
 	if job.ResultURL != nil {
+		if s.storage == nil {
+			return nil, errors.New("storage not configured")
+		}
 		presignedURL, err := s.presignedPrivateGetURL(ctx, *job.ResultURL, 15*time.Minute)
 		if err != nil {
 			return nil, err
