@@ -72,6 +72,24 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 	})
 }
 
+func TestEnqueueStudentBulkJob_RejectsFileKeyOutsideCallersSchool_Integration(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	schoolA := createTestSchool(t, svc)
+	schoolB := createTestSchool(t, svc)
+	reg, err := svc.RegisterStudent(ctx, schoolA, "Job Creator", "jc_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+
+	otherSchoolsFileKey := "student-bulk/" + schoolB + "/" + uniqueSuffix() + "-students.csv"
+	_, err = svc.EnqueueStudentBulkJob(ctx, schoolA, reg.ID, otherSchoolsFileKey)
+	if !errors.Is(err, ErrUploadNotFound) {
+		t.Errorf("want ErrUploadNotFound for a file_key outside the caller's own school prefix, got %v", err)
+	}
+}
+
 func TestGetJobStatus_Integration(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()

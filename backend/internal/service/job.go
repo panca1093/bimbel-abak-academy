@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -70,9 +71,14 @@ func (s *Service) fetchPrivateObject(ctx context.Context, key string) ([]byte, e
 	return io.ReadAll(obj)
 }
 
-// EnqueueStudentBulkJob validates that fileKey exists in the private bucket,
-// downloads it, then delegates to enqueueStudentBulkJobFromData.
+// EnqueueStudentBulkJob validates that fileKey belongs to the caller's own
+// school and exists in the private bucket, downloads it, then delegates to
+// enqueueStudentBulkJobFromData.
 func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy, fileKey string) (string, error) {
+	if !strings.HasPrefix(fileKey, fmt.Sprintf("student-bulk/%s/", schoolID)) {
+		return "", ErrUploadNotFound
+	}
+
 	if _, err := s.storage.StatObject(ctx, s.cfg.MinioPrivateBucketName, fileKey, minio.StatObjectOptions{}); err != nil {
 		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
 			return "", ErrUploadNotFound
