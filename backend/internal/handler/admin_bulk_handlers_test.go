@@ -2,10 +2,15 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
+	"encoding/csv"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/labstack/echo/v4"
 )
 
 // Minimal guard-clause tests driving Task 7's implementation. The definitive
@@ -136,5 +141,57 @@ func TestAdminBulkReissueCredentials_NeitherSupplied_400(t *testing.T) {
 	}
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 when neither student_ids nor all supplied, got %d", rec.Code)
+	}
+}
+
+// TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV exercises the one path
+// none of the guard-clause tests above reach: a valid request that actually
+// calls through to ReissueStudentCredentialsBulk and writes the CSV response.
+// Uses the real-DB env from admin_jobs_test.go (same package) since this
+// handler's storeRepo is a concrete *repository.Repository, not fakeable.
+func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
+	env := newAdminJobsEnv(t)
+	ctx := context.Background()
+
+	school, err := env.svc.CreateSchool(ctx, "Bulk Reissue School", "bulkreissue1", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("CreateSchool: %v", err)
+	}
+	reg, err := env.svc.RegisterStudent(ctx, school.ID, "Reissue Target", "brt1", nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("RegisterStudent: %v", err)
+	}
+
+	body := map[string]any{"student_ids": []string{reg.ID}}
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/admin/students/bulk/credentials", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	setAdminSchoolClaims(c, "admin1", school.ID)
+
+	if err := env.h.AdminBulkReissueCredentials(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get(echo.HeaderContentType); ct != "text/csv" {
+		t.Errorf("Content-Type: want text/csv, got %q", ct)
+	}
+	if cd := rec.Header().Get(echo.HeaderContentDisposition); cd != `attachment; filename="credentials.csv"` {
+		t.Errorf("Content-Disposition: want attachment with filename, got %q", cd)
+	}
+
+	records, err := csv.NewReader(strings.NewReader(rec.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("read back csv body: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("want 2 records (header + 1 row), got %d", len(records))
+	}
+	row := records[1]
+	if row[0] != "Reissue Target" || row[1] != "brt1" || row[2] == "" || row[3] == "" || row[4] != "" {
+		t.Errorf("unexpected credentials row: %+v", row)
 	}
 }

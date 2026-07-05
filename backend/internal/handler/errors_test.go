@@ -55,6 +55,11 @@ func TestMapServiceError(t *testing.T) {
 		{name: "missing field", err: service.ErrMissingField, wantStatus: 400, wantCode: "invalid_request"},
 		{name: "account no email", err: service.ErrAccountNoEmail, wantStatus: 422, wantCode: "reset_invalid"},
 		{name: "invalid date format", err: fmt.Errorf("%w: %s", service.ErrInvalidDateFormat, "bad-date"), wantStatus: 400, wantCode: "invalid_request"},
+		{name: "upload not found", err: service.ErrUploadNotFound, wantStatus: 404, wantCode: "upload_not_found"},
+		{name: "invalid csv", err: service.ErrInvalidCSV, wantStatus: 422, wantCode: "invalid_csv"},
+		{name: "missing csv header", err: service.ErrMissingCSVHeader, wantStatus: 422, wantCode: "invalid_csv_headers"},
+		{name: "row limit exceeded", err: service.ErrRowLimitExceeded, wantStatus: 422, wantCode: "row_limit_exceeded"},
+		{name: "job not found", err: service.ErrJobNotFound, wantStatus: 404, wantCode: "job_not_found"},
 		{name: "unknown error falls to 500", err: errors.New("something unexpected"), wantStatus: 500, wantCode: "internal_error"},
 	}
 
