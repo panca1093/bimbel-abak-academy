@@ -58,9 +58,14 @@ func (s *Service) ReissueStudentCredentialsBulk(ctx context.Context, schoolID st
 	return BuildCredentialsResultCSV(rows), nil
 }
 
+// bulkAllRowCap mirrors maxBulkRows for the all=true pagination path. It's a
+// var rather than using maxBulkRows directly so tests can lower it without
+// seeding 1,000+ real students to exercise the cap.
+var bulkAllRowCap = maxBulkRows
+
 // collectAllStudentIDs paginates every non-deleted student in a school,
 // erroring ErrRowLimitExceeded as soon as the collected count exceeds
-// maxBulkRows rather than waiting for pagination to complete.
+// bulkAllRowCap rather than waiting for pagination to complete.
 func (s *Service) collectAllStudentIDs(ctx context.Context, schoolID string) ([]string, error) {
 	var ids []string
 	cursor := ""
@@ -74,7 +79,7 @@ func (s *Service) collectAllStudentIDs(ctx context.Context, schoolID string) ([]
 		}
 		for _, r := range page {
 			ids = append(ids, r.ID)
-			if len(ids) > maxBulkRows {
+			if len(ids) > bulkAllRowCap {
 				return nil, ErrRowLimitExceeded
 			}
 		}

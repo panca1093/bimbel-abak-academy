@@ -73,6 +73,9 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 		if successRow[0] != "Budi Reissue" || successRow[1] != nis || successRow[2] == "" || successRow[3] == "" || successRow[4] != "" {
 			t.Errorf("unexpected success row: %+v", successRow)
 		}
+		if successRow[3] == reg.TempPassword {
+			t.Error("reissued temp_password should differ from the original registration temp password (proves reissue, not a no-op)")
+		}
 		notFoundRow := records[2]
 		if notFoundRow[4] != "student_not_found" {
 			t.Errorf("want error=student_not_found for missing id, got %+v", notFoundRow)
@@ -135,10 +138,37 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 		if len(records) != len(regs)+1 {
 			t.Fatalf("want %d records (header + %d rows), got %d", len(regs)+1, len(regs), len(records))
 		}
+		origTempPasswordByNIS := make(map[string]string, len(regs))
+		for _, reg := range regs {
+			origTempPasswordByNIS[reg.NIS] = reg.TempPassword
+		}
 		for _, rec := range records[1:] {
 			if rec[2] == "" || rec[3] == "" || rec[4] != "" {
 				t.Errorf("unexpected row in all=true batch: %+v", rec)
 			}
+			if orig, ok := origTempPasswordByNIS[rec[1]]; !ok {
+				t.Errorf("row NIS %q not among seeded students", rec[1])
+			} else if rec[3] == orig {
+				t.Errorf("reissued temp_password for NIS %q should differ from original registration temp password", rec[1])
+			}
+		}
+	})
+
+	t.Run("all=true school over the row cap errors out via pagination, not just explicit ids", func(t *testing.T) {
+		origCap := bulkAllRowCap
+		bulkAllRowCap = 2
+		t.Cleanup(func() { bulkAllRowCap = origCap })
+
+		schoolID := createTestSchool(t, svc)
+		for i := 0; i < 3; i++ {
+			if _, err := svc.RegisterStudent(ctx, schoolID, "Cap Student", "b_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil); err != nil {
+				t.Fatalf("RegisterStudent: %v", err)
+			}
+		}
+
+		_, err := svc.ReissueStudentCredentialsBulk(ctx, schoolID, nil, true)
+		if !errors.Is(err, ErrRowLimitExceeded) {
+			t.Errorf("want ErrRowLimitExceeded, got %v", err)
 		}
 	})
 }
