@@ -15,26 +15,27 @@ type Config struct {
 	WorkerPollInterval time.Duration
 	CORSOrigins        []string
 
-	JWTSecret          string
-	AccessTokenTTL     time.Duration
-	RefreshTokenTTL    time.Duration
-	OTPSecret          string
-	OTPTTL             time.Duration
-	GoogleClientID     string
+	JWTSecret           string
+	AccessTokenTTL      time.Duration
+	RefreshTokenTTL     time.Duration
+	OTPSecret           string
+	OTPTTL              time.Duration
+	GoogleClientID      string
 	ConfigEncryptionKey string
 	FazpassMerchantKey  string
 	FazpassAPIKey       string
-	FazpassBaseURL     string
-	MidtransServerKey  string
-	MidtransClientKey  string
-	MidtransEnv        string
+	FazpassBaseURL      string
+	MidtransServerKey   string
+	MidtransClientKey   string
+	MidtransEnv         string
 
-	MinioEndpoint       string
-	MinioPublicEndpoint string
-	MinioAccessKey      string
-	MinioSecretKey      string
-	MinioUseSSL         bool
-	MinioBucketName     string
+	MinioEndpoint          string
+	MinioPublicEndpoint    string
+	MinioAccessKey         string
+	MinioSecretKey         string
+	MinioUseSSL            bool
+	MinioBucketName        string
+	MinioPrivateBucketName string
 }
 
 func Load() Config {
@@ -47,26 +48,27 @@ func Load() Config {
 		WorkerPollInterval: envDuration("WORKER_POLL_INTERVAL", 5*time.Second),
 		CORSOrigins:        []string{env("WEB_ORIGIN", "http://localhost:3000")},
 
-		JWTSecret:          env("JWT_SECRET", ""),
+		JWTSecret:           env("JWT_SECRET", ""),
 		ConfigEncryptionKey: env("CONFIG_ENCRYPTION_KEY", ""),
-		AccessTokenTTL:     envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
-		RefreshTokenTTL:    envDuration("REFRESH_TOKEN_TTL", 168*time.Hour),
-		OTPSecret:          env("OTP_SECRET", ""),
-		OTPTTL:             envDuration("OTP_TTL", 5*time.Minute),
-		GoogleClientID:     env("GOOGLE_CLIENT_ID", ""),
-		FazpassMerchantKey: env("FAZPASS_MERCHANT_KEY", ""),
-		FazpassAPIKey:      env("FAZPASS_API_KEY", ""),
-		FazpassBaseURL:     env("FAZPASS_BASE_URL", "https://api.fazpass.com"),
-		MidtransServerKey:  env("MIDTRANS_SERVER_KEY", ""),
-		MidtransClientKey:  env("MIDTRANS_CLIENT_KEY", ""),
-		MidtransEnv:        env("MIDTRANS_ENV", "sandbox"),
+		AccessTokenTTL:      envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL:     envDuration("REFRESH_TOKEN_TTL", 168*time.Hour),
+		OTPSecret:           env("OTP_SECRET", ""),
+		OTPTTL:              envDuration("OTP_TTL", 5*time.Minute),
+		GoogleClientID:      env("GOOGLE_CLIENT_ID", ""),
+		FazpassMerchantKey:  env("FAZPASS_MERCHANT_KEY", ""),
+		FazpassAPIKey:       env("FAZPASS_API_KEY", ""),
+		FazpassBaseURL:      env("FAZPASS_BASE_URL", "https://api.fazpass.com"),
+		MidtransServerKey:   env("MIDTRANS_SERVER_KEY", ""),
+		MidtransClientKey:   env("MIDTRANS_CLIENT_KEY", ""),
+		MidtransEnv:         env("MIDTRANS_ENV", "sandbox"),
 
-		MinioEndpoint:       env("MINIO_ENDPOINT", "minio:9000"),
-		MinioPublicEndpoint: env("MINIO_PUBLIC_ENDPOINT", "localhost:9000"),
-		MinioAccessKey:      env("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecretKey:      env("MINIO_SECRET_KEY", "minioadmin"),
-		MinioUseSSL:         envBool("MINIO_USE_SSL", false),
-		MinioBucketName:     env("MINIO_BUCKET_NAME", "akademi-bimbel"),
+		MinioEndpoint:          env("MINIO_ENDPOINT", "minio:9000"),
+		MinioPublicEndpoint:    env("MINIO_PUBLIC_ENDPOINT", "localhost:9000"),
+		MinioAccessKey:         env("MINIO_ACCESS_KEY", "minioadmin"),
+		MinioSecretKey:         env("MINIO_SECRET_KEY", "minioadmin"),
+		MinioUseSSL:            envBool("MINIO_USE_SSL", false),
+		MinioBucketName:        env("MINIO_BUCKET_NAME", "akademi-bimbel"),
+		MinioPrivateBucketName: env("MINIO_PRIVATE_BUCKET_NAME", "akademi-bimbel-private"),
 	}
 }
 

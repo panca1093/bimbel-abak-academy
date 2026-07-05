@@ -23,3 +23,11 @@ func TestLoad_ConfigEncryptionKey_default(t *testing.T) {
 		t.Errorf("ConfigEncryptionKey default: got %q want %q", cfg.ConfigEncryptionKey, "")
 	}
 }
+
+func TestLoad_MinioPrivateBucketName_default(t *testing.T) {
+	os.Unsetenv("MINIO_PRIVATE_BUCKET_NAME")
+	cfg := Load()
+	if cfg.MinioPrivateBucketName != "akademi-bimbel-private" {
+		t.Errorf("MinioPrivateBucketName default: got %q want %q", cfg.MinioPrivateBucketName, "akademi-bimbel-private")
+	}
+}
