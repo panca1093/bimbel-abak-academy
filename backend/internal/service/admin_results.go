@@ -1,8 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -105,4 +109,46 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 	}
 
 	return detail, nil
+}
+
+// ExportSchoolResultsCSV builds a CSV of school-scoped results for an exam
+// by looping ListSchoolResults page by page until exhausted (FR-SCHOOL-08-17).
+// Uses encoding/csv + bytes.Buffer, matching BuildCredentialsResultCSV in
+// bulk_credentials.go. Header rows are always written even when the result
+// set is empty (hidden/locked exam -> header only, no error).
+func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID string) ([]byte, error) {
+	var rows []model.AdminResultRow
+	cursor := ""
+	for {
+		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, "", cursor, 100)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, page...)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	_ = w.Write([]string{"name", "nis", "score", "submitted_at"})
+	for _, r := range rows {
+		nis := ""
+		if r.NIS != nil {
+			nis = *r.NIS
+		}
+		scoreStr := ""
+		if r.Score != nil {
+			scoreStr = fmt.Sprintf("%v", *r.Score)
+		}
+		submittedAt := ""
+		if r.SubmittedAt != nil {
+			submittedAt = r.SubmittedAt.Format(time.RFC3339)
+		}
+		_ = w.Write([]string{r.StudentName, nis, scoreStr, submittedAt})
+	}
+	w.Flush()
+	return buf.Bytes(), nil
 }

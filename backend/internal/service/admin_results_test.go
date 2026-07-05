@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -570,6 +572,216 @@ func TestAdminResultDetail_ScorePembahasan_HasBoth(t *testing.T) {
 	}
 	if detail.Pembahasan[0].CorrectAnswer == nil || *detail.Pembahasan[0].CorrectAnswer != "b" {
 		t.Errorf("pembahasan correct_answer: want b, got %v", detail.Pembahasan[0].CorrectAnswer)
+	}
+}
+
+// ---------- shimSessionService: admin results export ----------
+
+func (s *shimSessionService) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, schoolID string) ([]byte, error) {
+	var rows []model.AdminResultRow
+	cursor := ""
+	for {
+		page, next, err := s.ListSchoolResults(ctx, examID, schoolID, "", cursor, 100)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, page...)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	_ = w.Write([]string{"name", "nis", "score", "submitted_at"})
+	for _, r := range rows {
+		nis := ""
+		if r.NIS != nil {
+			nis = *r.NIS
+		}
+		scoreStr := ""
+		if r.Score != nil {
+			scoreStr = fmt.Sprintf("%v", *r.Score)
+		}
+		submittedAt := ""
+		if r.SubmittedAt != nil {
+			submittedAt = r.SubmittedAt.Format(time.RFC3339)
+		}
+		_ = w.Write([]string{r.StudentName, nis, scoreStr, submittedAt})
+	}
+	w.Flush()
+	return buf.Bytes(), nil
+}
+
+// ---------- tests: ExportSchoolResultsCSV ----------
+
+func TestExportSchoolResults_HiddenExam_OnlyHeader(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	schoolID := uuid.New().String()
+	examID := uuid.New()
+	svc.repo.seedExam(&model.Exam{ID: examID, ResultConfig: "hidden"})
+
+	studentID := uuid.New()
+	svc.repo.studentSchools[studentID] = schoolID
+	svc.repo.sessions[uuid.New()] = &model.ExamSession{
+		ID: uuid.New(), StudentID: studentID, ExamID: examID,
+		Status: "submitted", Score: floatPtr(80),
+	}
+
+	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID)
+	if err != nil {
+		t.Fatalf("ExportSchoolResultsCSV: %v", err)
+	}
+
+	r := csv.NewReader(strings.NewReader(string(csvData)))
+	records, err := r.ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf("want 1 record (header only), got %d", len(records))
+	}
+	wantHeader := []string{"name", "nis", "score", "submitted_at"}
+	for i, h := range wantHeader {
+		if records[0][i] != h {
+			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
+		}
+	}
+}
+
+func TestExportSchoolResults_LockedExam_OnlyHeader(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	schoolID := uuid.New().String()
+	examID := uuid.New()
+	releaseAt := time.Now().Add(24 * time.Hour)
+	svc.repo.seedExam(&model.Exam{ID: examID, ResultConfig: "score_only", ResultReleaseAt: &releaseAt})
+
+	studentID := uuid.New()
+	svc.repo.studentSchools[studentID] = schoolID
+	svc.repo.sessions[uuid.New()] = &model.ExamSession{
+		ID: uuid.New(), StudentID: studentID, ExamID: examID,
+		Status: "submitted", Score: floatPtr(80),
+	}
+
+	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID)
+	if err != nil {
+		t.Fatalf("ExportSchoolResultsCSV: %v", err)
+	}
+
+	r := csv.NewReader(strings.NewReader(string(csvData)))
+	records, err := r.ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf("want 1 record (header only), got %d", len(records))
+	}
+	wantHeader := []string{"name", "nis", "score", "submitted_at"}
+	for i, h := range wantHeader {
+		if records[0][i] != h {
+			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
+		}
+	}
+}
+
+func TestExportSchoolResults_ExamNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.ExportSchoolResultsCSV(ctx, uuid.New(), uuid.New().String())
+	if !errors.Is(err, ErrExamNotFound) {
+		t.Errorf("want ErrExamNotFound, got %v", err)
+	}
+}
+
+func TestExportSchoolResults_PaginateThenCompare(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	schoolID := uuid.New().String()
+	examID := uuid.New()
+	svc.repo.seedExam(&model.Exam{ID: examID, ResultConfig: "score_only"})
+	svc.repo.seedTests(examID, nil)
+
+	now := time.Now()
+	seedSessions := 5
+	for i := 0; i < seedSessions; i++ {
+		studentID := uuid.New()
+		svc.repo.studentSchools[studentID] = schoolID
+		svc.repo.sessions[uuid.New()] = &model.ExamSession{
+			ID: uuid.New(), StudentID: studentID, ExamID: examID,
+			Status: "submitted", Score: floatPtr(float64(70 + i)), SubmittedAt: &now,
+		}
+	}
+
+	// Manually page through ListSchoolResults with limit=2 to exercise pagination.
+	var accumulated []model.AdminResultRow
+	cursor := ""
+	for {
+		page, next, err := svc.ListSchoolResults(ctx, examID, schoolID, "", cursor, 2)
+		if err != nil {
+			t.Fatalf("ListSchoolResults: %v", err)
+		}
+		accumulated = append(accumulated, page...)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if len(accumulated) != seedSessions {
+		t.Fatalf("accumulated rows: want %d, got %d", seedSessions, len(accumulated))
+	}
+
+	// Now call export.
+	csvData, err := svc.ExportSchoolResultsCSV(ctx, examID, schoolID)
+	if err != nil {
+		t.Fatalf("ExportSchoolResultsCSV: %v", err)
+	}
+
+	r := csv.NewReader(strings.NewReader(string(csvData)))
+	records, err := r.ReadAll()
+	if err != nil {
+		t.Fatalf("read csv: %v", err)
+	}
+
+	if len(records) != seedSessions+1 {
+		t.Fatalf("want %d records (header + %d rows), got %d", seedSessions+1, seedSessions, len(records))
+	}
+
+	// Verify each accumulated row has a matching CSV row.
+	for i, row := range accumulated {
+		csvRow := records[i+1] // +1 for header
+		if csvRow[0] != row.StudentName {
+			t.Errorf("row %d name: want %s, got %s", i, row.StudentName, csvRow[0])
+		}
+		nis := ""
+		if row.NIS != nil {
+			nis = *row.NIS
+		}
+		if csvRow[1] != nis {
+			t.Errorf("row %d nis: want %s, got %s", i, nis, csvRow[1])
+		}
+		scoreStr := ""
+		if row.Score != nil {
+			scoreStr = fmt.Sprintf("%v", *row.Score)
+		}
+		if csvRow[2] != scoreStr {
+			t.Errorf("row %d score: want %s, got %s", i, scoreStr, csvRow[2])
+		}
+		submittedAt := ""
+		if row.SubmittedAt != nil {
+			submittedAt = row.SubmittedAt.Format(time.RFC3339)
+		}
+		if csvRow[3] != submittedAt {
+			t.Errorf("row %d submitted_at: want %s, got %s", i, submittedAt, csvRow[3])
+		}
 	}
 }
 
