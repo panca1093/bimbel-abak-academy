@@ -299,6 +299,43 @@ func TestRunStudentBulkJobFailsWhenSchoolLookupFails(t *testing.T) {
 	}
 }
 
+func TestRunStudentBulkJobFailsWhenSchoolIDIsNil(t *testing.T) {
+	ctx := context.Background()
+	job := model.Job{ID: "job-6", Type: "student_bulk", CreatedBy: "u1", Progress: 0, InputURL: strPtr("upload.csv")}
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return &model.User{ID: "u1", SchoolID: nil}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
+			t.Fatal("expected no download attempt when user has no school binding")
+			return nil, nil
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	finish := repo.finishCalls[0]
+	if finish.status != "failed" {
+		t.Errorf("expected status failed when user has no school binding, got %s", finish.status)
+	}
+	if finish.resultURL != nil {
+		t.Error("expected nil resultURL on early failure")
+	}
+	if finish.errMsg == nil {
+		t.Error("expected an error message")
+	}
+	if len(store.getCalls) != 0 {
+		t.Errorf("expected GetObjectBytes never called, got %d calls", len(store.getCalls))
+	}
+}
+
 func TestRunStudentBulkJobFailsWhenDownloadFails(t *testing.T) {
 	ctx := context.Background()
 	job := model.Job{ID: "job-4", Type: "student_bulk", CreatedBy: "u1", InputURL: strPtr("upload.csv")}
