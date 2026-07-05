@@ -30,7 +30,7 @@ func (s *Service) ListSchoolResults(ctx context.Context, examID uuid.UUID, schoo
 	// Exam-level gates only (FR-SCHOOL-08-05): forcing both bools true collapses
 	// the 3-gate check to gates 1 (hidden) and 3 (locked), skipping gate 2 (grading).
 	if _, ok := resultGate(*exam, true, true); ok {
-		return nil, "", nil
+		return []model.AdminResultRow{}, "", nil
 	}
 
 	if limit <= 0 || limit > 100 {

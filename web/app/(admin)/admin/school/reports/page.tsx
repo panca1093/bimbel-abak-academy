@@ -75,9 +75,10 @@ export default function SchoolReportsPage() {
     if (filterKey !== pageFilterKeyRef.current) return;
 
     setAccumulated((prev) => {
-      if (activeCursor === undefined) return query.data!.data;
+      const data = query.data!.data ?? [];
+      if (activeCursor === undefined) return data;
       const ids = new Set(prev.map((s) => s.session_id));
-      const fresh = query.data!.data.filter((s) => !ids.has(s.session_id));
+      const fresh = data.filter((s) => !ids.has(s.session_id));
       return [...prev, ...fresh];
     });
     setNextCursor(query.data.next_cursor);
@@ -289,10 +290,10 @@ export default function SchoolReportsPage() {
                   onClick={() => handleRowClick(row.session_id)}
                 >
                   <td className="px-4 py-3 font-medium text-ink-900">
-                    {row.name}
+                    {row.student_name}
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
-                    {row.nis}
+                    {row.nis ?? "-"}
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
                     {row.score}
@@ -414,7 +415,7 @@ function ResultDetailContent({
     <div className="space-y-4">
       {/* Student info */}
       <div className="text-sm text-ink-600">
-        <p><span className="font-semibold text-ink-900">{detail.name}</span> · NIS: {detail.nis}</p>
+        <p><span className="font-semibold text-ink-900">{detail.student_name}</span> · NIS: {detail.nis ?? "-"}</p>
       </div>
 
       {/* Score summary */}

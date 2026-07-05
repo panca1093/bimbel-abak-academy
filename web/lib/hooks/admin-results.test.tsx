@@ -45,7 +45,7 @@ describe("admin-results hooks", () => {
     const rows: AdminResultRow[] = [
       {
         session_id: "s1",
-        name: "Budi Santoso",
+        student_name: "Budi Santoso",
         nis: "12345",
         score: 85,
         submitted_at: "2026-01-01T00:00:00Z",
@@ -101,7 +101,7 @@ describe("admin-results hooks", () => {
   it("useAdminResultDetail fetches GET /admin/results/:session_id", async () => {
     const detail: AdminResultDetail = {
       session_id: "s1",
-      name: "Budi Santoso",
+      student_name: "Budi Santoso",
       nis: "12345",
       score: 85,
       submitted_at: "2026-01-01T00:00:00Z",

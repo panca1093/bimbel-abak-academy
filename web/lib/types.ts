@@ -770,16 +770,16 @@ export interface ExamAnalytics {
 
 export interface AdminResultRow {
   session_id: string;
-  name: string;
-  nis: string;
+  student_name: string;
+  nis?: string | null;
   score: number;
   submitted_at: string;
 }
 
 export interface AdminResultDetail {
   session_id: string;
-  name: string;
-  nis: string;
+  student_name: string;
+  nis?: string | null;
   score: number;
   submitted_at: string;
   result_config: string;

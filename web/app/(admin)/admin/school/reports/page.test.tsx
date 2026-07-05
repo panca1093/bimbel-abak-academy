@@ -55,14 +55,14 @@ const sampleExamProducts = [
 const sampleResultRows: AdminResultRow[] = [
   {
     session_id: "s1",
-    name: "Budi Santoso",
+    student_name: "Budi Santoso",
     nis: "12345",
     score: 85,
     submitted_at: "2026-01-15T00:00:00Z",
   },
   {
     session_id: "s2",
-    name: "Siti Aisyah",
+    student_name: "Siti Aisyah",
     nis: "67890",
     score: 92,
     submitted_at: "2026-02-20T00:00:00Z",
@@ -76,7 +76,7 @@ const paginatedResponse = (rows: AdminResultRow[]) => ({
 
 const scoreOnlyDetail: AdminResultDetail = {
   session_id: "s1",
-  name: "Budi Santoso",
+  student_name: "Budi Santoso",
   nis: "12345",
   score: 85,
   submitted_at: "2026-01-15T00:00:00Z",
@@ -88,7 +88,7 @@ const scoreOnlyDetail: AdminResultDetail = {
 
 const scorePembahasanDetail: AdminResultDetail = {
   session_id: "s2",
-  name: "Siti Aisyah",
+  student_name: "Siti Aisyah",
   nis: "67890",
   score: 92,
   submitted_at: "2026-02-20T00:00:00Z",
