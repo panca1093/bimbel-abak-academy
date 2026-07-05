@@ -20,8 +20,6 @@ var (
 	ErrInvalidStatusFilter  = errors.New("invalid status filter")
 	ErrAccountNoEmail       = errors.New("account has no email for reset")
 	ErrMissingField         = errors.New("missing required field")
-	ErrSchoolRequired       = errors.New("school_id is required for admin_school role")
-	ErrSchoolNotAllowed     = errors.New("school_id must be empty for this role")
 )
 
 // adminRoles is the set of valid admin roles assignable via system endpoints.
@@ -65,7 +63,6 @@ type AdminAccountResponse struct {
 	Email     *string `json:"email"`
 	Role      string  `json:"role"`
 	Status    string  `json:"status"`
-	SchoolID  *string `json:"school_id"`
 	CreatedAt string  `json:"created_at"`
 	UpdatedAt string  `json:"updated_at"`
 }
@@ -77,7 +74,6 @@ func toAdminAccountResponse(row repository.AdminUserRow) AdminAccountResponse {
 		Email:     row.Email,
 		Role:      row.Role,
 		Status:    row.Status,
-		SchoolID:  row.SchoolID,
 		CreatedAt: row.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: row.UpdatedAt.Format(time.RFC3339),
 	}
@@ -110,7 +106,7 @@ func (s *Service) ListAdminAccounts(ctx context.Context, roleFilter, statusFilte
 }
 
 // CreateAdminAccount creates a new admin account with the given role.
-func (s *Service) CreateAdminAccount(ctx context.Context, actorID, email, name, role, password string, schoolID *string) (*AdminAccountResponse, error) {
+func (s *Service) CreateAdminAccount(ctx context.Context, actorID, email, name, role, password string) (*AdminAccountResponse, error) {
 	email = normalizeEmail(email)
 	if email == "" || strings.TrimSpace(name) == "" || role == "" || password == "" {
 		return nil, ErrMissingField
@@ -125,21 +121,6 @@ func (s *Service) CreateAdminAccount(ctx context.Context, actorID, email, name, 
 		return nil, err
 	}
 
-	if role == RoleAdminSchool {
-		if schoolID == nil || *schoolID == "" {
-			return nil, ErrSchoolRequired
-		}
-		sch, err := s.storeRepo.GetSchoolByID(ctx, *schoolID)
-		if err != nil {
-			return nil, err
-		}
-		if sch == nil {
-			return nil, ErrSchoolNotFound
-		}
-	} else if schoolID != nil {
-		return nil, ErrSchoolNotAllowed
-	}
-
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
 		return nil, err
@@ -150,7 +131,6 @@ func (s *Service) CreateAdminAccount(ctx context.Context, actorID, email, name, 
 		Name:         name,
 		PasswordHash: string(hash),
 		Role:         role,
-		SchoolID:     schoolID,
 		Status:       "active",
 		OTPEnabled:   false,
 	}
@@ -159,14 +139,10 @@ func (s *Service) CreateAdminAccount(ctx context.Context, actorID, email, name, 
 	}
 
 	actor := &actorID
-	auditMeta := map[string]any{
+	if auditErr := s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", user.ID, "account.create", map[string]any{
 		"role":  role,
 		"email": email,
-	}
-	if schoolID != nil {
-		auditMeta["school_id"] = *schoolID
-	}
-	if auditErr := s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", user.ID, "account.create", auditMeta); auditErr != nil {
+	}); auditErr != nil {
 		return nil, auditErr
 	}
 
@@ -176,14 +152,13 @@ func (s *Service) CreateAdminAccount(ctx context.Context, actorID, email, name, 
 		Email:     user.Email,
 		Role:      user.Role,
 		Status:    user.Status,
-		SchoolID:  user.SchoolID,
 		CreatedAt: user.CreatedAt.Format(time.RFC3339),
 		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
 	}, nil
 }
 
 // ChangeAccountRole changes an account's role.
-func (s *Service) ChangeAccountRole(ctx context.Context, actorID, targetID, newRole string, schoolID *string) error {
+func (s *Service) ChangeAccountRole(ctx context.Context, actorID, targetID, newRole string) error {
 	if _, err := parseUUID(targetID); err != nil {
 		return ErrInvalidUUID
 	}
@@ -199,38 +174,16 @@ func (s *Service) ChangeAccountRole(ctx context.Context, actorID, targetID, newR
 		return ErrUserNotFound
 	}
 
-	if newRole == RoleAdminSchool {
-		if schoolID == nil || *schoolID == "" {
-			return ErrSchoolRequired
-		}
-		sch, err := s.storeRepo.GetSchoolByID(ctx, *schoolID)
-		if err != nil {
-			return err
-		}
-		if sch == nil {
-			return ErrSchoolNotFound
-		}
-	} else {
-		schoolID = nil
-	}
-
 	oldRole := user.Role
 	if err := s.storeRepo.UpdateAdminUserRole(ctx, targetID, newRole); err != nil {
 		return err
 	}
-	if err := s.storeRepo.SetUserSchoolID(ctx, targetID, schoolID); err != nil {
-		return err
-	}
 
 	actor := &actorID
-	auditMeta := map[string]any{
+	if auditErr := s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", targetID, "account.role_change", map[string]any{
 		"from": oldRole,
 		"to":   newRole,
-	}
-	if schoolID != nil {
-		auditMeta["school_id"] = *schoolID
-	}
-	if auditErr := s.storeRepo.InsertAuditLogMeta(ctx, nil, actor, "user", targetID, "account.role_change", auditMeta); auditErr != nil {
+	}); auditErr != nil {
 		return auditErr
 	}
 

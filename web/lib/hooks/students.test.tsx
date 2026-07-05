@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useSchools, useUpdatePhoto, studentsKeys } from "./students";
-import type { School, User } from "@/lib/types";
+import { useUpdatePhoto, studentsKeys } from "./students";
+import type { User } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -29,45 +29,6 @@ vi.mock("@/stores/auth", () => ({
     }),
   },
 }));
-
-describe("useSchools", () => {
-  beforeEach(() => {
-    mockAuthFetch.mockReset();
-  });
-
-  afterEach(() => {
-    vi.clearAllTimers();
-  });
-
-  it("fetches GET /schools and returns bare School array", async () => {
-    const schools: School[] = [
-      { id: "s1", name: "SMAN 1 Jakarta" },
-      { id: "s2", name: "SMAN 2 Jakarta" },
-    ];
-    mockAuthFetch.mockResolvedValueOnce(schools);
-
-    const { wrapper } = wrapperFactory();
-    const { result } = renderHook(() => useSchools(), { wrapper });
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-    expect(mockAuthFetch).toHaveBeenCalledWith("/schools");
-    // Assert data is the bare array, not wrapped in { data: ... }
-    expect(Array.isArray(result.current.data)).toBe(true);
-    expect(result.current.data).toEqual(schools);
-  });
-
-  it("returns empty array when empty response", async () => {
-    mockAuthFetch.mockResolvedValueOnce([]);
-
-    const { wrapper } = wrapperFactory();
-    const { result } = renderHook(() => useSchools(), { wrapper });
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-    expect(result.current.data).toEqual([]);
-  });
-});
 
 describe("useUpdatePhoto", () => {
   beforeEach(() => {

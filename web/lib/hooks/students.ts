@@ -42,7 +42,7 @@ export interface UpdateProfileInput {
 export function useSchools() {
   return useQuery({
     queryKey: [...studentsKeys.all, "schools"],
-    queryFn: () => authFetch<School[]>(`/schools`),
+    queryFn: () => authFetch<{ schools: School[] }>(`/schools`).then((res) => res.schools),
   });
 }
 

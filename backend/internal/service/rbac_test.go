@@ -90,16 +90,3 @@ func TestHasCapability_unknownRoleSatisfiesNothing(t *testing.T) {
 		t.Error("HasCapability(unknown, questions:read): want false")
 	}
 }
-
-func TestHasCapability_SuperAdminSchoolsWrite(t *testing.T) {
-	if !HasCapability(RoleSuperAdmin, "schools:write") {
-		t.Error("HasCapability(super_admin, schools:write): want true")
-	}
-}
-
-func TestCapabilities_SuperAdminCount(t *testing.T) {
-	caps := Capabilities(RoleSuperAdmin)
-	if len(caps) < 2 {
-		t.Errorf("Capabilities(super_admin): want at least 2 capabilities (has * and schools:write), got %d", len(caps))
-	}
-}

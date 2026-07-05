@@ -47,7 +47,6 @@ import {
   useChangeAccountStatus,
   useResetAccountPassword,
 } from "@/lib/hooks/admin-accounts";
-import { useSchools } from "@/lib/hooks/students";
 import type { AdminAccount, AdminAccountRole, AdminAccountStatus } from "@/lib/types";
 
 const ROLE_TONE: Record<AdminAccountRole, string> = {
@@ -91,11 +90,9 @@ export default function SystemAccountsPage() {
     email: "",
     role: "admin_store" as AdminAccountRole,
     password: "",
-    school_id: "",
   });
   const [roleChangeTarget, setRoleChangeTarget] = useState<AdminAccount | null>(null);
   const [roleChangeRole, setRoleChangeRole] = useState<AdminAccountRole>("admin_store");
-  const [roleChangeSchoolId, setRoleChangeSchoolId] = useState("");
 
   const { data: accounts = [], isLoading, error } = useAdminAccounts(
     roleFilter === "all" ? undefined : roleFilter,
@@ -106,7 +103,6 @@ export default function SystemAccountsPage() {
   const changeRole = useChangeAccountRole();
   const changeStatus = useChangeAccountStatus();
   const resetPwd = useResetAccountPassword();
-  const { data: schools = [] } = useSchools();
 
   const rows = useMemo(() => {
     if (search.trim() === "") return accounts;
@@ -130,21 +126,16 @@ export default function SystemAccountsPage() {
       toast.error(t("accounts_toast_required"));
       return;
     }
-    if (createForm.role === "admin_school" && !createForm.school_id) {
-      toast.error(t("accounts_toast_school_required"));
-      return;
-    }
     try {
       await createAccount.mutateAsync({
         name: createForm.name,
         email: createForm.email,
         role: createForm.role,
         password: createForm.password,
-        school_id: createForm.school_id || undefined,
       });
       toast.success(t("accounts_toast_created"));
       setCreateOpen(false);
-      setCreateForm({ name: "", email: "", role: "admin_store", password: "", school_id: "" });
+      setCreateForm({ name: "", email: "", role: "admin_store", password: "" });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("accounts_toast_create_failed");
       toast.error(msg);
@@ -153,19 +144,10 @@ export default function SystemAccountsPage() {
 
   const handleRoleChange = async () => {
     if (!roleChangeTarget) return;
-    if (roleChangeRole === "admin_school" && !roleChangeSchoolId) {
-      toast.error(t("accounts_toast_school_required"));
-      return;
-    }
     try {
-      await changeRole.mutateAsync({
-        id: roleChangeTarget.id,
-        role: roleChangeRole,
-        school_id: roleChangeRole === "admin_school" ? roleChangeSchoolId || undefined : undefined,
-      });
+      await changeRole.mutateAsync({ id: roleChangeTarget.id, role: roleChangeRole });
       toast.success(t("accounts_toast_role_changed"));
       setRoleChangeTarget(null);
-      setRoleChangeSchoolId("");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("accounts_toast_role_failed");
       toast.error(msg);
@@ -354,7 +336,6 @@ export default function SystemAccountsPage() {
                           onClick={() => {
                             setRoleChangeTarget(a);
                             setRoleChangeRole(a.role);
-                            setRoleChangeSchoolId(a.school_id ?? "");
                           }}
                         >
                           <Mail className="mr-2 size-4" />
@@ -407,13 +388,7 @@ export default function SystemAccountsPage() {
               <Label>{t("accounts_field_role")}</Label>
               <Select
                 value={createForm.role}
-                onValueChange={(v) =>
-                  setCreateForm((f) => ({
-                    ...f,
-                    role: v as AdminAccountRole,
-                    school_id: v === "admin_school" ? f.school_id : "",
-                  }))
-                }
+                onValueChange={(v) => setCreateForm((f) => ({ ...f, role: v as AdminAccountRole }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={t("accounts_placeholder_pick_role")} />
@@ -427,26 +402,6 @@ export default function SystemAccountsPage() {
                 </SelectContent>
               </Select>
             </div>
-            {createForm.role === "admin_school" && (
-              <div>
-                <Label>{t("accounts_field_school")}</Label>
-                <Select
-                  value={createForm.school_id}
-                  onValueChange={(v) => setCreateForm((f) => ({ ...f, school_id: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("accounts_placeholder_pick_school")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schools.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
             <div>
               <Label>{t("accounts_field_password")}</Label>
               <Input
@@ -472,10 +427,7 @@ export default function SystemAccountsPage() {
       <Dialog
         open={roleChangeTarget !== null}
         onOpenChange={(open) => {
-          if (!open) {
-            setRoleChangeTarget(null);
-            setRoleChangeSchoolId("");
-          }
+          if (!open) setRoleChangeTarget(null);
         }}
       >
         <DialogContent className="sm:max-w-sm">
@@ -490,10 +442,7 @@ export default function SystemAccountsPage() {
               <Label>{t("accounts_field_new_role")}</Label>
               <Select
                 value={roleChangeRole}
-                onValueChange={(v) => {
-                  setRoleChangeRole(v as AdminAccountRole);
-                  if (v !== "admin_school") setRoleChangeSchoolId("");
-                }}
+                onValueChange={(v) => setRoleChangeRole(v as AdminAccountRole)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={t("accounts_placeholder_pick_role")} />
@@ -507,26 +456,6 @@ export default function SystemAccountsPage() {
                 </SelectContent>
               </Select>
             </div>
-            {roleChangeRole === "admin_school" && (
-              <div>
-                <Label>{t("accounts_field_school")}</Label>
-                <Select
-                  value={roleChangeSchoolId}
-                  onValueChange={setRoleChangeSchoolId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("accounts_placeholder_pick_school")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schools.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setRoleChangeTarget(null)}>
