@@ -1,0 +1,156 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/url"
+	"time"
+
+	"akademi-bimbel/internal/model"
+
+	"github.com/google/uuid"
+	"github.com/minio/minio-go/v7"
+)
+
+var (
+	ErrUploadNotFound = errors.New("upload not found")
+	ErrJobNotFound    = errors.New("job not found")
+)
+
+type PrivateUploadURL struct {
+	URL    string `json:"url"`
+	Method string `json:"method"`
+	Key    string `json:"key"`
+}
+
+// GeneratePresignedPrivateUploadURL mirrors GeneratePresignedUploadURL's
+// bucket-ensure-exists + presigned-PUT pattern but must NOT call
+// SetBucketPolicy — this bucket stays private (no public-read policy),
+// unlike the avatar bucket.
+func (s *Service) GeneratePresignedPrivateUploadURL(ctx context.Context, schoolID, filename, contentType string) (*PrivateUploadURL, error) {
+	if s.storage == nil {
+		return nil, errors.New("storage not configured")
+	}
+
+	bucket := s.cfg.MinioPrivateBucketName
+	exists, err := s.storage.BucketExists(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		if err := s.storage.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
+			return nil, err
+		}
+	}
+
+	key := fmt.Sprintf("student-bulk/%s/%s-%s", schoolID, uuid.New().String(), filename)
+	presigned, err := s.presignStorage().PresignedPutObject(ctx, bucket, key, 15*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PrivateUploadURL{
+		URL:    presigned.String(),
+		Method: "PUT",
+		Key:    key,
+	}, nil
+}
+
+// fetchPrivateObject is a thin wrapper over the private-bucket GetObject wire
+// call, kept separate so enqueueStudentBulkJobFromData is testable without
+// MinIO.
+func (s *Service) fetchPrivateObject(ctx context.Context, key string) ([]byte, error) {
+	obj, err := s.storage.GetObject(ctx, s.cfg.MinioPrivateBucketName, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+	return io.ReadAll(obj)
+}
+
+// EnqueueStudentBulkJob validates that fileKey exists in the private bucket,
+// downloads it, then delegates to enqueueStudentBulkJobFromData.
+func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy, fileKey string) (string, error) {
+	if _, err := s.storage.StatObject(ctx, s.cfg.MinioPrivateBucketName, fileKey, minio.StatObjectOptions{}); err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return "", ErrUploadNotFound
+		}
+		return "", err
+	}
+
+	data, err := s.fetchPrivateObject(ctx, fileKey)
+	if err != nil {
+		return "", err
+	}
+
+	return s.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, data)
+}
+
+// enqueueStudentBulkJobFromData validates the CSV and inserts the job row.
+// schoolID is unused here — row-scoping is enforced by the caller passing
+// claims.SchoolID, and a future job type might need it in this signature.
+func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, schoolID, createdBy, fileKey string, data []byte) (string, error) {
+	if _, err := ParseStudentBulkCSV(data); err != nil {
+		return "", err
+	}
+
+	job := &model.Job{Type: "student_bulk", InputURL: &fileKey, CreatedBy: createdBy}
+	if err := s.storeRepo.CreateJob(ctx, job); err != nil {
+		return "", err
+	}
+	return job.ID, nil
+}
+
+type JobResponse struct {
+	ID        string  `json:"id"`
+	Type      string  `json:"type"`
+	Status    string  `json:"status"`
+	Progress  int     `json:"progress"`
+	ResultURL *string `json:"result_url"`
+	Error     *string `json:"error"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+}
+
+func (s *Service) presignedPrivateGetURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	presigned, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.MinioPrivateBucketName, key, ttl, url.Values{})
+	if err != nil {
+		return "", err
+	}
+	return presigned.String(), nil
+}
+
+// GetJobStatus returns the job's status, substituting a freshly minted
+// presigned GET for the stored result object key when present. Ownership
+// mismatch is indistinguishable from non-existence.
+func (s *Service) GetJobStatus(ctx context.Context, jobID, requesterID string) (*JobResponse, error) {
+	job, err := s.storeRepo.GetJobByID(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	if job == nil || job.CreatedBy != requesterID {
+		return nil, ErrJobNotFound
+	}
+
+	resp := &JobResponse{
+		ID:        job.ID,
+		Type:      job.Type,
+		Status:    job.Status,
+		Progress:  job.Progress,
+		Error:     job.Error,
+		CreatedAt: job.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: job.UpdatedAt.Format(time.RFC3339),
+	}
+
+	if job.ResultURL != nil {
+		presignedURL, err := s.presignedPrivateGetURL(ctx, *job.ResultURL, 15*time.Minute)
+		if err != nil {
+			return nil, err
+		}
+		resp.ResultURL = &presignedURL
+	}
+
+	return resp, nil
+}
