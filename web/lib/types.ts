@@ -765,3 +765,27 @@ export interface ExamAnalytics {
   completion_rate: number;
   distribution: ScoreBucket[];
 }
+
+// ── Admin Results (FR-SCHOOL-08) ───────────────────────────────────────────
+
+export interface AdminResultRow {
+  session_id: string;
+  name: string;
+  nis: string;
+  score: number;
+  submitted_at: string;
+}
+
+export interface AdminResultDetail {
+  session_id: string;
+  name: string;
+  nis: string;
+  score: number;
+  submitted_at: string;
+  result_config: string;
+  correct_count: number;
+  wrong_count: number;
+  empty_count: number;
+  breakdown?: ResultTopicRow[];
+  pembahasan?: ResultPembahasanItem[];
+}
