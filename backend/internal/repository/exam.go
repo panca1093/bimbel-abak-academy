@@ -1407,3 +1407,185 @@ func (r *Repository) GetFullyGradedScores(ctx context.Context, examID uuid.UUID)
 	}
 	return scores, nil
 }
+
+func scanSessionMonitorRow(row interface{ Scan(dest ...any) error }, r *model.SessionMonitorRow) error {
+	var schoolName, sessionStatus *string
+	var sessionID *uuid.UUID
+	var startedAt, extendedUntil, checkedInAt, lastSavedAt *time.Time
+	var adminSubmitted bool
+	var answersSaved, violationCount int
+	err := row.Scan(
+		&r.RegistrationID, &r.StudentID, &r.StudentName,
+		&schoolName, &sessionID, &sessionStatus,
+		&startedAt, &extendedUntil, &adminSubmitted,
+		&checkedInAt, &lastSavedAt,
+		&answersSaved, &violationCount,
+	)
+	if err != nil {
+		return err
+	}
+	if schoolName != nil {
+		r.SchoolName = schoolName
+	}
+	if sessionID != nil {
+		r.SessionID = sessionID
+	}
+	if sessionStatus != nil {
+		r.SessionStatus = sessionStatus
+	}
+	if startedAt != nil {
+		r.StartedAt = startedAt
+	}
+	if extendedUntil != nil {
+		r.ExtendedUntil = extendedUntil
+	}
+	if checkedInAt != nil {
+		r.CheckedInAt = checkedInAt
+	}
+	if lastSavedAt != nil {
+		r.LastSavedAt = lastSavedAt
+	}
+	r.AdminSubmitted = adminSubmitted
+	r.AnswersSaved = answersSaved
+	r.ViolationCount = violationCount
+	return nil
+}
+
+// GetSessionMonitorRows returns one registrant row per exam_registration for the given
+// exam, LEFT JOINed with exam_session (max one per registration), plus the student's
+// name, school, and answer/violation counts via correlated subqueries.
+func (r *Repository) GetSessionMonitorRows(ctx context.Context, examID uuid.UUID) ([]model.SessionMonitorRow, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT r.id, r.student_id, u.name, sc.name,
+			s.id, s.status, s.started_at, s.extended_until,
+			COALESCE(s.admin_submitted, false),
+			r.checked_in_at, s.last_saved_at,
+			COALESCE((SELECT COUNT(*) FROM exam_session_answer esa WHERE esa.session_id = s.id), 0),
+			COALESCE((SELECT COUNT(*) FROM session_violation_log svl WHERE svl.session_id = s.id), 0)
+		FROM exam_registration r
+		JOIN users u ON u.id = r.student_id
+		LEFT JOIN school sc ON sc.id = u.school_id
+		LEFT JOIN exam_session s ON s.registration_id = r.id
+		WHERE r.exam_id = $1
+		ORDER BY r.created_at DESC`,
+		examID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.SessionMonitorRow
+	for rows.Next() {
+		var item model.SessionMonitorRow
+		if err := scanSessionMonitorRow(rows, &item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.SessionMonitorRow{}
+	}
+	return items, nil
+}
+
+// GetExamQuestionTotal returns the total number of questions across all tests attached
+// to an exam.
+func (r *Repository) GetExamQuestionTotal(ctx context.Context, examID uuid.UUID) (int, error) {
+	var total int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*)
+		FROM exam_test et
+		JOIN question q ON q.test_id = et.test_id
+		WHERE et.exam_id = $1`,
+		examID,
+	).Scan(&total)
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// GetRecentViolations returns per-session violation aggregates for an exam, newest-first,
+// capped at the given limit. Each entry includes the session's total count and the most
+// recent violation type and timestamp.
+func (r *Repository) GetRecentViolations(ctx context.Context, examID uuid.UUID, limit int) ([]model.ViolationRecent, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT session_id, student_name, count, latest_type, latest_occurred_at
+		FROM (
+			SELECT s.id AS session_id, u.name AS student_name,
+				COUNT(*) OVER (PARTITION BY s.id) AS count,
+				svl.violation_type AS latest_type,
+				svl.occurred_at AS latest_occurred_at,
+				ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY svl.occurred_at DESC) AS rn
+			FROM session_violation_log svl
+			JOIN exam_session s ON s.id = svl.session_id
+			JOIN users u ON u.id = s.student_id
+			WHERE s.exam_id = $1
+		) ranked
+		WHERE rn = 1
+		ORDER BY latest_occurred_at DESC
+		LIMIT $2`,
+		examID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.ViolationRecent
+	for rows.Next() {
+		var item model.ViolationRecent
+		if err := rows.Scan(
+			&item.SessionID, &item.StudentName,
+			&item.Count, &item.LatestType, &item.LatestOccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.ViolationRecent{}
+	}
+	return items, nil
+}
+
+// ListSessionViolations returns all violation log rows for a session, newest-first.
+func (r *Repository) ListSessionViolations(ctx context.Context, sessionID uuid.UUID) ([]model.SessionViolationLog, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, session_id, student_id, violation_type, occurred_at
+		FROM session_violation_log
+		WHERE session_id = $1
+		ORDER BY occurred_at DESC`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.SessionViolationLog
+	for rows.Next() {
+		var item model.SessionViolationLog
+		if err := rows.Scan(
+			&item.ID, &item.SessionID, &item.StudentID,
+			&item.ViolationType, &item.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.SessionViolationLog{}
+	}
+	return items, nil
+}
