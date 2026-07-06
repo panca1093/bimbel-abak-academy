@@ -144,11 +144,11 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminNotifs.GET("", h.AdminListNotifications)
 	adminNotifs.PATCH("/:id/read", h.AdminMarkNotificationRead)
 	// Announcement CRUD + send
-	adminNotifs.POST("", h.AdminCreateAnnouncement, handler.RBACMiddleware("notifications:write"))
-	adminNotifs.GET("", h.AdminListAnnouncements, handler.RBACMiddleware("notifications:read"))
-	adminNotifs.PATCH("/:id", h.AdminUpdateAnnouncement, handler.RBACMiddleware("notifications:write"))
-	adminNotifs.DELETE("/:id", h.AdminDeleteAnnouncement, handler.RBACMiddleware("notifications:write"))
-	adminNotifs.POST("/:id/send", h.AdminSendAnnouncement, handler.RBACMiddleware("notifications:write"))
+	adminNotifs.POST("/announcements", h.AdminCreateAnnouncement, handler.RBACMiddleware("notifications:write"))
+	adminNotifs.GET("/announcements", h.AdminListAnnouncements, handler.RBACMiddleware("notifications:read"))
+	adminNotifs.PATCH("/announcements/:id", h.AdminUpdateAnnouncement, handler.RBACMiddleware("notifications:write"))
+	adminNotifs.DELETE("/announcements/:id", h.AdminDeleteAnnouncement, handler.RBACMiddleware("notifications:write"))
+	adminNotifs.POST("/announcements/:id/send", h.AdminSendAnnouncement, handler.RBACMiddleware("notifications:write"))
 
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")

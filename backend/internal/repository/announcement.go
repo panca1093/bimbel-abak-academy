@@ -90,19 +90,18 @@ func (r *Repository) DeleteAnnouncement(ctx context.Context, id string) error {
 }
 
 func (r *Repository) ClaimDueAnnouncements(ctx context.Context, now time.Time, limit int) ([]model.Announcement, error) {
+	// SELECT ... FOR UPDATE SKIP LOCKED claims rows without marking them sent.
+	// MarkAnnouncementSent is called by the service layer only after a successful
+	// send, so a transient failure leaves the row as 'scheduled' for retry.
 	rows, err := r.pool.Query(ctx,
-		`UPDATE announcement
-		SET status = 'sent', sent_at = now()
-		WHERE id IN (
-			SELECT id FROM announcement
-			WHERE status = 'scheduled' AND scheduled_at <= $1
-			ORDER BY scheduled_at
-			LIMIT $2
-			FOR UPDATE SKIP LOCKED
-		)
-		RETURNING id, title, message, type, recipients, status,
+		`SELECT id, title, message, type, recipients, status,
 			scheduled_at, sent_at, recipient_count, created_by,
-			created_at, updated_at`,
+			created_at, updated_at
+		FROM announcement
+		WHERE status = 'scheduled' AND scheduled_at <= $1
+		ORDER BY scheduled_at
+		LIMIT $2
+		FOR UPDATE SKIP LOCKED`,
 		now, limit,
 	)
 	if err != nil {

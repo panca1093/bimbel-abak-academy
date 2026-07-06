@@ -18,6 +18,10 @@ var (
 	// ErrAnnouncementNotFound is returned when the announcement does not exist.
 	// Maps to 404 not found.
 	ErrAnnouncementNotFound = errors.New("announcement not found")
+
+	// ErrInvalidAnnouncementField is returned when a field value is invalid
+	// (e.g. unknown type, recipients, or status). Maps to 400 invalid_request.
+	ErrInvalidAnnouncementField = errors.New("invalid announcement field")
 )
 
 // AnnounceRepo defines the repository methods the announcement service needs.
@@ -63,13 +67,13 @@ func (s *Service) CreateAnnouncement(
 	scheduledAt *time.Time,
 ) (model.Announcement, error) {
 	if !validAnnouncementTypes[typ] {
-		return model.Announcement{}, fmt.Errorf("invalid announcement type: %q", typ)
+		return model.Announcement{}, fmt.Errorf("%w: invalid announcement type: %q", ErrInvalidAnnouncementField, typ)
 	}
 	if !validRecipientGroups[recipients] {
-		return model.Announcement{}, fmt.Errorf("invalid recipient group: %q", recipients)
+		return model.Announcement{}, fmt.Errorf("%w: invalid recipient group: %q", ErrInvalidAnnouncementField, recipients)
 	}
 	if !validAnnouncementStatuses[status] {
-		return model.Announcement{}, fmt.Errorf("invalid announcement status: %q", status)
+		return model.Announcement{}, fmt.Errorf("%w: invalid announcement status: %q", ErrInvalidAnnouncementField, status)
 	}
 
 	if status == "scheduled" {

@@ -44,7 +44,7 @@ export function useAdminAnnouncements() {
   return useQuery({
     queryKey: adminAnnouncementKeys.list(),
     queryFn: async () => {
-      const res = await authFetch<{ data: Announcement[] }>("/admin/notifications");
+      const res = await authFetch<{ data: Announcement[] }>("/admin/notifications/announcements");
       return res.data ?? [];
     },
   });
@@ -54,7 +54,7 @@ export function useCreateAnnouncement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateAnnouncementInput) =>
-      authFetch<Announcement>("/admin/notifications", {
+      authFetch<Announcement>("/admin/notifications/announcements", {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -68,7 +68,7 @@ export function useUpdateAnnouncement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateAnnouncementInput }) =>
-      authFetch<Announcement>(`/admin/notifications/${encodeURIComponent(id)}`, {
+      authFetch<Announcement>(`/admin/notifications/announcements/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(input),
       }),
@@ -82,7 +82,7 @@ export function useDeleteAnnouncement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      authFetch<{ message: string }>(`/admin/notifications/${encodeURIComponent(id)}`, {
+      authFetch<{ message: string }>(`/admin/notifications/announcements/${encodeURIComponent(id)}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
@@ -95,7 +95,7 @@ export function useSendAnnouncement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      authFetch<Announcement>(`/admin/notifications/${encodeURIComponent(id)}/send`, {
+      authFetch<Announcement>(`/admin/notifications/announcements/${encodeURIComponent(id)}/send`, {
         method: "POST",
       }),
     onSuccess: () => {

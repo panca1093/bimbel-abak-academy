@@ -220,6 +220,37 @@ func TestAdminCreateAnnouncement_HappyPath_201(t *testing.T) {
 	}
 }
 
+func TestAdminCreateAnnouncement_InvalidType_400(t *testing.T) {
+	env := newAdminAnnounceEnv(t)
+	payload := map[string]string{
+		"title":      "Test",
+		"message":    "msg",
+		"type":       "invalid_type",
+		"recipients": "all",
+		"status":     "draft",
+	}
+	b, _ := json.Marshal(payload)
+	body := bytes.NewReader(b)
+	req := httptest.NewRequest(http.MethodPost, "/admin/notifications/announcements", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	setAdminClaims(c, "admin-u1")
+
+	err := env.h.AdminCreateAnnouncement(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "invalid_request" {
+		t.Errorf("want code=invalid_request, got %v", resp["code"])
+	}
+}
+
 // --- AdminListAnnouncements ---
 
 func TestAdminListAnnouncements_HappyPath_200(t *testing.T) {

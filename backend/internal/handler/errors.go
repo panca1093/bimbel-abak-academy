@@ -91,6 +91,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusNotFound, APIError{Code: "announcement_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrAnnouncementImmutable):
 		status, apiErr = http.StatusConflict, APIError{Code: "announcement_immutable", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidAnnouncementField):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}

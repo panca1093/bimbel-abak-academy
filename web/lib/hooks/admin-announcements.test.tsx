@@ -99,7 +99,7 @@ describe("admin-announcements hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications");
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/announcements");
       expect(result.current.data).toEqual(announcementList);
     });
   });
@@ -124,7 +124,7 @@ describe("admin-announcements hooks", () => {
         await result.current.mutateAsync(input);
       });
 
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications", {
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/announcements", {
         method: "POST",
         body: JSON.stringify(input),
       });
@@ -151,7 +151,7 @@ describe("admin-announcements hooks", () => {
         const res = await result.current.mutateAsync(input);
       });
 
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications", {
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/announcements", {
         method: "POST",
         body: JSON.stringify(input),
       });
@@ -178,7 +178,7 @@ describe("admin-announcements hooks", () => {
         const res = await result.current.mutateAsync(input);
       });
 
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications", {
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/announcements", {
         method: "POST",
         body: JSON.stringify(input),
       });
@@ -202,7 +202,7 @@ describe("admin-announcements hooks", () => {
         });
       });
 
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/ann-1", {
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/announcements/ann-1", {
         method: "PATCH",
         body: JSON.stringify({ title: "Updated Title" }),
       });
@@ -252,7 +252,7 @@ describe("admin-announcements hooks", () => {
         await result.current.mutateAsync("ann-1");
       });
 
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/ann-1", {
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/announcements/ann-1", {
         method: "DELETE",
       });
       expect(spy).toHaveBeenCalledWith({ queryKey: adminAnnouncementKeys.list() });
@@ -297,7 +297,7 @@ describe("admin-announcements hooks", () => {
         await result.current.mutateAsync("ann-1");
       });
 
-      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/ann-1/send", {
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/notifications/announcements/ann-1/send", {
         method: "POST",
       });
       expect(spy).toHaveBeenCalledWith({ queryKey: adminAnnouncementKeys.list() });
