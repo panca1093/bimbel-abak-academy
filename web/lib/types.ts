@@ -18,6 +18,60 @@ export interface School {
   id: string;
   name: string;
   code?: string;
+  npsn?: string;
+  school_types?: string[];
+  alamat?: string;
+  status?: string;
+  student_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdminSchoolInput {
+  name: string;
+  code: string;
+  npsn?: string;
+  school_types?: string[];
+  alamat?: string;
+}
+
+export interface AdminSchoolUpdateInput {
+  name?: string;
+  code?: string;
+  npsn?: string;
+  school_types?: string[];
+  alamat?: string;
+}
+
+export interface AdminStudent {
+  id: string;
+  name: string;
+  username: string;
+  nis: string;
+  email?: string;
+  status: string;
+  grade?: number;
+  created_at: string;
+}
+
+export interface StudentRegistrationInput {
+  name: string;
+  nis: string;
+  email?: string;
+  dob?: string;
+  gender?: string;
+  grade?: number;
+  alamat_domisili?: string;
+  target_exam?: string;
+}
+
+export interface StudentRegistrationResult extends AdminStudent {
+  temp_password: string;
+}
+
+export interface StudentCredentials {
+  username: string;
+  temp_password: string;
 }
 
 export interface User {
@@ -334,6 +388,7 @@ export interface AdminAccount {
   email?: string | null;
   role: AdminAccountRole;
   status: AdminAccountStatus;
+  school_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -343,6 +398,7 @@ export interface AdminCreateAccountInput {
   name: string;
   role: AdminAccountRole;
   password: string;
+  school_id?: string;
 }
 
 export interface AuditLogEntry {

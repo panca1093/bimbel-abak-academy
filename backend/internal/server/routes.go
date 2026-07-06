@@ -167,6 +167,29 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminNotifs.GET("", h.AdminListNotifications)
 	adminNotifs.PATCH("/:id/read", h.AdminMarkNotificationRead)
 
+	// Admin school routes
+	adminSchools := admin.Group("/schools")
+	adminSchools.Use(handler.RBACMiddleware("schools:write"))
+	adminSchools.GET("", h.AdminListSchools)
+	adminSchools.POST("", h.AdminCreateSchool)
+	adminSchools.PUT("/:id", h.AdminUpdateSchool)
+	adminSchools.PATCH("/:id", h.AdminChangeSchoolStatus)
+
+	// Admin student routes (row-scoped via JWT schoolID)
+	adminStudents := admin.Group("/students")
+	adminStudents.Use(handler.RBACMiddleware("students:*"))
+	adminStudents.GET("", h.AdminListStudents)
+	adminStudents.POST("", h.AdminRegisterStudent)
+	adminStudents.PATCH("/:id", h.AdminChangeStudentStatus)
+	adminStudents.GET("/:id/credentials", h.AdminGetStudentCredentials)
+	adminStudents.POST("/bulk/presign", h.AdminPresignStudentBulkUpload)
+	adminStudents.POST("/bulk", h.AdminBulkImportStudents)
+	adminStudents.POST("/bulk/credentials", h.AdminBulkReissueCredentials)
+
+	// Admin job routes (JWT-only; any authenticated user may poll their own job)
+	adminJobs := admin.Group("/jobs")
+	adminJobs.GET("/:id", h.AdminGetJob)
+
 	// Admin exam routes (Tests + Questions)
 	adminTests := admin.Group("/tests")
 	adminTests.Use(handler.RBACMiddleware("tests:*"))

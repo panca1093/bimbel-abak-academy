@@ -50,25 +50,38 @@ type Worker struct {
 	repo            outboxRepository
 	interval        time.Duration
 	sweeperInterval time.Duration
+	jobRepo         jobRepository
+	objectStore     objectStore
+	svc             studentBulkProcessor
+	jobPollInterval time.Duration
+	privateBucket   string
 }
 
-func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval time.Duration) *Worker {
+func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval time.Duration, jobRepo jobRepository, objectStore objectStore, svc studentBulkProcessor, jobPollInterval time.Duration, privateBucket string) *Worker {
 	return &Worker{
 		pool:            pool,
 		rdb:             rdb,
 		repo:            repo,
 		interval:        interval,
 		sweeperInterval: sweeperInterval,
+		jobRepo:         jobRepo,
+		objectStore:     objectStore,
+		svc:             svc,
+		jobPollInterval: jobPollInterval,
+		privateBucket:   privateBucket,
 	}
 }
 
-// Run polls the transactional outbox and runs the stale-payment sweeper until ctx is cancelled.
+// Run polls the transactional outbox, runs the stale-payment sweeper, and polls the job table until ctx is cancelled.
 func (w *Worker) Run(ctx context.Context) {
 	outboxTicker := time.NewTicker(w.interval)
 	defer outboxTicker.Stop()
 
 	sweeperTicker := time.NewTicker(w.sweeperInterval)
 	defer sweeperTicker.Stop()
+
+	jobTicker := time.NewTicker(w.jobPollInterval)
+	defer jobTicker.Stop()
 
 	go func() {
 		for {
@@ -77,6 +90,17 @@ func (w *Worker) Run(ctx context.Context) {
 				return
 			case <-sweeperTicker.C:
 				w.sweepStalePayments(ctx)
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-jobTicker.C:
+				w.pollJobs(ctx)
 			}
 		}
 	}()

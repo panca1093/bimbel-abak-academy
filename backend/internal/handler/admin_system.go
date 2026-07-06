@@ -41,10 +41,11 @@ func (h *Handler) AdminListAccounts(c echo.Context) error {
 // AdminCreateAccount creates a new admin account.
 func (h *Handler) AdminCreateAccount(c echo.Context) error {
 	var req struct {
-		Email    string `json:"email"`
-		Name     string `json:"name"`
-		Role     string `json:"role"`
-		Password string `json:"password"`
+		Email    string  `json:"email"`
+		Name     string  `json:"name"`
+		Role     string  `json:"role"`
+		Password string  `json:"password"`
+		SchoolID *string `json:"school_id"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -54,7 +55,7 @@ func (h *Handler) AdminCreateAccount(c echo.Context) error {
 	}
 
 	actorID := ClaimsFromContext(c).Sub
-	account, err := h.svc.CreateAdminAccount(c.Request().Context(), actorID, req.Email, req.Name, req.Role, req.Password)
+	account, err := h.svc.CreateAdminAccount(c.Request().Context(), actorID, req.Email, req.Name, req.Role, req.Password, req.SchoolID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -66,7 +67,8 @@ func (h *Handler) AdminChangeAccountRole(c echo.Context) error {
 	id := c.Param("id")
 
 	var req struct {
-		Role string `json:"role"`
+		Role     string  `json:"role"`
+		SchoolID *string `json:"school_id"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -76,7 +78,7 @@ func (h *Handler) AdminChangeAccountRole(c echo.Context) error {
 	}
 
 	actorID := ClaimsFromContext(c).Sub
-	if err := h.svc.ChangeAccountRole(c.Request().Context(), actorID, id, req.Role); err != nil {
+	if err := h.svc.ChangeAccountRole(c.Request().Context(), actorID, id, req.Role, req.SchoolID); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "role updated"})
