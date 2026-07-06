@@ -142,6 +142,21 @@ var _ = OutboxEvent{
 	LastError:     nil,
 }
 
+var _ = Announcement{
+	ID:             "",
+	Title:          "",
+	Message:        "",
+	Type:           "",
+	Recipients:     "",
+	Status:         "",
+	ScheduledAt:    nil,
+	SentAt:         nil,
+	RecipientCount: nil,
+	CreatedBy:      "",
+	CreatedAt:      time.Time{},
+	UpdatedAt:      time.Time{},
+}
+
 var _ = Job{
 	ID:        "",
 	Type:      "",

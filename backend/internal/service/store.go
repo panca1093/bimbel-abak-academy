@@ -764,23 +764,33 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, orderID, key string) er
 	}
 
 	// Push notification (best-effort; non-fatal error)
-	student, _ := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
-	studentName := "Student"
-	if student != nil {
-		studentName = student.Name
+	// Gate: skip only when explicitly set to "false"
+	cfg, _ := s.GetSystemConfig(ctx)
+	if purchaseNotifyEnabled(cfg) {
+		student, _ := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
+		studentName := "Student"
+		if student != nil {
+			studentName = student.Name
+		}
+		notif := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     order.ID,
+			StudentName: studentName,
+			Amount:      int64(order.Total * 100),
+			CreatedAt:   time.Now(),
+			Read:        false,
+		}
+		_ = s.PushPurchaseNotification(ctx, RoleAdminStore, notif)
 	}
-	notif := PurchaseNotification{
-		ID:          uuid.New().String(),
-		Type:        "order_confirmed",
-		OrderID:     order.ID,
-		StudentName: studentName,
-		Amount:      int64(order.Total * 100),
-		CreatedAt:   time.Now(),
-		Read:        false,
-	}
-	_ = s.PushPurchaseNotification(ctx, RoleAdminStore, notif)
 
 	return nil
+}
+
+// purchaseNotifyEnabled returns true when the admin_store purchase notification
+// should fire. Only "false" disables it; "" (unset) and "true" are enabled.
+func purchaseNotifyEnabled(cfg map[string]string) bool {
+	return cfg["notify_on_purchase_admin_store"] != "false"
 }
 
 func (s *Service) AdminShipOrder(ctx context.Context, orderID, trackingNumber string) error {

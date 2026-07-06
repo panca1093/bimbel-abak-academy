@@ -13,6 +13,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
 
+	"akademi-bimbel/internal/adapter"
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
@@ -42,16 +43,32 @@ func main() {
 	defer rdb.Close()
 
 	repo := repository.New(pool)
-	sweeperInterval := 5 * time.Minute // default 5m
-
+	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+	emailProvider := newEmailProvider(cfg)
+	paymentClient := adapter.ResolvePaymentClient(ctx, repo, &cfg)
+	logisticsClient := &adapter.NoopLogisticsClient{}
 	storageClient := newStorageClient(cfg)
-	svc := service.NewWithStore(repo, repo, rdb, nil, &service.NoopOTPProvider{}, &service.NoopEmailProvider{}, nil, nil, storageClient, &cfg)
+
+	svc := service.NewWithStore(repo, repo, rdb, jwtSigner, &service.NoopOTPProvider{}, emailProvider, paymentClient, logisticsClient, storageClient, &cfg)
 	objectStore := worker.NewMinioObjectStore(storageClient)
 
-	w := worker.New(pool, rdb, repo, cfg.WorkerPollInterval, sweeperInterval, repo, objectStore, svc, cfg.WorkerPollInterval, cfg.MinioPrivateBucketName)
-	logger.Info("worker started", "poll_interval", cfg.WorkerPollInterval.String(), "sweeper_interval", sweeperInterval.String())
+	sweeperInterval := 5 * time.Minute
+	announcementPollInterval := 5 * time.Minute
+	w := worker.New(pool, rdb, repo, cfg.WorkerPollInterval, sweeperInterval, announcementPollInterval, svc, repo, objectStore, svc, cfg.WorkerPollInterval, cfg.MinioPrivateBucketName)
+	logger.Info("worker started", "poll_interval", cfg.WorkerPollInterval.String(), "sweeper_interval", sweeperInterval.String(), "announcement_poll_interval", announcementPollInterval.String())
 	w.Run(ctx)
 	logger.Info("worker stopped")
+}
+
+func newEmailProvider(cfg config.Config) service.EmailProvider {
+	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
+		return &adapter.NoopEmailProvider{}
+	}
+	return adapter.NewFazpassProvider(adapter.FazpassConfig{
+		MerchantKey: cfg.FazpassMerchantKey,
+		APIKey:      cfg.FazpassAPIKey,
+		BaseURL:     cfg.FazpassBaseURL,
+	})
 }
 
 func newStorageClient(cfg config.Config) *minio.Client {

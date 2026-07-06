@@ -166,6 +166,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminNotifs.Use(handler.RBACMiddleware("notifications:read"))
 	adminNotifs.GET("", h.AdminListNotifications)
 	adminNotifs.PATCH("/:id/read", h.AdminMarkNotificationRead)
+	// Announcement CRUD + send
+	adminNotifs.POST("/announcements", h.AdminCreateAnnouncement, handler.RBACMiddleware("notifications:write"))
+	adminNotifs.GET("/announcements", h.AdminListAnnouncements, handler.RBACMiddleware("notifications:read"))
+	adminNotifs.PATCH("/announcements/:id", h.AdminUpdateAnnouncement, handler.RBACMiddleware("notifications:write"))
+	adminNotifs.DELETE("/announcements/:id", h.AdminDeleteAnnouncement, handler.RBACMiddleware("notifications:write"))
+	adminNotifs.POST("/announcements/:id/send", h.AdminSendAnnouncement, handler.RBACMiddleware("notifications:write"))
 
 	// Admin school routes
 	adminSchools := admin.Group("/schools")

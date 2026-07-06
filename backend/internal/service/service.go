@@ -21,6 +21,7 @@ type Service struct {
 	payment       PaymentClient
 	logistics     LogisticsClient
 	storage       *minio.Client
+	announceRepo  AnnounceRepo
 	presignOnce   sync.Once
 	presignClient *minio.Client
 	cfg           *config.Config
@@ -75,6 +76,7 @@ func NewWithStore(
 		payment:       payment,
 		logistics:     logistics,
 		storage:       storage,
+		announceRepo:  storeRepo,
 		cfg:           cfg,
 	}
 }
