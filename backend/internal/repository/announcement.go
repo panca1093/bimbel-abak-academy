@@ -1,0 +1,169 @@
+package repository
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"akademi-bimbel/internal/model"
+)
+
+func (r *Repository) CreateAnnouncement(ctx context.Context, a *model.Announcement) error {
+	return r.pool.QueryRow(ctx,
+		`INSERT INTO announcement (
+			title, message, type, recipients, status, scheduled_at, created_by
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7
+		) RETURNING id, created_at, updated_at`,
+		a.Title, a.Message, a.Type, a.Recipients, a.Status, a.ScheduledAt, a.CreatedBy,
+	).Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
+}
+
+func (r *Repository) GetAnnouncementByID(ctx context.Context, id string) (*model.Announcement, error) {
+	a := &model.Announcement{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, title, message, type, recipients, status,
+			scheduled_at, sent_at, recipient_count, created_by,
+			created_at, updated_at
+		FROM announcement
+		WHERE id = $1`,
+		id,
+	).Scan(
+		&a.ID, &a.Title, &a.Message, &a.Type, &a.Recipients, &a.Status,
+		&a.ScheduledAt, &a.SentAt, &a.RecipientCount, &a.CreatedBy,
+		&a.CreatedAt, &a.UpdatedAt,
+	)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return a, nil
+}
+
+func (r *Repository) ListAnnouncements(ctx context.Context) ([]model.Announcement, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, title, message, type, recipients, status,
+			scheduled_at, sent_at, recipient_count, created_by,
+			created_at, updated_at
+		FROM announcement
+		ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var announcements []model.Announcement
+	for rows.Next() {
+		var a model.Announcement
+		if err := rows.Scan(
+			&a.ID, &a.Title, &a.Message, &a.Type, &a.Recipients, &a.Status,
+			&a.ScheduledAt, &a.SentAt, &a.RecipientCount, &a.CreatedBy,
+			&a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		announcements = append(announcements, a)
+	}
+	return announcements, rows.Err()
+}
+
+func (r *Repository) UpdateAnnouncement(ctx context.Context, id string, a *model.Announcement) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE announcement
+		SET title = $1, message = $2, type = $3, recipients = $4,
+		    scheduled_at = $5, updated_at = now()
+		WHERE id = $6`,
+		a.Title, a.Message, a.Type, a.Recipients, a.ScheduledAt, id,
+	)
+	return err
+}
+
+func (r *Repository) DeleteAnnouncement(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx,
+		`DELETE FROM announcement WHERE id = $1`,
+		id,
+	)
+	return err
+}
+
+func (r *Repository) ClaimDueAnnouncements(ctx context.Context, now time.Time, limit int) ([]model.Announcement, error) {
+	rows, err := r.pool.Query(ctx,
+		`UPDATE announcement
+		SET status = 'sent', sent_at = now()
+		WHERE id IN (
+			SELECT id FROM announcement
+			WHERE status = 'scheduled' AND scheduled_at <= $1
+			ORDER BY scheduled_at
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, title, message, type, recipients, status,
+			scheduled_at, sent_at, recipient_count, created_by,
+			created_at, updated_at`,
+		now, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var announcements []model.Announcement
+	for rows.Next() {
+		var a model.Announcement
+		if err := rows.Scan(
+			&a.ID, &a.Title, &a.Message, &a.Type, &a.Recipients, &a.Status,
+			&a.ScheduledAt, &a.SentAt, &a.RecipientCount, &a.CreatedBy,
+			&a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		announcements = append(announcements, a)
+	}
+	return announcements, rows.Err()
+}
+
+func (r *Repository) MarkAnnouncementSent(ctx context.Context, id string, sentAt time.Time, recipientCount int) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE announcement
+		SET status = 'sent', sent_at = $1, recipient_count = $2, updated_at = now()
+		WHERE id = $3`,
+		sentAt, recipientCount, id,
+	)
+	return err
+}
+
+func (r *Repository) ListActiveUserEmails(ctx context.Context, recipients string) ([]string, error) {
+	query := `SELECT email FROM users
+		WHERE status = 'active'
+		AND email IS NOT NULL AND email != ''`
+
+	switch recipients {
+	case "students":
+		query += " AND role = 'student'"
+	case "admins":
+		query += " AND role LIKE 'admin_%'"
+	case "all":
+		// no additional filter
+	default:
+		return nil, fmt.Errorf("unknown recipient group: %s", recipients)
+	}
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var emails []string
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			return nil, err
+		}
+		emails = append(emails, email)
+	}
+	return emails, rows.Err()
+}
