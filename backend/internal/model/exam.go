@@ -338,3 +338,49 @@ type ExamAnalytics struct {
 	CompletionRate float64      `json:"completion_rate"`
 	Distribution   []ScoreBucket `json:"distribution"`
 }
+
+// SessionMonitorRow is one registrant row in the session monitor dashboard.
+// Status is populated by the service layer, not by the repo -- defaults to empty.
+type SessionMonitorRow struct {
+	RegistrationID  uuid.UUID  `json:"registration_id"`
+	StudentID       uuid.UUID  `json:"student_id"`
+	StudentName     string     `json:"student_name"`
+	SchoolName      *string    `json:"school_name"`
+	SessionID       *uuid.UUID `json:"session_id"`
+	SessionStatus   *string    `json:"session_status"`
+	StartedAt       *time.Time `json:"started_at"`
+	ExtendedUntil   *time.Time `json:"extended_until"`
+	AdminSubmitted  bool       `json:"admin_submitted"`
+	CheckedInAt     *time.Time `json:"checked_in_at"`
+	LastSavedAt     *time.Time `json:"last_saved_at"`
+	AnswersSaved    int        `json:"answers_saved"`
+	TotalQuestions  int        `json:"total_questions"`
+	ViolationCount  int        `json:"violation_count"`
+	Status          string     `json:"status"`
+}
+
+// SessionMonitorExam is the exam summary block in the monitor response.
+type SessionMonitorExam struct {
+	ID                 uuid.UUID  `json:"id"`
+	Title              string     `json:"title"`
+	ScheduledAt        *time.Time `json:"scheduled_at"`
+	DurationMinutes    *int       `json:"duration_minutes"`
+	GraceWindowMinutes *int       `json:"grace_window_minutes"`
+	Status             string     `json:"status"`
+}
+
+// ViolationRecent is a per-session aggregate row in the recent-violations sidebar.
+type ViolationRecent struct {
+	SessionID        uuid.UUID `json:"session_id"`
+	StudentName      string    `json:"student_name"`
+	Count            int       `json:"count"`
+	LatestType       string    `json:"latest_type"`
+	LatestOccurredAt time.Time `json:"latest_occurred_at"`
+}
+
+// SessionMonitorResponse is the top-level response for the session monitor endpoint.
+type SessionMonitorResponse struct {
+	Exam             SessionMonitorExam   `json:"exam"`
+	Rows             []SessionMonitorRow  `json:"rows"`
+	ViolationsRecent []ViolationRecent    `json:"violations_recent"`
+}

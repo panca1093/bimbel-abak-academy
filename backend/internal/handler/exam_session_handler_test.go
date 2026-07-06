@@ -454,3 +454,164 @@ func TestAdminSessionForceSubmit_StudentToken_Returns403(t *testing.T) {
 		t.Errorf("code: want forbidden, got %v", resp["code"])
 	}
 }
+
+// registerAdminSessionReadRoutes adds read-only session monitor/violations
+// endpoints under /api/v1/admin/sessions protected by sessions:read RBAC.
+func registerAdminSessionReadRoutes(t *testing.T, env *testEnv, h *handler.Handler) {
+	t.Helper()
+	v1 := env.e.Group("/api/v1")
+	admin := v1.Group("/admin")
+	admin.Use(handler.JWTMiddleware(env.svc, env.signer))
+	adminSessionsRead := admin.Group("/sessions")
+	adminSessionsRead.Use(handler.RBACMiddleware("sessions:read"))
+	adminSessionsRead.GET("/monitor", h.AdminGetSessionMonitor)
+	adminSessionsRead.GET("/:id/violations", h.AdminGetSessionViolations)
+}
+
+// ---------- Session monitor tests ----------
+
+func TestAdminSessionMonitor_NoToken_Returns401(t *testing.T) {
+	env := newTestEnv(t)
+	h := handler.New(env.svc)
+	registerAdminSessionReadRoutes(t, env, h)
+
+	req := httptest.NewRequest("GET", "/api/v1/admin/sessions/monitor?exam_id=00000000-0000-0000-0000-000000000000", nil)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "unauthorized" {
+		t.Errorf("code: want unauthorized, got %v", resp["code"])
+	}
+}
+
+func TestAdminSessionMonitor_StudentToken_Returns403(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "student-monitor",
+		Email:  strptr("student-monitor@test.com"),
+		Role:   service.RoleStudent,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminSessionReadRoutes(t, env, h)
+
+	token := mintToken(t, env, "student-monitor", service.RoleStudent)
+
+	req := httptest.NewRequest("GET", "/api/v1/admin/sessions/monitor?exam_id=00000000-0000-0000-0000-000000000000", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "forbidden" {
+		t.Errorf("code: want forbidden, got %v", resp["code"])
+	}
+}
+
+func TestAdminSessionMonitor_InvalidExamID_Returns422(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "admin-mon-valid",
+		Email:  strptr("admin-mon-valid@test.com"),
+		Role:   service.RoleAdminExam,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminSessionReadRoutes(t, env, h)
+
+	token := mintToken(t, env, "admin-mon-valid", service.RoleAdminExam)
+
+	resp := getWithToken(t, env.e, "/api/v1/admin/sessions/monitor?exam_id=not-a-uuid", token)
+
+	if resp.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", resp.Code, resp.Body.String())
+	}
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+	if body["code"] != "validation_failed" {
+		t.Errorf("code: want validation_failed, got %v", body["code"])
+	}
+}
+
+// ---------- Session violations tests ----------
+
+func TestAdminSessionViolations_NoToken_Returns401(t *testing.T) {
+	env := newTestEnv(t)
+	h := handler.New(env.svc)
+	registerAdminSessionReadRoutes(t, env, h)
+
+	req := httptest.NewRequest("GET", "/api/v1/admin/sessions/00000000-0000-0000-0000-000000000000/violations", nil)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "unauthorized" {
+		t.Errorf("code: want unauthorized, got %v", resp["code"])
+	}
+}
+
+func TestAdminSessionViolations_StudentToken_Returns403(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "student-viol",
+		Email:  strptr("student-viol@test.com"),
+		Role:   service.RoleStudent,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminSessionReadRoutes(t, env, h)
+
+	token := mintToken(t, env, "student-viol", service.RoleStudent)
+
+	req := httptest.NewRequest("GET", "/api/v1/admin/sessions/00000000-0000-0000-0000-000000000000/violations", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "forbidden" {
+		t.Errorf("code: want forbidden, got %v", resp["code"])
+	}
+}
+
+func TestAdminSessionViolations_InvalidSessionID_Returns422(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "admin-viol-valid",
+		Email:  strptr("admin-viol-valid@test.com"),
+		Role:   service.RoleAdminExam,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminSessionReadRoutes(t, env, h)
+
+	token := mintToken(t, env, "admin-viol-valid", service.RoleAdminExam)
+
+	resp := getWithToken(t, env.e, "/api/v1/admin/sessions/not-a-uuid/violations", token)
+
+	if resp.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", resp.Code, resp.Body.String())
+	}
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+	if body["code"] != "validation_failed" {
+		t.Errorf("code: want validation_failed, got %v", body["code"])
+	}
+}

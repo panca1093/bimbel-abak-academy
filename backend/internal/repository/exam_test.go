@@ -75,6 +75,15 @@ var _ interface {
 	GradeEssayAnswerTx(context.Context, pgx.Tx, uuid.UUID, uuid.UUID, float64, *string, uuid.UUID) error
 } = (*Repository)(nil)
 
+// Compile-time check: *Repository must implement all session monitor repository
+// methods added by Slice 7 Task 1.
+var _ interface {
+	GetSessionMonitorRows(context.Context, uuid.UUID) ([]model.SessionMonitorRow, error)
+	GetExamQuestionTotal(context.Context, uuid.UUID) (int, error)
+	GetRecentViolations(context.Context, uuid.UUID, int) ([]model.ViolationRecent, error)
+	ListSessionViolations(context.Context, uuid.UUID) ([]model.SessionViolationLog, error)
+} = (*Repository)(nil)
+
 // Sentinel error from the package: uq_question_order SQLSTATE 23505 — surfaced for service-layer mapping.
 var _ error = ErrSortOrderConflict
 
@@ -474,6 +483,141 @@ func TestScanExamSessionAnswer_passes_expected_destinations(t *testing.T) {
 		t.Errorf("dest[8] = %T, want *bool (flagged_for_review)", rec.dests[8])
 	}
 	if _, ok := rec.dests[9].(*time.Time); !ok {
-		t.Errorf("dest[9] = %T, want *time.Time (saved_at)", rec.dests[9])
+			t.Errorf("dest[9] = %T, want *time.Time (saved_at)", rec.dests[9])
+		}
+	}
+
+func TestScanSessionMonitorRow_passes_expected_destinations(t *testing.T) {
+	var row model.SessionMonitorRow
+	row.RegistrationID = uuid.Nil
+
+	rec := &recordingScanner{}
+	if err := scanSessionMonitorRow(rec, &row); err != nil {
+		t.Fatalf("scanSessionMonitorRow returned error: %v", err)
+	}
+
+	if got := len(rec.dests); got != 13 {
+		t.Fatalf("scanSessionMonitorRow passed %d destinations, want 13 (registration_id, student_id, student_name, school_name, session_id, session_status, started_at, extended_until, admin_submitted, checked_in_at, last_saved_at, answers_saved, violation_count)", got)
+	}
+
+	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
+		t.Errorf("dest[0] = %T, want *uuid.UUID (registration_id)", rec.dests[0])
+	}
+	if _, ok := rec.dests[1].(*uuid.UUID); !ok {
+		t.Errorf("dest[1] = %T, want *uuid.UUID (student_id)", rec.dests[1])
+	}
+	if _, ok := rec.dests[2].(*string); !ok {
+		t.Errorf("dest[2] = %T, want *string (student_name)", rec.dests[2])
+	}
+	if _, ok := rec.dests[3].(**string); !ok {
+		t.Errorf("dest[3] = %T, want **string (school_name, nullable)", rec.dests[3])
+	}
+	if _, ok := rec.dests[4].(**uuid.UUID); !ok {
+		t.Errorf("dest[4] = %T, want **uuid.UUID (session_id, nullable)", rec.dests[4])
+	}
+	if _, ok := rec.dests[5].(**string); !ok {
+		t.Errorf("dest[5] = %T, want **string (session_status, nullable)", rec.dests[5])
+	}
+	if _, ok := rec.dests[6].(**time.Time); !ok {
+		t.Errorf("dest[6] = %T, want **time.Time (started_at, nullable)", rec.dests[6])
+	}
+	if _, ok := rec.dests[7].(**time.Time); !ok {
+		t.Errorf("dest[7] = %T, want **time.Time (extended_until, nullable)", rec.dests[7])
+	}
+	if _, ok := rec.dests[8].(*bool); !ok {
+		t.Errorf("dest[8] = %T, want *bool (admin_submitted)", rec.dests[8])
+	}
+	if _, ok := rec.dests[9].(**time.Time); !ok {
+		t.Errorf("dest[9] = %T, want **time.Time (checked_in_at, nullable)", rec.dests[9])
+	}
+	if _, ok := rec.dests[10].(**time.Time); !ok {
+		t.Errorf("dest[10] = %T, want **time.Time (last_saved_at, nullable)", rec.dests[10])
+	}
+	if _, ok := rec.dests[11].(*int); !ok {
+		t.Errorf("dest[11] = %T, want *int (answers_saved)", rec.dests[11])
+	}
+	if _, ok := rec.dests[12].(*int); !ok {
+		t.Errorf("dest[12] = %T, want *int (violation_count)", rec.dests[12])
+	}
+}
+
+func TestSessionMonitorRowShape(t *testing.T) {
+	now := time.Now()
+	uid := uuid.New()
+	schoolName := "SMA 1"
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID:  uuid.New(),
+		StudentID:       uuid.New(),
+		StudentName:     "Budi",
+		SchoolName:      &schoolName,
+		SessionID:       &uid,
+		SessionStatus:   &sessionStatus,
+		StartedAt:       &now,
+		AdminSubmitted:  false,
+		CheckedInAt:     &now,
+		LastSavedAt:     &now,
+		AnswersSaved:    5,
+		ViolationCount:  0,
+	}
+	if row.RegistrationID == uuid.Nil || row.StudentName != "Budi" {
+		t.Errorf("SessionMonitorRow fields not round-tripping: %+v", row)
+	}
+	if row.SchoolName == nil || *row.SchoolName != "SMA 1" {
+		t.Error("SessionMonitorRow.SchoolName pointer not preserved")
+	}
+	if row.SessionStatus == nil || *row.SessionStatus != "in_progress" {
+		t.Error("SessionMonitorRow.SessionStatus pointer not preserved")
+	}
+}
+
+func TestSessionMonitorExamShape(t *testing.T) {
+	now := time.Now()
+	dur := 120
+	gw := 5
+	e := model.SessionMonitorExam{
+		ID:                 uuid.New(),
+		Title:              "Tryout",
+		ScheduledAt:        &now,
+		DurationMinutes:    &dur,
+		GraceWindowMinutes: &gw,
+		Status:             "published",
+	}
+	if e.ID == uuid.Nil || e.Title != "Tryout" {
+		t.Errorf("SessionMonitorExam fields not round-tripping: %+v", e)
+	}
+	if e.DurationMinutes == nil || *e.DurationMinutes != 120 {
+		t.Error("SessionMonitorExam.DurationMinutes pointer not preserved")
+	}
+	if e.GraceWindowMinutes == nil || *e.GraceWindowMinutes != 5 {
+		t.Error("SessionMonitorExam.GraceWindowMinutes pointer not preserved")
+	}
+}
+
+func TestViolationRecentShape(t *testing.T) {
+	v := model.ViolationRecent{
+		SessionID:        uuid.New(),
+		StudentName:      "Budi",
+		Count:            3,
+		LatestType:       "tab_switch",
+		LatestOccurredAt: time.Now(),
+	}
+	if v.SessionID == uuid.Nil || v.StudentName != "Budi" || v.LatestType == "" {
+		t.Errorf("ViolationRecent fields not round-tripping: %+v", v)
+	}
+}
+
+func TestSessionMonitorResponseShape(t *testing.T) {
+	resp := model.SessionMonitorResponse{
+		Exam: model.SessionMonitorExam{ID: uuid.New(), Title: "Tryout"},
+		Rows: []model.SessionMonitorRow{
+			{RegistrationID: uuid.New(), StudentID: uuid.New(), StudentName: "Budi"},
+		},
+		ViolationsRecent: []model.ViolationRecent{
+			{SessionID: uuid.New(), StudentName: "Budi", Count: 1},
+		},
+	}
+	if len(resp.Rows) != 1 || len(resp.ViolationsRecent) != 1 {
+		t.Errorf("SessionMonitorResponse not assembling: %+v", resp)
 	}
 }

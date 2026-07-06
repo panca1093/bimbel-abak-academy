@@ -138,6 +138,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSessions.GET("/:id/essays", h.AdminGetSessionEssays)
 	adminSessions.POST("/:id/grade", h.AdminGradeEssay)
 
+	// Admin session routes — read-only group (sibling, same path prefix)
+	adminSessionsRead := admin.Group("/sessions")
+	adminSessionsRead.Use(handler.RBACMiddleware("sessions:read"))
+	adminSessionsRead.GET("/monitor", h.AdminGetSessionMonitor)
+	adminSessionsRead.GET("/:id/violations", h.AdminGetSessionViolations)
+
 	// Admin order routes
 	adminOrders := admin.Group("/orders")
 	adminOrders.Use(handler.RBACMiddleware("orders:write"))

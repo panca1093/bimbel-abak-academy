@@ -1,16 +1,353 @@
 "use client";
 
-import { BarChart } from "lucide-react";
-import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { BarChart, RefreshCw, AlertTriangle, RotateCcw, XCircle } from "lucide-react";
+import { toast } from "sonner";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { useExams } from "@/lib/hooks/admin-exams";
+import {
+  useSessionMonitor,
+  useReopenSession,
+  useForceSubmitSession,
+} from "@/lib/hooks/admin-sessions";
 import { useTranslation } from "@/lib/i18n";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { SessionMonitorStatus } from "@/lib/types";
+
+// ── Status label key map (i18n keys for each derived status) ──
+// Explicit mapping because status "checked_in" has no underscore in its key "st_checkedin"
+
+const STATUS_LABEL_KEY: Record<SessionMonitorStatus, string> = {
+  registered: "st_registered",
+  checked_in: "st_checkedin",
+  in_progress: "st_inprogress",
+  overdue: "st_overdue",
+  submitted: "st_submitted",
+};
+
+// ── Status badge map ──
+
+const STATUS_BADGE: Record<
+  SessionMonitorStatus,
+  { variant: "default" | "secondary" | "destructive" | "outline"; className: string }
+> = {
+  registered: { variant: "secondary", className: "bg-line-2 text-ink-700 border-line" },
+  checked_in: { variant: "default", className: "" },
+  in_progress: { variant: "outline", className: "bg-amber-100 text-amber-800 border-amber-200" },
+  overdue: { variant: "destructive", className: "" },
+  submitted: { variant: "outline", className: "bg-green-100 text-green-800 border-green-200" },
+};
+
+// ── Date formatting helpers ──
+
+function formatTime(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+}
+
+// ── Page component ──
 
 export default function ExamMonitorPage() {
   const { t } = useTranslation();
+  const [selectedExamId, setSelectedExamId] = useState<string>("");
+
+  const { data: examsData, isLoading: examsLoading } = useExams();
+  const examList = examsData?.data ?? [];
+
+  const publishedExams = useMemo(() => {
+    return examList
+      .filter((e) => e.product_status === "published")
+      .sort(
+        (a, b) =>
+          new Date(a.scheduled_at ?? 0).getTime() - new Date(b.scheduled_at ?? 0).getTime(),
+      );
+  }, [examList]);
+
+  // Auto-select first published exam
+  useEffect(() => {
+    if (!selectedExamId && publishedExams.length > 0) {
+      setSelectedExamId(publishedExams[0].id);
+    }
+  }, [publishedExams, selectedExamId]);
+
+  const {
+    data: monitorData,
+    isLoading: monitorLoading,
+    isError: monitorError,
+    error: monitorErr,
+    refetch: refetchMonitor,
+  } = useSessionMonitor(selectedExamId || undefined);
+
+  const reopen = useReopenSession();
+  const forceSubmit = useForceSubmitSession();
+
+  const rows = monitorData?.rows ?? [];
+  const violations = monitorData?.violations_recent ?? [];
+  const examTitle = monitorData?.exam?.title ?? "";
+
+  const handleReopen = useCallback(
+    (sessionId: string) => {
+      const minutes = prompt(t("monitor_reopen_prompt"));
+      if (!minutes) return;
+      const n = parseInt(minutes, 10);
+      if (isNaN(n) || n <= 0) return;
+      reopen.mutate(
+        { sessionId, extend_minutes: n },
+        {
+          onSuccess: () => {
+            toast.success(t("monitor_reopened_success"));
+            refetchMonitor();
+          },
+          onError: () => toast.error(t("error_generic")),
+        },
+      );
+    },
+    [reopen, refetchMonitor, t],
+  );
+
+  const handleForceSubmit = useCallback(
+    (sessionId: string) => {
+      if (!confirm(t("monitor_force_submit_confirm"))) return;
+      forceSubmit.mutate(sessionId, {
+        onSuccess: () => {
+          toast.success(t("monitor_force_submitted_success"));
+          refetchMonitor();
+        },
+        onError: () => toast.error(t("error_generic")),
+      });
+    },
+    [forceSubmit, refetchMonitor, t],
+  );
+
+  // ── Picker section ──
+
+  const picker = (
+    <div className="flex items-center gap-3">
+      <label className="text-sm font-medium">{t("monitor_pick_exam")}</label>
+      <Select value={selectedExamId} onValueChange={setSelectedExamId}>
+        <SelectTrigger className="w-72" aria-label={t("monitor_pick_exam")}>
+          <SelectValue placeholder={t("monitor_pick_exam")} />
+        </SelectTrigger>
+        <SelectContent>
+          {publishedExams.map((e) => (
+            <SelectItem key={e.id} value={e.id}>
+              {e.title}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {selectedExamId && (
+        <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">
+          {t("monitor_live")}
+        </Badge>
+      )}
+    </div>
+  );
+
+  // ── Loading state ──
+
+  if (monitorLoading || examsLoading) {
+    return (
+      <div className="space-y-6 fade-in">
+        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} actions={picker} />
+        <div className="flex gap-6">
+          <div className="flex-1 space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+          <div className="w-72 space-y-2">
+            <Skeleton className="h-48 w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── No exam selected state ──
+
+  if (!selectedExamId) {
+    return (
+      <div className="space-y-6 fade-in">
+        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} actions={picker} />
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <BarChart className="mb-4 size-12 text-[var(--md-sys-color-on-surface-variant)]" />
+          <p className="text-body-medium text-[var(--md-sys-color-on-surface-variant)]">
+            {t("monitor_no_exam")}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Error state ──
+
+  if (monitorError) {
+    return (
+      <div className="space-y-6 fade-in">
+        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} actions={picker} />
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle size={16} />
+            {monitorErr instanceof Error ? monitorErr.message : t("error_generic")}
+          </p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={() => refetchMonitor()}>
+            <RefreshCw size={14} /> {t("retry")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main content ──
+
   return (
-    <UnderMaintenance
-      icon={BarChart}
-      title={t("exam_monitor_title")}
-      estimatedTimeline={t("maint_eta_q4_2026")}
-    />
+    <div className="space-y-6 fade-in">
+      <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} actions={picker} />
+
+      <div className="flex gap-6">
+        {/* Main table */}
+        <div className="min-w-0 flex-1 overflow-x-auto">
+          {rows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <BarChart className="mb-4 size-12 text-[var(--md-sys-color-on-surface-variant)]" />
+              <p className="text-body-medium text-[var(--md-sys-color-on-surface-variant)]">
+                {t("monitor_empty")}
+              </p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left text-label text-[var(--md-sys-color-on-surface-variant)]">
+                  <th className="pb-2 pr-4 font-medium">{t("th_name")}</th>
+                  <th className="pb-2 pr-4 font-medium">{t("school")}</th>
+                  <th className="pb-2 pr-4 font-medium">{t("th_status")}</th>
+                  <th className="pb-2 pr-4 font-medium">{t("monitor_th_progress")}</th>
+                  <th className="pb-2 pr-4 font-medium">{t("monitor_th_checked_in")}</th>
+                  <th className="pb-2 pr-4 font-medium">{t("monitor_th_last_activity")}</th>
+                  <th className="pb-2 font-medium">{t("th_actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const badge = STATUS_BADGE[row.status];
+                  const progressPct =
+                    row.total_questions > 0
+                      ? Math.round((row.answers_saved / row.total_questions) * 100)
+                      : 0;
+
+                  return (
+                    <tr
+                      key={row.registration_id}
+                      className="border-b border-line last:border-b-0"
+                    >
+                      <td className="py-3 pr-4">{row.student_name}</td>
+                      <td className="py-3 pr-4 text-[var(--md-sys-color-on-surface-variant)]">
+                        {row.school_name ?? "—"}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <Badge variant={badge.variant} className={badge.className}>
+                          {t(STATUS_LABEL_KEY[row.status] as any)}
+                        </Badge>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-20 overflow-hidden rounded-full bg-line">
+                            <div
+                              className="h-full rounded-full bg-[var(--md-sys-color-primary)] transition-all"
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                            {row.answers_saved}/{row.total_questions}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4 text-[var(--md-sys-color-on-surface-variant)]">
+                        {formatTime(row.checked_in_at)}
+                      </td>
+                      <td className="py-3 pr-4 text-[var(--md-sys-color-on-surface-variant)]">
+                        {formatTime(row.last_saved_at)}
+                      </td>
+                      <td className="py-3">
+                        {row.status === "overdue" && row.session_id ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => handleReopen(row.session_id!)}
+                              disabled={reopen.isPending}
+                            >
+                              <RotateCcw size={12} />
+                              {t("monitor_actions_reopen")}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => handleForceSubmit(row.session_id!)}
+                              disabled={forceSubmit.isPending}
+                            >
+                              <XCircle size={12} />
+                              {t("monitor_actions_force_submit")}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Violation sidebar */}
+        <div className="w-72 shrink-0">
+          <div className="rounded-lg border border-line p-4">
+            <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
+            {violations.length === 0 ? (
+              <p className="text-sm text-[var(--md-sys-color-on-surface-variant)]">
+                {t("monitor_no_violations")}
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {violations.map((v, i) => (
+                  <li key={`${v.session_id}-${i}`} className="text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{v.student_name}</span>
+                      <span className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                        ×{v.count}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                      <AlertTriangle size={10} />
+                      <span>{v.latest_type}</span>
+                    </div>
+                    <p className="text-xs text-[var(--md-sys-color-on-surface-variant)]">
+                      {v.latest_occurred_at
+                        ? new Date(v.latest_occurred_at).toLocaleTimeString("id-ID", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

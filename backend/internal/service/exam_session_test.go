@@ -19,26 +19,34 @@ import (
 // ---------- fakeSessionRepo ----------
 
 type fakeSessionRepo struct {
-	registrations  map[uuid.UUID]*model.RegistrationDetail
-	exams          map[uuid.UUID]*model.Exam
-	sessions       map[uuid.UUID]*model.ExamSession
-	sessionAnswers map[uuid.UUID][]model.ExamSessionAnswer
-	testsByExam    map[uuid.UUID][]model.TestDetail
-	essays         map[uuid.UUID][]model.GradingEssayItem
-	gradingQueue   map[uuid.UUID][]model.GradingSessionItem
-	studentSchools map[uuid.UUID]string
+	registrations     map[uuid.UUID]*model.RegistrationDetail
+	exams             map[uuid.UUID]*model.Exam
+	sessions          map[uuid.UUID]*model.ExamSession
+	sessionAnswers    map[uuid.UUID][]model.ExamSessionAnswer
+	testsByExam       map[uuid.UUID][]model.TestDetail
+	essays            map[uuid.UUID][]model.GradingEssayItem
+	gradingQueue      map[uuid.UUID][]model.GradingSessionItem
+	studentSchools    map[uuid.UUID]string
+	monitorRows       map[uuid.UUID][]model.SessionMonitorRow
+	questionTotals    map[uuid.UUID]int
+	recentViolations  map[uuid.UUID][]model.ViolationRecent
+	sessionViolations map[uuid.UUID][]model.SessionViolationLog
 }
 
 func newFakeSessionRepo() *fakeSessionRepo {
 	return &fakeSessionRepo{
-		registrations:  make(map[uuid.UUID]*model.RegistrationDetail),
-		exams:          make(map[uuid.UUID]*model.Exam),
-		sessions:       make(map[uuid.UUID]*model.ExamSession),
-		sessionAnswers: make(map[uuid.UUID][]model.ExamSessionAnswer),
-		testsByExam:    make(map[uuid.UUID][]model.TestDetail),
-		essays:         make(map[uuid.UUID][]model.GradingEssayItem),
-		gradingQueue:   make(map[uuid.UUID][]model.GradingSessionItem),
-		studentSchools: make(map[uuid.UUID]string),
+		registrations:     make(map[uuid.UUID]*model.RegistrationDetail),
+		exams:             make(map[uuid.UUID]*model.Exam),
+		sessions:          make(map[uuid.UUID]*model.ExamSession),
+		sessionAnswers:    make(map[uuid.UUID][]model.ExamSessionAnswer),
+		testsByExam:       make(map[uuid.UUID][]model.TestDetail),
+		essays:            make(map[uuid.UUID][]model.GradingEssayItem),
+		gradingQueue:      make(map[uuid.UUID][]model.GradingSessionItem),
+		studentSchools:    make(map[uuid.UUID]string),
+		monitorRows:       make(map[uuid.UUID][]model.SessionMonitorRow),
+		questionTotals:    make(map[uuid.UUID]int),
+		recentViolations:  make(map[uuid.UUID][]model.ViolationRecent),
+		sessionViolations: make(map[uuid.UUID][]model.SessionViolationLog),
 	}
 }
 
@@ -213,6 +221,64 @@ func (f *fakeSessionRepo) ReopenSession(_ context.Context, sessionID uuid.UUID, 
 	ext := time.Now().Add(time.Duration(minutes) * time.Minute)
 	s.ExtendedUntil = &ext
 	return nil
+}
+
+// ---------- Monitor / violation fake repo methods ----------
+
+func (f *fakeSessionRepo) seedSessionMonitorRow(examID uuid.UUID, row model.SessionMonitorRow) {
+	if f.monitorRows == nil {
+		f.monitorRows = make(map[uuid.UUID][]model.SessionMonitorRow)
+	}
+	f.monitorRows[examID] = append(f.monitorRows[examID], row)
+}
+
+func (f *fakeSessionRepo) seedQuestionTotal(examID uuid.UUID, total int) {
+	if f.questionTotals == nil {
+		f.questionTotals = make(map[uuid.UUID]int)
+	}
+	f.questionTotals[examID] = total
+}
+
+func (f *fakeSessionRepo) seedRecentViolations(examID uuid.UUID, violations []model.ViolationRecent) {
+	if f.recentViolations == nil {
+		f.recentViolations = make(map[uuid.UUID][]model.ViolationRecent)
+	}
+	f.recentViolations[examID] = violations
+}
+
+func (f *fakeSessionRepo) seedSessionViolations(sessionID uuid.UUID, violations []model.SessionViolationLog) {
+	if f.sessionViolations == nil {
+		f.sessionViolations = make(map[uuid.UUID][]model.SessionViolationLog)
+	}
+	f.sessionViolations[sessionID] = violations
+}
+
+func (f *fakeSessionRepo) GetSessionMonitorRows(_ context.Context, examID uuid.UUID) ([]model.SessionMonitorRow, error) {
+	rows := f.monitorRows[examID]
+	if rows == nil {
+		return []model.SessionMonitorRow{}, nil
+	}
+	return rows, nil
+}
+
+func (f *fakeSessionRepo) GetExamQuestionTotal(_ context.Context, examID uuid.UUID) (int, error) {
+	return f.questionTotals[examID], nil
+}
+
+func (f *fakeSessionRepo) GetRecentViolations(_ context.Context, examID uuid.UUID, _ int) ([]model.ViolationRecent, error) {
+	v := f.recentViolations[examID]
+	if v == nil {
+		return []model.ViolationRecent{}, nil
+	}
+	return v, nil
+}
+
+func (f *fakeSessionRepo) ListSessionViolations(_ context.Context, sessionID uuid.UUID) ([]model.SessionViolationLog, error) {
+	v := f.sessionViolations[sessionID]
+	if v == nil {
+		return []model.SessionViolationLog{}, nil
+	}
+	return v, nil
 }
 
 // ---------- shimSessionService ----------
@@ -1631,3 +1697,525 @@ func TestFingerprint_IsSHA256Hex(t *testing.T) {
 		}
 	}
 }
+
+// ---------- GetSessionMonitor (shim) ----------
+
+func (s *shimSessionService) GetSessionMonitor(ctx context.Context, examID string) (model.SessionMonitorResponse, error) {
+	eid, err := uuid.Parse(examID)
+	if err != nil {
+		return model.SessionMonitorResponse{}, fmt.Errorf("%w: invalid exam id", ErrValidation)
+	}
+
+	exam, err := s.repo.GetExamForSession(ctx, eid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.SessionMonitorResponse{}, ErrExamNotFound
+		}
+		return model.SessionMonitorResponse{}, err
+	}
+
+	rows, err := s.repo.GetSessionMonitorRows(ctx, eid)
+	if err != nil {
+		return model.SessionMonitorResponse{}, err
+	}
+
+	totalQ, err := s.repo.GetExamQuestionTotal(ctx, eid)
+	if err != nil {
+		return model.SessionMonitorResponse{}, err
+	}
+
+	recentV, err := s.repo.GetRecentViolations(ctx, eid, 20)
+	if err != nil {
+		return model.SessionMonitorResponse{}, err
+	}
+
+	now := time.Now()
+	for i := range rows {
+		rows[i].TotalQuestions = totalQ
+		rows[i].Status = deriveStatus(rows[i], now, exam.DurationMinutes, exam.GraceWindowMinutes)
+	}
+
+	return model.SessionMonitorResponse{
+		Exam: model.SessionMonitorExam{
+			ID:                 exam.ID,
+			Title:              exam.Title,
+			ScheduledAt:        exam.ScheduledAt,
+			DurationMinutes:    exam.DurationMinutes,
+			GraceWindowMinutes: exam.GraceWindowMinutes,
+			Status:             exam.Status,
+		},
+		Rows:             rows,
+		ViolationsRecent: recentV,
+	}, nil
+}
+
+// ---------- GetSessionViolations (shim) ----------
+
+func (s *shimSessionService) GetSessionViolations(ctx context.Context, sessionID string) ([]model.SessionViolationLog, error) {
+	sid, err := uuid.Parse(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+	return s.repo.ListSessionViolations(ctx, sid)
+}
+
+// ---------- Derived-status tests ----------
+
+func TestEffectiveDeadline_WithDurationAndGrace(t *testing.T) {
+	started := time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC)
+	duration := intptr(120)
+	grace := intptr(10)
+
+	dl := effectiveDeadline(started, duration, grace, nil)
+	expected := time.Date(2026, 7, 1, 10, 10, 0, 0, time.UTC)
+	if !dl.Equal(expected) {
+		t.Errorf("deadline: want %v, got %v", expected, dl)
+	}
+}
+
+func TestEffectiveDeadline_ExtendedUntilDominates(t *testing.T) {
+	started := time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC)
+	duration := intptr(120)
+	grace := intptr(10)
+	extended := time.Date(2026, 7, 1, 11, 0, 0, 0, time.UTC)
+
+	dl := effectiveDeadline(started, duration, grace, &extended)
+	if !dl.Equal(extended) {
+		t.Errorf("deadline: want %v (extended), got %v", extended, dl)
+	}
+}
+
+func TestEffectiveDeadline_ExtendedBeforeComputed_UsesDuration(t *testing.T) {
+	started := time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC)
+	duration := intptr(120)
+	grace := intptr(10)
+	extended := time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC) // before computed 10:10
+
+	dl := effectiveDeadline(started, duration, grace, &extended)
+	expected := time.Date(2026, 7, 1, 10, 10, 0, 0, time.UTC)
+	if !dl.Equal(expected) {
+		t.Errorf("deadline: want %v (computed), got %v", expected, dl)
+	}
+}
+
+func TestEffectiveDeadline_NilDuration_ReturnsZero(t *testing.T) {
+	started := time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC)
+
+	dl := effectiveDeadline(started, nil, intptr(10), nil)
+	if !dl.IsZero() {
+		t.Errorf("nil duration: want zero deadline, got %v", dl)
+	}
+}
+
+func TestEffectiveDeadline_NilDuration_ExtendedUntilIsDeadline(t *testing.T) {
+	started := time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC)
+	extended := time.Date(2026, 7, 1, 11, 0, 0, 0, time.UTC)
+
+	dl := effectiveDeadline(started, nil, nil, &extended)
+	if !dl.Equal(extended) {
+		t.Errorf("deadline: want %v (extended), got %v", extended, dl)
+	}
+}
+
+func TestEffectiveDeadline_NilGrace(t *testing.T) {
+	started := time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC)
+	duration := intptr(120)
+
+	dl := effectiveDeadline(started, duration, nil, nil)
+	expected := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+	if !dl.Equal(expected) {
+		t.Errorf("deadline: want %v, got %v", expected, dl)
+	}
+}
+
+func TestDeriveStatus_Registered_NoCheckin(t *testing.T) {
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "registered" {
+		t.Errorf("want registered, got %q", status)
+	}
+}
+
+func TestDeriveStatus_CheckedIn(t *testing.T) {
+	now := time.Now()
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		CheckedInAt:    &now,
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "checked_in" {
+		t.Errorf("want checked_in, got %q", status)
+	}
+}
+
+func TestDeriveStatus_InProgress_BeforeDeadline(t *testing.T) {
+	started := time.Now().Add(-30 * time.Minute)
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+	}
+	// 120min duration + 10min grace = 130min deadline; only 30min elapsed
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "in_progress" {
+		t.Errorf("want in_progress, got %q", status)
+	}
+}
+
+func TestDeriveStatus_Overdue_ViaDurationGrace(t *testing.T) {
+	started := time.Now().Add(-130*time.Minute - 1*time.Second) // past 120+10 deadline
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "overdue" {
+		t.Errorf("want overdue, got %q", status)
+	}
+}
+
+func TestDeriveStatus_Overdue_ViaExtendedUntil(t *testing.T) {
+	// started far enough back that 120+10 duration deadline is in the past,
+	// but extended_until is even more recent — it dominates AND is past.
+	started := time.Now().Add(-200 * time.Minute) // deadline = now - 70min with 120+10
+	extended := time.Now().Add(-5 * time.Minute)  // after computed deadline, but still past
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		ExtendedUntil:  &extended,
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "overdue" {
+		t.Errorf("want overdue via extended_until, got %q", status)
+	}
+}
+
+func TestDeriveStatus_Submitted(t *testing.T) {
+	started := time.Now().Add(-60 * time.Minute)
+	sessionID := uuid.New()
+	sessionStatus := "submitted"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "submitted" {
+		t.Errorf("want submitted, got %q", status)
+	}
+}
+
+func TestDeriveStatus_AdminSubmitted_Passthrough(t *testing.T) {
+	started := time.Now().Add(-60 * time.Minute)
+	sessionID := uuid.New()
+	sessionStatus := "submitted"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		AdminSubmitted: true,
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "submitted" {
+		t.Errorf("admin_submitted: want submitted, got %q", status)
+	}
+}
+
+// FR-6a: per_test exam with nil DurationMinutes stays in_progress, not overdue
+func TestDeriveStatus_FR6a_NilDuration_NotOverdue(t *testing.T) {
+	started := time.Now().Add(-24 * time.Hour) // started long ago
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+	}
+	status := deriveStatus(row, time.Now(), nil, intptr(10))
+	if status != "in_progress" {
+		t.Errorf("FR-6a: nil duration should stay in_progress, got %q", status)
+	}
+}
+
+func TestDeriveStatus_FR6a_ExtendedUntilCanMakeOverdue(t *testing.T) {
+	started := time.Now().Add(-60 * time.Minute)
+	extended := time.Now().Add(-1 * time.Second) // extended_until passed
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		ExtendedUntil:  &extended,
+	}
+	status := deriveStatus(row, time.Now(), nil, nil)
+	if status != "overdue" {
+		t.Errorf("FR-6a: passed extended_until should make overdue, got %q", status)
+	}
+}
+
+// ---------- GetSessionMonitor tests ----------
+
+func TestGetSessionMonitor_InvalidExamID(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.GetSessionMonitor(ctx, "not-a-uuid")
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("want ErrValidation, got %v", err)
+	}
+}
+
+func TestGetSessionMonitor_ExamNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.GetSessionMonitor(ctx, uuid.New().String())
+	if !errors.Is(err, ErrExamNotFound) {
+		t.Errorf("want ErrExamNotFound, got %v", err)
+	}
+}
+
+func TestGetSessionMonitor_HappyPath_FullResponse(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	exam := &model.Exam{
+		Title:                "Finals",
+		DurationMinutes:      intptr(120),
+		GraceWindowMinutes:   intptr(10),
+		TimerMode:            "overall",
+		Status:               "published",
+		ScheduledAt:          timePtr(time.Now().Add(-24 * time.Hour)),
+	}
+	svc.repo.seedExam(exam)
+
+	// Row 1: registered (no check-in, no session)
+	row1 := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+	}
+	svc.repo.seedSessionMonitorRow(exam.ID, row1)
+
+	// Row 2: submitted
+	sessionID := uuid.New()
+	sessionStatus := "submitted"
+	started := time.Now().Add(-60 * time.Minute)
+	row2 := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student B",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+	}
+	svc.repo.seedSessionMonitorRow(exam.ID, row2)
+
+	svc.repo.seedQuestionTotal(exam.ID, 25)
+
+	recentV := []model.ViolationRecent{
+		{SessionID: sessionID, StudentName: "Student B", Count: 3, LatestType: "tab_switch", LatestOccurredAt: time.Now()},
+	}
+	svc.repo.seedRecentViolations(exam.ID, recentV)
+
+	resp, err := svc.GetSessionMonitor(ctx, exam.ID.String())
+	if err != nil {
+		t.Fatalf("GetSessionMonitor: %v", err)
+	}
+
+	if resp.Exam.ID != exam.ID {
+		t.Errorf("exam.id mismatch")
+	}
+	if resp.Exam.Title != "Finals" {
+		t.Errorf("exam.title: want Finals, got %q", resp.Exam.Title)
+	}
+	if len(resp.Rows) != 2 {
+		t.Fatalf("rows: want 2, got %d", len(resp.Rows))
+	}
+	if resp.Rows[0].Status != "registered" {
+		t.Errorf("row[0]: want registered, got %q", resp.Rows[0].Status)
+	}
+	if resp.Rows[0].TotalQuestions != 25 {
+		t.Errorf("row[0].total_questions: want 25, got %d", resp.Rows[0].TotalQuestions)
+	}
+	if resp.Rows[1].Status != "submitted" {
+		t.Errorf("row[1]: want submitted, got %q", resp.Rows[1].Status)
+	}
+	if resp.Rows[1].TotalQuestions != 25 {
+		t.Errorf("row[1].total_questions: want 25, got %d", resp.Rows[1].TotalQuestions)
+	}
+	if len(resp.ViolationsRecent) != 1 {
+		t.Fatalf("violations_recent: want 1, got %d", len(resp.ViolationsRecent))
+	}
+	if resp.ViolationsRecent[0].StudentName != "Student B" {
+		t.Errorf("violation student: want Student B, got %q", resp.ViolationsRecent[0].StudentName)
+	}
+}
+
+func TestGetSessionMonitor_StatusOverdue_ViaDurationGrace(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	exam := &model.Exam{
+		Title:              "Finals",
+		DurationMinutes:    intptr(120),
+		GraceWindowMinutes: intptr(10),
+		TimerMode:          "overall",
+	}
+	svc.repo.seedExam(exam)
+
+	started := time.Now().Add(-130*time.Minute - 5*time.Second) // past 120+10 deadline
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+	}
+	svc.repo.seedSessionMonitorRow(exam.ID, row)
+	svc.repo.seedQuestionTotal(exam.ID, 10)
+
+	resp, err := svc.GetSessionMonitor(ctx, exam.ID.String())
+	if err != nil {
+		t.Fatalf("GetSessionMonitor: %v", err)
+	}
+	if len(resp.Rows) != 1 {
+		t.Fatalf("rows: want 1, got %d", len(resp.Rows))
+	}
+	if resp.Rows[0].Status != "overdue" {
+		t.Errorf("status: want overdue, got %q", resp.Rows[0].Status)
+	}
+}
+
+func TestGetSessionMonitor_FR6a_NilDuration_NotOverdue(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	exam := &model.Exam{
+		Title:              "PerTest",
+		DurationMinutes:    nil, // per_test
+		GraceWindowMinutes: intptr(10),
+		TimerMode:          "overall",
+	}
+	svc.repo.seedExam(exam)
+
+	started := time.Now().Add(-24 * time.Hour) // started long ago
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Student A",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+	}
+	svc.repo.seedSessionMonitorRow(exam.ID, row)
+	svc.repo.seedQuestionTotal(exam.ID, 10)
+
+	resp, err := svc.GetSessionMonitor(ctx, exam.ID.String())
+	if err != nil {
+		t.Fatalf("GetSessionMonitor: %v", err)
+	}
+	if len(resp.Rows) != 1 {
+		t.Fatalf("rows: want 1, got %d", len(resp.Rows))
+	}
+	if resp.Rows[0].Status != "in_progress" {
+		t.Errorf("FR-6a: nil duration should be in_progress, got %q", resp.Rows[0].Status)
+	}
+}
+
+// ---------- GetSessionViolations tests ----------
+
+func TestGetSessionViolations_InvalidSessionID(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	_, err := svc.GetSessionViolations(ctx, "not-a-uuid")
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("want ErrValidation, got %v", err)
+	}
+}
+
+func TestGetSessionViolations_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	sessionID := uuid.New()
+	v1 := model.SessionViolationLog{
+		ID:            uuid.New(),
+		SessionID:     sessionID,
+		StudentID:     uuid.New(),
+		ViolationType: "tab_switch",
+		OccurredAt:    time.Now().Add(-1 * time.Minute),
+	}
+	v2 := model.SessionViolationLog{
+		ID:            uuid.New(),
+		SessionID:     sessionID,
+		StudentID:     uuid.New(),
+		ViolationType: "fullscreen_exit",
+		OccurredAt:    time.Now(),
+	}
+	svc.repo.seedSessionViolations(sessionID, []model.SessionViolationLog{v1, v2})
+
+	violations, err := svc.GetSessionViolations(ctx, sessionID.String())
+	if err != nil {
+		t.Fatalf("GetSessionViolations: %v", err)
+	}
+	if len(violations) != 2 {
+		t.Fatalf("violations: want 2, got %d", len(violations))
+	}
+}
+
+func TestGetSessionViolations_EmptyForUnknownSession(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	violations, err := svc.GetSessionViolations(ctx, uuid.New().String())
+	if err != nil {
+		t.Fatalf("GetSessionViolations: %v", err)
+	}
+	if len(violations) != 0 {
+		t.Errorf("want 0 violations for unknown session, got %d", len(violations))
+	}
+}
+
