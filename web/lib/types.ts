@@ -652,6 +652,62 @@ export interface CheckInResult {
   checked_in_at: string;
 }
 
+// ── Session monitor types (Slice 7) ────────────────────────────────────────
+
+export type SessionMonitorStatus =
+  | "registered"
+  | "checked_in"
+  | "in_progress"
+  | "overdue"
+  | "submitted";
+
+export interface SessionMonitorRow {
+  registration_id: string;
+  student_id: string;
+  student_name: string;
+  school_name: string | null;
+  status: SessionMonitorStatus;
+  answers_saved: number;
+  total_questions: number;
+  checked_in_at: string | null;
+  last_saved_at: string | null;
+  violation_count: number;
+  session_id: string | null;
+  admin_submitted: boolean;
+  extended_until: string | null;
+}
+
+export interface SessionMonitorExam {
+  id: string;
+  title: string;
+  scheduled_at: string | null;
+  duration_minutes: number | null;
+  grace_window_minutes: number | null;
+  status: string;
+}
+
+export interface ViolationRecent {
+  session_id: string;
+  student_name: string;
+  count: number;
+  latest_type: string;
+  latest_occurred_at: string;
+}
+
+export interface SessionMonitorResponse {
+  exam: SessionMonitorExam;
+  rows: SessionMonitorRow[];
+  violations_recent: ViolationRecent[];
+}
+
+export interface SessionViolationLog {
+  id: string;
+  session_id: string;
+  student_id: string;
+  violation_type: string;
+  occurred_at: string;
+}
+
 export interface RegistrationListItem {
   id: string;
   student_id: string;
