@@ -1,0 +1,62 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { authFetch, API_BASE } from "@/lib/api";
+import type { AdminResultRow, AdminResultDetail } from "@/lib/types";
+
+export const adminResultsKeys = {
+  all: ["admin", "results"] as const,
+  list: (examId: string, q?: string, cursor?: string, limit?: number) =>
+    [...adminResultsKeys.all, "list", examId, q ?? "", cursor ?? "initial", limit ?? 20] as const,
+  detail: (sessionId: string) => [...adminResultsKeys.all, "detail", sessionId] as const,
+};
+
+export function useAdminResults(
+  opts: { examId: string; q?: string; cursor?: string; limit?: number },
+) {
+  const { examId, q, cursor, limit } = opts;
+  return useQuery({
+    queryKey: adminResultsKeys.list(examId, q, cursor, limit),
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("exam_id", examId);
+      if (q) params.set("q", q);
+      if (cursor) params.set("cursor", cursor);
+      if (limit) params.set("limit", String(limit));
+      const query = params.toString();
+      return authFetch<{ data: AdminResultRow[]; next_cursor?: string }>(
+        `/admin/results?${query}`,
+      );
+    },
+  });
+}
+
+export function useAdminResultDetail(sessionId: string) {
+  return useQuery({
+    queryKey: adminResultsKeys.detail(sessionId),
+    queryFn: () =>
+      authFetch<AdminResultDetail>(
+        `/admin/results/${encodeURIComponent(sessionId)}`,
+      ),
+    enabled: Boolean(sessionId),
+  });
+}
+
+export async function exportAdminResults(examId: string): Promise<void> {
+  const { useAuthStore } = await import("@/stores/auth");
+  const token = useAuthStore.getState().token;
+
+  const res = await fetch(`${API_BASE}/admin/results/export?exam_id=${encodeURIComponent(examId)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "results.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
