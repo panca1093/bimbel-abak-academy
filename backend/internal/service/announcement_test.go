@@ -147,9 +147,6 @@ func newTestAnnounceService(t *testing.T, repo *fakeAnnounceRepo, email *fakeEma
 	}
 }
 
-func strPtr(s string) *string { return &s }
-func timePtr(t time.Time) *time.Time { return &t }
-
 func TestCreateAnnouncement_Draft(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeAnnounceRepo()
