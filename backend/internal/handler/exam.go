@@ -588,6 +588,27 @@ func (h *Handler) AdminGetExamCertificatePreview(c echo.Context) error {
 	return c.Stream(http.StatusOK, "application/pdf", bytes.NewReader(pdf))
 }
 
+// AdminGetSessionMonitor returns the session monitor payload for an exam: exam summary,
+// one row per registrant with derived status, and recent violations. FR-1.
+func (h *Handler) AdminGetSessionMonitor(c echo.Context) error {
+	examID := c.QueryParam("exam_id")
+	resp, err := h.svc.GetSessionMonitor(c.Request().Context(), examID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+// AdminGetSessionViolations returns the violation log for a session, newest-first. FR-8.
+func (h *Handler) AdminGetSessionViolations(c echo.Context) error {
+	sessionID := c.Param("id")
+	items, err := h.svc.GetSessionViolations(c.Request().Context(), sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": items})
+}
+
 // StudentGetSessionLeaderboard returns the exam leaderboard scoped to the caller's session.
 func (h *Handler) StudentGetSessionLeaderboard(c echo.Context) error {
 	claims := claimsFromContext(c)
