@@ -671,6 +671,21 @@ export const DICT = {
     students_toast_status_failed: "Gagal mengubah status siswa.",
     load_more: "Muat lebih",
 
+    // Admin — school reports (School Slice C)
+    school_reports_select_exam: "Pilih ujian",
+    school_reports_no_exam: "Pilih ujian untuk melihat hasil",
+    school_reports_empty: "Belum ada hasil untuk ujian ini",
+    school_reports_export: "Ekspor CSV",
+    school_reports_export_loading: "Mengekspor…",
+    school_reports_col_nis: "NIS",
+    school_reports_col_score: "Skor",
+    school_reports_col_submitted: "Dikumpulkan",
+    school_reports_detail_title: "Detail Hasil",
+    school_reports_detail_score: "Skor",
+    school_reports_detail_correct: "Benar",
+    school_reports_detail_wrong: "Salah",
+    school_reports_detail_empty: "Kosong",
+
     // Admin — exam tests (Slice 1)
     tests_page_title: "Penyusun Tes",
     tests_empty: "Belum ada tes. Buat tes pertama Anda.",
@@ -1495,6 +1510,21 @@ export const DICT = {
     students_toast_deactivated: "Student deactivated.",
     students_toast_status_failed: "Failed to update student status.",
     load_more: "Load more",
+
+    // Admin — school reports (School Slice C)
+    school_reports_select_exam: "Select exam",
+    school_reports_no_exam: "Select an exam to view results",
+    school_reports_empty: "No results for this exam yet",
+    school_reports_export: "Export CSV",
+    school_reports_export_loading: "Exporting…",
+    school_reports_col_nis: "NIS",
+    school_reports_col_score: "Score",
+    school_reports_col_submitted: "Submitted",
+    school_reports_detail_title: "Result Detail",
+    school_reports_detail_score: "Score",
+    school_reports_detail_correct: "Correct",
+    school_reports_detail_wrong: "Wrong",
+    school_reports_detail_empty: "Empty",
 
     // Admin — exam tests (Slice 1)
     tests_page_title: "Test authoring",

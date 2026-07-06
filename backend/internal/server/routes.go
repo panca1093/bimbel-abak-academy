@@ -186,6 +186,13 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminStudents.POST("/bulk", h.AdminBulkImportStudents)
 	adminStudents.POST("/bulk/credentials", h.AdminBulkReissueCredentials)
 
+	// Admin results routes (school-scoped exam results)
+	adminResults := admin.Group("/results")
+	adminResults.Use(handler.RBACMiddleware("results:read"))
+	adminResults.GET("", h.AdminListResults)
+	adminResults.GET("/export", h.AdminExportResults)
+	adminResults.GET("/:session_id", h.AdminGetResultDetail)
+
 	// Admin job routes (JWT-only; any authenticated user may poll their own job)
 	adminJobs := admin.Group("/jobs")
 	adminJobs.GET("/:id", h.AdminGetJob)

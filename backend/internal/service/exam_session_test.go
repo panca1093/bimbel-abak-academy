@@ -26,6 +26,7 @@ type fakeSessionRepo struct {
 	testsByExam    map[uuid.UUID][]model.TestDetail
 	essays         map[uuid.UUID][]model.GradingEssayItem
 	gradingQueue   map[uuid.UUID][]model.GradingSessionItem
+	studentSchools map[uuid.UUID]string
 }
 
 func newFakeSessionRepo() *fakeSessionRepo {
@@ -37,6 +38,7 @@ func newFakeSessionRepo() *fakeSessionRepo {
 		testsByExam:    make(map[uuid.UUID][]model.TestDetail),
 		essays:         make(map[uuid.UUID][]model.GradingEssayItem),
 		gradingQueue:   make(map[uuid.UUID][]model.GradingSessionItem),
+		studentSchools: make(map[uuid.UUID]string),
 	}
 }
 

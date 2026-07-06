@@ -285,6 +285,47 @@ type ExamLeaderboardEntry struct {
 	Score       float64   `json:"score"`
 }
 
+// AdminResultRow is one row of the school-scoped results list (FR-SCHOOL-08-07).
+// SessionID is the opaque identifier for drill-down to the detail endpoint.
+type AdminResultRow struct {
+	SessionID   uuid.UUID  `json:"session_id"`
+	StudentName string     `json:"student_name"`
+	NIS         *string    `json:"nis"`
+	Score       *float64   `json:"score"`
+	SubmittedAt *time.Time `json:"submitted_at"`
+}
+
+// AdminResultSession is the detail read shape for a school-scoped session result
+// (FR-SCHOOL-08-13/14/15). It carries the fields resultGate and isFullyGraded need
+// (status, score, etc.) plus the joined student name/nis, without a rank field.
+type AdminResultSession struct {
+	SessionID   uuid.UUID  `json:"session_id"`
+	ExamID      uuid.UUID  `json:"exam_id"`
+	StudentID   uuid.UUID  `json:"student_id"`
+	StudentName string     `json:"student_name"`
+	NIS         *string    `json:"nis"`
+	Status      string     `json:"status"`
+	Score       *float64   `json:"score"`
+	SubmittedAt *time.Time `json:"submitted_at"`
+}
+
+// AdminResultDetail is the detail response for a school-scoped session result
+// (FR-SCHOOL-08-13/14/15/16). It does NOT embed SessionResult (which carries
+// a non-omitempty Rank field). No rank, no certificate_url.
+type AdminResultDetail struct {
+	SessionID    uuid.UUID                `json:"session_id"`
+	StudentName  string                   `json:"student_name"`
+	NIS          *string                  `json:"nis"`
+	Score        float64                  `json:"score"`
+	SubmittedAt  *time.Time               `json:"submitted_at"`
+	ResultConfig string                   `json:"result_config"`
+	CorrectCount int                      `json:"correct_count"`
+	WrongCount   int                      `json:"wrong_count"`
+	EmptyCount   int                      `json:"empty_count"`
+	Breakdown    []ResultTopicRow         `json:"breakdown,omitempty"`
+	Pembahasan   []ResultPembahasanItem   `json:"pembahasan,omitempty"`
+}
+
 // ScoreBucket is one band of the exam analytics score distribution.
 type ScoreBucket struct {
 	Label string `json:"label"`
