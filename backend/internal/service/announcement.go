@@ -20,10 +20,11 @@ var (
 	ErrAnnouncementNotFound = errors.New("announcement not found")
 )
 
-// announceRepo defines the repository methods the announcement service needs.
-type announceRepo interface {
+// AnnounceRepo defines the repository methods the announcement service needs.
+type AnnounceRepo interface {
 	CreateAnnouncement(ctx context.Context, a *model.Announcement) error
 	GetAnnouncementByID(ctx context.Context, id string) (*model.Announcement, error)
+	ListAnnouncements(ctx context.Context) ([]model.Announcement, error)
 	UpdateAnnouncement(ctx context.Context, id string, a *model.Announcement) error
 	DeleteAnnouncement(ctx context.Context, id string) error
 	ListActiveUserEmails(ctx context.Context, recipients string) ([]string, error)
@@ -229,4 +230,14 @@ func (s *Service) sendAnnouncement(ctx context.Context, a *model.Announcement) e
 	}
 
 	return s.announceRepo.MarkAnnouncementSent(ctx, a.ID, time.Now(), count)
+}
+
+// ListAnnouncements returns all announcements ordered by created_at DESC.
+func (s *Service) ListAnnouncements(ctx context.Context) ([]model.Announcement, error) {
+	return s.announceRepo.ListAnnouncements(ctx)
+}
+
+// SetAnnounceRepo sets the announcement repository. Used in tests.
+func (s *Service) SetAnnounceRepo(repo AnnounceRepo) {
+	s.announceRepo = repo
 }

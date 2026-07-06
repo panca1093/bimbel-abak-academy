@@ -55,6 +55,8 @@ func TestMapServiceError(t *testing.T) {
 		{name: "missing field", err: service.ErrMissingField, wantStatus: 400, wantCode: "invalid_request"},
 		{name: "account no email", err: service.ErrAccountNoEmail, wantStatus: 422, wantCode: "reset_invalid"},
 		{name: "invalid date format", err: fmt.Errorf("%w: %s", service.ErrInvalidDateFormat, "bad-date"), wantStatus: 400, wantCode: "invalid_request"},
+		{name: "announcement not found", err: service.ErrAnnouncementNotFound, wantStatus: 404, wantCode: "announcement_not_found"},
+		{name: "announcement immutable", err: service.ErrAnnouncementImmutable, wantStatus: 409, wantCode: "announcement_immutable"},
 		{name: "unknown error falls to 500", err: errors.New("something unexpected"), wantStatus: 500, wantCode: "internal_error"},
 	}
 

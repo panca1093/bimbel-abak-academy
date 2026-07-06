@@ -63,6 +63,14 @@ func (f *fakeAnnounceRepo) DeleteAnnouncement(_ context.Context, id string) erro
 	return nil
 }
 
+func (f *fakeAnnounceRepo) ListAnnouncements(_ context.Context) ([]model.Announcement, error) {
+	var result []model.Announcement
+	for _, a := range f.announcements {
+		result = append(result, *a)
+	}
+	return result, nil
+}
+
 func (f *fakeAnnounceRepo) ListActiveUserEmails(_ context.Context, recipients string) ([]string, error) {
 	emails, ok := f.emails[recipients]
 	if !ok {

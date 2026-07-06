@@ -21,7 +21,7 @@ type Service struct {
 	payment       PaymentClient
 	logistics     LogisticsClient
 	storage       *minio.Client
-	announceRepo  announceRepo
+	announceRepo  AnnounceRepo
 	presignOnce   sync.Once
 	presignClient *minio.Client
 	cfg           *config.Config
