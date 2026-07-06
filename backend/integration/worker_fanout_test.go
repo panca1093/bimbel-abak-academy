@@ -97,7 +97,7 @@ func TestWorkerFanout(t *testing.T) {
 		seedOutboxOrderPaid(t, env, orderID, productID, "course")
 
 		repo := repository.New(env.pool)
-		w := worker.New(env.pool, env.rdb, repo, 50*time.Millisecond, 200*time.Millisecond)
+		w := worker.New(env.pool, env.rdb, repo, 50*time.Millisecond, 200*time.Millisecond, 5*time.Minute, nil)
 		wCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go w.Run(wCtx)
@@ -151,7 +151,7 @@ func TestWorkerFanout(t *testing.T) {
 		seedOutboxOrderPaid(t, env, orderID, productID, "course")
 
 		repo := repository.New(env.pool)
-		w := worker.New(env.pool, env.rdb, repo, 50*time.Millisecond, 200*time.Millisecond)
+		w := worker.New(env.pool, env.rdb, repo, 50*time.Millisecond, 200*time.Millisecond, 5*time.Minute, nil)
 		wCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go w.Run(wCtx)
@@ -203,7 +203,7 @@ func TestWorkerFanout(t *testing.T) {
 		seedOutboxOrderPaid(t, env, orderID, productID, "course")
 
 		repo := repository.New(env.pool)
-		w := worker.New(env.pool, env.rdb, repo, 50*time.Millisecond, 200*time.Millisecond)
+		w := worker.New(env.pool, env.rdb, repo, 50*time.Millisecond, 200*time.Millisecond, 5*time.Minute, nil)
 		wCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go w.Run(wCtx)

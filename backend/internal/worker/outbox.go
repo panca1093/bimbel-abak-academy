@@ -39,30 +39,38 @@ type outboxRepository interface {
 }
 
 type Worker struct {
-	pool            *pgxpool.Pool
-	rdb             *redis.Client
-	repo            outboxRepository
-	interval        time.Duration
-	sweeperInterval time.Duration
+	pool                    *pgxpool.Pool
+	rdb                     *redis.Client
+	repo                    outboxRepository
+	interval                time.Duration
+	sweeperInterval         time.Duration
+	announcementPollInterval time.Duration
+	dispatcher              announcementDispatcher
 }
 
-func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval time.Duration) *Worker {
+func New(pool *pgxpool.Pool, rdb *redis.Client, repo outboxRepository, interval, sweeperInterval, announcementPollInterval time.Duration, dispatcher announcementDispatcher) *Worker {
 	return &Worker{
-		pool:            pool,
-		rdb:             rdb,
-		repo:            repo,
-		interval:        interval,
-		sweeperInterval: sweeperInterval,
+		pool:                     pool,
+		rdb:                      rdb,
+		repo:                     repo,
+		interval:                 interval,
+		sweeperInterval:          sweeperInterval,
+		announcementPollInterval: announcementPollInterval,
+		dispatcher:               dispatcher,
 	}
 }
 
-// Run polls the transactional outbox and runs the stale-payment sweeper until ctx is cancelled.
+// Run polls the transactional outbox, runs the stale-payment sweeper, and
+// dispatches due announcements until ctx is cancelled.
 func (w *Worker) Run(ctx context.Context) {
 	outboxTicker := time.NewTicker(w.interval)
 	defer outboxTicker.Stop()
 
 	sweeperTicker := time.NewTicker(w.sweeperInterval)
 	defer sweeperTicker.Stop()
+
+	announcementTicker := time.NewTicker(w.announcementPollInterval)
+	defer announcementTicker.Stop()
 
 	go func() {
 		for {
@@ -71,6 +79,17 @@ func (w *Worker) Run(ctx context.Context) {
 				return
 			case <-sweeperTicker.C:
 				w.sweepStalePayments(ctx)
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-announcementTicker.C:
+				w.pollAnnouncements(ctx)
 			}
 		}
 	}()
