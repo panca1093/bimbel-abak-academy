@@ -156,3 +156,16 @@ var _ = Announcement{
 	CreatedAt:      time.Time{},
 	UpdatedAt:      time.Time{},
 }
+
+var _ = Job{
+	ID:        "",
+	Type:      "",
+	Status:    "",
+	Progress:  0,
+	InputURL:  nil,
+	ResultURL: nil,
+	Error:     nil,
+	CreatedBy: "",
+	CreatedAt: time.Time{},
+	UpdatedAt: time.Time{},
+}

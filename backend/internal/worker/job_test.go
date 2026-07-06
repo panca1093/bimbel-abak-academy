@@ -1,0 +1,407 @@
+package worker
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/service"
+)
+
+type fakeJobRepo struct {
+	claimNextJobFn      func(ctx context.Context) (*model.Job, error)
+	updateJobProgressFn func(ctx context.Context, id string, progress int) error
+	finishJobFn         func(ctx context.Context, id, status string, progress int, resultURL, errMsg *string) error
+	getUserByIDFn       func(ctx context.Context, id string) (*model.User, error)
+
+	progressCalls []int
+	finishCalls   []finishCall
+	getUserCalls  []string
+}
+
+type finishCall struct {
+	id        string
+	status    string
+	progress  int
+	resultURL *string
+	errMsg    *string
+}
+
+func (f *fakeJobRepo) ClaimNextJob(ctx context.Context) (*model.Job, error) {
+	return f.claimNextJobFn(ctx)
+}
+
+func (f *fakeJobRepo) UpdateJobProgress(ctx context.Context, id string, progress int) error {
+	f.progressCalls = append(f.progressCalls, progress)
+	if f.updateJobProgressFn != nil {
+		return f.updateJobProgressFn(ctx, id, progress)
+	}
+	return nil
+}
+
+func (f *fakeJobRepo) FinishJob(ctx context.Context, id, status string, progress int, resultURL, errMsg *string) error {
+	f.finishCalls = append(f.finishCalls, finishCall{id, status, progress, resultURL, errMsg})
+	if f.finishJobFn != nil {
+		return f.finishJobFn(ctx, id, status, progress, resultURL, errMsg)
+	}
+	return nil
+}
+
+func (f *fakeJobRepo) GetUserByID(ctx context.Context, id string) (*model.User, error) {
+	f.getUserCalls = append(f.getUserCalls, id)
+	return f.getUserByIDFn(ctx, id)
+}
+
+type fakeObjectStore struct {
+	getObjectBytesFn func(ctx context.Context, bucket, key string) ([]byte, error)
+	putObjectBytesFn func(ctx context.Context, bucket, key string, data []byte, contentType string) error
+
+	getCalls []string
+	putCalls []putCall
+}
+
+type putCall struct {
+	bucket, key, contentType string
+	data                     []byte
+}
+
+func (f *fakeObjectStore) GetObjectBytes(ctx context.Context, bucket, key string) ([]byte, error) {
+	f.getCalls = append(f.getCalls, bucket+"/"+key)
+	return f.getObjectBytesFn(ctx, bucket, key)
+}
+
+func (f *fakeObjectStore) PutObjectBytes(ctx context.Context, bucket, key string, data []byte, contentType string) error {
+	f.putCalls = append(f.putCalls, putCall{bucket, key, contentType, data})
+	if f.putObjectBytesFn != nil {
+		return f.putObjectBytesFn(ctx, bucket, key, data, contentType)
+	}
+	return nil
+}
+
+type fakeStudentBulkProcessor struct {
+	processFn func(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
+}
+
+func (f *fakeStudentBulkProcessor) ProcessStudentBulkRows(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+	return f.processFn(ctx, schoolID, rows, onProgress)
+}
+
+func schoolIDPtr(s string) *string { return &s }
+
+func TestPollJobsNoQueuedJobIsNoOp(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeJobRepo{
+		claimNextJobFn: func(ctx context.Context) (*model.Job, error) { return nil, nil },
+	}
+	w := &Worker{jobRepo: repo}
+	w.pollJobs(ctx)
+
+	if len(repo.finishCalls) != 0 {
+		t.Fatalf("expected no FinishJob calls, got %d", len(repo.finishCalls))
+	}
+}
+
+func TestPollJobsUnknownTypeFinishesFailed(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeJobRepo{
+		claimNextJobFn: func(ctx context.Context) (*model.Job, error) {
+			return &model.Job{ID: "job-1", Type: "question_bulk", Status: "running", Progress: 0, CreatedBy: "u1"}, nil
+		},
+	}
+	w := &Worker{jobRepo: repo}
+	w.pollJobs(ctx)
+
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	call := repo.finishCalls[0]
+	if call.status != "failed" {
+		t.Errorf("expected status failed, got %s", call.status)
+	}
+	if call.errMsg == nil || *call.errMsg != "unknown job type: question_bulk" {
+		t.Errorf("expected unknown job type error message, got %v", call.errMsg)
+	}
+	if call.resultURL != nil {
+		t.Errorf("expected nil resultURL, got %v", *call.resultURL)
+	}
+}
+
+func TestPollJobsDispatchesStudentBulkJob(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeJobRepo{
+		claimNextJobFn: func(ctx context.Context) (*model.Job, error) {
+			return &model.Job{ID: "job-1", Type: "student_bulk", Status: "running", Progress: 0, CreatedBy: "u1"}, nil
+		},
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return nil, errors.New("boom")
+		},
+	}
+	w := &Worker{jobRepo: repo}
+	w.pollJobs(ctx)
+
+	if len(repo.getUserCalls) != 1 || repo.getUserCalls[0] != "u1" {
+		t.Fatalf("expected student_bulk dispatch to look up owning user, got %v", repo.getUserCalls)
+	}
+}
+
+const validBulkCSV = "name,nis,email\nAli,111,ali@example.com\nBudi,222,\n"
+
+func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T) {
+	ctx := context.Background()
+	job := model.Job{ID: "job-1", Type: "student_bulk", CreatedBy: "u1", InputURL: strPtr("student-bulk/s1/upload.csv")}
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return &model.User{ID: "u1", SchoolID: schoolIDPtr("s1")}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
+			return []byte(validBulkCSV), nil
+		},
+	}
+	svc := &fakeStudentBulkProcessor{
+		processFn: func(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+			if schoolID != "s1" {
+				t.Errorf("expected schoolID s1, got %s", schoolID)
+			}
+			if len(rows) != 2 {
+				t.Fatalf("expected 2 parsed rows, got %d", len(rows))
+			}
+			onProgress(100)
+			return []service.StudentBulkResultRow{
+				{Name: "Ali", NIS: "111", Status: "success", Username: "ali1", TempPassword: "temp1"},
+				{Name: "Budi", NIS: "222", Status: "success", Username: "budi1", TempPassword: "temp2"},
+			}, 2, nil
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, svc: svc, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	if len(store.getCalls) != 1 || store.getCalls[0] != "private-bucket/student-bulk/s1/upload.csv" {
+		t.Fatalf("expected download from private-bucket/student-bulk/s1/upload.csv, got %v", store.getCalls)
+	}
+	if len(store.putCalls) != 1 {
+		t.Fatalf("expected 1 upload, got %d", len(store.putCalls))
+	}
+	put := store.putCalls[0]
+	if put.bucket != "private-bucket" {
+		t.Errorf("expected upload bucket private-bucket, got %s", put.bucket)
+	}
+	wantKey := "student-bulk/s1/results/job-1.csv"
+	if put.key != wantKey {
+		t.Errorf("expected upload key %s, got %s", wantKey, put.key)
+	}
+	if len(repo.progressCalls) == 0 {
+		t.Error("expected UpdateJobProgress to be called via onProgress")
+	}
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	finish := repo.finishCalls[0]
+	if finish.status != "succeeded" {
+		t.Errorf("expected status succeeded, got %s", finish.status)
+	}
+	if finish.progress != 100 {
+		t.Errorf("expected progress 100, got %d", finish.progress)
+	}
+	if finish.resultURL == nil || *finish.resultURL != wantKey {
+		t.Errorf("expected resultURL %s, got %v", wantKey, finish.resultURL)
+	}
+	if finish.errMsg != nil {
+		t.Errorf("expected nil errMsg, got %v", *finish.errMsg)
+	}
+}
+
+func TestRunStudentBulkJobZeroSuccessesFinishesFailedButKeepsResultURL(t *testing.T) {
+	ctx := context.Background()
+	job := model.Job{ID: "job-2", Type: "student_bulk", CreatedBy: "u1", InputURL: strPtr("upload.csv")}
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return &model.User{ID: "u1", SchoolID: schoolIDPtr("s1")}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
+			return []byte(validBulkCSV), nil
+		},
+	}
+	svc := &fakeStudentBulkProcessor{
+		processFn: func(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+			return []service.StudentBulkResultRow{
+				{Name: "Ali", NIS: "111", Status: "failed", Error: "duplicate_nis"},
+				{Name: "Budi", NIS: "222", Status: "failed", Error: "duplicate_nis"},
+			}, 0, nil
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, svc: svc, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	if len(store.putCalls) != 1 {
+		t.Fatalf("expected report to still be uploaded, got %d uploads", len(store.putCalls))
+	}
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	finish := repo.finishCalls[0]
+	if finish.status != "failed" {
+		t.Errorf("expected status failed on zero successes, got %s", finish.status)
+	}
+	if finish.progress != 100 {
+		t.Errorf("expected progress 100, got %d", finish.progress)
+	}
+	if finish.resultURL == nil {
+		t.Error("expected resultURL to still be set even though status is failed")
+	}
+	if finish.errMsg == nil || *finish.errMsg == "" {
+		t.Error("expected a summary error message for zero successes")
+	}
+}
+
+func TestRunStudentBulkJobFailsWhenSchoolLookupFails(t *testing.T) {
+	ctx := context.Background()
+	job := model.Job{ID: "job-3", Type: "student_bulk", CreatedBy: "u1", Progress: 0, InputURL: strPtr("upload.csv")}
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return nil, errors.New("db down")
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
+			t.Fatal("expected no download attempt when school lookup fails")
+			return nil, nil
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	finish := repo.finishCalls[0]
+	if finish.status != "failed" {
+		t.Errorf("expected status failed, got %s", finish.status)
+	}
+	if finish.progress != 0 {
+		t.Errorf("expected unchanged progress 0, got %d", finish.progress)
+	}
+	if finish.resultURL != nil {
+		t.Error("expected nil resultURL on early failure")
+	}
+	if finish.errMsg == nil {
+		t.Error("expected an error message")
+	}
+}
+
+func TestRunStudentBulkJobFailsWhenSchoolIDIsNil(t *testing.T) {
+	ctx := context.Background()
+	job := model.Job{ID: "job-6", Type: "student_bulk", CreatedBy: "u1", Progress: 0, InputURL: strPtr("upload.csv")}
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return &model.User{ID: "u1", SchoolID: nil}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
+			t.Fatal("expected no download attempt when user has no school binding")
+			return nil, nil
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	finish := repo.finishCalls[0]
+	if finish.status != "failed" {
+		t.Errorf("expected status failed when user has no school binding, got %s", finish.status)
+	}
+	if finish.resultURL != nil {
+		t.Error("expected nil resultURL on early failure")
+	}
+	if finish.errMsg == nil {
+		t.Error("expected an error message")
+	}
+	if len(store.getCalls) != 0 {
+		t.Errorf("expected GetObjectBytes never called, got %d calls", len(store.getCalls))
+	}
+}
+
+func TestRunStudentBulkJobFailsWhenDownloadFails(t *testing.T) {
+	ctx := context.Background()
+	job := model.Job{ID: "job-4", Type: "student_bulk", CreatedBy: "u1", InputURL: strPtr("upload.csv")}
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return &model.User{ID: "u1", SchoolID: schoolIDPtr("s1")}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
+			return nil, errors.New("not found")
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	finish := repo.finishCalls[0]
+	if finish.status != "failed" {
+		t.Errorf("expected status failed, got %s", finish.status)
+	}
+	if finish.resultURL != nil {
+		t.Error("expected nil resultURL when download fails")
+	}
+}
+
+func TestRunStudentBulkJobFailsWhenUploadFails(t *testing.T) {
+	ctx := context.Background()
+	job := model.Job{ID: "job-5", Type: "student_bulk", CreatedBy: "u1", InputURL: strPtr("upload.csv")}
+
+	repo := &fakeJobRepo{
+		getUserByIDFn: func(ctx context.Context, id string) (*model.User, error) {
+			return &model.User{ID: "u1", SchoolID: schoolIDPtr("s1")}, nil
+		},
+	}
+	store := &fakeObjectStore{
+		getObjectBytesFn: func(ctx context.Context, bucket, key string) ([]byte, error) {
+			return []byte(validBulkCSV), nil
+		},
+		putObjectBytesFn: func(ctx context.Context, bucket, key string, data []byte, contentType string) error {
+			return errors.New("upload failed")
+		},
+	}
+	svc := &fakeStudentBulkProcessor{
+		processFn: func(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+			return []service.StudentBulkResultRow{{Name: "Ali", NIS: "111", Status: "success"}}, 1, nil
+		},
+	}
+
+	w := &Worker{jobRepo: repo, objectStore: store, svc: svc, privateBucket: "private-bucket"}
+	w.runStudentBulkJob(ctx, job)
+
+	if len(repo.finishCalls) != 1 {
+		t.Fatalf("expected 1 FinishJob call, got %d", len(repo.finishCalls))
+	}
+	finish := repo.finishCalls[0]
+	if finish.status != "failed" {
+		t.Errorf("expected status failed when upload fails, got %s", finish.status)
+	}
+	if finish.resultURL != nil {
+		t.Error("expected nil resultURL when upload fails (no durable result)")
+	}
+}
+
+func strPtr(s string) *string { return &s }

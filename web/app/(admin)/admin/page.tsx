@@ -45,7 +45,7 @@ export default function AdminIndexPage() {
   const formatRelativeTime = useFormatRelativeTime();
 
   const quickActions = [
-    { icon: Clipboard, label: t("admin_action_create_question"), route: "/admin/exam/banks" },
+    { icon: Clipboard, label: t("admin_action_create_question"), route: "/admin/exam/tests" },
     { icon: Store, label: t("admin_action_add_product"), route: "/admin/products" },
     { icon: UserPlus, label: t("admin_action_register_student"), route: "/admin/school/students" },
     { icon: BarChart3, label: t("admin_action_sales_report"), route: "/admin/revenue" },

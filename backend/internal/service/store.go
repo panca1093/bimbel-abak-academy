@@ -40,9 +40,7 @@ func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFil
 		// no filter restrictions
 	case RoleAdminStore:
 		// no filter restrictions — manages book, course, package
-	case RoleAdminExam:
-		return nil, "", nil // exam product type removed; role has no product access
-	default: // student or ""
+	default: // student, admin_exam, or ""
 		filter.VisibleOnly = true
 		filter.Status = "published"
 	}
@@ -1048,6 +1046,11 @@ func checkTypeRBAC(role, productType string) error {
 		return nil
 	case RoleAdminStore:
 		if productType == "book" || productType == "course" || productType == "package" {
+			return nil
+		}
+		return ErrForbidden
+	case RoleAdminExam:
+		if productType == "exam" {
 			return nil
 		}
 		return ErrForbidden

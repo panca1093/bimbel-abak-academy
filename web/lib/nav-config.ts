@@ -11,11 +11,9 @@ import {
   Tag,
   BarChart3,
   Bell,
-  FileQuestion,
   ClipboardList,
   BarChart,
   Users,
-  School,
   Calendar,
   FileText,
   Building,
@@ -72,7 +70,7 @@ const STUDENT_NAV: RoleNavConfig = [
   {
     items: [
       { labelKey: "nav_dashboard", href: "/", icon: LayoutDashboard, exact: true },
-      { labelKey: "nav_competition", href: "/competition", icon: Trophy },
+      { labelKey: "nav_competition", href: "/exam", icon: Trophy },
       { labelKey: "nav_courses", href: "/courses", icon: BookOpen },
       { labelKey: "nav_store", href: "/catalog", icon: ShoppingBag },
       { labelKey: "nav_billing", href: "/orders", icon: Receipt },
@@ -100,10 +98,9 @@ const ADMIN_EXAM_NAV: RoleNavConfig = [
   {
     titleKey: "role_admin_exam",
     items: [
-      { labelKey: "question_bank", href: "/admin/exam/banks", icon: FileQuestion },
-      { labelKey: "tests", href: "/admin/exam/tryouts", icon: ClipboardList },
-      { labelKey: "analytics", href: "/admin/exam/analytics", icon: BarChart },
-      { labelKey: "schedules", href: "/admin/exam/schedules", icon: Calendar },
+      { labelKey: "tests", href: "/admin/exam/tests", icon: ClipboardList },
+      { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar },
+      { labelKey: "session_monitor", href: "/admin/exam/monitor", icon: BarChart },
     ],
   },
 ];
@@ -113,7 +110,6 @@ const ADMIN_SCHOOL_NAV: RoleNavConfig = [
     titleKey: "role_admin_school",
     items: [
       { labelKey: "students", href: "/admin/school/students", icon: Users },
-      { labelKey: "classes", href: "/admin/school/classes", icon: School },
       { labelKey: "reports", href: "/admin/school/reports", icon: FileText },
     ],
   },

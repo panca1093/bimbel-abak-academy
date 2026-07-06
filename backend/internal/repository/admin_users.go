@@ -16,6 +16,7 @@ type AdminUserRow struct {
 	Email     *string   `json:"email"`
 	Role      string    `json:"role"`
 	Status    string    `json:"status"`
+	SchoolID  *string   `json:"school_id"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -38,7 +39,7 @@ func (r *Repository) ListAdminUsers(ctx context.Context, filter AdminUserFilter)
 		filter.Limit = 100
 	}
 
-	query := `SELECT id, name, email, role, status, created_at, updated_at
+	query := `SELECT id, name, email, role, status, school_id, created_at, updated_at
 		FROM users WHERE role != 'student' AND status != 'deleted'`
 	args := []any{}
 	argNum := 1
@@ -73,7 +74,7 @@ func (r *Repository) ListAdminUsers(ctx context.Context, filter AdminUserFilter)
 
 	for rows.Next() {
 		var a AdminUserRow
-		if err := rows.Scan(&a.ID, &a.Name, &a.Email, &a.Role, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Email, &a.Role, &a.Status, &a.SchoolID, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, "", err
 		}
 		if len(accounts) < filter.Limit {
@@ -99,10 +100,10 @@ func (r *Repository) CreateAdminUser(ctx context.Context, u *model.User) error {
 		u.Email = &normalized
 	}
 	return r.pool.QueryRow(ctx,
-		`INSERT INTO users (email, name, password_hash, role, status, otp_enabled)
-		 VALUES ($1, $2, $3, $4, 'active', false)
+		`INSERT INTO users (email, name, password_hash, role, school_id, status, otp_enabled)
+		 VALUES ($1, $2, $3, $4, $5, 'active', false)
 		 RETURNING id, created_at, updated_at`,
-		u.Email, u.Name, u.PasswordHash, u.Role,
+		u.Email, u.Name, u.PasswordHash, u.Role, u.SchoolID,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
@@ -145,6 +146,15 @@ func (r *Repository) UpdateAdminUserStatus(ctx context.Context, id, status strin
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users SET status = $1, updated_at = now() WHERE id = $2 AND status != 'deleted'`,
 		status, id,
+	)
+	return err
+}
+
+// SetUserSchoolID sets or clears the school_id on a user.
+func (r *Repository) SetUserSchoolID(ctx context.Context, userID string, schoolID *string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET school_id = $1, updated_at = now() WHERE id = $2 AND status != 'deleted'`,
+		schoolID, userID,
 	)
 	return err
 }

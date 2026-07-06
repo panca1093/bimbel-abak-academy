@@ -1,0 +1,414 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { useParams } from "next/navigation";
+import ExamPackageDetailPage from "./page";
+import type {
+  ExamDetail,
+  GradingSessionItem,
+  GradingEssayItem,
+  Test,
+  ExamAnalytics,
+  ExamLeaderboardEntry,
+} from "@/lib/types";
+
+vi.mock("next/navigation", () => ({
+  useParams: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+const mockReplaceTests = vi.fn();
+const mockUpdatePrice = vi.fn();
+const mockPublish = vi.fn();
+const mockGradeEssay = vi.fn();
+
+let examState: {
+  data: ExamDetail | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: ReturnType<typeof vi.fn>;
+} = { data: undefined, isLoading: true, isError: false, error: null, refetch: vi.fn() };
+
+let gradingSessionsState: {
+  data: { data: GradingSessionItem[] } | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+} = { data: undefined, isLoading: true, isError: false, error: null };
+
+let sessionEssaysState: {
+  data: { data: GradingEssayItem[] } | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+} = { data: undefined, isLoading: false, isError: false, error: null };
+
+let gradeEssayState: {
+  mutateAsync: ReturnType<typeof vi.fn>;
+  isPending: boolean;
+  variables?: { question_id: string };
+} = { mutateAsync: mockGradeEssay, isPending: false, variables: undefined };
+
+const sampleAnalytics: ExamAnalytics = {
+  average_score: 75.5,
+  completion_rate: 0.85,
+  distribution: [
+    { label: "0-20", count: 1 },
+    { label: "21-40", count: 2 },
+    { label: "41-60", count: 3 },
+    { label: "61-80", count: 5 },
+    { label: "81-100", count: 4 },
+  ],
+};
+
+const sampleLeaderboardEntries: ExamLeaderboardEntry[] = [
+  { rank: 1, session_id: "sess1", student_id: "s1", student_name: "Budi Santoso", score: 95 },
+  { rank: 2, session_id: "sess2", student_id: "s2", student_name: "Siti Aminah", score: 88 },
+  { rank: 3, session_id: "sess3", student_id: "s3", student_name: "Agus Wijaya", score: 82 },
+];
+
+let analyticsState: { data: ExamAnalytics | undefined; isLoading: boolean } = {
+  data: sampleAnalytics,
+  isLoading: false,
+};
+
+let leaderboardState: {
+  data: { data: ExamLeaderboardEntry[]; next_cursor?: string } | undefined;
+  isLoading: boolean;
+  isFetching: boolean;
+} = {
+  data: { data: sampleLeaderboardEntries, next_cursor: undefined },
+  isLoading: false,
+  isFetching: false,
+};
+
+vi.mock("@/lib/hooks/admin-exams", () => ({
+  useExam: () => examState,
+  useReplaceExamTests: () => ({ mutateAsync: mockReplaceTests, isPending: false }),
+  useUpdateExamPrice: () => ({ mutateAsync: mockUpdatePrice, isPending: false }),
+  usePublishExam: () => ({ mutateAsync: mockPublish, isPending: false }),
+  useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useGradingSessions: () => gradingSessionsState,
+  useSessionEssays: () => sessionEssaysState,
+  useGradeEssay: () => gradeEssayState,
+  useExamAnalytics: () => analyticsState,
+  useExamLeaderboard: () => leaderboardState,
+}));
+
+vi.mock("@/lib/hooks/admin-tests", () => ({
+  useAdminTests: () => ({
+    data: { data: [] as Test[] },
+    isLoading: false,
+  }),
+}));
+
+const sampleExam: ExamDetail = {
+  id: "exam-1",
+  title: "UTS Matematika",
+  scheduled_at: "2026-07-01T08:00:00Z",
+  timer_mode: "overall",
+  duration_minutes: 90,
+  is_free: false,
+  requires_checkin: true,
+  allow_leaderboard: false,
+  randomize: false,
+  status: "published",
+  product_price: 50000,
+  product_status: "published",
+  tests: [],
+};
+
+const sampleSessions: GradingSessionItem[] = [
+  {
+    session_id: "session-1",
+    student_id: "student-1",
+    student_name: "Budi Santoso",
+    submitted_at: "2026-06-30T10:00:00Z",
+    ungraded_essay_count: 2,
+  },
+  {
+    session_id: "session-2",
+    student_id: "student-2",
+    student_name: "Siti Aminah",
+    submitted_at: "2026-06-30T11:00:00Z",
+    ungraded_essay_count: 1,
+  },
+];
+
+const sampleEssays: GradingEssayItem[] = [
+  {
+    question_id: "q-1",
+    body: "Jelaskan penyebab perang Diponegoro",
+    answer: "Karena penjajahan Belanda",
+    point_correct: 10,
+    score: null,
+    grader_comment: null,
+    graded_at: null,
+  },
+];
+
+function openGradingTab() {
+  fireEvent.click(screen.getByRole("button", { name: /^penilaian$/i }));
+}
+
+describe("ExamPackageDetailPage — grading tab", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    examState = {
+      data: sampleExam,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    gradingSessionsState = {
+      data: { data: sampleSessions },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    sessionEssaysState = {
+      data: { data: sampleEssays },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    gradeEssayState = { mutateAsync: mockGradeEssay, isPending: false, variables: undefined };
+    mockGradeEssay.mockReset();
+    mockGradeEssay.mockResolvedValue({ status: "graded", score: 8 });
+  });
+
+  it("renders the list of sessions needing grading", async () => {
+    render(<ExamPackageDetailPage />);
+    openGradingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Siti Aminah")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("shows an empty state when no sessions need grading", async () => {
+    gradingSessionsState = { data: { data: [] }, isLoading: false, isError: false, error: null };
+    render(<ExamPackageDetailPage />);
+    openGradingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/tidak ada sesi yang perlu dinilai/i)).toBeInTheDocument();
+    });
+  });
+
+  it("selecting a session shows its essays", async () => {
+    render(<ExamPackageDetailPage />);
+    openGradingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+
+    const row = screen.getByText("Budi Santoso").closest("tr");
+    expect(row).toBeTruthy();
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: /lihat detail/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Jelaskan penyebab perang Diponegoro")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Karena penjajahan Belanda")).toBeInTheDocument();
+  });
+
+  it("grading an essay calls useGradeEssay with the score and comment payload", async () => {
+    render(<ExamPackageDetailPage />);
+    openGradingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    fireEvent.click(
+      within(screen.getByText("Budi Santoso").closest("tr") as HTMLElement).getByRole("button", {
+        name: /lihat detail/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Jelaskan penyebab perang Diponegoro")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/^skor$/i), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText(/komentar/i), {
+      target: { value: "Jawaban cukup lengkap" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /simpan nilai/i }));
+
+    await waitFor(() => {
+      expect(mockGradeEssay).toHaveBeenCalledWith({
+        question_id: "q-1",
+        score: 8,
+        comment: "Jawaban cukup lengkap",
+      });
+    });
+  });
+
+  it("blocks the save and does not call useGradeEssay when the score exceeds point_correct", async () => {
+    render(<ExamPackageDetailPage />);
+    openGradingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    fireEvent.click(
+      within(screen.getByText("Budi Santoso").closest("tr") as HTMLElement).getByRole("button", {
+        name: /lihat detail/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Jelaskan penyebab perang Diponegoro")).toBeInTheDocument();
+    });
+
+    // point_correct for this essay is 10; 11 is out of bounds.
+    fireEvent.change(screen.getByLabelText(/^skor$/i), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: /simpan nilai/i }));
+
+    expect(mockGradeEssay).not.toHaveBeenCalled();
+  });
+
+  it("clears a session from the grading queue after it is fully graded (post-invalidation refetch)", async () => {
+    render(<ExamPackageDetailPage />);
+    openGradingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    fireEvent.click(
+      within(screen.getByText("Budi Santoso").closest("tr") as HTMLElement).getByRole("button", {
+        name: /lihat detail/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Jelaskan penyebab perang Diponegoro")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/^skor$/i), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: /simpan nilai/i }));
+
+    await waitFor(() => {
+      expect(mockGradeEssay).toHaveBeenCalled();
+    });
+
+    // Simulate the queue refetch that useGradeEssay's onSuccess invalidation triggers.
+    gradingSessionsState = {
+      data: { data: sampleSessions.filter((s) => s.session_id !== "session-1") },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    fireEvent.click(screen.getByRole("button", { name: /kembali ke daftar/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Budi Santoso")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Siti Aminah")).toBeInTheDocument();
+  });
+});
+
+describe("ExamPackageDetailPage — leaderboard tab", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    examState = {
+      data: sampleExam,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    analyticsState = { data: sampleAnalytics, isLoading: false };
+    leaderboardState = {
+      data: { data: sampleLeaderboardEntries, next_cursor: undefined },
+      isLoading: false,
+      isFetching: false,
+    };
+  });
+
+  function openLeaderboardTab() {
+    fireEvent.click(screen.getByRole("button", { name: "Leaderboard" }));
+  }
+
+  it("renders analytics tiles instead of UnderMaintenance", async () => {
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    expect(screen.getByText("75.5")).toBeInTheDocument();
+    expect(screen.getByText("85%")).toBeInTheDocument();
+    expect(screen.getByText("0-20")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("81-100")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.queryByText(/Under Maintenance/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a leaderboard table with entries", async () => {
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    expect(screen.getByText("#1")).toBeInTheDocument();
+    expect(screen.getByText("95")).toBeInTheDocument();
+    expect(screen.getByText("Siti Aminah")).toBeInTheDocument();
+    expect(screen.getByText("Agus Wijaya")).toBeInTheDocument();
+  });
+
+  it("shows empty-state message when no leaderboard rows", async () => {
+    leaderboardState = {
+      data: { data: [], next_cursor: undefined },
+      isLoading: false,
+      isFetching: false,
+    };
+
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Belum ada data peringkat")).toBeInTheDocument();
+    });
+  });
+
+  it("renders retake rows (same student twice) without duplicate React keys", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    leaderboardState = {
+      data: {
+        data: [
+          { rank: 1, session_id: "sess1", student_id: "s1", student_name: "Budi Santoso", score: 95 },
+          { rank: 2, session_id: "sess9", student_id: "s1", student_name: "Budi Santoso", score: 88 },
+        ],
+        next_cursor: undefined,
+      },
+      isLoading: false,
+      isFetching: false,
+    };
+
+    render(<ExamPackageDetailPage />);
+    openLeaderboardTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Budi Santoso")).toHaveLength(2);
+    });
+
+    const dupKeyWarning = errSpy.mock.calls.some((args) =>
+      String(args[0]).includes("same key"),
+    );
+    errSpy.mockRestore();
+    expect(dupKeyWarning).toBe(false);
+  });
+});
