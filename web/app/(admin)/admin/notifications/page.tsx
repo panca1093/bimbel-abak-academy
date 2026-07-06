@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Bell } from "lucide-react";
 import { AnnouncementTable } from "@/components/admin/AnnouncementTable";
 import { AnnouncementComposer } from "@/components/admin/AnnouncementComposer";
 import { PurchaseNotificationFeed } from "@/components/admin/PurchaseNotificationFeed";
