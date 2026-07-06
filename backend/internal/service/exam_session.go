@@ -543,3 +543,115 @@ func (s *Service) ForceSubmitSession(ctx context.Context, sessionID string) (Sub
 		Score:  &score,
 	}, nil
 }
+// ---------- Session monitor helpers ----------
+
+// effectiveDeadline computes the overdue threshold for a session.
+// When durationMinutes is nil (per_test), no duration-based deadline applies
+// (FR-6a) — only extended_until can push the deadline forward. The zero
+// time.Time return signals "no deadline" to the caller.
+func effectiveDeadline(startedAt time.Time, durationMinutes *int, graceMinutes *int, extendedUntil *time.Time) time.Time {
+	var deadline time.Time
+
+	if durationMinutes != nil && *durationMinutes > 0 {
+		deadline = startedAt.Add(time.Duration(*durationMinutes) * time.Minute)
+		if graceMinutes != nil {
+			deadline = deadline.Add(time.Duration(*graceMinutes) * time.Minute)
+		}
+	}
+
+	if extendedUntil != nil && !extendedUntil.IsZero() {
+		if deadline.IsZero() || extendedUntil.After(deadline) {
+			deadline = *extendedUntil
+		}
+	}
+
+	return deadline
+}
+
+// deriveStatus sets the monitor row's derived status per FR-3.
+func deriveStatus(row model.SessionMonitorRow, now time.Time, durationMinutes *int, graceMinutes *int) string {
+	if row.SessionID == nil {
+		if row.CheckedInAt != nil {
+			return "checked_in"
+		}
+		return "registered"
+	}
+
+	if row.SessionStatus != nil && *row.SessionStatus == "submitted" {
+		return "submitted"
+	}
+
+	// Session is in_progress — check deadline.
+	deadline := effectiveDeadline(*row.StartedAt, durationMinutes, graceMinutes, row.ExtendedUntil)
+	if deadline.IsZero() {
+		return "in_progress"
+	}
+	if now.After(deadline) {
+		return "overdue"
+	}
+	return "in_progress"
+}
+
+// ---------- GetSessionMonitor ----------
+
+// GetSessionMonitor returns the monitor payload for an exam: the exam summary,
+// one row per registrant with derived status, and recent violations. FR-1–FR-7.
+func (s *Service) GetSessionMonitor(ctx context.Context, examID string) (model.SessionMonitorResponse, error) {
+	eid, err := uuid.Parse(examID)
+	if err != nil {
+		return model.SessionMonitorResponse{}, fmt.Errorf("%w: invalid exam id", ErrValidation)
+	}
+
+	exam, err := s.storeRepo.GetExamForSession(ctx, eid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.SessionMonitorResponse{}, ErrExamNotFound
+		}
+		return model.SessionMonitorResponse{}, err
+	}
+
+	rows, err := s.storeRepo.GetSessionMonitorRows(ctx, eid)
+	if err != nil {
+		return model.SessionMonitorResponse{}, err
+	}
+
+	totalQ, err := s.storeRepo.GetExamQuestionTotal(ctx, eid)
+	if err != nil {
+		return model.SessionMonitorResponse{}, err
+	}
+
+	recentV, err := s.storeRepo.GetRecentViolations(ctx, eid, 20)
+	if err != nil {
+		return model.SessionMonitorResponse{}, err
+	}
+
+	now := time.Now()
+	for i := range rows {
+		rows[i].TotalQuestions = totalQ
+		rows[i].Status = deriveStatus(rows[i], now, exam.DurationMinutes, exam.GraceWindowMinutes)
+	}
+
+	return model.SessionMonitorResponse{
+		Exam: model.SessionMonitorExam{
+			ID:                 exam.ID,
+			Title:              exam.Title,
+			ScheduledAt:        exam.ScheduledAt,
+			DurationMinutes:    exam.DurationMinutes,
+			GraceWindowMinutes: exam.GraceWindowMinutes,
+			Status:             exam.Status,
+		},
+		Rows:             rows,
+		ViolationsRecent: recentV,
+	}, nil
+}
+
+// ---------- GetSessionViolations ----------
+
+// GetSessionViolations returns the violation log for a session, newest-first. FR-8.
+func (s *Service) GetSessionViolations(ctx context.Context, sessionID string) ([]model.SessionViolationLog, error) {
+	sid, err := uuid.Parse(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+	return s.storeRepo.ListSessionViolations(ctx, sid)
+}

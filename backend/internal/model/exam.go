@@ -354,6 +354,7 @@ type SessionMonitorRow struct {
 	CheckedInAt     *time.Time `json:"checked_in_at"`
 	LastSavedAt     *time.Time `json:"last_saved_at"`
 	AnswersSaved    int        `json:"answers_saved"`
+	TotalQuestions  int        `json:"total_questions"`
 	ViolationCount  int        `json:"violation_count"`
 	Status          string     `json:"status"`
 }
