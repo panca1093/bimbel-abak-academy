@@ -23,4 +23,8 @@ var (
 	ErrNotEssayQuestion  = errors.New("question is not an essay")
 
 	ErrLeaderboardNotAvailable = errors.New("leaderboard not available")
+
+	// Sectioned-exam errors (FR-11/FR-14).
+	ErrSectionLocked    = errors.New("section locked")
+	ErrSectionNotActive = errors.New("section not active")
 )

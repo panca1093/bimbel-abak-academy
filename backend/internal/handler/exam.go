@@ -416,6 +416,21 @@ func (h *Handler) StudentSubmitSession(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+// StudentAdvanceSection closes the active section and promotes the next (FR-10).
+func (h *Handler) StudentAdvanceSection(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	sessionID := c.Param("id")
+	testID := c.Param("testId")
+	result, err := h.svc.AdvanceSection(c.Request().Context(), claims.Sub, sessionID, testID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
 // StudentLogViolation records an integrity event. FR21-FR22.
 func (h *Handler) StudentLogViolation(c echo.Context) error {
 	claims := claimsFromContext(c)
