@@ -417,6 +417,8 @@ export type SystemConfig = Record<string, string>;
 
 export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay";
 
+export type SectionType = "listening" | "reading" | "writing";
+
 export interface Test {
   id: string;
   title: string;
@@ -425,6 +427,7 @@ export interface Test {
   duration_minutes: number;
   audio_url?: string | null;
   audio_play_limit?: number | null;
+  section_type?: string | null;
   question_count?: number;
   created_at?: string;
 }
@@ -469,6 +472,7 @@ export interface AdminCreateTestInput {
   duration_minutes: number;
   audio_url?: string;
   audio_play_limit?: number;
+  section_type?: string;
 }
 
 export interface AdminUpdateTestInput {
@@ -478,6 +482,7 @@ export interface AdminUpdateTestInput {
   duration_minutes?: number;
   audio_url?: string;
   audio_play_limit?: number;
+  section_type?: string;
 }
 
 export interface AdminQuestionOptionInput {
@@ -532,6 +537,7 @@ export interface Exam {
   certificate_template?: string;
   status?: string;
   product_id?: string | null;
+  mode?: string;
   created_at?: string;
 }
 
@@ -611,6 +617,12 @@ export interface SessionTest {
   title: string;
   subject: string;
   questions: SessionQuestion[];
+  section_type?: string | null;
+  duration_minutes?: number | null;
+  audio_url?: string | null;
+  audio_play_limit?: number | null;
+  status?: string;
+  remaining_seconds?: number;
 }
 
 export interface SessionStartPayload {
@@ -619,6 +631,8 @@ export interface SessionStartPayload {
   timer_mode: string;
   duration_minutes?: number | null;
   tests: SessionTest[];
+  mode?: string;
+  active_test_id?: string | null;
 }
 
 export interface SessionAnswer {
@@ -656,6 +670,13 @@ export interface CheckInResult {
 
 // ── Session monitor types (Slice 7) ────────────────────────────────────────
 
+export interface AdvanceSectionResult {
+  mode?: string;
+  active_test_id?: string | null;
+  completed: boolean;
+  tests: SessionTest[];
+}
+
 export type SessionMonitorStatus =
   | "registered"
   | "checked_in"
@@ -677,6 +698,12 @@ export interface SessionMonitorRow {
   session_id: string | null;
   admin_submitted: boolean;
   extended_until: string | null;
+  active_section_test_id?: string | null;
+  active_section_title?: string | null;
+  active_section_started_at?: string | null;
+  active_section_duration_minutes?: number | null;
+  active_section_extended_until?: string | null;
+  active_section_remaining_seconds?: number;
 }
 
 export interface SessionMonitorExam {
@@ -753,6 +780,7 @@ export interface ResultTopicRow {
   title: string;
   subject: string;
   topic: string;
+  section_type?: string | null;
   earned: number;
   max: number;
 }
