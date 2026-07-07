@@ -285,6 +285,55 @@ describe("SessionPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("rehydrates flagged_for_review from session answers on reconnect (FR29)", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        answers: [
+          { question_id: "q-mcq", answer: "B", flagged_for_review: true },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    expect(
+      screen.getByRole("button", { name: /hapus tanda/i })
+    ).toBeInTheDocument();
+  });
+
+  it("includes flagged_for_review in the submit save payload (FR29)", async () => {
+    saveAnswersMutateAsync.mockResolvedValue(undefined);
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const flagBtn = screen.getByRole("button", { name: /tandai/i });
+    fireEvent.click(flagBtn);
+
+    fireEvent.click(screen.getByRole("button", { name: /kumpulkan/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/yakin ingin mengumpulkan jawaban/i)
+      ).toBeInTheDocument();
+    });
+    const btns = screen.getAllByRole("button", { name: /kumpulkan/i });
+    fireEvent.click(btns[btns.length - 1]);
+
+    await waitFor(() => {
+      expect(saveAnswersMutateAsync).toHaveBeenCalled();
+    });
+    const payload = saveAnswersMutateAsync.mock.calls[0][0];
+    expect(payload).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          question_id: "q-mcq",
+          flagged_for_review: true,
+        }),
+      ])
+    );
+  });
+
   // ── Timer ───────────────────────────────────────────────────────────────
 
   it("shows countdown timer display (FR29)", async () => {
@@ -292,6 +341,27 @@ describe("SessionPage", () => {
     await enterFullscreen();
 
     expect(screen.getByText(/60:00/)).toBeInTheDocument();
+  });
+
+  it("untimed exam (per_test, null duration) never auto-submits and hides the countdown", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        timer_mode: "per_test",
+        duration_minutes: null,
+        remaining_seconds: 0,
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    expect(screen.getByText(/Berapa 2\+2\?/)).toBeInTheDocument();
+    expect(screen.queryByText(/00:00/)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(submitSessionMutate).not.toHaveBeenCalled();
+    });
+    expect(routerReplace).not.toHaveBeenCalled();
   });
 
   // ── Submit confirmation dialog ──────────────────────────────────────────
@@ -351,7 +421,7 @@ describe("SessionPage", () => {
 
     // Verify save was triggered before submit
     expect(saveAnswersMutateAsync).toHaveBeenCalledWith(
-      [{ question_id: "q-mcq", answer: "B" }],
+      [{ question_id: "q-mcq", answer: "B", flagged_for_review: false }],
     );
 
     // Verify submitSession was called

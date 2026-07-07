@@ -624,6 +624,7 @@ export interface SessionStartPayload {
 export interface SessionAnswer {
   question_id: string;
   answer?: string | null;
+  flagged_for_review?: boolean;
 }
 
 export interface SessionState extends SessionStartPayload {
@@ -639,6 +640,7 @@ export interface SessionState extends SessionStartPayload {
 export interface SessionAnswerInput {
   question_id: string;
   answer: string;
+  flagged_for_review?: boolean;
 }
 
 export interface SubmitResult {

@@ -65,8 +65,27 @@ export default function SessionPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const autoSubmittedRef = useRef(false);
+  const submittingRef = useRef(false);
   const answersRef = useRef(answers);
   answersRef.current = answers;
+  const flaggedRef = useRef(flagged);
+  flaggedRef.current = flagged;
+
+  // buildSavePayload unions answered and flagged questions so a flag on an
+  // unanswered question still persists server-side.
+  const buildSavePayload = useCallback(() => {
+    const curAnswers = answersRef.current;
+    const curFlags = flaggedRef.current;
+    const ids = new Set([
+      ...Object.keys(curAnswers),
+      ...Object.keys(curFlags).filter((id) => curFlags[id]),
+    ]);
+    return [...ids].map((qid) => ({
+      question_id: qid,
+      answer: curAnswers[qid] ?? "",
+      flagged_for_review: curFlags[qid] ?? false,
+    }));
+  }, []);
 
   const allQuestions = session
     ? session.tests.flatMap((t) => t.questions)
@@ -78,9 +97,11 @@ export default function SessionPage() {
     const initAnswers: Record<string, string> = {};
     const initFlags: Record<string, boolean> = {};
     for (const a of session.answers) {
-      if (a.answer != null) initAnswers[a.question_id] = a.answer;
+      if (a.answer != null && a.answer !== "") initAnswers[a.question_id] = a.answer;
+      if (a.flagged_for_review) initFlags[a.question_id] = true;
     }
     setAnswers(initAnswers);
+    setFlagged(initFlags);
     setRemaining(session.remaining_seconds);
     autoSubmittedRef.current = false;
     if (session.status === "submitted") {
@@ -90,21 +111,26 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  // Untimed exams (timer_mode=per_test → duration_minutes null) get no countdown
+  // and must never auto-submit: the backend reports remaining_seconds=0 for them.
+  const hasTimer = session?.duration_minutes != null;
+
   // Timer countdown
   useEffect(() => {
-    if (!session || session.status !== "in_progress" || remaining <= 0)
+    if (!session || !hasTimer || session.status !== "in_progress" || remaining <= 0)
       return;
     const id = setInterval(() => {
       setRemaining((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, remaining <= 0]);
+  }, [session, hasTimer, remaining <= 0]);
 
   // Auto-submit when timer expires
   useEffect(() => {
     if (
       !session ||
+      !hasTimer ||
       session.status !== "in_progress" ||
       remaining > 0 ||
       autoSubmittedRef.current
@@ -112,11 +138,8 @@ export default function SessionPage() {
       return;
     autoSubmittedRef.current = true;
     const doSubmit = async () => {
-      const cur = answersRef.current;
-      const arr = Object.entries(cur).map(([qid, ans]) => ({
-        question_id: qid,
-        answer: ans,
-      }));
+      submittingRef.current = true;
+      const arr = buildSavePayload();
       if (arr.length > 0) {
         try {
           await saveAnswers.mutateAsync(arr);
@@ -139,17 +162,16 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId || session?.status !== "in_progress") return;
     const id = setInterval(() => {
-      const cur = answersRef.current;
-      const arr = Object.entries(cur).map(([qid, ans]) => ({
-        question_id: qid,
-        answer: ans,
-      }));
+      // A save landing while the submit round-trip is in flight could race the
+      // grading write server-side — skip autosaves once submit has started.
+      if (submittingRef.current) return;
+      const arr = buildSavePayload();
       if (arr.length > 0) {
         saveAnswers.mutate(arr);
       }
     }, 30000);
     return () => clearInterval(id);
-  }, [sessionId, session?.status, saveAnswers]);
+  }, [sessionId, session?.status, saveAnswers, buildSavePayload]);
 
   // Violation logging
   useEffect(() => {
@@ -195,11 +217,8 @@ export default function SessionPage() {
   const handleSubmit = useCallback(async () => {
     if (submitting) return;
     setSubmitting(true);
-    const cur = answersRef.current;
-    const arr = Object.entries(cur).map(([qid, ans]) => ({
-      question_id: qid,
-      answer: ans,
-    }));
+    submittingRef.current = true;
+    const arr = buildSavePayload();
     if (arr.length > 0) {
       try {
         await saveAnswers.mutateAsync(arr);
@@ -219,10 +238,11 @@ export default function SessionPage() {
       },
       onError: () => {
         setSubmitting(false);
+        submittingRef.current = false;
         setShowConfirm(false);
       },
     });
-  }, [submitting, saveAnswers, submitSession, router, sessionId]);
+  }, [submitting, saveAnswers, submitSession, router, sessionId, buildSavePayload]);
 
   // ── Error state (check before !session to handle query error) ────────
 
@@ -293,7 +313,7 @@ export default function SessionPage() {
   const currentQ = allQuestions[currentQIndex];
   const answeredCount = Object.keys(answers).length;
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
-  const timerExpired = remaining <= 0;
+  const timerExpired = hasTimer && remaining <= 0;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-4">
@@ -306,15 +326,17 @@ export default function SessionPage() {
             {allQuestions.length}
           </span>
         </div>
-        <div
-          className={`rounded-md px-3 py-1 text-lg font-mono font-bold ${
-            timerExpired
-              ? "bg-danger-bg text-danger"
-              : "bg-surface-2 text-ink-900"
-          }`}
-        >
-          {formatTime(remaining)}
-        </div>
+        {hasTimer && (
+          <div
+            className={`rounded-md px-3 py-1 text-lg font-mono font-bold ${
+              timerExpired
+                ? "bg-danger-bg text-danger"
+                : "bg-surface-2 text-ink-900"
+            }`}
+          >
+            {formatTime(remaining)}
+          </div>
+        )}
       </div>
 
       {/* Question navigator grid */}
