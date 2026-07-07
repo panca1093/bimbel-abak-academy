@@ -18,6 +18,60 @@ export interface School {
   id: string;
   name: string;
   code?: string;
+  npsn?: string;
+  school_types?: string[];
+  alamat?: string;
+  status?: string;
+  student_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdminSchoolInput {
+  name: string;
+  code: string;
+  npsn?: string;
+  school_types?: string[];
+  alamat?: string;
+}
+
+export interface AdminSchoolUpdateInput {
+  name?: string;
+  code?: string;
+  npsn?: string;
+  school_types?: string[];
+  alamat?: string;
+}
+
+export interface AdminStudent {
+  id: string;
+  name: string;
+  username: string;
+  nis: string;
+  email?: string;
+  status: string;
+  grade?: number;
+  created_at: string;
+}
+
+export interface StudentRegistrationInput {
+  name: string;
+  nis: string;
+  email?: string;
+  dob?: string;
+  gender?: string;
+  grade?: number;
+  alamat_domisili?: string;
+  target_exam?: string;
+}
+
+export interface StudentRegistrationResult extends AdminStudent {
+  temp_password: string;
+}
+
+export interface StudentCredentials {
+  username: string;
+  temp_password: string;
 }
 
 export interface User {
@@ -334,6 +388,7 @@ export interface AdminAccount {
   email?: string | null;
   role: AdminAccountRole;
   status: AdminAccountStatus;
+  school_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -343,6 +398,7 @@ export interface AdminCreateAccountInput {
   name: string;
   role: AdminAccountRole;
   password: string;
+  school_id?: string;
 }
 
 export interface AuditLogEntry {
@@ -358,3 +414,436 @@ export interface AuditLogEntry {
 }
 
 export type SystemConfig = Record<string, string>;
+
+export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay";
+
+export interface Test {
+  id: string;
+  title: string;
+  subject: string;
+  topic: string;
+  duration_minutes: number;
+  audio_url?: string | null;
+  audio_play_limit?: number | null;
+  question_count?: number;
+  created_at?: string;
+}
+
+export interface Question {
+  id: string;
+  test_id: string;
+  format: QuestionFormat;
+  body: string;
+  correct_answer?: string | null;
+  explanation?: string | null;
+  difficulty?: string | null;
+  image_url?: string | null;
+  sort_order: number;
+  point_correct: number;
+  point_wrong: number;
+}
+
+export interface QuestionOption {
+  question_id: string;
+  key: string;
+  text: string;
+  image_url?: string | null;
+  is_correct: boolean;
+  sort_order: number;
+}
+
+export interface QuestionWithOptions {
+  question: Question;
+  options: QuestionOption[];
+}
+
+export interface TestDetail {
+  test: Test;
+  questions: QuestionWithOptions[];
+}
+
+export interface AdminCreateTestInput {
+  title: string;
+  subject: string;
+  topic: string;
+  duration_minutes: number;
+  audio_url?: string;
+  audio_play_limit?: number;
+}
+
+export interface AdminUpdateTestInput {
+  title?: string;
+  subject?: string;
+  topic?: string;
+  duration_minutes?: number;
+  audio_url?: string;
+  audio_play_limit?: number;
+}
+
+export interface AdminQuestionOptionInput {
+  key: string;
+  text: string;
+  image_url?: string;
+  is_correct: boolean;
+  sort_order: number;
+}
+
+export interface AdminQuestionInput {
+  format: QuestionFormat;
+  body: string;
+  sort_order: number;
+  difficulty?: string;
+  explanation?: string;
+  image_url?: string;
+  correct_answer?: string;
+  options?: AdminQuestionOptionInput[];
+  point_correct?: number;
+  point_wrong?: number;
+}
+
+export interface TestListResponse {
+  data: Test[];
+  next_cursor?: string;
+}
+
+export interface QuestionListResponse {
+  data: QuestionWithOptions[];
+  next_cursor?: string;
+}
+
+export interface Exam {
+  id: string;
+  title: string;
+  is_free?: boolean;
+  scheduled_at?: string | null;
+  requires_checkin?: boolean;
+  allow_leaderboard?: boolean;
+  cdn_bundle?: boolean;
+  bundle_url?: string | null;
+  bundle_generated_at?: string | null;
+  check_in_window_minutes?: number | null;
+  grace_window_minutes?: number | null;
+  max_attempts?: number | null;
+  timer_mode?: string;
+  duration_minutes?: number | null;
+  randomize?: boolean;
+  result_config?: string;
+  result_release_at?: string | null;
+  certificate_template?: string;
+  status?: string;
+  product_id?: string | null;
+  created_at?: string;
+}
+
+export interface ExamListItem extends Exam {
+  product_price: number;
+  product_status: string;
+}
+
+export interface ExamTestEntry {
+  id: string;
+  exam_id: string;
+  test_id: string;
+  sort_order: number;
+  test: {
+    id: string;
+    title: string;
+    subject: string;
+    topic?: string | null;
+    duration_minutes?: number | null;
+    question_count: number;
+  };
+}
+
+export interface ExamDetail extends ExamListItem {
+  tests: ExamTestEntry[];
+}
+
+export interface CreateExamPayload {
+  title: string;
+  scheduled_at?: string | null;
+  timer_mode?: string;
+  duration_minutes?: number | null;
+  is_free?: boolean;
+  requires_checkin?: boolean;
+  allow_leaderboard?: boolean;
+  randomize?: boolean;
+  certificate_template?: string;
+}
+
+export interface UpdateExamPayload {
+  title?: string;
+  scheduled_at?: string | null;
+  timer_mode?: string;
+  duration_minutes?: number | null;
+  is_free?: boolean;
+  requires_checkin?: boolean;
+  allow_leaderboard?: boolean;
+  randomize?: boolean;
+  certificate_template?: string;
+}
+
+// ── Session engine types (FR26) ──────────────────────────────────────────
+// These mirror the backend ExamSession / ExamSessionAnswer / SessionViolationLog
+// models but strip is_correct/correct_answer fields the server keeps private.
+
+export interface SessionQuestionOption {
+  key: string;
+  text: string;
+  image_url?: string | null;
+  sort_order: number;
+}
+
+export interface SessionQuestion {
+  id: string;
+  test_id: string;
+  format: QuestionFormat;
+  body: string;
+  explanation?: string | null;
+  difficulty?: string | null;
+  image_url?: string | null;
+  sort_order: number;
+  options: SessionQuestionOption[];
+}
+
+export interface SessionTest {
+  id: string;
+  title: string;
+  subject: string;
+  questions: SessionQuestion[];
+}
+
+export interface SessionStartPayload {
+  session_id: string;
+  remaining_seconds: number;
+  timer_mode: string;
+  duration_minutes?: number | null;
+  tests: SessionTest[];
+}
+
+export interface SessionAnswer {
+  question_id: string;
+  answer?: string | null;
+  flagged_for_review?: boolean;
+}
+
+export interface SessionState extends SessionStartPayload {
+  registration_id: string;
+  status: string;
+  started_at: string;
+  submitted_at?: string | null;
+  extended_until?: string | null;
+  last_saved_at?: string | null;
+  answers: SessionAnswer[];
+}
+
+export interface SessionAnswerInput {
+  question_id: string;
+  answer: string;
+  flagged_for_review?: boolean;
+}
+
+export interface SubmitResult {
+  submitted: boolean;
+  score?: number | null;
+  total?: number;
+}
+
+export interface CheckInResult {
+  checked_in: boolean;
+  checked_in_at: string;
+}
+
+// ── Session monitor types (Slice 7) ────────────────────────────────────────
+
+export type SessionMonitorStatus =
+  | "registered"
+  | "checked_in"
+  | "in_progress"
+  | "overdue"
+  | "submitted";
+
+export interface SessionMonitorRow {
+  registration_id: string;
+  student_id: string;
+  student_name: string;
+  school_name: string | null;
+  status: SessionMonitorStatus;
+  answers_saved: number;
+  total_questions: number;
+  checked_in_at: string | null;
+  last_saved_at: string | null;
+  violation_count: number;
+  session_id: string | null;
+  admin_submitted: boolean;
+  extended_until: string | null;
+}
+
+export interface SessionMonitorExam {
+  id: string;
+  title: string;
+  scheduled_at: string | null;
+  duration_minutes: number | null;
+  grace_window_minutes: number | null;
+  status: string;
+}
+
+export interface ViolationRecent {
+  session_id: string;
+  student_name: string;
+  count: number;
+  latest_type: string;
+  latest_occurred_at: string;
+}
+
+export interface SessionMonitorResponse {
+  exam: SessionMonitorExam;
+  rows: SessionMonitorRow[];
+  violations_recent: ViolationRecent[];
+}
+
+export interface SessionViolationLog {
+  id: string;
+  session_id: string;
+  student_id: string;
+  violation_type: string;
+  occurred_at: string;
+}
+
+export interface RegistrationListItem {
+  id: string;
+  student_id: string;
+  exam_id: string;
+  token: string;
+  card_pdf_url: string | null;
+  checked_in_at: string | null;
+  attempts_used: number;
+  status: string;
+  created_at: string;
+  exam_title: string;
+  scheduled_at: string | null;
+}
+
+export interface RegistrationDetail {
+  id: string;
+  student_id: string;
+  exam_id: string;
+  token: string;
+  card_pdf_url: string | null;
+  checked_in_at: string | null;
+  attempts_used: number;
+  status: string;
+  created_at: string;
+  exam: {
+    id: string;
+    title: string;
+    scheduled_at: string | null;
+    requires_checkin: boolean;
+    check_in_window_minutes: number | null;
+    timer_mode: string;
+    duration_minutes: number | null;
+    result_config: string;
+  };
+}
+
+// ── Result & grading types (Slice 5) ─────────────────────────────────────
+
+export interface ResultTopicRow {
+  test_id: string;
+  title: string;
+  subject: string;
+  topic: string;
+  earned: number;
+  max: number;
+}
+
+export interface ResultPembahasanItem {
+  question_id: string;
+  body: string;
+  format: QuestionFormat;
+  your_answer?: string | null;
+  correct_answer?: string | null;
+  is_correct?: boolean | null;
+  explanation?: string | null;
+}
+
+interface SessionResultCounts {
+  score: number;
+  correct_count: number;
+  wrong_count: number;
+  empty_count: number;
+  rank: number;
+}
+
+export type SessionResult =
+  | { state: "hidden"; certificate_url?: string | null }
+  | { state: "grading"; certificate_url?: string | null }
+  | { state: "locked"; result_release_at: string; certificate_url?: string | null }
+  | ({ state: "result"; result_config: "score_only" } & SessionResultCounts & { certificate_url?: string | null })
+  | ({
+      state: "result";
+      result_config: "score_pembahasan";
+      breakdown: ResultTopicRow[];
+      pembahasan: ResultPembahasanItem[];
+    } & SessionResultCounts & { certificate_url?: string | null });
+
+export interface GradingSessionItem {
+  session_id: string;
+  student_id: string;
+  student_name: string;
+  submitted_at?: string | null;
+  ungraded_essay_count: number;
+}
+
+export interface GradingEssayItem {
+  question_id: string;
+  body: string;
+  answer?: string | null;
+  point_correct: number;
+  score?: number | null;
+  grader_comment?: string | null;
+  graded_at?: string | null;
+}
+
+export interface ExamLeaderboardEntry {
+  rank: number;
+  session_id: string;
+  student_id: string;
+  student_name: string;
+  score: number;
+}
+
+export interface ScoreBucket {
+  label: string;
+  count: number;
+}
+
+export interface ExamAnalytics {
+  average_score: number;
+  completion_rate: number;
+  distribution: ScoreBucket[];
+}
+
+// ── Admin Results (FR-SCHOOL-08) ───────────────────────────────────────────
+
+export interface AdminResultRow {
+  session_id: string;
+  student_name: string;
+  nis?: string | null;
+  score: number;
+  submitted_at: string;
+}
+
+export interface AdminResultDetail {
+  session_id: string;
+  student_name: string;
+  nis?: string | null;
+  score: number;
+  submitted_at: string;
+  result_config: string;
+  correct_count: number;
+  wrong_count: number;
+  empty_count: number;
+  breakdown?: ResultTopicRow[];
+  pembahasan?: ResultPembahasanItem[];
+}

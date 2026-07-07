@@ -1347,3 +1347,33 @@ func TestUpdateProductWithCourses_ReplacesLinks(t *testing.T) {
 		t.Errorf("want [%s] linked, got %v", course2.ID.String(), linked)
 	}
 }
+
+// --- Purchase notification config gate ---
+
+func TestPurchaseNotifyEnabled_DisabledByFalse(t *testing.T) {
+	cfg := map[string]string{"notify_on_purchase_admin_store": "false"}
+	if purchaseNotifyEnabled(cfg) {
+		t.Error("want false for 'false'")
+	}
+}
+
+func TestPurchaseNotifyEnabled_EnabledByEmptyString(t *testing.T) {
+	cfg := map[string]string{"notify_on_purchase_admin_store": ""}
+	if !purchaseNotifyEnabled(cfg) {
+		t.Error("want true for ''")
+	}
+}
+
+func TestPurchaseNotifyEnabled_EnabledByTrue(t *testing.T) {
+	cfg := map[string]string{"notify_on_purchase_admin_store": "true"}
+	if !purchaseNotifyEnabled(cfg) {
+		t.Error("want true for 'true'")
+	}
+}
+
+func TestPurchaseNotifyEnabled_EnabledByMissingKey(t *testing.T) {
+	cfg := map[string]string{}
+	if !purchaseNotifyEnabled(cfg) {
+		t.Error("want true for missing key")
+	}
+}

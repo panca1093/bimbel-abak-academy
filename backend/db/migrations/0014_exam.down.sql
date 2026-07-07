@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS session_violation_log;
+DROP TABLE IF EXISTS exam_session_answer;
+DROP TABLE IF EXISTS exam_session;
+DROP TABLE IF EXISTS exam_registration;
+DROP TABLE IF EXISTS exam_test;
+DROP TABLE IF EXISTS exam;
+DROP TABLE IF EXISTS question_option;
+DROP TABLE IF EXISTS question;
+DROP TABLE IF EXISTS test;

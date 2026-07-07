@@ -72,7 +72,7 @@ export function RankingCard({ ranking }: { ranking: DashboardRanking }) {
             })}
           </div>
           <Button asChild variant="ghost" size="sm" className="mt-2 self-center">
-            <Link href="/competition">{t("dash_view_all")}</Link>
+            <Link href="/exam">{t("dash_view_all")}</Link>
           </Button>
         </>
       )}

@@ -40,9 +40,7 @@ func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFil
 		// no filter restrictions
 	case RoleAdminStore:
 		// no filter restrictions — manages book, course, package
-	case RoleAdminExam:
-		return nil, "", nil // exam product type removed; role has no product access
-	default: // student or ""
+	default: // student, admin_exam, or ""
 		filter.VisibleOnly = true
 		filter.Status = "published"
 	}
@@ -766,23 +764,33 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, orderID, key string) er
 	}
 
 	// Push notification (best-effort; non-fatal error)
-	student, _ := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
-	studentName := "Student"
-	if student != nil {
-		studentName = student.Name
+	// Gate: skip only when explicitly set to "false"
+	cfg, _ := s.GetSystemConfig(ctx)
+	if purchaseNotifyEnabled(cfg) {
+		student, _ := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
+		studentName := "Student"
+		if student != nil {
+			studentName = student.Name
+		}
+		notif := PurchaseNotification{
+			ID:          uuid.New().String(),
+			Type:        "order_confirmed",
+			OrderID:     order.ID,
+			StudentName: studentName,
+			Amount:      int64(order.Total * 100),
+			CreatedAt:   time.Now(),
+			Read:        false,
+		}
+		_ = s.PushPurchaseNotification(ctx, RoleAdminStore, notif)
 	}
-	notif := PurchaseNotification{
-		ID:          uuid.New().String(),
-		Type:        "order_confirmed",
-		OrderID:     order.ID,
-		StudentName: studentName,
-		Amount:      int64(order.Total * 100),
-		CreatedAt:   time.Now(),
-		Read:        false,
-	}
-	_ = s.PushPurchaseNotification(ctx, RoleAdminStore, notif)
 
 	return nil
+}
+
+// purchaseNotifyEnabled returns true when the admin_store purchase notification
+// should fire. Only "false" disables it; "" (unset) and "true" are enabled.
+func purchaseNotifyEnabled(cfg map[string]string) bool {
+	return cfg["notify_on_purchase_admin_store"] != "false"
 }
 
 func (s *Service) AdminShipOrder(ctx context.Context, orderID, trackingNumber string) error {
@@ -1038,6 +1046,11 @@ func checkTypeRBAC(role, productType string) error {
 		return nil
 	case RoleAdminStore:
 		if productType == "book" || productType == "course" || productType == "package" {
+			return nil
+		}
+		return ErrForbidden
+	case RoleAdminExam:
+		if productType == "exam" {
 			return nil
 		}
 		return ErrForbidden

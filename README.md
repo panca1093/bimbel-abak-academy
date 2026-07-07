@@ -1,6 +1,7 @@
 # Abak Academy — App
 
 Monorepo for the Abak Academy platform: exam engine + ecommerce + video courses.
+Requirements live one level up in `../requirements/` (`product-requirements.md`, `technical-requirements.md`, `schema.dbml`).
 
 ## What's built
 
@@ -60,7 +61,13 @@ Layering: `handler → service → repository / adapter`.
 ## Quickstart (Docker)
 
 ```bash
-cd deploy
+# One-time: create your local dev config (gitignored)
+cd backend/config/env
+mkdir -p dev
+cp config.example.yaml dev/config.yaml
+cp secrets.example.yaml dev/secrets.yaml   # values match docker-compose as-is
+
+cd ../../../deploy
 docker compose up -d          # postgres + redis + minio + api + worker + web
 ```
 

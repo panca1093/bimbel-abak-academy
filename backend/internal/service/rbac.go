@@ -15,7 +15,7 @@ var roleCapabilities = map[string][]string{
 	RoleAdminExam:   {"questions:*", "tests:*", "products(exam):*", "sessions:*", "uploads:write"},
 	RoleAdminStore:  {"products(book|course):write", "sections:*", "orders:*", "promos:*", "revenue:read", "notifications:*", "uploads:write"},
 	RoleAdminSchool: {"students:*", "results:read"},
-	RoleSuperAdmin:  {"*"},
+	RoleSuperAdmin:  {"*", "schools:write"},
 }
 
 func Capabilities(role string) []string {

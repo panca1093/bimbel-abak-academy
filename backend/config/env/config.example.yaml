@@ -1,0 +1,21 @@
+# Template for <env>/config.yaml (non-secret values). For local dev:
+#   cp config.example.yaml dev/config.yaml
+#   cp secrets.example.yaml dev/secrets.yaml
+# Hostnames below match the docker-compose network; for bare `go run` against
+# host-mapped ports use localhost:5432 / localhost:6379 / localhost:9000.
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins:
+  - "http://localhost:3000"
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: "https://api.fazpass.com"
+midtrans_env: "sandbox"
+minio_endpoint: "minio:9000"
+minio_public_endpoint: "localhost:9000"
+minio_use_ssl: false
+minio_bucket_name: "akademi-bimbel"
+minio_private_bucket_name: "akademi-bimbel-private"

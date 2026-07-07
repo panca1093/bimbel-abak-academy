@@ -86,6 +86,27 @@ describe("admin-accounts hooks", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: adminAccountsKeys.all });
   });
 
+  it("useCreateAdminAccount passes school_id when provided", async () => {
+    const account: AdminAccount = { id: "a4", name: "Admin School", email: "schooladmin@test.com", role: "admin_school", status: "active", school_id: "sch-1", created_at: "2026-03-01T00:00:00Z", updated_at: "2026-03-01T00:00:00Z" };
+    mockAuthFetch.mockResolvedValueOnce(account);
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useCreateAdminAccount(), { wrapper });
+
+    const input = { email: "schooladmin@test.com", name: "Admin School", role: "admin_school" as const, password: "secret123", school_id: "sch-1" };
+
+    await act(async () => {
+      await result.current.mutateAsync(input);
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/system/accounts", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminAccountsKeys.all });
+  });
+
   it("useChangeAccountRole patches /admin/system/accounts/:id/role and invalidates list", async () => {
     mockAuthFetch.mockResolvedValueOnce({ message: "role updated" });
 
@@ -102,6 +123,41 @@ describe("admin-accounts hooks", () => {
       body: JSON.stringify({ role: "super_admin" }),
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: adminAccountsKeys.all });
+  });
+
+  it("useChangeAccountRole passes school_id in body when role is admin_school", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "role updated" });
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useChangeAccountRole(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: "a2", role: "admin_school", school_id: "sch-1" });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/system/accounts/a2/role", {
+      method: "PATCH",
+      body: JSON.stringify({ role: "admin_school", school_id: "sch-1" }),
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminAccountsKeys.all });
+  });
+
+  it("useChangeAccountRole omits school_id from body when not provided", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ message: "role updated" });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useChangeAccountRole(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: "a3", role: "admin_store" });
+    });
+
+    // school_id should be omitted when not provided in input
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/system/accounts/a3/role", {
+      method: "PATCH",
+      body: JSON.stringify({ role: "admin_store" }),
+    });
   });
 
   it("useChangeAccountStatus patches /admin/system/accounts/:id/status and invalidates list", async () => {

@@ -7,6 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.2
+	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/labstack/echo/v4 v4.13.3
 	github.com/midtrans/midtrans-go v1.3.8
 	github.com/minio/minio-go/v7 v7.2.0
@@ -15,6 +16,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.42.0
 	golang.org/x/crypto v0.51.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -92,5 +94,4 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gopkg.in/ini.v1 v1.67.2 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

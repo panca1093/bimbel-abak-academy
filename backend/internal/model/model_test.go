@@ -141,3 +141,31 @@ var _ = OutboxEvent{
 	Attempts:      0,
 	LastError:     nil,
 }
+
+var _ = Announcement{
+	ID:             "",
+	Title:          "",
+	Message:        "",
+	Type:           "",
+	Recipients:     "",
+	Status:         "",
+	ScheduledAt:    nil,
+	SentAt:         nil,
+	RecipientCount: nil,
+	CreatedBy:      "",
+	CreatedAt:      time.Time{},
+	UpdatedAt:      time.Time{},
+}
+
+var _ = Job{
+	ID:        "",
+	Type:      "",
+	Status:    "",
+	Progress:  0,
+	InputURL:  nil,
+	ResultURL: nil,
+	Error:     nil,
+	CreatedBy: "",
+	CreatedAt: time.Time{},
+	UpdatedAt: time.Time{},
+}
