@@ -308,7 +308,9 @@ func (w *Worker) sweepStalePayments(ctx context.Context) {
 func generateToken() string {
 	b := make([]byte, 5)
 	if _, err := rand.Read(b); err != nil {
-		return "ABCD1234"
+		// crypto/rand.Read never fails on supported platforms; a constant
+		// fallback would be a guessable check-in credential.
+		panic(err)
 	}
 	return strings.ToUpper(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b)[:8])
 }

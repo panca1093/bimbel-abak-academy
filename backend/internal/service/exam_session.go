@@ -267,6 +267,9 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 
 	sess, err := s.storeRepo.CreateExamSessionTx(ctx, tx, detail.ExamRegistration)
 	if err != nil {
+		if errors.Is(err, repository.ErrNoAttemptsLeft) {
+			return SessionStartPayload{}, ErrAlreadyAttempted
+		}
 		return SessionStartPayload{}, err
 	}
 
@@ -275,7 +278,10 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 	}
 
 	// Load questions
-	tests, _ := s.storeRepo.GetSessionWithQuestions(ctx, detail.ExamID)
+	tests, err := s.storeRepo.GetSessionWithQuestions(ctx, detail.ExamID)
+	if err != nil {
+		return SessionStartPayload{}, err
+	}
 	grouped := groupQuestionsByTest(tests)
 
 	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, nil)
@@ -318,10 +324,16 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 
 	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, sess.ExtendedUntil)
 
-	tests, _ := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+	tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+	if err != nil {
+		return SessionStatePayload{}, err
+	}
 	grouped := groupQuestionsByTest(tests)
 
-	answers, _ := s.storeRepo.GetSessionAnswers(ctx, sessID)
+	answers, err := s.storeRepo.GetSessionAnswers(ctx, sessID)
+	if err != nil {
+		return SessionStatePayload{}, err
+	}
 
 	return SessionStatePayload{
 		SessionID:        sess.ID,
@@ -394,8 +406,16 @@ func (s *Service) SubmitSession(ctx context.Context, studentID, sessionID string
 		return SubmitResult{}, err
 	}
 
-	questions, _ := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
-	answers, _ := s.storeRepo.GetSessionAnswers(ctx, sessID)
+	// A failed load must abort the submit: grading against a partial/empty question
+	// set would CAS-submit the student's only attempt with a wrong score.
+	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+	if err != nil {
+		return SubmitResult{}, err
+	}
+	answers, err := s.storeRepo.GetSessionAnswers(ctx, sessID)
+	if err != nil {
+		return SubmitResult{}, err
+	}
 
 	answerMap := make(map[uuid.UUID]*string)
 	for _, a := range answers {
@@ -505,8 +525,15 @@ func (s *Service) ForceSubmitSession(ctx context.Context, sessionID string) (Sub
 		return SubmitResult{}, err
 	}
 
-	questions, _ := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
-	answers, _ := s.storeRepo.GetSessionAnswers(ctx, sessID)
+	// Same guard as SubmitSession: never grade against a failed load.
+	questions, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+	if err != nil {
+		return SubmitResult{}, err
+	}
+	answers, err := s.storeRepo.GetSessionAnswers(ctx, sessID)
+	if err != nil {
+		return SubmitResult{}, err
+	}
 
 	answerMap := make(map[uuid.UUID]*string)
 	for _, a := range answers {

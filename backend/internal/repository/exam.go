@@ -21,6 +21,10 @@ var ErrSortOrderConflict = errors.New("sort order conflict")
 // ErrInvalidCursor — malformed pagination cursor — surfaced for service-layer mapping to 4xx.
 var ErrInvalidCursor = errors.New("invalid pagination cursor")
 
+// ErrNoAttemptsLeft — CreateExamSessionTx's atomic attempts_used guard matched no row —
+// surfaced for service-layer mapping to ErrAlreadyAttempted.
+var ErrNoAttemptsLeft = errors.New("no attempts left")
+
 func scanTest(row interface{ Scan(dest ...any) error }, t *model.Test) error {
 	var audioURL *string
 	var audioPlayLimit *int
@@ -892,17 +896,22 @@ func (r *Repository) CheckInExamTx(ctx context.Context, tx pgx.Tx, regID uuid.UU
 
 // CreateExamSessionTx increments attempts_used, sets status='in_progress',
 // optionally stamps checked_in_at when NULL, and inserts an exam_session row.
+// The attempts_used = 0 predicate is the atomic 1-attempt guard: the service's
+// read-then-act check alone would let two concurrent starts both pass.
 func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) (model.ExamSession, error) {
-	_, err := tx.Exec(ctx,
+	tag, err := tx.Exec(ctx,
 		`UPDATE exam_registration
 		SET attempts_used = attempts_used + 1,
 		    status = 'in_progress',
 		    checked_in_at = COALESCE(checked_in_at, now())
-		WHERE id = $1`,
+		WHERE id = $1 AND attempts_used = 0`,
 		reg.ID,
 	)
 	if err != nil {
 		return model.ExamSession{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return model.ExamSession{}, ErrNoAttemptsLeft
 	}
 
 	var s model.ExamSession
@@ -1038,10 +1047,35 @@ func (r *Repository) GetSessionAnswers(ctx context.Context, sessionID uuid.UUID)
 	return answers, nil
 }
 
-// SaveAnswersTx upserts answers and stamps last_saved_at on the session.
+// SaveAnswersTx upserts answers and stamps last_saved_at on the session, in one
+// transaction. The FOR UPDATE lock serializes saves against SubmitSessionTx's CAS:
+// a late autosave that already passed the service's status pre-check waits on the
+// submit's row lock, re-reads 'submitted', and becomes a no-op instead of
+// overwriting graded rows.
 func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, answers []model.ExamSessionAnswer) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var status string
+	err = tx.QueryRow(ctx,
+		`SELECT status FROM exam_session WHERE id = $1 FOR UPDATE`,
+		sessionID,
+	).Scan(&status)
+	if err != nil {
+		if isNotFound(err) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if status != "in_progress" {
+		return nil
+	}
+
 	for _, a := range answers {
-		_, err := r.pool.Exec(ctx,
+		_, err := tx.Exec(ctx,
 			`INSERT INTO exam_session_answer (session_id, question_id, answer, is_correct, score, graded_by, graded_at, grader_comment, flagged_for_review, saved_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
 			ON CONFLICT (session_id, question_id) DO UPDATE SET
@@ -1061,11 +1095,14 @@ func (r *Repository) SaveAnswersTx(ctx context.Context, sessionID uuid.UUID, ans
 		}
 	}
 
-	_, err := r.pool.Exec(ctx,
+	_, err = tx.Exec(ctx,
 		`UPDATE exam_session SET last_saved_at = now() WHERE id = $1`,
 		sessionID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // SubmitSessionTx performs a CAS submit of a session, writes graded answers,
