@@ -16,6 +16,7 @@ import {
   useSaveAnswers,
   useSubmitSession,
   useLogViolation,
+  useAdvanceSection,
 } from "@/lib/hooks/exam";
 import { useTranslation, DICT } from "@/lib/i18n";
 type I18nKey = keyof typeof DICT.id;
@@ -32,6 +33,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import type { SessionQuestion } from "@/lib/types";
+import { SectionAudioPlayer } from "./section-audio-player";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -55,6 +57,7 @@ export default function SessionPage() {
   const saveAnswers = useSaveAnswers(sessionId);
   const submitSession = useSubmitSession(sessionId);
   const logViolation = useLogViolation(sessionId);
+  const advanceSection = useAdvanceSection(sessionId);
 
   const [redirecting, setRedirecting] = useState(false);
   const [fullscreenGranted, setFullscreenGranted] = useState(false);
@@ -66,6 +69,7 @@ export default function SessionPage() {
   const [submitting, setSubmitting] = useState(false);
   const autoSubmittedRef = useRef(false);
   const submittingRef = useRef(false);
+  const autoAdvanceRef = useRef(false);
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
@@ -91,6 +95,14 @@ export default function SessionPage() {
     ? session.tests.flatMap((t) => t.questions)
     : [];
 
+  const isSectioned =
+    session?.mode === "utbk" || session?.mode === "ielts";
+  const activeTest = isSectioned
+    ? session?.tests.find((t) => t.id === session.active_test_id)
+    : null;
+  const activeQuestions =
+    isSectioned && activeTest ? activeTest.questions : allQuestions;
+
   // Initialize from session data (reconnect)
   useEffect(() => {
     if (!session) return;
@@ -102,8 +114,14 @@ export default function SessionPage() {
     }
     setAnswers(initAnswers);
     setFlagged(initFlags);
-    setRemaining(session.remaining_seconds);
+    if (isSectioned && session.active_test_id) {
+      const sec = session.tests.find((t) => t.id === session.active_test_id);
+      setRemaining(sec?.remaining_seconds ?? 0);
+    } else {
+      setRemaining(session.remaining_seconds);
+    }
     autoSubmittedRef.current = false;
+    autoAdvanceRef.current = false;
     if (session.status === "submitted") {
       setRedirecting(true);
       router.replace(`/exam/sessions/${sessionId}/result`);
@@ -113,7 +131,9 @@ export default function SessionPage() {
 
   // Untimed exams (timer_mode=per_test → duration_minutes null) get no countdown
   // and must never auto-submit: the backend reports remaining_seconds=0 for them.
-  const hasTimer = session?.duration_minutes != null;
+  const hasTimer = isSectioned
+    ? (activeTest?.duration_minutes ?? 0) > 0
+    : session?.duration_minutes != null;
 
   // Timer countdown
   useEffect(() => {
@@ -126,14 +146,15 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, hasTimer, remaining <= 0]);
 
-  // Auto-submit when timer expires
+  // Auto-submit when timer expires (standard mode only)
   useEffect(() => {
     if (
       !session ||
       !hasTimer ||
       session.status !== "in_progress" ||
       remaining > 0 ||
-      autoSubmittedRef.current
+      autoSubmittedRef.current ||
+      isSectioned
     )
       return;
     autoSubmittedRef.current = true;
@@ -157,6 +178,51 @@ export default function SessionPage() {
     doSubmit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remaining <= 0]);
+
+  // Auto-advance when section timer expires (sectioned mode)
+  useEffect(() => {
+    if (
+      !session ||
+      !isSectioned ||
+      !hasTimer ||
+      session.status !== "in_progress" ||
+      remaining > 0 ||
+      autoAdvanceRef.current
+    )
+      return;
+    autoAdvanceRef.current = true;
+    const doAdvance = async () => {
+      // Always attempt save before advance; answersRef reflects render-phase
+      // state and may not yet include effect-hydrated answers on first fire.
+      const arr = buildSavePayload();
+      try {
+        await saveAnswers.mutateAsync(arr);
+      } catch {
+        /* best-effort */
+      }
+      const sectionId = session.active_test_id;
+      if (!sectionId) return;
+      try {
+        const result = await advanceSection.mutateAsync(sectionId);
+        if (result.completed) {
+          // Last section — submit now
+          submitSession.mutate(undefined, {
+            onSuccess: () => {
+              setRedirecting(true);
+              router.replace(`/exam/sessions/${sessionId}/result`);
+            },
+          });
+        }
+        // Non-last section: cache invalidation refetches session,
+        // init effect picks up the new active section's timer.
+      } catch {
+        // Allow retry on failure
+        autoAdvanceRef.current = false;
+      }
+    };
+    doAdvance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining <= 0, isSectioned]);
 
   // Periodic save every 30s
   useEffect(() => {
@@ -310,20 +376,63 @@ export default function SessionPage() {
 
   // ── Active exam ───────────────────────────────────────────────────────
 
-  const currentQ = allQuestions[currentQIndex];
+  const questionsToShow = activeQuestions;
+  const currentQ = questionsToShow[currentQIndex];
   const answeredCount = Object.keys(answers).length;
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
   const timerExpired = hasTimer && remaining <= 0;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-4">
+      {/* Section rail (sectioned mode only) */}
+      {isSectioned && (
+        <div
+          data-testid="section-rail"
+          className="mb-4 flex gap-2 overflow-x-auto"
+        >
+          {session.tests.map((test, i) => {
+            const isActive = test.id === session.active_test_id;
+            const isSubmitted = test.status === "submitted";
+            let railClass =
+              "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium";
+            if (isActive) {
+              railClass += " bg-brand-600 text-white";
+            } else if (isSubmitted) {
+              railClass += " bg-surface-2 text-ink-500";
+            } else {
+              railClass += " bg-surface-2 text-ink-400";
+            }
+            return (
+              <div
+                key={test.id}
+                data-testid={`section-rail-item-${i}`}
+                className={railClass}
+              >
+                <span>{test.title}</span>
+                <span>
+                  {isSubmitted ? "✓" : isActive ? "●" : "○"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Audio player (listening sections only) */}
+      {isSectioned && activeTest?.section_type === "listening" && activeTest.audio_url && (
+        <SectionAudioPlayer
+          audioUrl={activeTest.audio_url}
+          playLimit={activeTest.audio_play_limit}
+        />
+      )}
+
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-ink-600">
           <BookOpen className="size-4" />
           <span>
-            {t("session_question")} {Math.min(currentQIndex + 1, allQuestions.length)} {t("of")}{" "}
-            {allQuestions.length}
+            {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")}{" "}
+            {questionsToShow.length}
           </span>
         </div>
         {hasTimer && (
@@ -341,7 +450,7 @@ export default function SessionPage() {
 
       {/* Question navigator grid */}
       <div className="mb-4 flex flex-wrap gap-1.5">
-        {allQuestions.map((q, i) => {
+        {questionsToShow.map((q, i) => {
           const hasAnswer = answers[q.id] != null;
           const isFlagQ = flagged[q.id] ?? false;
           const isCurrent = i === currentQIndex;
@@ -417,23 +526,29 @@ export default function SessionPage() {
           <ChevronLeft className="size-4" />
         </Button>
 
-        <Button
-          type="button"
-          variant="destructive"
-          onClick={() => setShowConfirm(true)}
-          disabled={timerExpired || submitting}
-        >
-          {t("submit")}
-        </Button>
+        {isSectioned ? (
+          <span className="text-sm font-medium text-ink-600">
+            {activeTest?.title ?? ""}
+          </span>
+        ) : (
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => setShowConfirm(true)}
+            disabled={timerExpired || submitting}
+          >
+            {t("submit")}
+          </Button>
+        )}
 
         <Button
           type="button"
           variant="outline"
           size="sm"
-          disabled={currentQIndex >= allQuestions.length - 1}
+          disabled={currentQIndex >= questionsToShow.length - 1}
           onClick={() =>
             setCurrentQIndex((i) =>
-              Math.min(allQuestions.length - 1, i + 1),
+              Math.min(questionsToShow.length - 1, i + 1),
             )
           }
         >
@@ -447,7 +562,7 @@ export default function SessionPage() {
           <DialogHeader>
             <DialogTitle>{t("submit_confirm")}</DialogTitle>
             <DialogDescription>
-              {answeredCount}/{allQuestions.length} {t("session_question").toLowerCase()}
+              {answeredCount}/{questionsToShow.length} {t("session_question").toLowerCase()}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
