@@ -2,32 +2,390 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
-func TestLoad_ConfigEncryptionKey(t *testing.T) {
-	const key = "CONFIG_ENCRYPTION_KEY"
-	os.Setenv(key, "test-encryption-key")
-	defer os.Unsetenv(key)
-
-	cfg := Load()
-	if cfg.ConfigEncryptionKey != "test-encryption-key" {
-		t.Errorf("ConfigEncryptionKey: got %q want %q", cfg.ConfigEncryptionKey, "test-encryption-key")
+func writeYAML(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+		t.Fatalf("writeYAML %s: %v", name, err)
 	}
 }
 
-func TestLoad_ConfigEncryptionKey_default(t *testing.T) {
-	os.Unsetenv("CONFIG_ENCRYPTION_KEY")
-	cfg := Load()
-	if cfg.ConfigEncryptionKey != "" {
-		t.Errorf("ConfigEncryptionKey default: got %q want %q", cfg.ConfigEncryptionKey, "")
+func TestLoad_devHappyPath(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "9090"
+redis_addr: "redis:6379"
+worker_poll_interval: "10s"
+cors_origins:
+  - "http://localhost:3000"
+  - "http://app.local:3000"
+access_token_ttl: "30m"
+refresh_token_ttl: "720h"
+otp_ttl: "10m"
+google_client_id: "gcid-test"
+fazpass_base_url: "https://fazpass.test"
+midtrans_env: "sandbox"
+minio_endpoint: "minio:9000"
+minio_public_endpoint: "minio.public:9000"
+minio_use_ssl: true
+minio_bucket_name: "test-bucket"
+minio_private_bucket_name: "test-private-bucket"
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://u:p@host/db"
+jwt_secret: "jwt-secret-val"
+config_encryption_key: "enc-key-val"
+otp_secret: "otp-secret-val"
+minio_access_key: "minio-ak"
+minio_secret_key: "minio-sk"
+redis_password: "redis-pw"
+fazpass_merchant_key: "fz-mk"
+fazpass_api_key: "fz-ak"
+midtrans_server_key: "mt-sk"
+midtrans_client_key: "mt-ck"
+`)
+
+	cfg, err := Load("dev", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if cfg.Env != "dev" {
+		t.Errorf("Env: got %q want %q", cfg.Env, "dev")
+	}
+	if cfg.HTTPPort != "9090" {
+		t.Errorf("HTTPPort: got %q want %q", cfg.HTTPPort, "9090")
+	}
+	if cfg.DatabaseURL != "postgres://u:p@host/db" {
+		t.Errorf("DatabaseURL: got %q", cfg.DatabaseURL)
+	}
+	if cfg.JWTSecret != "jwt-secret-val" {
+		t.Errorf("JWTSecret: got %q", cfg.JWTSecret)
+	}
+	if cfg.AccessTokenTTL != 30*time.Minute {
+		t.Errorf("AccessTokenTTL: got %v want 30m", cfg.AccessTokenTTL)
+	}
+	if cfg.RedisPassword != "redis-pw" {
+		t.Errorf("RedisPassword: got %q", cfg.RedisPassword)
+	}
+	if cfg.FazpassMerchantKey != "fz-mk" {
+		t.Errorf("FazpassMerchantKey: got %q", cfg.FazpassMerchantKey)
+	}
+	if cfg.MinioUseSSL != true {
+		t.Errorf("MinioUseSSL: got %v want true", cfg.MinioUseSSL)
+	}
+	if len(cfg.CORSOrigins) != 2 || cfg.CORSOrigins[0] != "http://localhost:3000" {
+		t.Errorf("CORSOrigins: got %v", cfg.CORSOrigins)
 	}
 }
 
-func TestLoad_MinioPrivateBucketName_default(t *testing.T) {
-	os.Unsetenv("MINIO_PRIVATE_BUCKET_NAME")
-	cfg := Load()
-	if cfg.MinioPrivateBucketName != "akademi-bimbel-private" {
-		t.Errorf("MinioPrivateBucketName default: got %q want %q", cfg.MinioPrivateBucketName, "akademi-bimbel-private")
+func TestLoad_devSecretsFileAbsent(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
 	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins:
+  - "http://localhost:3000"
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+minio_endpoint: ""
+minio_public_endpoint: ""
+minio_use_ssl: false
+minio_bucket_name: ""
+minio_private_bucket_name: ""
+`)
+
+	cfg, err := Load("dev", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.JWTSecret != "" {
+		t.Errorf("JWTSecret: got %q want empty", cfg.JWTSecret)
+	}
+	if cfg.DatabaseURL != "" {
+		t.Errorf("DatabaseURL: got %q want empty", cfg.DatabaseURL)
+	}
+}
+
+func TestLoad_stagingSecretsFileAbsent(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "staging")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+minio_endpoint: ""
+minio_public_endpoint: ""
+minio_use_ssl: false
+minio_bucket_name: ""
+minio_private_bucket_name: ""
+`)
+
+	_, err := Load("staging", dir)
+	if err == nil {
+		t.Fatal("expected error for missing secrets file in staging, got nil")
+	}
+}
+
+func TestLoad_stagingRequiredSecretEmpty(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "staging")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+minio_endpoint: ""
+minio_public_endpoint: ""
+minio_use_ssl: false
+minio_bucket_name: ""
+minio_private_bucket_name: ""
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://host/db"
+jwt_secret: ""
+config_encryption_key: "enc-key"
+otp_secret: "otp-secret"
+minio_access_key: "minio-ak"
+minio_secret_key: "minio-sk"
+`)
+
+	_, err := Load("staging", dir)
+	if err == nil {
+		t.Fatal("expected error for empty jwt_secret, got nil")
+	}
+	if !contains(err.Error(), "jwt_secret") {
+		t.Errorf("error should name jwt_secret, got: %v", err)
+	}
+}
+
+func TestLoad_stagingTwoRequiredSecretsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "staging")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+minio_endpoint: ""
+minio_public_endpoint: ""
+minio_use_ssl: false
+minio_bucket_name: ""
+minio_private_bucket_name: ""
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: ""
+jwt_secret: ""
+config_encryption_key: "enc-key"
+otp_secret: "otp-secret"
+minio_access_key: "minio-ak"
+minio_secret_key: "minio-sk"
+`)
+
+	_, err := Load("staging", dir)
+	if err == nil {
+		t.Fatal("expected error for empty fields, got nil")
+	}
+	msg := err.Error()
+	if !contains(msg, "database_url") {
+		t.Errorf("error should name database_url, got: %v", err)
+	}
+	if !contains(msg, "jwt_secret") {
+		t.Errorf("error should name jwt_secret, got: %v", err)
+	}
+}
+
+func TestLoad_mergeCorrectness(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "dev")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "3000"
+redis_addr: "r.example.com:6379"
+worker_poll_interval: "30s"
+cors_origins:
+  - "https://example.com"
+access_token_ttl: "5m"
+refresh_token_ttl: "24h"
+otp_ttl: "3m"
+google_client_id: "gcid"
+fazpass_base_url: "https://fazpass.example.com"
+midtrans_env: "production"
+minio_endpoint: "s3.example.com"
+minio_public_endpoint: "s3-public.example.com"
+minio_use_ssl: true
+minio_bucket_name: "my-bucket"
+minio_private_bucket_name: "my-private-bucket"
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://user:pass@db.example.com/dbname"
+jwt_secret: "jwt-secret-123"
+config_encryption_key: "enc-key-456"
+otp_secret: "otp-secret-789"
+minio_access_key: "AK123"
+minio_secret_key: "SK456"
+redis_password: "redis-pass"
+fazpass_merchant_key: "fz-merchant"
+fazpass_api_key: "fz-api"
+midtrans_server_key: "mt-server"
+midtrans_client_key: "mt-client"
+`)
+
+	cfg, err := Load("dev", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	checks := []struct {
+		field string
+		got   string
+		want  string
+	}{
+		{"Env", cfg.Env, "dev"},
+		{"HTTPPort", cfg.HTTPPort, "3000"},
+		{"RedisAddr", cfg.RedisAddr, "r.example.com:6379"},
+		{"DatabaseURL", cfg.DatabaseURL, "postgres://user:pass@db.example.com/dbname"},
+		{"RedisPassword", cfg.RedisPassword, "redis-pass"},
+		{"JWTSecret", cfg.JWTSecret, "jwt-secret-123"},
+		{"ConfigEncryptionKey", cfg.ConfigEncryptionKey, "enc-key-456"},
+		{"OTPSecret", cfg.OTPSecret, "otp-secret-789"},
+		{"GoogleClientID", cfg.GoogleClientID, "gcid"},
+		{"FazpassMerchantKey", cfg.FazpassMerchantKey, "fz-merchant"},
+		{"FazpassAPIKey", cfg.FazpassAPIKey, "fz-api"},
+		{"FazpassBaseURL", cfg.FazpassBaseURL, "https://fazpass.example.com"},
+		{"MidtransServerKey", cfg.MidtransServerKey, "mt-server"},
+		{"MidtransClientKey", cfg.MidtransClientKey, "mt-client"},
+		{"MidtransEnv", cfg.MidtransEnv, "production"},
+		{"MinioEndpoint", cfg.MinioEndpoint, "s3.example.com"},
+		{"MinioPublicEndpoint", cfg.MinioPublicEndpoint, "s3-public.example.com"},
+		{"MinioAccessKey", cfg.MinioAccessKey, "AK123"},
+		{"MinioSecretKey", cfg.MinioSecretKey, "SK456"},
+		{"MinioBucketName", cfg.MinioBucketName, "my-bucket"},
+		{"MinioPrivateBucketName", cfg.MinioPrivateBucketName, "my-private-bucket"},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s: got %q want %q", c.field, c.got, c.want)
+		}
+	}
+
+	if cfg.WorkerPollInterval != 30*time.Second {
+		t.Errorf("WorkerPollInterval: got %v want 30s", cfg.WorkerPollInterval)
+	}
+	if cfg.AccessTokenTTL != 5*time.Minute {
+		t.Errorf("AccessTokenTTL: got %v want 5m", cfg.AccessTokenTTL)
+	}
+	if cfg.RefreshTokenTTL != 24*time.Hour {
+		t.Errorf("RefreshTokenTTL: got %v want 24h", cfg.RefreshTokenTTL)
+	}
+	if cfg.OTPTTL != 3*time.Minute {
+		t.Errorf("OTPTTL: got %v want 3m", cfg.OTPTTL)
+	}
+	if cfg.MinioUseSSL != true {
+		t.Errorf("MinioUseSSL: got %v want true", cfg.MinioUseSSL)
+	}
+}
+
+func TestLoad_envArgumentSetsEnv(t *testing.T) {
+	dir := t.TempDir()
+	envDir := filepath.Join(dir, "custom-env")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeYAML(t, envDir, "config.yaml", `
+http_port: "8080"
+redis_addr: "redis:6379"
+worker_poll_interval: "5s"
+cors_origins: []
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: ""
+midtrans_env: ""
+minio_endpoint: ""
+minio_public_endpoint: ""
+minio_use_ssl: false
+minio_bucket_name: ""
+minio_private_bucket_name: ""
+`)
+	writeYAML(t, envDir, "secrets.yaml", `
+database_url: "postgres://host/db"
+jwt_secret: "jwt"
+config_encryption_key: "enc"
+otp_secret: "otp"
+minio_access_key: "ak"
+minio_secret_key: "sk"
+`)
+
+	cfg, err := Load("custom-env", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Env != "custom-env" {
+		t.Errorf("Env: got %q want %q", cfg.Env, "custom-env")
+	}
+}
+
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

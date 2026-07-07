@@ -1,9 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"os"
-	"strconv"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -38,61 +42,163 @@ type Config struct {
 	MinioPrivateBucketName string
 }
 
-func Load() Config {
+type fileConfig struct {
+	HTTPPort              string   `yaml:"http_port"`
+	RedisAddr             string   `yaml:"redis_addr"`
+	WorkerPollInterval    string   `yaml:"worker_poll_interval"`
+	CORSOrigins           []string `yaml:"cors_origins"`
+	AccessTokenTTL        string   `yaml:"access_token_ttl"`
+	RefreshTokenTTL       string   `yaml:"refresh_token_ttl"`
+	OTPTTL                string   `yaml:"otp_ttl"`
+	GoogleClientID        string   `yaml:"google_client_id"`
+	FazpassBaseURL        string   `yaml:"fazpass_base_url"`
+	MidtransEnv           string   `yaml:"midtrans_env"`
+	MinioEndpoint         string   `yaml:"minio_endpoint"`
+	MinioPublicEndpoint   string   `yaml:"minio_public_endpoint"`
+	MinioUseSSL           bool     `yaml:"minio_use_ssl"`
+	MinioBucketName       string   `yaml:"minio_bucket_name"`
+	MinioPrivateBucketName string  `yaml:"minio_private_bucket_name"`
+}
+
+type fileSecrets struct {
+	DatabaseURL         string `yaml:"database_url"`
+	JWTSecret           string `yaml:"jwt_secret"`
+	ConfigEncryptionKey string `yaml:"config_encryption_key"`
+	OTPSecret           string `yaml:"otp_secret"`
+	MinioAccessKey      string `yaml:"minio_access_key"`
+	MinioSecretKey      string `yaml:"minio_secret_key"`
+	RedisPassword       string `yaml:"redis_password"`
+	FazpassMerchantKey  string `yaml:"fazpass_merchant_key"`
+	FazpassAPIKey       string `yaml:"fazpass_api_key"`
+	MidtransServerKey   string `yaml:"midtrans_server_key"`
+	MidtransClientKey   string `yaml:"midtrans_client_key"`
+}
+
+var requiredSecrets = []struct {
+	field string
+	ptr   func(*fileSecrets) *string
+}{
+	{"database_url", func(s *fileSecrets) *string { return &s.DatabaseURL }},
+	{"jwt_secret", func(s *fileSecrets) *string { return &s.JWTSecret }},
+	{"config_encryption_key", func(s *fileSecrets) *string { return &s.ConfigEncryptionKey }},
+	{"otp_secret", func(s *fileSecrets) *string { return &s.OTPSecret }},
+	{"minio_access_key", func(s *fileSecrets) *string { return &s.MinioAccessKey }},
+	{"minio_secret_key", func(s *fileSecrets) *string { return &s.MinioSecretKey }},
+}
+
+func Load(env, configDir string) (Config, error) {
+	envDir := filepath.Join(configDir, env)
+
+	fc, err := loadFileConfig(envDir)
+	if err != nil {
+		return Config{}, err
+	}
+
+	secrets, err := loadFileSecrets(envDir)
+	if err != nil {
+		if env == "dev" {
+			secrets = fileSecrets{}
+		} else {
+			return Config{}, err
+		}
+	}
+
+	if env != "dev" {
+		if err := validateRequiredSecrets(secrets); err != nil {
+			return Config{}, err
+		}
+	}
+
+	return merge(env, fc, secrets)
+}
+
+func loadFileConfig(envDir string) (fileConfig, error) {
+	var fc fileConfig
+	path := filepath.Join(envDir, "config.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fc, fmt.Errorf("read config file %s: %w", path, err)
+	}
+	if err := yaml.Unmarshal(data, &fc); err != nil {
+		return fc, fmt.Errorf("parse config file %s: %w", path, err)
+	}
+	return fc, nil
+}
+
+func loadFileSecrets(envDir string) (fileSecrets, error) {
+	var s fileSecrets
+	path := filepath.Join(envDir, "secrets.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return s, fmt.Errorf("read secrets file %s: %w", path, err)
+	}
+	if err := yaml.Unmarshal(data, &s); err != nil {
+		return s, fmt.Errorf("parse secrets file %s: %w", path, err)
+	}
+	return s, nil
+}
+
+func validateRequiredSecrets(s fileSecrets) error {
+	var missing []string
+	for _, req := range requiredSecrets {
+		if *req.ptr(&s) == "" {
+			missing = append(missing, req.field)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("required secret fields are empty: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
+	workerPoll, err := time.ParseDuration(fc.WorkerPollInterval)
+	if err != nil {
+		return Config{}, fmt.Errorf("worker_poll_interval: %w", err)
+	}
+	accessTTL, err := time.ParseDuration(fc.AccessTokenTTL)
+	if err != nil {
+		return Config{}, fmt.Errorf("access_token_ttl: %w", err)
+	}
+	refreshTTL, err := time.ParseDuration(fc.RefreshTokenTTL)
+	if err != nil {
+		return Config{}, fmt.Errorf("refresh_token_ttl: %w", err)
+	}
+	otpTTL, err := time.ParseDuration(fc.OTPTTL)
+	if err != nil {
+		return Config{}, fmt.Errorf("otp_ttl: %w", err)
+	}
+
 	return Config{
-		Env:                env("APP_ENV", "development"),
-		HTTPPort:           env("HTTP_PORT", "8080"),
-		DatabaseURL:        env("DATABASE_URL", "postgres://akademi:akademi@localhost:5432/akademi?sslmode=disable"),
-		RedisAddr:          env("REDIS_ADDR", "localhost:6379"),
-		RedisPassword:      env("REDIS_PASSWORD", ""),
-		WorkerPollInterval: envDuration("WORKER_POLL_INTERVAL", 5*time.Second),
-		CORSOrigins:        []string{env("WEB_ORIGIN", "http://localhost:3000")},
+		Env:    env,
+		HTTPPort:           fc.HTTPPort,
+		RedisAddr:          fc.RedisAddr,
+		WorkerPollInterval: workerPoll,
+		CORSOrigins:        fc.CORSOrigins,
 
-		JWTSecret:           env("JWT_SECRET", ""),
-		ConfigEncryptionKey: env("CONFIG_ENCRYPTION_KEY", ""),
-		AccessTokenTTL:      envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
-		RefreshTokenTTL:     envDuration("REFRESH_TOKEN_TTL", 168*time.Hour),
-		OTPSecret:           env("OTP_SECRET", ""),
-		OTPTTL:              envDuration("OTP_TTL", 5*time.Minute),
-		GoogleClientID:      env("GOOGLE_CLIENT_ID", ""),
-		FazpassMerchantKey:  env("FAZPASS_MERCHANT_KEY", ""),
-		FazpassAPIKey:       env("FAZPASS_API_KEY", ""),
-		FazpassBaseURL:      env("FAZPASS_BASE_URL", "https://api.fazpass.com"),
-		MidtransServerKey:   env("MIDTRANS_SERVER_KEY", ""),
-		MidtransClientKey:   env("MIDTRANS_CLIENT_KEY", ""),
-		MidtransEnv:         env("MIDTRANS_ENV", "sandbox"),
+		AccessTokenTTL:  accessTTL,
+		RefreshTokenTTL: refreshTTL,
+		OTPTTL:          otpTTL,
+		GoogleClientID:  fc.GoogleClientID,
+		FazpassBaseURL:  fc.FazpassBaseURL,
+		MidtransEnv:     fc.MidtransEnv,
 
-		MinioEndpoint:          env("MINIO_ENDPOINT", "minio:9000"),
-		MinioPublicEndpoint:    env("MINIO_PUBLIC_ENDPOINT", "localhost:9000"),
-		MinioAccessKey:         env("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecretKey:         env("MINIO_SECRET_KEY", "minioadmin"),
-		MinioUseSSL:            envBool("MINIO_USE_SSL", false),
-		MinioBucketName:        env("MINIO_BUCKET_NAME", "akademi-bimbel"),
-		MinioPrivateBucketName: env("MINIO_PRIVATE_BUCKET_NAME", "akademi-bimbel-private"),
-	}
-}
+		MinioEndpoint:          fc.MinioEndpoint,
+		MinioPublicEndpoint:    fc.MinioPublicEndpoint,
+		MinioUseSSL:            fc.MinioUseSSL,
+		MinioBucketName:        fc.MinioBucketName,
+		MinioPrivateBucketName: fc.MinioPrivateBucketName,
 
-func env(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func envDuration(key string, def time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			return d
-		}
-	}
-	return def
-}
-
-func envBool(key string, def bool) bool {
-	if v := os.Getenv(key); v != "" {
-		if b, err := strconv.ParseBool(v); err == nil {
-			return b
-		}
-	}
-	return def
+		DatabaseURL:         s.DatabaseURL,
+		JWTSecret:           s.JWTSecret,
+		ConfigEncryptionKey: s.ConfigEncryptionKey,
+		OTPSecret:           s.OTPSecret,
+		MinioAccessKey:      s.MinioAccessKey,
+		MinioSecretKey:      s.MinioSecretKey,
+		RedisPassword:       s.RedisPassword,
+		FazpassMerchantKey:  s.FazpassMerchantKey,
+		FazpassAPIKey:       s.FazpassAPIKey,
+		MidtransServerKey:   s.MidtransServerKey,
+		MidtransClientKey:   s.MidtransClientKey,
+	}, nil
 }
