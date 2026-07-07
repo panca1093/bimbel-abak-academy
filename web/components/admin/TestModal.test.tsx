@@ -202,6 +202,166 @@ describe("TestModal", () => {
     });
   });
 
+  it("renders a section_type picker with none, listening, reading, writing options on create", () => {
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    expect(screen.getByLabelText("Tidak ada")).toBeInTheDocument();
+    expect(screen.getByLabelText("Listening")).toBeInTheDocument();
+    expect(screen.getByLabelText("Reading")).toBeInTheDocument();
+    expect(screen.getByLabelText("Writing")).toBeInTheDocument();
+  });
+
+  it("defaults to none (null section_type) on create", () => {
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    expect(screen.getByLabelText("Tidak ada")).toBeChecked();
+    expect(screen.getByLabelText("Listening")).not.toBeChecked();
+    expect(screen.getByLabelText("Reading")).not.toBeChecked();
+    expect(screen.getByLabelText("Writing")).not.toBeChecked();
+  });
+
+  it("includes section_type in create payload when set", async () => {
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "IELTS Reading" } });
+    fireEvent.input(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Bahasa Inggris" } });
+    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Reading" } });
+    fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
+    fireEvent.click(screen.getByLabelText("Reading"));
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ section_type: "reading" })
+      );
+    });
+  });
+
+  it("includes section_type in update payload when set", async () => {
+    const test: Test = {
+      id: "t1",
+      title: "IELTS Reading",
+      subject: "Bahasa Inggris",
+      topic: "Reading",
+      duration_minutes: 60,
+      section_type: "reading",
+      audio_url: "https://cdn/audio.mp3",
+      audio_play_limit: 2,
+    };
+
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        test={test}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ section_type: "reading" })
+      );
+    });
+  });
+
+  it("pre-fills section_type from test data on edit", async () => {
+    const test: Test = {
+      id: "t1",
+      title: "IELTS Writing",
+      subject: "Bahasa Inggris",
+      topic: "Writing",
+      duration_minutes: 60,
+      section_type: "writing",
+    };
+
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        test={test}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Writing")).toBeChecked();
+    });
+  });
+
+  it("blocks save when listening is selected and audio_url is empty", () => {
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    // Fill required fields
+    fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Listening Test" } });
+    fireEvent.input(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Bahasa Inggris" } });
+    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Listening" } });
+    fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "30" } });
+
+    // Select listening → save should be blocked
+    fireEvent.click(screen.getByLabelText("Listening"));
+
+    const saveButton = screen.getByRole("button", { name: /^simpan$/i });
+    expect(saveButton).toBeDisabled();
+  });
+
+  it("allows save when listening is selected and audio_url is provided", () => {
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    // Fill all required fields including audio
+    fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Listening Test" } });
+    fireEvent.input(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Bahasa Inggris" } });
+    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Listening" } });
+    fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "30" } });
+    fireEvent.input(screen.getByLabelText(/url audio/i), { target: { value: "https://cdn/audio.mp3" } });
+
+    // Select listening
+    fireEvent.click(screen.getByLabelText("Listening"));
+
+    const saveButton = screen.getByRole("button", { name: /^simpan$/i });
+    expect(saveButton).toBeEnabled();
+  });
+
   it("calls onOpenChange(false) when cancel clicked", () => {
     render(
       <TestModal

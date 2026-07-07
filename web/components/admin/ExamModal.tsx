@@ -55,6 +55,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [allowLeaderboard, setAllowLeaderboard] = useState(false);
   const [randomize, setRandomize] = useState(false);
   const [certificateTemplate, setCertificateTemplate] = useState<CertificateTemplate>("classic");
+  const [mode, setMode] = useState("standard");
   const previewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setAllowLeaderboard(Boolean(exam.allow_leaderboard));
       setRandomize(Boolean(exam.randomize));
       setCertificateTemplate((exam.certificate_template as CertificateTemplate) ?? "classic");
+      setMode(exam.mode ?? "standard");
     } else {
       setTitle("");
       setScheduledAt("");
@@ -79,6 +81,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setAllowLeaderboard(false);
       setRandomize(false);
       setCertificateTemplate("classic");
+      setMode("standard");
     }
   }, [open, exam]);
 
@@ -105,6 +108,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       allow_leaderboard: allowLeaderboard,
       randomize,
       certificate_template: certificateTemplate,
+      mode,
     };
 
     try {
@@ -185,6 +189,50 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                 onChange={(e) => setScheduledAt(e.target.value)}
                 disabled={isPending}
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>{t("exam_packages_modal_mode")}</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="mode"
+                    value="standard"
+                    checked={mode === "standard"}
+                    onChange={() => setMode("standard")}
+                    disabled={isPending}
+                  />
+                  <span>{t("exam_packages_modal_mode_standard")}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="mode"
+                    value="utbk"
+                    checked={mode === "utbk"}
+                    onChange={() => setMode("utbk")}
+                    disabled={isPending}
+                  />
+                  <span>{t("exam_packages_modal_mode_utbk")}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="mode"
+                    value="ielts"
+                    checked={mode === "ielts"}
+                    onChange={() => setMode("ielts")}
+                    disabled={isPending}
+                  />
+                  <span>{t("exam_packages_modal_mode_ielts")}</span>
+                </label>
+              </div>
+              {mode !== "standard" && (
+                <p className="text-xs text-muted-foreground">
+                  {t("exam_packages_modal_mode_hint")}
+                </p>
+              )}
             </div>
 
             <div className="grid gap-2">

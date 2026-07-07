@@ -575,6 +575,7 @@ export interface CreateExamPayload {
   allow_leaderboard?: boolean;
   randomize?: boolean;
   certificate_template?: string;
+  mode?: string;
 }
 
 export interface UpdateExamPayload {
@@ -587,6 +588,7 @@ export interface UpdateExamPayload {
   allow_leaderboard?: boolean;
   randomize?: boolean;
   certificate_template?: string;
+  mode?: string;
 }
 
 // ── Session engine types (FR26) ──────────────────────────────────────────

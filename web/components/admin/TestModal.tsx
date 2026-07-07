@@ -32,6 +32,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
   const [duration, setDuration] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [audioPlayLimit, setAudioPlayLimit] = useState("");
+  const [sectionType, setSectionType] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -42,6 +43,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
       setDuration(test.duration_minutes != null ? String(test.duration_minutes) : "");
       setAudioUrl(test.audio_url ?? "");
       setAudioPlayLimit(test.audio_play_limit != null ? String(test.audio_play_limit) : "");
+      setSectionType(test.section_type ?? null);
     } else {
       setTitle("");
       setSubject("");
@@ -49,20 +51,25 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
       setDuration("");
       setAudioUrl("");
       setAudioPlayLimit("");
+      setSectionType(null);
     }
   }, [open, test]);
 
+  const listeningRequiresAudio = sectionType === "listening" && audioUrl.trim() === "";
   const canSubmit =
     title.trim() !== "" &&
     subject.trim() !== "" &&
     topic.trim() !== "" &&
     duration !== "" &&
     Number(duration) > 0 &&
+    !listeningRequiresAudio &&
     !isPending;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || isPending) return;
+
+    const sectionTypePayload = sectionType ? { section_type: sectionType } : {};
 
     if (isEdit) {
       const input: AdminUpdateTestInput = {
@@ -72,6 +79,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
         duration_minutes: Number(duration),
         ...(audioUrl.trim() ? { audio_url: audioUrl.trim() } : {}),
         ...(audioPlayLimit !== "" ? { audio_play_limit: Number(audioPlayLimit) } : {}),
+        ...sectionTypePayload,
       };
       onSubmit(input);
       return;
@@ -84,6 +92,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
       duration_minutes: Number(duration),
       ...(audioUrl.trim() ? { audio_url: audioUrl.trim() } : {}),
       ...(audioPlayLimit !== "" ? { audio_play_limit: Number(audioPlayLimit) } : {}),
+      ...sectionTypePayload,
     };
     onSubmit(input);
   }
@@ -148,6 +157,61 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
                 placeholder="60"
                 disabled={isPending}
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>{t("tests_field_section_type")}</Label>
+              <div className="grid grid-cols-4 gap-2">
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="section_type"
+                    value=""
+                    checked={sectionType === null}
+                    onChange={() => setSectionType(null)}
+                    disabled={isPending}
+                  />
+                  <span>{t("tests_field_section_type_none")}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="section_type"
+                    value="listening"
+                    checked={sectionType === "listening"}
+                    onChange={() => setSectionType("listening")}
+                    disabled={isPending}
+                  />
+                  <span>{t("tests_field_section_type_listening")}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="section_type"
+                    value="reading"
+                    checked={sectionType === "reading"}
+                    onChange={() => setSectionType("reading")}
+                    disabled={isPending}
+                  />
+                  <span>{t("tests_field_section_type_reading")}</span>
+                </label>
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="section_type"
+                    value="writing"
+                    checked={sectionType === "writing"}
+                    onChange={() => setSectionType("writing")}
+                    disabled={isPending}
+                  />
+                  <span>{t("tests_field_section_type_writing")}</span>
+                </label>
+              </div>
+              {sectionType === "listening" && (
+                <p className="text-xs text-muted-foreground">
+                  URL audio wajib diisi untuk sesi Listening.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
