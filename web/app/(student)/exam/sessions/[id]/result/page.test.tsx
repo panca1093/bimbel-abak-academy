@@ -192,6 +192,155 @@ describe("SessionResultPage", () => {
     expect(screen.getByRole("link", { name: "Sertifikat" })).toBeInTheDocument();
   });
 
+  // ── Section-type labels (FR-29) ─────────────────────────────────────────
+
+  it("renders section_type label for IELTS listening breakdown row (FR-29)", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_pembahasan",
+        score: 85,
+        correct_count: 17,
+        wrong_count: 2,
+        empty_count: 1,
+        rank: 5,
+        breakdown: [
+          {
+            test_id: "test-1",
+            title: "Section 1",
+            subject: "English",
+            topic: "IELTS Listening",
+            section_type: "listening",
+            earned: 15,
+            max: 20,
+          },
+        ],
+        pembahasan: [],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.getByText("Listening")).toBeInTheDocument();
+    expect(screen.getByText("15/20")).toBeInTheDocument();
+  });
+
+  it("renders section_type label for IELTS reading/breaking row (FR-29)", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_pembahasan",
+        score: 75,
+        correct_count: 15,
+        wrong_count: 4,
+        empty_count: 1,
+        rank: 8,
+        breakdown: [
+          {
+            test_id: "test-2",
+            title: "Section 2",
+            subject: "English",
+            topic: "IELTS Reading",
+            section_type: "reading",
+            earned: 18,
+            max: 25,
+          },
+        ],
+        pembahasan: [],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.getByText("18/25")).toBeInTheDocument();
+  });
+
+  it("renders section_type label for IELTS writing breakdown row (FR-29)", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_pembahasan",
+        score: 65,
+        correct_count: 13,
+        wrong_count: 5,
+        empty_count: 2,
+        rank: 10,
+        breakdown: [
+          {
+            test_id: "test-3",
+            title: "Section 3",
+            subject: "English",
+            topic: "IELTS Writing",
+            section_type: "writing",
+            earned: 10,
+            max: 15,
+          },
+        ],
+        pembahasan: [],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.getByText("Writing")).toBeInTheDocument();
+    expect(screen.getByText("10/15")).toBeInTheDocument();
+  });
+
+  it("standard/utbk result renders section titles with raw scores and no band/scaled number (FR-29)", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_pembahasan",
+        score: 90,
+        correct_count: 9,
+        wrong_count: 0,
+        empty_count: 1,
+        rank: 1,
+        breakdown: [
+          {
+            test_id: "test-1",
+            title: "Tes Matematika",
+            subject: "Matematika",
+            topic: "Aljabar",
+            earned: 8,
+            max: 10,
+          },
+        ],
+        pembahasan: [
+          {
+            question_id: "q-1",
+            body: "Berapa 2+2?",
+            format: "mcq",
+            your_answer: "4",
+            correct_answer: "4",
+            is_correct: true,
+            explanation: "2+2 sama dengan 4.",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    expect(screen.getByText("Tes Matematika")).toBeInTheDocument();
+    expect(screen.getByText("8/10")).toBeInTheDocument();
+    // No section_type label (should not appear)
+    expect(screen.queryByText("Listening")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reading")).not.toBeInTheDocument();
+    expect(screen.queryByText("Writing")).not.toBeInTheDocument();
+    // Raw score only — no band/IELTS number
+    expect(screen.getByText("8/10")).toBeInTheDocument();
+  });
+
   it("renders breakdown and pembahasan for score_pembahasan result (FR-S5-26)", () => {
     resultState = {
       data: {

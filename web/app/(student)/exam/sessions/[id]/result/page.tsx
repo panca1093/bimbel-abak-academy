@@ -138,7 +138,16 @@ export default function SessionResultPage() {
               {result.breakdown.map((row) => (
                 <div key={row.test_id}>
                   <div className="mb-1 flex items-center justify-between text-sm">
-                    <span className="text-ink-800">{row.title}</span>
+                    <span className="flex items-center gap-2 text-ink-800">
+                      {row.title}
+                      {row.section_type && (
+                        <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-medium text-ink-500">
+                          {t(
+                            `section_type_${row.section_type}` as I18nKey,
+                          )}
+                        </span>
+                      )}
+                    </span>
                     <span className="text-ink-500">
                       {row.earned}/{row.max}
                     </span>
