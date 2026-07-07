@@ -42,7 +42,7 @@ const sampleExams = [
     is_free: true,
     product_status: "published",
     product_price: 0,
-    timer_mode: "per_question",
+    timer_mode: "per_test",
     duration_minutes: null,
     requires_checkin: false,
     allow_leaderboard: false,

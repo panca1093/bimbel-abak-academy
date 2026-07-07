@@ -22,7 +22,7 @@ interface ExamModalProps {
   onSaved?: (exam: ExamListItem) => void;
 }
 
-type TimerMode = "overall" | "per_question";
+type TimerMode = "overall" | "per_test";
 type CertificateTemplate = "classic" | "modern" | "elegant";
 
 function scheduledAtInputValue(iso?: string | null): string {
@@ -205,12 +205,12 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                   <input
                     type="radio"
                     name="timer_mode"
-                    value="per_question"
-                    checked={timerMode === "per_question"}
-                    onChange={() => setTimerMode("per_question")}
+                    value="per_test"
+                    checked={timerMode === "per_test"}
+                    onChange={() => setTimerMode("per_test")}
                     disabled={isPending}
                   />
-                  <span>{t("exam_packages_modal_timer_per_question")}</span>
+                  <span>{t("exam_packages_modal_timer_per_test")}</span>
                 </label>
               </div>
             </div>

@@ -401,8 +401,8 @@ func TestValidateExam_rejects_invalid_timer_mode(t *testing.T) {
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("invalid timer_mode should return ErrValidation, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "timer_mode must be overall or per_question") {
-		t.Errorf("invalid timer_mode msg should mention 'timer_mode must be overall or per_question', got %q", err.Error())
+	if !strings.Contains(err.Error(), "timer_mode must be overall or per_test") {
+		t.Errorf("invalid timer_mode msg should mention 'timer_mode must be overall or per_test', got %q", err.Error())
 	}
 }
 
@@ -431,10 +431,10 @@ func TestValidateExam_accepts_valid_overall(t *testing.T) {
 	}
 }
 
-func TestValidateExam_accepts_valid_per_question(t *testing.T) {
-	e := model.Exam{Title: "Finals", TimerMode: "per_question"}
+func TestValidateExam_accepts_valid_per_test(t *testing.T) {
+	e := model.Exam{Title: "Finals", TimerMode: "per_test"}
 	if err := validateExam(e); err != nil {
-		t.Errorf("valid per_question should pass, got %v", err)
+		t.Errorf("valid per_test should pass, got %v", err)
 	}
 }
 
