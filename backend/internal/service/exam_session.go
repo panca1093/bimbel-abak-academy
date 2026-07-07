@@ -787,13 +787,42 @@ func (s *Service) LogViolation(ctx context.Context, studentID, sessionID, violat
 
 // ---------- ReopenSession (admin) ----------
 
-// ReopenSession extends a session's deadline. FR23.
+// ReopenSession extends a session's deadline or the active section's deadline for
+// sectioned exams. FR-22 / FR23.
 func (s *Service) ReopenSession(ctx context.Context, sessionID string, minutes int) error {
 	sessID, err := uuid.Parse(sessionID)
 	if err != nil {
 		return fmt.Errorf("%w: invalid session id", ErrValidation)
 	}
 
+	sess, err := s.storeRepo.GetExamSessionByID(ctx, sessID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+
+	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return err
+	}
+
+	// FR-22: sectioned path — extend the active section, not the session-level deadline.
+	if exam.Mode == "utbk" || exam.Mode == "ielts" {
+		tx, err := s.storeRepo.BeginTx(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+
+		if err := s.storeRepo.ExtendActiveSectionTx(ctx, tx, sessID, minutes); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+
+	// Standard path — extend session-level extended_until.
 	if err := s.storeRepo.ReopenSession(ctx, sessID, minutes); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrSessionNotFound
@@ -891,6 +920,9 @@ func effectiveDeadline(startedAt time.Time, durationMinutes *int, graceMinutes *
 }
 
 // deriveStatus sets the monitor row's derived status per FR-3.
+// When active-section data is present (FR-20), the deadline is computed from the
+// section's own started_at + duration_minutes + extended_until, not the exam-level clock.
+// Standard sessions (no active-section data) use the existing exam-level path unchanged.
 func deriveStatus(row model.SessionMonitorRow, now time.Time, durationMinutes *int, graceMinutes *int) string {
 	if row.SessionID == nil {
 		if row.CheckedInAt != nil {
@@ -903,7 +935,19 @@ func deriveStatus(row model.SessionMonitorRow, now time.Time, durationMinutes *i
 		return "submitted"
 	}
 
-	// Session is in_progress — check deadline.
+	// FR-20: sectioned path — use active section's deadline.
+	if row.ActiveSectionStartedAt != nil {
+		deadline := effectiveDeadline(*row.ActiveSectionStartedAt, row.ActiveSectionDurationMinutes, nil, row.ActiveSectionExtendedUntil)
+		if deadline.IsZero() {
+			return "in_progress"
+		}
+		if now.After(deadline) {
+			return "overdue"
+		}
+		return "in_progress"
+	}
+
+	// Session is in_progress — check standard exam-level deadline.
 	deadline := effectiveDeadline(*row.StartedAt, durationMinutes, graceMinutes, row.ExtendedUntil)
 	if deadline.IsZero() {
 		return "in_progress"
@@ -951,6 +995,15 @@ func (s *Service) GetSessionMonitor(ctx context.Context, examID string) (model.S
 	for i := range rows {
 		rows[i].TotalQuestions = totalQ
 		rows[i].Status = deriveStatus(rows[i], now, exam.DurationMinutes, exam.GraceWindowMinutes)
+		// FR-21: populate the active section's remaining seconds for the proctor UI.
+		if rows[i].ActiveSectionStartedAt != nil {
+			sec := model.ExamSessionSection{
+				DurationMinutes: *rows[i].ActiveSectionDurationMinutes,
+				StartedAt:       rows[i].ActiveSectionStartedAt,
+				ExtendedUntil:   rows[i].ActiveSectionExtendedUntil,
+			}
+			rows[i].ActiveSectionRemainingSeconds = computeSectionRemaining(sec)
+		}
 	}
 
 	return model.SessionMonitorResponse{

@@ -372,7 +372,8 @@ type SessionMonitorRow struct {
 	ActiveSectionTitle           *string    `json:"active_section_title,omitempty"`
 	ActiveSectionStartedAt       *time.Time `json:"active_section_started_at,omitempty"`
 	ActiveSectionDurationMinutes *int       `json:"active_section_duration_minutes,omitempty"`
-	ActiveSectionExtendedUntil   *time.Time `json:"active_section_extended_until,omitempty"`
+	ActiveSectionExtendedUntil    *time.Time `json:"active_section_extended_until,omitempty"`
+	ActiveSectionRemainingSeconds int64      `json:"active_section_remaining_seconds,omitempty"`
 }
 
 // ExamSessionSection is one per-section timing row for a sectioned (utbk|ielts) exam

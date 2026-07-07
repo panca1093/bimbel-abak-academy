@@ -31,6 +31,7 @@ type fakeSessionRepo struct {
 	questionTotals    map[uuid.UUID]int
 	recentViolations  map[uuid.UUID][]model.ViolationRecent
 	sessionViolations map[uuid.UUID][]model.SessionViolationLog
+	sessionSections   map[uuid.UUID][]model.ExamSessionSection
 }
 
 func newFakeSessionRepo() *fakeSessionRepo {
@@ -253,6 +254,13 @@ func (f *fakeSessionRepo) seedSessionViolations(sessionID uuid.UUID, violations 
 	f.sessionViolations[sessionID] = violations
 }
 
+func (f *fakeSessionRepo) seedSessionSections(sessionID uuid.UUID, sections []model.ExamSessionSection) {
+	if f.sessionSections == nil {
+		f.sessionSections = make(map[uuid.UUID][]model.ExamSessionSection)
+	}
+	f.sessionSections[sessionID] = sections
+}
+
 func (f *fakeSessionRepo) GetSessionMonitorRows(_ context.Context, examID uuid.UUID) ([]model.SessionMonitorRow, error) {
 	rows := f.monitorRows[examID]
 	if rows == nil {
@@ -279,6 +287,29 @@ func (f *fakeSessionRepo) ListSessionViolations(_ context.Context, sessionID uui
 		return []model.SessionViolationLog{}, nil
 	}
 	return v, nil
+}
+
+func (f *fakeSessionRepo) GetSessionSections(_ context.Context, sessionID uuid.UUID) ([]model.ExamSessionSection, error) {
+	sections := f.sessionSections[sessionID]
+	if sections == nil {
+		return []model.ExamSessionSection{}, nil
+	}
+	return sections, nil
+}
+
+func (f *fakeSessionRepo) ExtendActiveSection(_ context.Context, sessionID uuid.UUID, extendMinutes int) error {
+	sections, ok := f.sessionSections[sessionID]
+	if !ok {
+		return repository.ErrNoActiveSection
+	}
+	for i, sec := range sections {
+		if sec.Status == "active" {
+			ext := time.Now().Add(time.Duration(extendMinutes) * time.Minute)
+			f.sessionSections[sessionID][i].ExtendedUntil = &ext
+			return nil
+		}
+	}
+	return repository.ErrNoActiveSection
 }
 
 // ---------- shimSessionService ----------
@@ -1329,6 +1360,28 @@ func (s *shimSessionService) ReopenSession(ctx context.Context, sessionID string
 		return fmt.Errorf("%w: invalid session id", ErrValidation)
 	}
 
+	sess, err := s.repo.GetExamSessionByID(ctx, sessID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+
+	exam, err := s.repo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return err
+	}
+
+	// FR-22: sectioned path — extend the active section.
+	if exam.Mode == "utbk" || exam.Mode == "ielts" {
+		if err := s.repo.ExtendActiveSection(ctx, sessID, minutes); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Standard path — extend session-level extended_until.
 	if err := s.repo.ReopenSession(ctx, sessID, minutes); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrSessionNotFound
@@ -1385,6 +1438,118 @@ func TestReopenSession_NotFound(t *testing.T) {
 	err := svc.ReopenSession(ctx, "22222222-2222-2222-2222-222222222222", 30)
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("want ErrSessionNotFound, got %v", err)
+	}
+}
+
+
+
+// ---------- ReopenSession sectioned (FR-22) ----------
+
+func TestReopenSession_Sectioned_ExtendsActiveSection(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-30 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "UTBK Reopen",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+		Mode:            "utbk",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	// Seed section rows for this session (one active section)
+	startedAt := now.Add(-30 * time.Minute)
+	sections := []model.ExamSessionSection{
+		{
+			SessionID:       sess.SessionID,
+			TestID:          uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+			SortOrder:       0,
+			DurationMinutes: 60,
+			Status:          "active",
+			StartedAt:       &startedAt,
+		},
+	}
+	svc.repo.seedSessionSections(sess.SessionID, sections)
+
+	// Reopen the sectioned session
+	err = svc.ReopenSession(ctx, sess.SessionID.String(), 30)
+	if err != nil {
+		t.Fatalf("ReopenSession sectioned: %v", err)
+	}
+
+	// Verify the active section's extended_until is set
+	updatedSections, err := svc.repo.GetSessionSections(ctx, sess.SessionID)
+	if err != nil {
+		t.Fatalf("GetSessionSections: %v", err)
+	}
+	if len(updatedSections) != 1 {
+		t.Fatalf("sections: want 1, got %d", len(updatedSections))
+	}
+	if updatedSections[0].ExtendedUntil == nil {
+		t.Fatal("active section: expected extended_until to be set after reopen")
+	}
+	// Verify the extend time is in the future
+	if updatedSections[0].ExtendedUntil.Before(time.Now()) {
+		t.Errorf("extended_until should be in the future, got %v", updatedSections[0].ExtendedUntil)
+	}
+	// Verify remaining would be positive via the section helper
+	remaining := computeSectionRemaining(updatedSections[0])
+	if remaining <= 0 {
+		t.Errorf("section remaining after reopen: want >0, got %d", remaining)
+	}
+}
+
+func TestReopenSession_Sectioned_NoActiveSection_ReturnsErrSectionNotFound(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-30 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "UTBK Reopen Fail",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+		Mode:            "utbk",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	sess, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	// No sections seeded → ExtendActiveSection fails with ErrNoActiveSection
+	// The shim propagates this (no special mapping for sectioned path)
+	err = svc.ReopenSession(ctx, sess.SessionID.String(), 30)
+	if err == nil {
+		t.Error("expected error when no active section, got nil")
 	}
 }
 
@@ -1733,6 +1898,15 @@ func (s *shimSessionService) GetSessionMonitor(ctx context.Context, examID strin
 	for i := range rows {
 		rows[i].TotalQuestions = totalQ
 		rows[i].Status = deriveStatus(rows[i], now, exam.DurationMinutes, exam.GraceWindowMinutes)
+		// FR-21: populate the active section's remaining seconds for the proctor UI.
+		if rows[i].ActiveSectionStartedAt != nil {
+			sec := model.ExamSessionSection{
+				DurationMinutes: *rows[i].ActiveSectionDurationMinutes,
+				StartedAt:       rows[i].ActiveSectionStartedAt,
+				ExtendedUntil:   rows[i].ActiveSectionExtendedUntil,
+			}
+			rows[i].ActiveSectionRemainingSeconds = computeSectionRemaining(sec)
+		}
 	}
 
 	return model.SessionMonitorResponse{
@@ -1989,6 +2163,142 @@ func TestDeriveStatus_FR6a_ExtendedUntilCanMakeOverdue(t *testing.T) {
 	}
 }
 
+
+
+// ---------- Sectioned deriveStatus tests (FR-20) ----------
+
+func TestDeriveStatus_Sectioned_InProgress(t *testing.T) {
+	started := time.Now().Add(-25 * time.Minute) // section started 25min ago
+	dur := 60 // 60min section duration
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Sectioned Student",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		// Section-level deadline: 60min from started → 35min remaining → in_progress
+		ActiveSectionStartedAt:       &started,
+		ActiveSectionDurationMinutes: &dur,
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "in_progress" {
+		t.Errorf("sectioned within deadline: want in_progress, got %q", status)
+	}
+}
+
+func TestDeriveStatus_Sectioned_Overdue(t *testing.T) {
+	started := time.Now().Add(-65 * time.Minute) // section started 65min ago
+	dur := 60 // 60min section, deadline passed 5min ago
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Sectioned Student",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		ActiveSectionStartedAt:       &started,
+		ActiveSectionDurationMinutes: &dur,
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "overdue" {
+		t.Errorf("sectioned past deadline: want overdue, got %q", status)
+	}
+}
+
+func TestDeriveStatus_Sectioned_Overdue_ViaExtendedUntil(t *testing.T) {
+	started := time.Now().Add(-30 * time.Minute) // section started 30min ago
+	dur := 15 // 15min section deadline passed 15min ago
+	extended := time.Now().Add(-1 * time.Minute) // extended_until also passed
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Sectioned Student",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		ActiveSectionStartedAt:       &started,
+		ActiveSectionDurationMinutes: &dur,
+		ActiveSectionExtendedUntil:   &extended,
+	}
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "overdue" {
+		t.Errorf("sectioned overdue via extended_until: want overdue, got %q", status)
+	}
+}
+
+func TestDeriveStatus_Sectioned_FR6a_NilDuration_NotOverdue(t *testing.T) {
+	// FR-6a analog for sections: nil duration section has no deadline.
+	started := time.Now().Add(-24 * time.Hour) // started long ago
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	var nilDur *int
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Sectioned Student",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		ActiveSectionStartedAt:       &started,
+		ActiveSectionDurationMinutes: nilDur,
+	}
+	status := deriveStatus(row, time.Now(), nil, nil)
+	if status != "in_progress" {
+		t.Errorf("sectioned nil duration: want in_progress, got %q", status)
+	}
+}
+
+func TestDeriveStatus_Sectioned_FR6a_ExtendedUntilCanMakeOverdue(t *testing.T) {
+	started := time.Now().Add(-60 * time.Minute)
+	extended := time.Now().Add(-1 * time.Second)
+	var nilDur *int
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Sectioned Student",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		ActiveSectionStartedAt:       &started,
+		ActiveSectionDurationMinutes: nilDur,
+		ActiveSectionExtendedUntil:   &extended,
+	}
+	status := deriveStatus(row, time.Now(), nil, nil)
+	if status != "overdue" {
+		t.Errorf("sectioned nil duration + passed extended: want overdue, got %q", status)
+	}
+}
+
+func TestDeriveStatus_Standard_NoActiveSectionData_Regression(t *testing.T) {
+	// A standard session with no ActiveSection fields must still use the exam-level path.
+	started := time.Now().Add(-30 * time.Minute)
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Standard Student",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		// No ActiveSection* fields set
+	}
+	// 120min + 10min grace → 130min; only 30min elapsed → in_progress
+	status := deriveStatus(row, time.Now(), intptr(120), intptr(10))
+	if status != "in_progress" {
+		t.Errorf("standard regression: want in_progress, got %q", status)
+	}
+}
+
 // ---------- GetSessionMonitor tests ----------
 
 func TestGetSessionMonitor_InvalidExamID(t *testing.T) {
@@ -2161,6 +2471,123 @@ func TestGetSessionMonitor_FR6a_NilDuration_NotOverdue(t *testing.T) {
 	}
 	if resp.Rows[0].Status != "in_progress" {
 		t.Errorf("FR-6a: nil duration should be in_progress, got %q", resp.Rows[0].Status)
+	}
+}
+
+
+
+// ---------- GetSessionMonitor sectioned test (FR-21) ----------
+
+func TestGetSessionMonitor_SectionedSurfacesActiveSection(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	exam := &model.Exam{
+		Title:           "UTBK Exam",
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+		Mode:            "utbk",
+	}
+	svc.repo.seedExam(exam)
+
+	now := time.Now()
+	started := now.Add(-30 * time.Minute) // section started 30min ago, 60min duration → in_progress
+	dur := 60
+	sectionTestID := uuid.New()
+	sectionTitle := "Subtest 1"
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "Sectioned Student",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		ActiveSectionTestID:          &sectionTestID,
+		ActiveSectionTitle:           &sectionTitle,
+		ActiveSectionStartedAt:       &started,
+		ActiveSectionDurationMinutes: &dur,
+	}
+	svc.repo.seedSessionMonitorRow(exam.ID, row)
+	svc.repo.seedQuestionTotal(exam.ID, 40)
+
+	resp, err := svc.GetSessionMonitor(ctx, exam.ID.String())
+	if err != nil {
+		t.Fatalf("GetSessionMonitor: %v", err)
+	}
+	if len(resp.Rows) != 1 {
+		t.Fatalf("rows: want 1, got %d", len(resp.Rows))
+	}
+
+	r := resp.Rows[0]
+	if r.ActiveSectionTestID == nil || *r.ActiveSectionTestID != sectionTestID {
+		t.Errorf("active_section_test_id: want %v, got %v", sectionTestID, r.ActiveSectionTestID)
+	}
+	if r.ActiveSectionTitle == nil || *r.ActiveSectionTitle != sectionTitle {
+		t.Errorf("active_section_title: want %s, got %v", sectionTitle, r.ActiveSectionTitle)
+	}
+	// FR-21: active section's remaining seconds must be >0 since 30min elapsed of 60min
+	if r.ActiveSectionRemainingSeconds <= 0 {
+		t.Errorf("active_section_remaining_seconds: want >0, got %d", r.ActiveSectionRemainingSeconds)
+	}
+	// Derived status must be in_progress (30min of 60min used)
+	if r.Status != "in_progress" {
+		t.Errorf("status: want in_progress, got %q", r.Status)
+	}
+}
+
+func TestGetSessionMonitor_SectionedRow_Overdue(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	exam := &model.Exam{
+		Title:           "IELTS Exam",
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+		Mode:            "ielts",
+	}
+	svc.repo.seedExam(exam)
+
+	now := time.Now()
+	started := now.Add(-65 * time.Minute) // 65min ago, 60min duration → overdue
+	dur := 60
+	sectionTestID := uuid.New()
+	sectionTitle := "Listening"
+	sessionID := uuid.New()
+	sessionStatus := "in_progress"
+
+	row := model.SessionMonitorRow{
+		RegistrationID: uuid.New(),
+		StudentID:      uuid.New(),
+		StudentName:    "IELTS Student",
+		SessionID:      &sessionID,
+		SessionStatus:  &sessionStatus,
+		StartedAt:      &started,
+		ActiveSectionTestID:          &sectionTestID,
+		ActiveSectionTitle:           &sectionTitle,
+		ActiveSectionStartedAt:       &started,
+		ActiveSectionDurationMinutes: &dur,
+	}
+	svc.repo.seedSessionMonitorRow(exam.ID, row)
+	svc.repo.seedQuestionTotal(exam.ID, 40)
+
+	resp, err := svc.GetSessionMonitor(ctx, exam.ID.String())
+	if err != nil {
+		t.Fatalf("GetSessionMonitor: %v", err)
+	}
+	if len(resp.Rows) != 1 {
+		t.Fatalf("rows: want 1, got %d", len(resp.Rows))
+	}
+
+	r := resp.Rows[0]
+	if r.Status != "overdue" {
+		t.Errorf("status: want overdue, got %q", r.Status)
+	}
+	// Remaining must be 0 (deadline passed)
+	if r.ActiveSectionRemainingSeconds != 0 {
+		t.Errorf("active_section_remaining_seconds: want 0 (overdue), got %d", r.ActiveSectionRemainingSeconds)
 	}
 }
 
