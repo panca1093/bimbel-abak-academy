@@ -14,6 +14,7 @@ coverage.out
 backend/.env
 backend/config/env/staging/secrets.yaml
 backend/config/env/prod/secrets.yaml
+backend/config/env/dev/
 web/.env.local
 
 # OS

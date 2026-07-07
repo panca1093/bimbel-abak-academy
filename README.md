@@ -61,7 +61,13 @@ Layering: `handler → service → repository / adapter`.
 ## Quickstart (Docker)
 
 ```bash
-cd deploy
+# One-time: create your local dev config (gitignored)
+cd backend/config/env
+mkdir -p dev
+cp config.example.yaml dev/config.yaml
+cp secrets.example.yaml dev/secrets.yaml   # values match docker-compose as-is
+
+cd ../../../deploy
 docker compose up -d          # postgres + redis + minio + api + worker + web
 ```
 
