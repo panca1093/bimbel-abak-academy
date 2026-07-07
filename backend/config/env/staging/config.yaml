@@ -1,0 +1,16 @@
+http_port: "8080"
+redis_addr: "localhost:6379"
+worker_poll_interval: "5s"
+cors_origins:
+  - "https://staging.example.com"
+access_token_ttl: "15m"
+refresh_token_ttl: "168h"
+otp_ttl: "5m"
+google_client_id: ""
+fazpass_base_url: "https://api.fazpass.com"
+midtrans_env: "sandbox"
+minio_endpoint: ""
+minio_public_endpoint: ""
+minio_use_ssl: true
+minio_bucket_name: "akademi-bimbel-staging"
+minio_private_bucket_name: "akademi-bimbel-private-staging"
