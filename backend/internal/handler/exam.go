@@ -49,6 +49,7 @@ func (h *Handler) AdminCreateTest(c echo.Context) error {
 		DurationMinutes int     `json:"duration_minutes"`
 		AudioURL        *string `json:"audio_url,omitempty"`
 		AudioPlayLimit  *int    `json:"audio_play_limit,omitempty"`
+		SectionType     *string `json:"section_type,omitempty"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -61,6 +62,7 @@ func (h *Handler) AdminCreateTest(c echo.Context) error {
 		DurationMinutes: req.DurationMinutes,
 		AudioURL:        req.AudioURL,
 		AudioPlayLimit:  req.AudioPlayLimit,
+		SectionType:     req.SectionType,
 	}
 
 	out, err := h.svc.CreateTest(c.Request().Context(), t)
@@ -101,6 +103,7 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 		DurationMinutes int     `json:"duration_minutes"`
 		AudioURL        *string `json:"audio_url,omitempty"`
 		AudioPlayLimit  *int    `json:"audio_play_limit,omitempty"`
+		SectionType     *string `json:"section_type,omitempty"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -124,6 +127,9 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	}
 	if req.AudioPlayLimit != nil {
 		t.AudioPlayLimit = req.AudioPlayLimit
+	}
+	if req.SectionType != nil {
+		t.SectionType = req.SectionType
 	}
 
 	out, err := h.svc.UpdateTest(c.Request().Context(), id, t)

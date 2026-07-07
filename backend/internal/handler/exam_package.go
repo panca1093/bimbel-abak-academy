@@ -71,6 +71,7 @@ func (h *Handler) AdminGetExam(c echo.Context) error {
 // "absent — preserve" from an explicit value. Lifecycle/system-managed fields (status,
 // bundle_url, bundle_generated_at) are deliberately not accepted: status flips via
 // POST /:id/publish, bundle fields only via the (future) bundle generation flow.
+// Mode is a plain string: absent (empty) preserves the stored value (FR-18).
 type examPatchRequest struct {
 	Title                string     `json:"title"`
 	ScheduledAt          *time.Time `json:"scheduled_at"`
@@ -87,6 +88,7 @@ type examPatchRequest struct {
 	AllowLeaderboard     *bool      `json:"allow_leaderboard"`
 	CDNBundle            *bool      `json:"cdn_bundle"`
 	Randomize            *bool      `json:"randomize"`
+	Mode                 string     `json:"mode"`
 }
 
 func (h *Handler) AdminUpdateExam(c echo.Context) error {
@@ -150,6 +152,9 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	}
 	if req.Randomize != nil {
 		overlay.Randomize = *req.Randomize
+	}
+	if req.Mode != "" {
+		overlay.Mode = req.Mode
 	}
 
 	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
