@@ -239,7 +239,7 @@ func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 
 var validTimerModes = map[string]bool{
 	"overall":      true,
-	"per_question": true,
+	"per_test": true,
 }
 
 var validResultConfigs = map[string]bool{
@@ -249,7 +249,7 @@ var validResultConfigs = map[string]bool{
 }
 
 // validateExam enforces exam-level invariants: title required, timer_mode
-// ∈ {overall, per_question} (empty allowed for legacy rows), duration
+// ∈ {overall, per_test} (empty allowed for legacy rows), duration
 // required when timer_mode=overall, and result_config ∈ {hidden, score_only,
 // score_pembahasan} when set (empty allowed here — CreateExam defaults it
 // before this runs; the DB CHECK constraint added by migration 0015 rejects
@@ -259,7 +259,7 @@ func validateExam(e model.Exam) error {
 		return fmt.Errorf("%w: exam title required", ErrValidation)
 	}
 	if e.TimerMode != "" && !validTimerModes[e.TimerMode] {
-		return fmt.Errorf("%w: timer_mode must be overall or per_question", ErrValidation)
+		return fmt.Errorf("%w: timer_mode must be overall or per_test", ErrValidation)
 	}
 	if e.TimerMode == "overall" {
 		if e.DurationMinutes == nil || *e.DurationMinutes <= 0 {
@@ -283,6 +283,9 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, mod
 	}
 	if m.CertificateTemplate == "" {
 		m.CertificateTemplate = "classic"
+	}
+	if m.Status == "" {
+		m.Status = "draft"
 	}
 	if err := validateExam(m); err != nil {
 		return model.Exam{}, model.Product{}, err

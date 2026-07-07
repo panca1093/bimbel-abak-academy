@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -66,6 +67,28 @@ func (h *Handler) AdminGetExam(c echo.Context) error {
 	return c.JSON(http.StatusOK, detail)
 }
 
+// examPatchRequest is the PATCH body for AdminUpdateExam. Pointer fields distinguish
+// "absent — preserve" from an explicit value. Lifecycle/system-managed fields (status,
+// bundle_url, bundle_generated_at) are deliberately not accepted: status flips via
+// POST /:id/publish, bundle fields only via the (future) bundle generation flow.
+type examPatchRequest struct {
+	Title                string     `json:"title"`
+	ScheduledAt          *time.Time `json:"scheduled_at"`
+	TimerMode            string     `json:"timer_mode"`
+	DurationMinutes      *int       `json:"duration_minutes"`
+	ResultConfig         string     `json:"result_config"`
+	ResultReleaseAt      *time.Time `json:"result_release_at"`
+	CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
+	GraceWindowMinutes   *int       `json:"grace_window_minutes"`
+	MaxAttempts          *int       `json:"max_attempts"`
+	CertificateTemplate  string     `json:"certificate_template"`
+	IsFree               *bool      `json:"is_free"`
+	RequiresCheckin      *bool      `json:"requires_checkin"`
+	AllowLeaderboard     *bool      `json:"allow_leaderboard"`
+	CDNBundle            *bool      `json:"cdn_bundle"`
+	Randomize            *bool      `json:"randomize"`
+}
+
 func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -77,7 +100,7 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 
-	var req model.Exam
+	var req examPatchRequest
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
@@ -101,9 +124,6 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	if req.ResultReleaseAt != nil {
 		overlay.ResultReleaseAt = req.ResultReleaseAt
 	}
-	if req.Status != "" {
-		overlay.Status = req.Status
-	}
 	if req.CheckInWindowMinutes != nil {
 		overlay.CheckInWindowMinutes = req.CheckInWindowMinutes
 	}
@@ -113,20 +133,24 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	if req.MaxAttempts != nil {
 		overlay.MaxAttempts = req.MaxAttempts
 	}
-	if req.BundleURL != nil {
-		overlay.BundleURL = req.BundleURL
-	}
-	if req.BundleGeneratedAt != nil {
-		overlay.BundleGeneratedAt = req.BundleGeneratedAt
-	}
 	if req.CertificateTemplate != "" {
 		overlay.CertificateTemplate = req.CertificateTemplate
 	}
-	overlay.IsFree = req.IsFree
-	overlay.RequiresCheckin = req.RequiresCheckin
-	overlay.AllowLeaderboard = req.AllowLeaderboard
-	overlay.CDNBundle = req.CDNBundle
-	overlay.Randomize = req.Randomize
+	if req.IsFree != nil {
+		overlay.IsFree = *req.IsFree
+	}
+	if req.RequiresCheckin != nil {
+		overlay.RequiresCheckin = *req.RequiresCheckin
+	}
+	if req.AllowLeaderboard != nil {
+		overlay.AllowLeaderboard = *req.AllowLeaderboard
+	}
+	if req.CDNBundle != nil {
+		overlay.CDNBundle = *req.CDNBundle
+	}
+	if req.Randomize != nil {
+		overlay.Randomize = *req.Randomize
+	}
 
 	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
 	if err != nil {

@@ -714,7 +714,7 @@ func TestExam_AdminCreateExam_creates_linked_product_draft_zero_price(t *testing
 
 	body := map[string]any{
 		"title":             "Tryout Akbar",
-		"timer_mode":        "per_question",
+		"timer_mode":        "per_test",
 		"is_free":           true,
 		"requires_checkin":  false,
 		"allow_leaderboard": true,
@@ -764,7 +764,7 @@ func TestExam_AdminListExams_returns_data_and_cursor(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		body := map[string]any{
 			"title":      fmt.Sprintf("Paket %d", i),
-			"timer_mode": "per_question",
+			"timer_mode": "per_test",
 			"is_free":    true,
 		}
 		resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams", body, token)
@@ -788,7 +788,7 @@ func TestExam_AdminGetExam_detail_with_and_without_tests(t *testing.T) {
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
 
-	emptyBody := map[string]any{"title": "Empty Paket", "timer_mode": "per_question", "is_free": true}
+	emptyBody := map[string]any{"title": "Empty Paket", "timer_mode": "per_test", "is_free": true}
 	emptyResp, emptyOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams", emptyBody, token)
 	require.Equal(t, http.StatusCreated, emptyResp.StatusCode)
 	emptyExamID := emptyOut["exam"].(map[string]any)["id"].(string)
@@ -803,7 +803,7 @@ func TestExam_AdminGetExam_detail_with_and_without_tests(t *testing.T) {
 	assert.Equal(t, "Empty Paket", emptyDetail["title"])
 
 	withTestResp, withTestOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
-		map[string]any{"title": "Full Paket", "timer_mode": "per_question", "is_free": true}, token)
+		map[string]any{"title": "Full Paket", "timer_mode": "per_test", "is_free": true}, token)
 	require.Equal(t, http.StatusCreated, withTestResp.StatusCode)
 	withExamID := withTestOut["exam"].(map[string]any)["id"].(string)
 
@@ -834,7 +834,7 @@ func TestExam_AdminUpdateExam_overlays_fields(t *testing.T) {
 	token := authToken(t, env, adminID, "admin_exam")
 
 	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
-		map[string]any{"title": "Old", "timer_mode": "per_question", "is_free": true}, token)
+		map[string]any{"title": "Old", "timer_mode": "per_test", "is_free": true}, token)
 	require.Equal(t, http.StatusCreated, createResp.StatusCode)
 	examID := createOut["exam"].(map[string]any)["id"].(string)
 
@@ -863,13 +863,65 @@ func TestExam_AdminUpdateExam_overlays_fields(t *testing.T) {
 	assert.Equal(t, originalProductID, getOut["product_id"], "product_id must not change on PATCH")
 }
 
+func TestExam_AdminUpdateExam_partialPatch_preservesBooleans(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{
+			"title":             "Booleans",
+			"is_free":           true,
+			"requires_checkin":  true,
+			"allow_leaderboard": true,
+			"randomize":         true,
+		}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
+	examID := createOut["exam"].(map[string]any)["id"].(string)
+
+	patchResp, patchOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/exams/"+examID,
+		map[string]any{"title": "Booleans v2"}, token)
+	require.Equal(t, http.StatusOK, patchResp.StatusCode, "body=%v", patchOut)
+
+	_, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	assert.Equal(t, "Booleans v2", detail["title"])
+	assert.Equal(t, true, detail["is_free"], "is_free must survive a PATCH that omits it")
+	assert.Equal(t, true, detail["requires_checkin"], "requires_checkin must survive a PATCH that omits it")
+	assert.Equal(t, true, detail["allow_leaderboard"], "allow_leaderboard must survive a PATCH that omits it")
+	assert.Equal(t, true, detail["randomize"], "randomize must survive a PATCH that omits it")
+}
+
+func TestExam_AdminUpdateExam_ignoresLifecycleAndBundleFields(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{"title": "Lifecycle"}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
+	examID := createOut["exam"].(map[string]any)["id"].(string)
+
+	patchResp, patchOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/exams/"+examID,
+		map[string]any{
+			"status":              "published",
+			"bundle_url":          "https://evil.example/bundle.json",
+			"bundle_generated_at": time.Now().Format(time.RFC3339),
+		}, token)
+	require.Equal(t, http.StatusOK, patchResp.StatusCode, "body=%v", patchOut)
+
+	_, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	assert.Equal(t, "draft", detail["status"], "status is a lifecycle field — PATCH must not flip it")
+	assert.Nil(t, detail["bundle_url"], "bundle_url is system-managed — PATCH must not set it")
+	assert.Nil(t, detail["bundle_generated_at"], "bundle_generated_at is system-managed — PATCH must not set it")
+}
+
 func TestExam_AdminReplaceExamTests_declarative_and_bad_id_leaves_rows_intact(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
 
 	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
-		map[string]any{"title": "Replaceable", "timer_mode": "per_question", "is_free": true}, token)
+		map[string]any{"title": "Replaceable", "timer_mode": "per_test", "is_free": true}, token)
 	require.Equal(t, http.StatusCreated, createResp.StatusCode)
 	examID := createOut["exam"].(map[string]any)["id"].(string)
 
@@ -915,7 +967,7 @@ func TestExam_AdminUpdateExamPrice_updates_linked_product(t *testing.T) {
 	token := authToken(t, env, adminID, "admin_exam")
 
 	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
-		map[string]any{"title": "Pricing Paket", "timer_mode": "per_question", "is_free": false}, token)
+		map[string]any{"title": "Pricing Paket", "timer_mode": "per_test", "is_free": false}, token)
 	require.Equal(t, http.StatusCreated, createResp.StatusCode)
 	examID := createOut["exam"].(map[string]any)["id"].(string)
 	productID := createOut["product"].(map[string]any)["id"].(string)
@@ -1012,7 +1064,7 @@ func seedExam(t *testing.T, env *testEnv, title, resultConfig string, resultRele
 	var id string
 	err := env.pool.QueryRow(ctx,
 		`INSERT INTO exam (title, is_free, requires_checkin, timer_mode, result_config, result_release_at)
-		 VALUES ($1, true, false, 'per_question', $2, $3) RETURNING id`,
+		 VALUES ($1, true, false, 'per_test', $2, $3) RETURNING id`,
 		title, resultConfig, resultReleaseAt,
 	).Scan(&id)
 	require.NoError(t, err)
