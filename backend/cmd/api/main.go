@@ -22,11 +22,22 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
+func envDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	cfg := config.Load()
+	cfg, err := config.Load(envDefault("APP_ENV", "dev"), envDefault("CONFIG_DIR", "config/env"))
+	if err != nil {
+		logger.Error("load config", "err", err)
+		os.Exit(1)
+	}
 	ctx := context.Background()
 
 	if err := infra.RunMigrations(ctx, cfg.DatabaseURL); err != nil {
