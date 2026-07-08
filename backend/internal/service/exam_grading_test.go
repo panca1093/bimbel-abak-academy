@@ -419,6 +419,37 @@ func TestTopicBreakdown_ungradedEssay_earnedZeroContribution(t *testing.T) {
 	assert.Equal(t, 5, rows[0].Max)
 }
 
+func TestTopicBreakdown_sectionType_populatedForIelts(t *testing.T) {
+	listening := "listening"
+	reading := "reading"
+	writing := "writing"
+
+	test1 := uuid.New()
+	test2 := uuid.New()
+	test3 := uuid.New()
+	q1 := model.Question{ID: uuid.New(), TestID: test1, Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	q2 := model.Question{ID: uuid.New(), TestID: test2, Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	q3 := model.Question{ID: uuid.New(), TestID: test3, Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	tests := []model.TestDetail{
+		{Test: model.Test{ID: test1, Title: "Listening", Subject: "EN", Topic: "Listening", SectionType: &listening}, Questions: []model.QuestionWithOptions{{Question: q1}}},
+		{Test: model.Test{ID: test2, Title: "Reading", Subject: "EN", Topic: "Reading", SectionType: &reading}, Questions: []model.QuestionWithOptions{{Question: q2}}},
+		{Test: model.Test{ID: test3, Title: "Writing", Subject: "EN", Topic: "Writing", SectionType: &writing}, Questions: []model.QuestionWithOptions{{Question: q3}}},
+	}
+	answers := []model.ExamSessionAnswer{
+		{QuestionID: q1.ID, Score: floatPtr(1)},
+		{QuestionID: q2.ID, Score: floatPtr(0)},
+		{QuestionID: q3.ID, Score: floatPtr(1)},
+	}
+
+	rows := topicBreakdown(tests, answers)
+
+	assert.Len(t, rows, 3)
+	assert.NotNil(t, rows[0].SectionType, "section_type should be populated, not nil")
+	assert.Equal(t, listening, *rows[0].SectionType)
+	assert.Equal(t, reading, *rows[1].SectionType)
+	assert.Equal(t, writing, *rows[2].SectionType)
+}
+
 func TestTopicBreakdown_multipleTests_oneRowEach(t *testing.T) {
 	test1 := uuid.New()
 	test2 := uuid.New()

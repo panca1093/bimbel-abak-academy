@@ -175,12 +175,13 @@ func topicBreakdown(tests []model.TestDetail, answers []model.ExamSessionAnswer)
 			earned += scoreByQuestion[q.Question.ID]
 		}
 		rows = append(rows, model.ResultTopicRow{
-			TestID:  td.Test.ID,
-			Title:   td.Test.Title,
-			Subject: td.Test.Subject,
-			Topic:   td.Test.Topic,
-			Earned:  earned,
-			Max:     max,
+			TestID:      td.Test.ID,
+			Title:       td.Test.Title,
+			Subject:     td.Test.Subject,
+			Topic:       td.Test.Topic,
+			SectionType: td.Test.SectionType,
+			Earned:      earned,
+			Max:         max,
 		})
 	}
 	return rows
