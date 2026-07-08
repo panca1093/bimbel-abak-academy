@@ -5,6 +5,7 @@
 /backend/bin/
 /backend/api
 /backend/worker
+/backend/coverage_raw.out
 *.test
 coverage.out
 
