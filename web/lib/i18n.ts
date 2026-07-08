@@ -882,6 +882,7 @@ export const DICT = {
     monitor_th_progress: "Progres",
     monitor_th_checked_in: "Check-in",
     monitor_th_last_activity: "Aktivitas",
+    monitor_th_active_section: "Sesi Aktif",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1760,6 +1761,7 @@ export const DICT = {
     monitor_th_progress: "Progress",
     monitor_th_checked_in: "Check-in",
     monitor_th_last_activity: "Last Activity",
+    monitor_th_active_section: "Active Section",
   },
 };
 
