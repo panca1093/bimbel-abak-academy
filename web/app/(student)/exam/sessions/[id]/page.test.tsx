@@ -782,6 +782,39 @@ describe("SessionPage", () => {
     expect(sentIds).not.toContain("q-sec1-mcq"); // submitted section answer is not resent
   });
 
+  it("resets the question index to 0 when advancing to a shorter section (FR-13)", async () => {
+    sessionState = { ...sessionState, data: sectionedSession };
+    const { rerender } = render(<SessionPage />);
+    await enterFullscreenSectioned();
+
+    // Move to section 1's 2nd question (index 1).
+    fireEvent.click(screen.getByTestId("session-nav-1"));
+    await waitFor(() => {
+      expect(screen.getByText(/TPS Essay\?/)).toBeInTheDocument();
+    });
+
+    // Advance to section 2 (Literasi) which has only ONE question. If the index
+    // is not reset, questionsToShow[1] is undefined and the panel renders blank.
+    const section2Active = {
+      ...sectionedSession,
+      active_test_id: "test-section-2",
+      tests: [
+        { ...sectionedSession.tests[0], status: "submitted" as const },
+        {
+          ...sectionedSession.tests[1],
+          status: "active" as const,
+          remaining_seconds: 2700,
+        },
+      ],
+    };
+    sessionState = { ...sessionState, data: section2Active };
+    rerender(<SessionPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Literasi Question 1\?/)).toBeInTheDocument();
+    });
+  });
+
   it("pending section rail items are not clickable (FR-23)", async () => {
     sessionState = { ...sessionState, data: sectionedSession };
     render(<SessionPage />);

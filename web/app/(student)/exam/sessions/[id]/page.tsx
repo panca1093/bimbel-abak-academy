@@ -142,6 +142,12 @@ export default function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  // Sectioned mode: land on the new section's first question when it changes,
+  // else a shorter next section leaves currentQIndex out of range (blank panel).
+  useEffect(() => {
+    setCurrentQIndex(0);
+  }, [session?.active_test_id]);
+
   // Untimed exams (timer_mode=per_test → duration_minutes null) get no countdown
   // and must never auto-submit: the backend reports remaining_seconds=0 for them.
   const hasTimer = isSectioned
