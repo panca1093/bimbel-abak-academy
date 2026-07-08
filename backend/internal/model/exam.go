@@ -16,6 +16,9 @@ type Test struct {
 	DurationMinutes int       `json:"duration_minutes"`
 	AudioURL        *string   `json:"audio_url"`
 	AudioPlayLimit  *int      `json:"audio_play_limit"`
+	// SectionType identities an IELTS section (listening|reading|writing); NULL for
+	// standard tests and UTBK subtests. Pointer so "not set" is distinct from "".
+	SectionType *string `json:"section_type,omitempty"`
 	// QuestionCount is only populated by list-style reads (e.g. ListTests LEFT JOIN).
 	// It is zero on freshly created tests and on direct GetByID reads.
 	QuestionCount int       `json:"question_count"`
@@ -76,6 +79,10 @@ type Exam struct {
 	ProductID            *uuid.UUID `json:"product_id"`
 	CreatedAt            time.Time  `json:"created_at"`
 	CertificateTemplate  string     `json:"certificate_template"`
+	// Mode discriminates standard vs sectioned (utbk|ielts) exams. NOT NULL DEFAULT
+	// 'standard' in the DB; omitempty no-ops since 'standard' is non-empty — admin
+	// payloads gain the key, student-facing payloads are assembled in the service.
+	Mode string `json:"mode,omitempty"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -176,6 +183,7 @@ type ExamTestEntry struct {
 		Subject         string    `json:"subject"`
 		Topic           *string   `json:"topic"`
 		DurationMinutes *int      `json:"duration_minutes"`
+		SectionType     *string   `json:"section_type,omitempty"`
 		QuestionCount   int       `json:"question_count"`
 	} `json:"test"`
 }
@@ -234,12 +242,13 @@ type SessionResult struct {
 // ResultTopicRow is one per-Test row of the score_pembahasan breakdown (FR-S5-19).
 // Max is the sum of point_correct across the test's questions (objective + essay).
 type ResultTopicRow struct {
-	TestID  uuid.UUID `json:"test_id"`
-	Title   string    `json:"title"`
-	Subject string    `json:"subject"`
-	Topic   string    `json:"topic"`
-	Earned  float64   `json:"earned"`
-	Max     int       `json:"max"`
+	TestID      uuid.UUID `json:"test_id"`
+	Title       string    `json:"title"`
+	Subject     string    `json:"subject"`
+	Topic       string    `json:"topic"`
+	SectionType *string   `json:"section_type,omitempty"`
+	Earned      float64   `json:"earned"`
+	Max         int       `json:"max"`
 }
 
 // ResultPembahasanItem is one objective-question row of the score_pembahasan pembahasan
@@ -341,6 +350,8 @@ type ExamAnalytics struct {
 
 // SessionMonitorRow is one registrant row in the session monitor dashboard.
 // Status is populated by the service layer, not by the repo -- defaults to empty.
+// The Active* fields are populated only for sectioned (utbk|ielts) sessions where a
+// section is currently active; all are nil for standard-mode sessions.
 type SessionMonitorRow struct {
 	RegistrationID  uuid.UUID  `json:"registration_id"`
 	StudentID       uuid.UUID  `json:"student_id"`
@@ -357,6 +368,26 @@ type SessionMonitorRow struct {
 	TotalQuestions  int        `json:"total_questions"`
 	ViolationCount  int        `json:"violation_count"`
 	Status          string     `json:"status"`
+	ActiveSectionTestID          *uuid.UUID `json:"active_section_test_id,omitempty"`
+	ActiveSectionTitle           *string    `json:"active_section_title,omitempty"`
+	ActiveSectionStartedAt       *time.Time `json:"active_section_started_at,omitempty"`
+	ActiveSectionDurationMinutes *int       `json:"active_section_duration_minutes,omitempty"`
+	ActiveSectionExtendedUntil    *time.Time `json:"active_section_extended_until,omitempty"`
+	ActiveSectionRemainingSeconds int64      `json:"active_section_remaining_seconds,omitempty"`
+}
+
+// ExamSessionSection is one per-section timing row for a sectioned (utbk|ielts) exam
+// session (FR-3). (session_id, test_id) is the composite PK; sort_order and
+// duration_minutes are snapshots taken at session start. status is pending|active|submitted.
+type ExamSessionSection struct {
+	SessionID      uuid.UUID  `json:"session_id"`
+	TestID         uuid.UUID  `json:"test_id"`
+	SortOrder      int        `json:"sort_order"`
+	DurationMinutes int       `json:"duration_minutes"`
+	Status         string     `json:"status"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	SubmittedAt    *time.Time `json:"submitted_at,omitempty"`
+	ExtendedUntil  *time.Time `json:"extended_until,omitempty"`
 }
 
 // SessionMonitorExam is the exam summary block in the monitor response.

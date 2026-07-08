@@ -412,3 +412,122 @@ describe("ExamPackageDetailPage — leaderboard tab", () => {
     expect(dupKeyWarning).toBe(false);
   });
 });
+
+describe("ExamPackageDetailPage — preset buttons in tests tab", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    analyticsState = { data: undefined, isLoading: false };
+    leaderboardState = {
+      data: { data: [], next_cursor: undefined },
+      isLoading: false,
+      isFetching: false,
+    };
+  });
+
+  function openTestsTab() {
+    fireEvent.click(screen.getByRole("button", { name: /^tes$/i }));
+  }
+
+  it("shows IELTS preset button when exam mode is ielts", async () => {
+    examState = {
+      data: { ...sampleExam, mode: "ielts" },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+    openTestsTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("IELTS Preset")).toBeInTheDocument();
+    });
+  });
+
+  it("shows UTBK preset button when exam mode is utbk", async () => {
+    examState = {
+      data: { ...sampleExam, mode: "utbk" },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+    openTestsTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("UTBK Preset")).toBeInTheDocument();
+    });
+  });
+
+  it("does NOT show preset buttons for standard mode", async () => {
+    examState = {
+      data: sampleExam,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+    openTestsTab();
+
+    await waitFor(() => {
+      expect(screen.queryByText("UTBK Preset")).not.toBeInTheDocument();
+      expect(screen.queryByText("IELTS Preset")).not.toBeInTheDocument();
+    });
+  });
+
+  it("IELTS preset prefills three sections typed listening/reading/writing", async () => {
+    examState = {
+      data: { ...sampleExam, mode: "ielts" },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+    openTestsTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("IELTS Preset")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("IELTS Preset"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/IELTS Listening/)).toBeInTheDocument();
+      expect(screen.getByText(/IELTS Reading/)).toBeInTheDocument();
+      expect(screen.getByText(/IELTS Writing/)).toBeInTheDocument();
+    });
+  });
+
+  it("UTBK preset prefills four sections with typical durations", async () => {
+    examState = {
+      data: { ...sampleExam, mode: "utbk" },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    render(<ExamPackageDetailPage />);
+    openTestsTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("UTBK Preset")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("UTBK Preset"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/TPS - Potensi Skolastik/)).toBeInTheDocument();
+      expect(screen.getByText(/Penalaran Matematika/)).toBeInTheDocument();
+      expect(screen.getByText(/Literasi Bahasa Indonesia/)).toBeInTheDocument();
+      expect(screen.getByText(/Literasi Bahasa Inggris/)).toBeInTheDocument();
+    });
+  });
+});

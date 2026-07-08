@@ -29,6 +29,28 @@ var validQuestionFormats = map[string]bool{
 	"essay":        true,
 }
 
+// validModes enumerates exam.mode values (FR-1). Empty is allowed here so that
+// PATCH-overlay (absent preserves) and CreateExam defaulting both work — the
+// service layer sets Mode='standard' on create before validateExam runs, and
+// the PATCH handler only overlays Mode when the request supplies a non-empty one.
+var validModes = map[string]bool{
+	"standard": true,
+	"utbk":     true,
+	"ielts":    true,
+}
+
+// validSectionTypes enumerates test.section_type values (FR-2). NULL is allowed
+// (standard/utbk tests may be untyped); only a supplied non-null value is checked.
+var validSectionTypes = map[string]bool{
+	"listening": true,
+	"reading":   true,
+	"writing":   true,
+}
+
+// sectionedModes are the exam modes that run attached Tests as sequential sections
+// (FR-19 publish-gate trigger). 'standard' is excluded.
+func isSectionedMode(mode string) bool { return mode == "utbk" || mode == "ielts" }
+
 // validateQuestion enforces the format-validation matrix from spec.md §4.
 // All error returns wrap ErrValidation with a sub-message so callers can
 // use errors.Is(err, ErrValidation) AND err.Error() carries the WHY.
@@ -130,6 +152,19 @@ func validateTest(t model.Test) error {
 	}
 	if t.AudioPlayLimit != nil && *t.AudioPlayLimit <= 0 {
 		return fmt.Errorf("%w: audio_play_limit must be positive when set", ErrValidation)
+	}
+	// FR-18: section_type ∈ {listening,reading,writing} when supplied; a listening
+	// section requires audio_url (FR-25 audio player). NULL section_type is allowed
+	// (standard/utbk tests may be untyped).
+	if t.SectionType != nil {
+		if !validSectionTypes[*t.SectionType] {
+			return fmt.Errorf("%w: section_type must be listening, reading, or writing", ErrValidation)
+		}
+		if *t.SectionType == "listening" {
+			if t.AudioURL == nil || strings.TrimSpace(*t.AudioURL) == "" {
+				return fmt.Errorf("%w: audio_url required when section_type=listening", ErrValidation)
+			}
+		}
 	}
 	return nil
 }
@@ -258,6 +293,13 @@ func validateExam(e model.Exam) error {
 	if strings.TrimSpace(e.Title) == "" {
 		return fmt.Errorf("%w: exam title required", ErrValidation)
 	}
+	// FR-18: mode ∈ {standard,utbk,ielts} when supplied. Empty is accepted here
+	// because CreateExam defaults it to 'standard' before validateExam runs and
+	// the PATCH handler only overlays Mode when the request supplies a non-empty
+	// value (absent preserves the stored value).
+	if e.Mode != "" && !validModes[e.Mode] {
+		return fmt.Errorf("%w: mode must be standard, utbk, or ielts", ErrValidation)
+	}
 	if e.TimerMode != "" && !validTimerModes[e.TimerMode] {
 		return fmt.Errorf("%w: timer_mode must be overall or per_test", ErrValidation)
 	}
@@ -286,6 +328,9 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, mod
 	}
 	if m.Status == "" {
 		m.Status = "draft"
+	}
+	if m.Mode == "" {
+		m.Mode = "standard"
 	}
 	if err := validateExam(m); err != nil {
 		return model.Exam{}, model.Product{}, err
@@ -391,7 +436,50 @@ func (s *Service) PublishExam(ctx context.Context, examID uuid.UUID) error {
 	if exam.ProductID == nil {
 		return fmt.Errorf("%w: exam has no linked product", ErrValidation)
 	}
+	// FR-19: sectioned modes (utbk|ielts) require at least one attached Test,
+	// and ielts additionally requires every attached Test to have a non-null
+	// section_type. The gate is a pure function over the loaded ExamDetail so it
+	// is unit-testable without a DB.
+	if isSectionedMode(exam.Mode) {
+		detail, err := s.storeRepo.GetExamDetail(ctx, examID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrExamNotFound
+			}
+			return err
+		}
+		if err := validatePublishSections(*exam, detail.Tests); err != nil {
+			return err
+		}
+	}
 	return s.PublishProduct(ctx, exam.ProductID.String(), RoleAdminExam)
+}
+
+// validatePublishSections enforces FR-19: a sectioned exam (mode ∈ {utbk,ielts})
+// must have at least one attached Test, and an ielts exam must have a non-null
+// section_type on every attached Test (the offending section is named in the
+// error message). Standard/empty modes skip the gate entirely. The function is
+// pure over (exam, tests) so it can be unit-tested without a DB; PublishExam
+// loads the attached Tests via GetExamDetail and delegates here.
+func validatePublishSections(exam model.Exam, tests []model.ExamTestEntry) error {
+	if !isSectionedMode(exam.Mode) {
+		return nil
+	}
+	if len(tests) == 0 {
+		return fmt.Errorf("%w: sectioned exam (mode=%s) requires at least one test", ErrValidation, exam.Mode)
+	}
+	if exam.Mode == "ielts" {
+		for _, te := range tests {
+			if te.Test.SectionType == nil {
+				title := te.Test.Title
+				if title == "" {
+					title = te.TestID.String()
+				}
+				return fmt.Errorf("%w: ielts exam has an untyped section (%q); section_type required", ErrValidation, title)
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) GetExam(ctx context.Context, id uuid.UUID) (model.ExamDetail, error) {

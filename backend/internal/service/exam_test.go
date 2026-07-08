@@ -472,6 +472,186 @@ func TestValidateExam_accepts_each_valid_result_config(t *testing.T) {
 	}
 }
 
+// --- FR-18: mode authoring validation ---
+
+func TestValidateExam_rejects_invalid_mode(t *testing.T) {
+	e := model.Exam{Title: "Finals", Mode: "foo"}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("invalid mode should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "mode must be") {
+		t.Errorf("invalid mode msg should mention allowed modes, got %q", err.Error())
+	}
+}
+
+func TestValidateExam_accepts_each_valid_mode(t *testing.T) {
+	for _, m := range []string{"standard", "utbk", "ielts"} {
+		e := model.Exam{Title: "Finals", Mode: m}
+		if err := validateExam(e); err != nil {
+			t.Errorf("mode=%q should pass, got %v", m, err)
+		}
+	}
+}
+
+func TestValidateExam_accepts_empty_mode(t *testing.T) {
+	// empty on PATCH preserves; on CREATE, CreateExam defaults to standard before
+	// validateExam runs. Either way validateExam must accept empty.
+	e := model.Exam{Title: "Finals", Mode: ""}
+	if err := validateExam(e); err != nil {
+		t.Errorf("empty mode should pass validateExam (default/overlay happens in CreateExam/handler), got %v", err)
+	}
+}
+
+// --- FR-18: section_type authoring validation ---
+
+func TestValidateTest_rejects_invalid_section_type(t *testing.T) {
+	invalid := "speaking"
+	tst := model.Test{Title: "x", Subject: "math", Topic: "algebra", DurationMinutes: 60, SectionType: &invalid}
+	err := validateTest(tst)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("invalid section_type should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "section_type must be") {
+		t.Errorf("invalid section_type msg should mention allowed values, got %q", err.Error())
+	}
+}
+
+func TestValidateTest_rejects_listening_without_audio_url(t *testing.T) {
+	listening := "listening"
+	tst := model.Test{Title: "x", Subject: "math", Topic: "algebra", DurationMinutes: 60, SectionType: &listening}
+	err := validateTest(tst)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("listening without audio_url should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "audio_url required when section_type=listening") {
+		t.Errorf("listening-no-audio msg should mention audio_url requirement, got %q", err.Error())
+	}
+}
+
+func TestValidateTest_accepts_listening_with_audio_url(t *testing.T) {
+	listening := "listening"
+	audio := "https://cdn.example.com/track.mp3"
+	tst := model.Test{Title: "x", Subject: "math", Topic: "algebra", DurationMinutes: 60, SectionType: &listening, AudioURL: &audio}
+	if err := validateTest(tst); err != nil {
+		t.Errorf("listening with audio_url should pass, got %v", err)
+	}
+}
+
+func TestValidateTest_accepts_reading_section(t *testing.T) {
+	reading := "reading"
+	tst := model.Test{Title: "x", Subject: "math", Topic: "algebra", DurationMinutes: 60, SectionType: &reading}
+	if err := validateTest(tst); err != nil {
+		t.Errorf("reading section (no audio required) should pass, got %v", err)
+	}
+}
+
+func TestValidateTest_accepts_null_section_type(t *testing.T) {
+	// standard/utbk tests may be untyped; SectionType nil must pass.
+	tst := model.Test{Title: "x", Subject: "math", Topic: "algebra", DurationMinutes: 60}
+	if err := validateTest(tst); err != nil {
+		t.Errorf("null section_type should pass, got %v", err)
+	}
+}
+
+func TestValidateTest_accepts_writing_section(t *testing.T) {
+	writing := "writing"
+	tst := model.Test{Title: "x", Subject: "math", Topic: "algebra", DurationMinutes: 60, SectionType: &writing}
+	if err := validateTest(tst); err != nil {
+		t.Errorf("writing section should pass, got %v", err)
+	}
+}
+
+// --- FR-19: publish-time completeness gate for sectioned modes ---
+
+func entryTitled(title string, sectionType *string) model.ExamTestEntry {
+	return model.ExamTestEntry{Test: struct {
+		ID              uuid.UUID `json:"id"`
+		Title           string    `json:"title"`
+		Subject         string    `json:"subject"`
+		Topic           *string   `json:"topic"`
+		DurationMinutes *int      `json:"duration_minutes"`
+		SectionType     *string   `json:"section_type,omitempty"`
+		QuestionCount   int       `json:"question_count"`
+	}{Title: title, SectionType: sectionType}}
+}
+
+func TestValidatePublishSections_rejects_sectioned_exam_with_zero_tests(t *testing.T) {
+	for _, mode := range []string{"utbk", "ielts"} {
+		exam := model.Exam{Mode: mode}
+		err := validatePublishSections(exam, nil)
+		if !errors.Is(err, ErrValidation) {
+			t.Errorf("mode=%s with 0 tests should return ErrValidation, got %v", mode, err)
+		}
+		if !strings.Contains(err.Error(), "at least one test") {
+			t.Errorf("zero-tests msg should mention 'at least one test', got %q", err.Error())
+		}
+		err = validatePublishSections(exam, []model.ExamTestEntry{})
+		if !errors.Is(err, ErrValidation) {
+			t.Errorf("mode=%s with empty tests slice should return ErrValidation, got %v", mode, err)
+		}
+	}
+}
+
+func TestValidatePublishSections_rejects_ielts_with_untyped_section(t *testing.T) {
+	exam := model.Exam{Mode: "ielts"}
+	tests := []model.ExamTestEntry{
+		entryTitled("Listening", strPtr("listening")),
+		entryTitled("Untyped Section", nil),
+	}
+	err := validatePublishSections(exam, tests)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("ielts with an untyped attached section should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Untyped Section") {
+		t.Errorf("ielts untyped-section msg should name the offending section, got %q", err.Error())
+	}
+}
+
+func TestValidatePublishSections_allows_fully_typed_ielts(t *testing.T) {
+	exam := model.Exam{Mode: "ielts"}
+	tests := []model.ExamTestEntry{
+		entryTitled("Listening", strPtr("listening")),
+		entryTitled("Reading", strPtr("reading")),
+		entryTitled("Writing", strPtr("writing")),
+	}
+	if err := validatePublishSections(exam, tests); err != nil {
+		t.Errorf("fully-typed ielts should pass, got %v", err)
+	}
+}
+
+func TestValidatePublishSections_allows_utbk_with_untyped_tests(t *testing.T) {
+	// utbk may have untyped tests per spec (FR-19); only duration_minutes>0 is
+	// enforced, and that already lives in validateTest.
+	exam := model.Exam{Mode: "utbk"}
+	tests := []model.ExamTestEntry{
+		entryTitled("Subtest 1", nil),
+		entryTitled("Subtest 2", strPtr("reading")),
+	}
+	if err := validatePublishSections(exam, tests); err != nil {
+		t.Errorf("utbk with a mix of untyped/typed tests should pass, got %v", err)
+	}
+}
+
+func TestValidatePublishSections_allows_standard_with_any_tests(t *testing.T) {
+	// standard publish is unchanged; the gate is skipped entirely.
+	exam := model.Exam{Mode: "standard"}
+	if err := validatePublishSections(exam, nil); err != nil {
+		t.Errorf("standard with no tests should pass (gate skipped), got %v", err)
+	}
+	if err := validatePublishSections(exam, []model.ExamTestEntry{entryTitled("Any", nil)}); err != nil {
+		t.Errorf("standard with untyped test should pass (gate skipped), got %v", err)
+	}
+}
+
+func TestValidatePublishSections_allows_empty_mode(t *testing.T) {
+	// empty mode (legacy rows / pre-default) must not trigger the gate.
+	exam := model.Exam{Mode: ""}
+	if err := validatePublishSections(exam, nil); err != nil {
+		t.Errorf("empty mode should pass (gate skipped), got %v", err)
+	}
+}
+
 func TestCheckTypeRBAC_admin_exam_allows_exam(t *testing.T) {
 	if err := checkTypeRBAC(RoleAdminExam, "exam"); err != nil {
 		t.Errorf("admin_exam on exam type should be allowed, got %v", err)
@@ -494,6 +674,67 @@ func TestCheckTypeRBAC_admin_exam_blocks_course(t *testing.T) {
 
 // suppress unused: uuid is imported to avoid unused-import lint if tests get trimmed later
 var _ = uuid.Nil
+
+// --- FR-18/19: CreateExam default mode + PublishExam gate (integration) ---
+// These exercise the service against the real Postgres fixture (testcontainers),
+// matching the existing school_test.go pattern. They verify the CreateExam
+// defaulting and the PublishExam wiring (that it actually loads attached Tests
+// and delegates to validatePublishSections).
+
+func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	title := "Default Mode Exam " + uniqueSuffix()
+	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: title, Mode: ""})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	if exam.Mode != "standard" {
+		t.Errorf("CreateExam with empty Mode should default to standard, got %q", exam.Mode)
+	}
+
+	// explicit mode must round-trip unchanged.
+	exam2, _, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK Exam " + uniqueSuffix(), Mode: "utbk"})
+	if err != nil {
+		t.Fatalf("CreateExam utbk: %v", err)
+	}
+	if exam2.Mode != "utbk" {
+		t.Errorf("CreateExam with mode=utbk should persist utbk, got %q", exam2.Mode)
+	}
+}
+
+func TestPublishExam_Integration_RejectsSectionedExamWithNoTests(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK No-Tests " + uniqueSuffix(), Mode: "utbk"})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	err = svc.PublishExam(ctx, exam.ID)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("PublishExam on utbk exam with 0 tests should return ErrValidation, got %v", err)
+	}
+}
+
+func TestPublishExam_Integration_StandardSkipsGate(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	// Standard exam with no tests must NOT be rejected by the section gate — it
+	// proceeds to PublishProduct (which may then fail for other product reasons,
+	// but not with the sectioned-mode ErrValidation). We assert only that the
+	// error is not the sectioned-zero-tests validation.
+	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: "Standard No-Tests " + uniqueSuffix(), Mode: "standard"})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	err = svc.PublishExam(ctx, exam.ID)
+	if err != nil && strings.Contains(err.Error(), "sectioned exam") {
+		t.Errorf("standard exam must not hit the sectioned gate, got %v", err)
+	}
+}
 
 // --- Slice 3: registration reads + exam card ---
 

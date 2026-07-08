@@ -49,6 +49,12 @@ const STATUS_BADGE: Record<
 
 // ── Date formatting helpers ──
 
+function formatRemaining(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 function formatTime(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -232,6 +238,7 @@ export default function ExamMonitorPage() {
                   <th className="pb-2 pr-4 font-medium">{t("th_name")}</th>
                   <th className="pb-2 pr-4 font-medium">{t("school")}</th>
                   <th className="pb-2 pr-4 font-medium">{t("th_status")}</th>
+                  <th className="pb-2 pr-4 font-medium">{t("monitor_th_active_section")}</th>
                   <th className="pb-2 pr-4 font-medium">{t("monitor_th_progress")}</th>
                   <th className="pb-2 pr-4 font-medium">{t("monitor_th_checked_in")}</th>
                   <th className="pb-2 pr-4 font-medium">{t("monitor_th_last_activity")}</th>
@@ -259,6 +266,18 @@ export default function ExamMonitorPage() {
                         <Badge variant={badge.variant} className={badge.className}>
                           {t(STATUS_LABEL_KEY[row.status] as any)}
                         </Badge>
+                      </td>
+                      <td className="py-3 pr-4 text-xs">
+                        {row.active_section_title ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium">{row.active_section_title}</span>
+                            <span className="text-[var(--md-sys-color-on-surface-variant)]">
+                              {formatRemaining(row.active_section_remaining_seconds ?? 0)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[var(--md-sys-color-on-surface-variant)]">—</span>
+                        )}
                       </td>
                       <td className="py-3 pr-4">
                         <div className="flex items-center gap-2">

@@ -106,7 +106,16 @@ export default function ExamPackageDetailPage() {
     lbCursor ? { cursor: lbCursor, limit: 20 } : { limit: 20 },
   );
 
+  interface PendingSection {
+    id: string;
+    title: string;
+    subject: string;
+    section_type?: string;
+    duration_minutes: number;
+  }
+
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
+  const [pendingSections, setPendingSections] = useState<PendingSection[]>([]);
   const [priceInput, setPriceInput] = useState("");
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -161,6 +170,31 @@ export default function ExamPackageDetailPage() {
 
   function handleRemoveTest(testId: string) {
     setAttachedIds((prev) => prev.filter((entry) => entry !== testId));
+  }
+
+  const UTBK_PRESETS: PendingSection[] = [
+    { id: "utbk-tps", title: "TPS - Potensi Skolastik", subject: "TPS", duration_minutes: 60 },
+    { id: "utbk-pm", title: "Penalaran Matematika", subject: "Matematika", duration_minutes: 60 },
+    { id: "utbk-li", title: "Literasi Bahasa Indonesia", subject: "Bahasa Indonesia", duration_minutes: 45 },
+    { id: "utbk-lb", title: "Literasi Bahasa Inggris", subject: "Bahasa Inggris", duration_minutes: 45 },
+  ];
+
+  const IELTS_PRESETS: PendingSection[] = [
+    { id: "ielts-listening", title: "IELTS Listening", subject: "Bahasa Inggris", section_type: "listening", duration_minutes: 30 },
+    { id: "ielts-reading", title: "IELTS Reading", subject: "Bahasa Inggris", section_type: "reading", duration_minutes: 60 },
+    { id: "ielts-writing", title: "IELTS Writing", subject: "Bahasa Inggris", section_type: "writing", duration_minutes: 60 },
+  ];
+
+  function handleUtbkPreset() {
+    setPendingSections(UTBK_PRESETS);
+  }
+
+  function handleIeltsPreset() {
+    setPendingSections(IELTS_PRESETS);
+  }
+
+  function removePendingSection(id: string) {
+    setPendingSections((prev) => prev.filter((s) => s.id !== id));
   }
 
   async function handleSaveTests() {
@@ -365,10 +399,34 @@ export default function ExamPackageDetailPage() {
                     {t("admin_exam_detail_tests_attached")}
                   </h3>
                   <span className="text-label text-muted-foreground">
-                    {attachedIds.length}
+                    {attachedIds.length + pendingSections.length}
                   </span>
                 </div>
-                {attachedIds.length === 0 ? (
+                {data.mode && data.mode !== "standard" && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {data.mode === "utbk" && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleUtbkPreset}
+                      >
+                        {t("tests_preset_utbk")}
+                      </Button>
+                    )}
+                    {data.mode === "ielts" && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleIeltsPreset}
+                      >
+                        {t("tests_preset_ielts")}
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {attachedIds.length === 0 && pendingSections.length === 0 ? (
                   <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
                     —
                   </div>
@@ -406,6 +464,40 @@ export default function ExamPackageDetailPage() {
                       );
                     })}
                   </ul>
+                )}
+                {pendingSections.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-label mb-2 text-sm font-medium text-muted-foreground">
+                      {t("tests_preset_added")}
+                    </h4>
+                    <ul className="space-y-2">
+                      {pendingSections.map((ps, idx) => (
+                        <li
+                          key={ps.id}
+                          className="flex items-center justify-between gap-2 rounded-md border border-dashed border-brand-300 p-3 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">
+                              #{attachedIds.length + idx + 1} · {ps.title}
+                            </div>
+                            <div className="text-label text-muted-foreground">
+                              {ps.subject} · {ps.section_type ? `${ps.section_type} · ` : ""}
+                              {ps.duration_minutes} {t("minutes")}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => removePendingSection(ps.id)}
+                            aria-label={t("admin_exam_detail_tests_remove")}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
                 <div className="mt-4 flex justify-end">
                   <Button

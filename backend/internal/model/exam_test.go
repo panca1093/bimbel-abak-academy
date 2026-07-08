@@ -63,8 +63,8 @@ func TestTestStruct(t *testing.T) {
 	typ := reflect.TypeOf((*Test)(nil)).Elem()
 	v := newModel(typ)
 
-	if typ.NumField() != 9 {
-		t.Fatalf("Test struct: got %d fields, want 9", typ.NumField())
+	if typ.NumField() != 10 {
+		t.Fatalf("Test struct: got %d fields, want 10", typ.NumField())
 	}
 
 	jsonTag(t, v, "ID", "id")
@@ -74,6 +74,7 @@ func TestTestStruct(t *testing.T) {
 	jsonTag(t, v, "DurationMinutes", "duration_minutes")
 	jsonTag(t, v, "AudioURL", "audio_url")
 	jsonTag(t, v, "AudioPlayLimit", "audio_play_limit")
+	jsonTag(t, v, "SectionType", "section_type,omitempty")
 	jsonTag(t, v, "QuestionCount", "question_count")
 	jsonTag(t, v, "CreatedAt", "created_at")
 

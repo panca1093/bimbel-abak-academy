@@ -49,6 +49,7 @@ func (h *Handler) AdminCreateTest(c echo.Context) error {
 		DurationMinutes int     `json:"duration_minutes"`
 		AudioURL        *string `json:"audio_url,omitempty"`
 		AudioPlayLimit  *int    `json:"audio_play_limit,omitempty"`
+		SectionType     *string `json:"section_type,omitempty"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -61,6 +62,7 @@ func (h *Handler) AdminCreateTest(c echo.Context) error {
 		DurationMinutes: req.DurationMinutes,
 		AudioURL:        req.AudioURL,
 		AudioPlayLimit:  req.AudioPlayLimit,
+		SectionType:     req.SectionType,
 	}
 
 	out, err := h.svc.CreateTest(c.Request().Context(), t)
@@ -101,6 +103,7 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 		DurationMinutes int     `json:"duration_minutes"`
 		AudioURL        *string `json:"audio_url,omitempty"`
 		AudioPlayLimit  *int    `json:"audio_play_limit,omitempty"`
+		SectionType     *string `json:"section_type,omitempty"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -124,6 +127,9 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	}
 	if req.AudioPlayLimit != nil {
 		t.AudioPlayLimit = req.AudioPlayLimit
+	}
+	if req.SectionType != nil {
+		t.SectionType = req.SectionType
 	}
 
 	out, err := h.svc.UpdateTest(c.Request().Context(), id, t)
@@ -410,6 +416,21 @@ func (h *Handler) StudentSubmitSession(c echo.Context) error {
 	}
 	sessionID := c.Param("id")
 	result, err := h.svc.SubmitSession(c.Request().Context(), claims.Sub, sessionID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+// StudentAdvanceSection closes the active section and promotes the next (FR-10).
+func (h *Handler) StudentAdvanceSection(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	sessionID := c.Param("id")
+	testID := c.Param("testId")
+	result, err := h.svc.AdvanceSection(c.Request().Context(), claims.Sub, sessionID, testID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

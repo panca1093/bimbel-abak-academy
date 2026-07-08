@@ -379,6 +379,94 @@ describe("ExamMonitorPage", () => {
     });
   });
 
+  it("renders active section column for sectioned rows and dash for standard rows", async () => {
+    const sectionedRows: SessionMonitorRow[] = [
+      ...sampleRows,
+      {
+        registration_id: "r6",
+        student_id: "u6",
+        student_name: "Rina Wijaya",
+        school_name: "SMAN UTBK",
+        status: "in_progress",
+        answers_saved: 5,
+        total_questions: 40,
+        checked_in_at: "2026-07-06T06:50:00Z",
+        last_saved_at: "2026-07-06T07:15:00Z",
+        violation_count: 0,
+        session_id: "s5",
+        admin_submitted: false,
+        extended_until: null,
+        active_section_test_id: "t1",
+        active_section_title: "Tes Potensi Skolastik",
+        active_section_started_at: "2026-07-06T06:50:00Z",
+        active_section_duration_minutes: 30,
+        active_section_extended_until: null,
+        active_section_remaining_seconds: 1200,
+      },
+      {
+        registration_id: "r7",
+        student_id: "u7",
+        student_name: "Bayu Pratama",
+        school_name: "SMAN 1 Bandung",
+        status: "overdue",
+        answers_saved: 20,
+        total_questions: 40,
+        checked_in_at: "2026-07-06T06:40:00Z",
+        last_saved_at: "2026-07-06T07:30:00Z",
+        violation_count: 2,
+        session_id: "s6",
+        admin_submitted: false,
+        extended_until: null,
+        active_section_test_id: "t2",
+        active_section_title: "Penalaran Umum",
+        active_section_started_at: "2026-07-06T07:20:00Z",
+        active_section_duration_minutes: 15,
+        active_section_extended_until: null,
+        active_section_remaining_seconds: 0,
+      },
+    ];
+
+    monitorState = {
+      data: {
+        exam: {
+          id: "exam-1",
+          title: "UTBK 2026",
+          scheduled_at: "2026-08-01T07:00:00Z",
+          duration_minutes: 120,
+          grace_window_minutes: 5,
+          status: "published",
+        },
+        rows: sectionedRows,
+        violations_recent: sampleViolations,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamMonitorPage />);
+
+    await waitFor(() => {
+      // Column header for active section should be present
+      expect(screen.getByText("Sesi Aktif")).toBeInTheDocument();
+
+      // Sectioned rows render their section titles
+      expect(screen.getByText("Tes Potensi Skolastik")).toBeInTheDocument();
+      expect(screen.getByText("Penalaran Umum")).toBeInTheDocument();
+
+      // Active sectioned row shows remaining time in MM:SS format (20 min)
+      expect(screen.getByText("20:00")).toBeInTheDocument();
+
+      // Overdue sectioned row shows 00:00
+      expect(screen.getByText("00:00")).toBeInTheDocument();
+
+      // Standard rows unchanged — check their names appear
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+      const ahmadElements = screen.getAllByText("Ahmad Fauzi");
+      expect(ahmadElements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it("shows 'No violations yet' when there are no recent violations", async () => {
     monitorState = {
       ...monitorState,

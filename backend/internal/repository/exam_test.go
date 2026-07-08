@@ -164,8 +164,8 @@ func TestScanTest_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanTest returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 8 {
-		t.Fatalf("scanTest passed %d destinations, want 8 (id, title, subject, topic, duration_minutes, audio_url, audio_play_limit, created_at)", got)
+	if got := len(rec.dests); got != 9 {
+		t.Fatalf("scanTest passed %d destinations, want 9 (id, title, subject, topic, duration_minutes, audio_url, audio_play_limit, section_type, created_at)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -189,8 +189,11 @@ func TestScanTest_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[6].(**int); !ok {
 		t.Errorf("dest[6] = %T, want **int (audio_play_limit, nullable local scanned into struct)", rec.dests[6])
 	}
-	if _, ok := rec.dests[7].(*time.Time); !ok {
-		t.Errorf("dest[7] = %T, want *time.Time (created_at)", rec.dests[7])
+	if _, ok := rec.dests[7].(**string); !ok {
+		t.Errorf("dest[7] = %T, want **string (section_type, nullable pointer scanned into struct)", rec.dests[7])
+	}
+	if _, ok := rec.dests[8].(*time.Time); !ok {
+		t.Errorf("dest[8] = %T, want *time.Time (created_at)", rec.dests[8])
 	}
 }
 
@@ -295,8 +298,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 21 {
-		t.Fatalf("scanExam passed %d destinations, want 21", got)
+	if got := len(rec.dests); got != 22 {
+		t.Fatalf("scanExam passed %d destinations, want 22", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -325,6 +328,9 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[19].(*time.Time); !ok {
 		t.Errorf("dest[19] = %T, want *time.Time (created_at)", rec.dests[19])
+	}
+	if _, ok := rec.dests[21].(*string); !ok {
+		t.Errorf("dest[21] = %T, want *string (mode)", rec.dests[21])
 	}
 }
 
@@ -496,8 +502,8 @@ func TestScanSessionMonitorRow_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanSessionMonitorRow returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 13 {
-		t.Fatalf("scanSessionMonitorRow passed %d destinations, want 13 (registration_id, student_id, student_name, school_name, session_id, session_status, started_at, extended_until, admin_submitted, checked_in_at, last_saved_at, answers_saved, violation_count)", got)
+	if got := len(rec.dests); got != 18 {
+		t.Fatalf("scanSessionMonitorRow passed %d destinations, want 18 (registration_id, student_id, student_name, school_name, session_id, session_status, started_at, extended_until, admin_submitted, checked_in_at, last_saved_at, answers_saved, violation_count, active_section_test_id, active_section_title, active_section_started_at, active_section_duration_minutes, active_section_extended_until)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -538,6 +544,21 @@ func TestScanSessionMonitorRow_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[12].(*int); !ok {
 		t.Errorf("dest[12] = %T, want *int (violation_count)", rec.dests[12])
+	}
+	if _, ok := rec.dests[13].(**uuid.UUID); !ok {
+		t.Errorf("dest[13] = %T, want **uuid.UUID (active_section_test_id, nullable)", rec.dests[13])
+	}
+	if _, ok := rec.dests[14].(**string); !ok {
+		t.Errorf("dest[14] = %T, want **string (active_section_title, nullable)", rec.dests[14])
+	}
+	if _, ok := rec.dests[15].(**time.Time); !ok {
+		t.Errorf("dest[15] = %T, want **time.Time (active_section_started_at, nullable)", rec.dests[15])
+	}
+	if _, ok := rec.dests[16].(**int); !ok {
+		t.Errorf("dest[16] = %T, want **int (active_section_duration_minutes, nullable)", rec.dests[16])
+	}
+	if _, ok := rec.dests[17].(**time.Time); !ok {
+		t.Errorf("dest[17] = %T, want **time.Time (active_section_extended_until, nullable)", rec.dests[17])
 	}
 }
 

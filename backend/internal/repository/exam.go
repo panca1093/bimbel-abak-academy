@@ -25,12 +25,18 @@ var ErrInvalidCursor = errors.New("invalid pagination cursor")
 // surfaced for service-layer mapping to ErrAlreadyAttempted.
 var ErrNoAttemptsLeft = errors.New("no attempts left")
 
+// ErrNoActiveSection — AdvanceSessionSectionTx's atomic status='active' guard matched no
+// row (wrong test_id, or the section is already submitted / still pending). Surfaced for
+// service-layer mapping: idempotent-200 when already submitted, ErrSectionNotActive when
+// pending (Task 3 owns that decision).
+var ErrNoActiveSection = errors.New("no active section matched the guard")
+
 func scanTest(row interface{ Scan(dest ...any) error }, t *model.Test) error {
 	var audioURL *string
 	var audioPlayLimit *int
 	err := row.Scan(
 		&t.ID, &t.Title, &t.Subject, &t.Topic, &t.DurationMinutes,
-		&audioURL, &audioPlayLimit, &t.CreatedAt,
+		&audioURL, &audioPlayLimit, &t.SectionType, &t.CreatedAt,
 	)
 	if err != nil {
 		return err
@@ -51,7 +57,7 @@ func scanTestWithCount(row interface{ Scan(dest ...any) error }, t *model.Test) 
 	var audioPlayLimit *int
 	err := row.Scan(
 		&t.ID, &t.Title, &t.Subject, &t.Topic, &t.DurationMinutes,
-		&audioURL, &audioPlayLimit, &t.QuestionCount, &t.CreatedAt,
+		&audioURL, &audioPlayLimit, &t.SectionType, &t.QuestionCount, &t.CreatedAt,
 	)
 	if err != nil {
 		return err
@@ -116,10 +122,10 @@ type TestFilter struct {
 
 func (r *Repository) CreateTest(ctx context.Context, t *model.Test) error {
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO test (title, subject, topic, duration_minutes, audio_url, audio_play_limit)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO test (title, subject, topic, duration_minutes, audio_url, audio_play_limit, section_type)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at`,
-		t.Title, t.Subject, t.Topic, t.DurationMinutes, t.AudioURL, t.AudioPlayLimit,
+		t.Title, t.Subject, t.Topic, t.DurationMinutes, t.AudioURL, t.AudioPlayLimit, t.SectionType,
 	).Scan(&t.ID, &t.CreatedAt)
 	return err
 }
@@ -127,7 +133,7 @@ func (r *Repository) CreateTest(ctx context.Context, t *model.Test) error {
 func (r *Repository) GetTestByID(ctx context.Context, id uuid.UUID) (*model.Test, error) {
 	out := &model.Test{}
 	err := scanTest(r.pool.QueryRow(ctx,
-		`SELECT id, title, subject, topic, duration_minutes, audio_url, audio_play_limit, created_at
+		`SELECT id, title, subject, topic, duration_minutes, audio_url, audio_play_limit, section_type, created_at
 		FROM test
 		WHERE id = $1`,
 		id,
@@ -167,7 +173,7 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	// We count per test_id and join back — the GROUP BY in the subquery avoids
 	// inflating the row count over the outer filters (subject/topic/cursor).
 	query := `SELECT t.id, t.title, t.subject, t.topic, t.duration_minutes,
-		t.audio_url, t.audio_play_limit, COALESCE(q.cnt, 0), t.created_at
+		t.audio_url, t.audio_play_limit, t.section_type, COALESCE(q.cnt, 0), t.created_at
 	FROM test t
 	LEFT JOIN (
 		SELECT test_id, COUNT(*) AS cnt FROM question GROUP BY test_id
@@ -225,9 +231,9 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 func (r *Repository) UpdateTest(ctx context.Context, id uuid.UUID, t *model.Test) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE test
-		SET title = $1, subject = $2, topic = $3, duration_minutes = $4, audio_url = $5, audio_play_limit = $6
-		WHERE id = $7`,
-		t.Title, t.Subject, t.Topic, t.DurationMinutes, t.AudioURL, t.AudioPlayLimit, id,
+		SET title = $1, subject = $2, topic = $3, duration_minutes = $4, audio_url = $5, audio_play_limit = $6, section_type = $7
+		WHERE id = $8`,
+		t.Title, t.Subject, t.Topic, t.DurationMinutes, t.AudioURL, t.AudioPlayLimit, t.SectionType, id,
 	)
 	return err
 }
@@ -411,7 +417,7 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.CheckInWindowMinutes, &e.GraceWindowMinutes, &e.MaxAttempts,
 		&e.TimerMode, &e.DurationMinutes, &e.Randomize,
 		&e.ResultConfig, &e.ResultReleaseAt, &e.Status, &e.ProductID, &e.CreatedAt,
-		&e.CertificateTemplate,
+		&e.CertificateTemplate, &e.Mode,
 	)
 	if err != nil {
 		return err
@@ -429,7 +435,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, out *model.ExamL
 		&out.CheckInWindowMinutes, &out.GraceWindowMinutes, &out.MaxAttempts,
 		&out.TimerMode, &out.DurationMinutes, &out.Randomize,
 		&out.ResultConfig, &out.ResultReleaseAt, &out.Status, &out.ProductID, &out.CreatedAt,
-		&out.CertificateTemplate,
+		&out.CertificateTemplate, &out.Mode,
 		&productPrice, &productStatus,
 	)
 	if err != nil {
@@ -494,18 +500,22 @@ func (r *Repository) CreateExamTx(ctx context.Context, tx pgx.Tx, e *model.Exam)
 }
 
 func createExam(ctx context.Context, tx pgx.Tx, e *model.Exam, productID *uuid.UUID) error {
+	// mode is NOT NULL DEFAULT 'standard'; COALESCE empty caller value to the default
+	// so existing callers that don't set Mode keep working. RETURNING mode stamps the
+	// resolved value back into the struct.
 	return tx.QueryRow(ctx,
 		`INSERT INTO exam (title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id, certificate_template)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-		RETURNING id, created_at`,
+			status, product_id, certificate_template, mode)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+			COALESCE(NULLIF($20, ''), 'standard'))
+		RETURNING id, created_at, mode`,
 		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt, e.CheckInWindowMinutes, e.GraceWindowMinutes,
 		e.MaxAttempts, e.TimerMode, e.DurationMinutes, e.Randomize, e.ResultConfig, e.ResultReleaseAt,
-		e.Status, productID, e.CertificateTemplate,
-	).Scan(&e.ID, &e.CreatedAt)
+		e.Status, productID, e.CertificateTemplate, e.Mode,
+	).Scan(&e.ID, &e.CreatedAt, &e.Mode)
 }
 
 func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam, error) {
@@ -514,7 +524,7 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id, created_at, certificate_template
+			status, product_id, created_at, certificate_template, mode
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -536,7 +546,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	query := `SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-		e.status, e.product_id, e.created_at, e.certificate_template, p.price, p.status
+		e.status, e.product_id, e.created_at, e.certificate_template, e.mode, p.price, p.status
 	FROM exam e
 	LEFT JOIN product p ON p.id = e.product_id
 	WHERE 1=1`
@@ -585,7 +595,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-			e.status, e.product_id, e.created_at, e.certificate_template
+			e.status, e.product_id, e.created_at, e.certificate_template, e.mode
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -615,7 +625,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 
 	rows, err := r.pool.Query(ctx,
 		`SELECT et.id, et.exam_id, et.test_id, et.sort_order,
-			t.id, t.title, t.subject, t.topic, t.duration_minutes,
+			t.id, t.title, t.subject, t.topic, t.duration_minutes, t.section_type,
 			COALESCE(q.cnt, 0)
 		FROM exam_test et
 		JOIN test t ON t.id = et.test_id
@@ -635,14 +645,16 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 	for rows.Next() {
 		var entry model.ExamTestEntry
 		var topic *string
+		var sectionType *string
 		if err := rows.Scan(
 			&entry.ID, &entry.ExamID, &entry.TestID, &entry.SortOrder,
 			&entry.Test.ID, &entry.Test.Title, &entry.Test.Subject, &topic, &entry.Test.DurationMinutes,
-			&entry.Test.QuestionCount,
+			&sectionType, &entry.Test.QuestionCount,
 		); err != nil {
 			return nil, err
 		}
 		entry.Test.Topic = topic
+		entry.Test.SectionType = sectionType
 		tests = append(tests, entry)
 	}
 	if err := rows.Err(); err != nil {
@@ -664,13 +676,14 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 			check_in_window_minutes = $9, grace_window_minutes = $10, max_attempts = $11,
 			timer_mode = $12, duration_minutes = $13, randomize = $14,
 			result_config = $15, result_release_at = $16, status = $17,
-			certificate_template = $18
-		WHERE id = $19`,
+			certificate_template = $18,
+			mode = COALESCE(NULLIF($19, ''), mode)
+		WHERE id = $20`,
 		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
 		e.TimerMode, e.DurationMinutes, e.Randomize,
-		e.ResultConfig, e.ResultReleaseAt, e.Status, e.CertificateTemplate, id,
+		e.ResultConfig, e.ResultReleaseAt, e.Status, e.CertificateTemplate, e.Mode, id,
 	)
 	if err != nil {
 		return err
@@ -713,7 +726,7 @@ func (r *Repository) GetExamByProductID(ctx context.Context, productID uuid.UUID
 		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id, created_at, certificate_template
+			status, product_id, created_at, certificate_template, mode
 		FROM exam
 		WHERE product_id = $1`,
 		productID,
@@ -1451,12 +1464,18 @@ func scanSessionMonitorRow(row interface{ Scan(dest ...any) error }, r *model.Se
 	var startedAt, extendedUntil, checkedInAt, lastSavedAt *time.Time
 	var adminSubmitted bool
 	var answersSaved, violationCount int
+	var activeSectionTestID *uuid.UUID
+	var activeSectionTitle *string
+	var activeSectionStartedAt, activeSectionExtendedUntil *time.Time
+	var activeSectionDurationMinutes *int
 	err := row.Scan(
 		&r.RegistrationID, &r.StudentID, &r.StudentName,
 		&schoolName, &sessionID, &sessionStatus,
 		&startedAt, &extendedUntil, &adminSubmitted,
 		&checkedInAt, &lastSavedAt,
 		&answersSaved, &violationCount,
+		&activeSectionTestID, &activeSectionTitle, &activeSectionStartedAt,
+		&activeSectionDurationMinutes, &activeSectionExtendedUntil,
 	)
 	if err != nil {
 		return err
@@ -1485,12 +1504,20 @@ func scanSessionMonitorRow(row interface{ Scan(dest ...any) error }, r *model.Se
 	r.AdminSubmitted = adminSubmitted
 	r.AnswersSaved = answersSaved
 	r.ViolationCount = violationCount
+	r.ActiveSectionTestID = activeSectionTestID
+	r.ActiveSectionTitle = activeSectionTitle
+	r.ActiveSectionStartedAt = activeSectionStartedAt
+	r.ActiveSectionDurationMinutes = activeSectionDurationMinutes
+	r.ActiveSectionExtendedUntil = activeSectionExtendedUntil
 	return nil
 }
 
 // GetSessionMonitorRows returns one registrant row per exam_registration for the given
 // exam, LEFT JOINed with exam_session (max one per registration), plus the student's
-// name, school, and answer/violation counts via correlated subqueries.
+// name, school, and answer/violation counts via correlated subqueries. For sectioned
+// exams the active section (status='active') is LEFT JOINed so the proctor UI can show
+// "which section, how long left" (FR-20/21); all Active* fields are nil for standard
+// sessions or sessions with no active section.
 func (r *Repository) GetSessionMonitorRows(ctx context.Context, examID uuid.UUID) ([]model.SessionMonitorRow, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT r.id, r.student_id, u.name, sc.name,
@@ -1498,11 +1525,14 @@ func (r *Repository) GetSessionMonitorRows(ctx context.Context, examID uuid.UUID
 			COALESCE(s.admin_submitted, false),
 			r.checked_in_at, s.last_saved_at,
 			COALESCE((SELECT COUNT(*) FROM exam_session_answer esa WHERE esa.session_id = s.id), 0),
-			COALESCE((SELECT COUNT(*) FROM session_violation_log svl WHERE svl.session_id = s.id), 0)
+			COALESCE((SELECT COUNT(*) FROM session_violation_log svl WHERE svl.session_id = s.id), 0),
+			ss.test_id, t.title, ss.started_at, ss.duration_minutes, ss.extended_until
 		FROM exam_registration r
 		JOIN users u ON u.id = r.student_id
 		LEFT JOIN school sc ON sc.id = u.school_id
 		LEFT JOIN exam_session s ON s.registration_id = r.id
+		LEFT JOIN exam_session_section ss ON ss.session_id = s.id AND ss.status = 'active'
+		LEFT JOIN test t ON t.id = ss.test_id
 		WHERE r.exam_id = $1
 		ORDER BY r.created_at DESC`,
 		examID,
@@ -1625,4 +1655,128 @@ func (r *Repository) ListSessionViolations(ctx context.Context, sessionID uuid.U
 		items = []model.SessionViolationLog{}
 	}
 	return items, nil
+}
+
+// ---------- Sectioned-exam section rows (FR-3 / FR-5 / FR-10 / FR-22) ----------
+
+func scanExamSessionSection(row interface{ Scan(dest ...any) error }, s *model.ExamSessionSection) error {
+	return row.Scan(
+		&s.SessionID, &s.TestID, &s.SortOrder, &s.DurationMinutes,
+		&s.Status, &s.StartedAt, &s.SubmittedAt, &s.ExtendedUntil,
+	)
+}
+
+// CreateSessionSectionsTx inserts the per-section timing rows for a sectioned exam
+// session inside the caller's transaction (FR-5). The caller (service) decides each
+// row's status/started_at — typically the lowest sort_order is 'active' with
+// started_at=now() and the rest are 'pending'. No business rules here.
+func (r *Repository) CreateSessionSectionsTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, sections []model.ExamSessionSection) error {
+	for _, s := range sections {
+		s.SessionID = sessionID
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO exam_session_section
+				(session_id, test_id, sort_order, duration_minutes, status, started_at, submitted_at, extended_until)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			s.SessionID, s.TestID, s.SortOrder, s.DurationMinutes,
+			s.Status, s.StartedAt, s.SubmittedAt, s.ExtendedUntil,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetSessionSections returns all section rows for a session ordered by sort_order (FR-16).
+func (r *Repository) GetSessionSections(ctx context.Context, sessionID uuid.UUID) ([]model.ExamSessionSection, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT session_id, test_id, sort_order, duration_minutes, status, started_at, submitted_at, extended_until
+		FROM exam_session_section
+		WHERE session_id = $1
+		ORDER BY sort_order ASC`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.ExamSessionSection
+	for rows.Next() {
+		var s model.ExamSessionSection
+		if err := scanExamSessionSection(rows, &s); err != nil {
+			return nil, err
+		}
+		items = append(items, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.ExamSessionSection{}
+	}
+	return items, nil
+}
+
+// AdvanceSessionSectionTx performs the atomic guarded advance of a sectioned exam
+// (FR-10, FR-11, NFR-5). The WHERE status='active' guard is the point: a double-fire
+// or wrong-section call affects 0 rows and surfaces as ErrNoActiveSection so the
+// service (Task 3) can decide idempotent-200 vs ErrSectionNotActive. On success it
+// flips the active section to 'submitted' (stamping submitted_at), promotes the next
+// 'pending' row by lowest sort_order to 'active' (stamping started_at=now()), and
+// returns the activated next test_id (nil when advancing the last section — FR-12).
+func (r *Repository) AdvanceSessionSectionTx(ctx context.Context, tx pgx.Tx, sessionID, testID uuid.UUID) (*uuid.UUID, error) {
+	tag, err := tx.Exec(ctx,
+		`UPDATE exam_session_section
+		SET status = 'submitted', submitted_at = now()
+		WHERE session_id = $1 AND test_id = $2 AND status = 'active'`,
+		sessionID, testID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, ErrNoActiveSection
+	}
+
+	var nextTestID *uuid.UUID
+	err = tx.QueryRow(ctx,
+		`WITH next AS (
+			SELECT test_id FROM exam_session_section
+			WHERE session_id = $1 AND status = 'pending'
+			ORDER BY sort_order ASC
+			LIMIT 1
+		)
+		UPDATE exam_session_section s
+		SET status = 'active', started_at = now()
+		FROM next
+		WHERE s.session_id = $1 AND s.test_id = next.test_id
+		RETURNING s.test_id`,
+		sessionID,
+	).Scan(&nextTestID)
+	if err != nil {
+		if isNotFound(err) {
+			// No pending section left — advancing the last section (FR-12).
+			return nil, nil
+		}
+		return nil, err
+	}
+	return nextTestID, nil
+}
+
+// ExtendActiveSectionTx pushes the active section's extended_until forward by the
+// given minutes (FR-22 reopen). Returns ErrNoActiveSection when no row is active.
+func (r *Repository) ExtendActiveSectionTx(ctx context.Context, tx pgx.Tx, sessionID uuid.UUID, extendMinutes int) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE exam_session_section
+		SET extended_until = now() + make_interval(mins => $2)
+		WHERE session_id = $1 AND status = 'active'`,
+		sessionID, extendMinutes,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNoActiveSection
+	}
+	return nil
 }

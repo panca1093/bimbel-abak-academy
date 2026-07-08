@@ -41,6 +41,7 @@ func TestExamSessionRoutes_Registered(t *testing.T) {
 		{"PATCH", "/api/v1/exam/sessions/:id/answers"},
 		{"POST", "/api/v1/exam/sessions/:id/submit"},
 		{"POST", "/api/v1/exam/sessions/:id/violations"},
+		{"POST", "/api/v1/exam/sessions/:id/sections/:testId/advance"},
 		{"POST", "/api/v1/admin/sessions/:id/reopen"},
 		{"POST", "/api/v1/admin/sessions/:id/force-submit"},
 	}

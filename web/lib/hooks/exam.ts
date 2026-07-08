@@ -12,6 +12,7 @@ import type {
   SubmitResult,
   CheckInResult,
   SessionResult,
+  AdvanceSectionResult,
   ExamLeaderboardEntry,
 } from "@/lib/types";
 
@@ -165,6 +166,20 @@ export function useLogViolation(sessionId: string) {
           body: JSON.stringify({ violation_type: violationType }),
         },
       ),
+  });
+}
+
+export function useAdvanceSection(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (testId: string) =>
+      authFetch<AdvanceSectionResult>(
+        `/exam/sessions/${encodeURIComponent(sessionId)}/sections/${encodeURIComponent(testId)}/advance`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: examKeys.session(sessionId) });
+    },
   });
 }
 

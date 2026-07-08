@@ -29,6 +29,14 @@ type SessionTestPayload struct {
 	Title     string            `json:"title"`
 	Subject   string            `json:"subject"`
 	Questions []SessionQuestion `json:"questions"`
+	// Sectioned-exam fields (FR-7/FR-16). omitempty keeps standard-mode JSON
+	// byte-compatible: these are only populated when exam.Mode is utbk|ielts.
+	SectionType      *string `json:"section_type,omitempty"`
+	DurationMinutes  *int    `json:"duration_minutes,omitempty"`
+	AudioURL         *string `json:"audio_url,omitempty"`
+	AudioPlayLimit   *int    `json:"audio_play_limit,omitempty"`
+	Status           string  `json:"status,omitempty"`
+	RemainingSeconds int64   `json:"remaining_seconds,omitempty"`
 }
 
 type SessionStartPayload struct {
@@ -37,6 +45,9 @@ type SessionStartPayload struct {
 	TimerMode        string               `json:"timer_mode"`
 	DurationMinutes  *int                 `json:"duration_minutes"`
 	Tests            []SessionTestPayload `json:"tests"`
+	// Sectioned-exam fields (FR-7). omitempty keeps standard-mode JSON byte-compatible.
+	Mode         string     `json:"mode,omitempty"`
+	ActiveTestID *uuid.UUID `json:"active_test_id,omitempty"`
 }
 
 type SessionQuestion struct {
@@ -63,6 +74,19 @@ type SessionStatePayload struct {
 	DurationMinutes  *int                     `json:"duration_minutes"`
 	Tests            []SessionTestPayload     `json:"tests"`
 	Answers          []model.ExamSessionAnswer `json:"answers"`
+	// Sectioned-exam fields (FR-16). omitempty keeps standard-mode JSON byte-compatible.
+	Mode         string     `json:"mode,omitempty"`
+	ActiveTestID *uuid.UUID `json:"active_test_id,omitempty"`
+}
+
+// AdvanceSectionResult is the response for POST /sessions/:id/sections/:testId/advance
+// (FR-10/FR-12). It carries the updated per-section timing block (same shape as the
+// state payload's tests[]) plus the new active_test_id and a completed flag.
+type AdvanceSectionResult struct {
+	Mode         string               `json:"mode,omitempty"`
+	ActiveTestID *uuid.UUID           `json:"active_test_id,omitempty"`
+	Completed    bool                 `json:"completed"`
+	Tests        []SessionTestPayload `json:"tests"`
 }
 
 type SubmitResult struct {
@@ -125,6 +149,37 @@ func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 	return out
 }
 
+// enrichSectionedTests populates the per-section fields (FR-7/FR-16) on a grouped
+// tests payload from the ordered test details and section rows. grouped and tests
+// are both ordered by exam_test.sort_order, so they align by index. Returns the
+// active section's test_id (nil when no section is active, e.g. all submitted).
+func enrichSectionedTests(grouped []SessionTestPayload, tests []model.TestDetail, sections []model.ExamSessionSection) *uuid.UUID {
+	sectionByTest := make(map[uuid.UUID]model.ExamSessionSection, len(sections))
+	for _, s := range sections {
+		sectionByTest[s.TestID] = s
+	}
+	var activeID *uuid.UUID
+	for i := range grouped {
+		td := tests[i].Test
+		sec := sectionByTest[grouped[i].ID]
+		grouped[i].SectionType = td.SectionType
+		dur := sec.DurationMinutes
+		grouped[i].DurationMinutes = &dur
+		grouped[i].AudioURL = td.AudioURL
+		grouped[i].AudioPlayLimit = td.AudioPlayLimit
+		grouped[i].Status = sec.Status
+		// FR-7: remaining_seconds is the section's own remaining; 0 for non-active sections.
+		if sec.Status == "active" {
+			grouped[i].RemainingSeconds = computeSectionRemaining(sec)
+			id := grouped[i].ID
+			activeID = &id
+		} else {
+			grouped[i].RemainingSeconds = 0
+		}
+	}
+	return activeID
+}
+
 // computeRemainingSeconds calculates remaining time based on effective deadline.
 func computeRemainingSeconds(startedAt time.Time, durationMinutes *int, extendedUntil *time.Time) int64 {
 	if durationMinutes == nil || *durationMinutes <= 0 {
@@ -133,6 +188,23 @@ func computeRemainingSeconds(startedAt time.Time, durationMinutes *int, extended
 	deadline := startedAt.Add(time.Duration(*durationMinutes) * time.Minute)
 	if extendedUntil != nil && extendedUntil.After(deadline) {
 		deadline = *extendedUntil
+	}
+	return int64(math.Max(0, time.Until(deadline).Seconds()))
+}
+
+// computeSectionRemaining computes the remaining seconds for a sectioned-exam
+// section per FR-8. The effective deadline is started_at + duration_minutes·60s,
+// pushed forward by extended_until when it is later. This is a dedicated path —
+// it MUST NOT route through the flat computeRemainingSeconds (which takes the
+// exam-level durationMinutes and previously produced an instant-0 auto-submit
+// regression — PR#25).
+func computeSectionRemaining(section model.ExamSessionSection) int64 {
+	if section.StartedAt == nil || section.DurationMinutes <= 0 {
+		return 0
+	}
+	deadline := section.StartedAt.Add(time.Duration(section.DurationMinutes) * time.Minute)
+	if section.ExtendedUntil != nil && section.ExtendedUntil.After(deadline) {
+		deadline = *section.ExtendedUntil
 	}
 	return int64(math.Max(0, time.Until(deadline).Seconds()))
 }
@@ -259,6 +331,8 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		return SessionStartPayload{}, ErrAlreadyAttempted
 	}
 
+	isSectioned := exam.Mode == "utbk" || exam.Mode == "ielts"
+
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return SessionStartPayload{}, err
@@ -273,6 +347,37 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		return SessionStartPayload{}, err
 	}
 
+	// FR-5: sectioned start seeds N exam_session_section rows in the same tx as
+	// the exam_session row; first (lowest sort_order) is 'active' with
+	// started_at=now(), rest are 'pending'.
+	if isSectioned {
+		sectionTests, err := s.storeRepo.GetSessionWithQuestions(ctx, detail.ExamID)
+		if err != nil {
+			return SessionStartPayload{}, err
+		}
+		sections := make([]model.ExamSessionSection, 0, len(sectionTests))
+		now := time.Now()
+		for i, td := range sectionTests {
+			st := "pending"
+			var startedAt *time.Time
+			if i == 0 {
+				st = "active"
+				sa := now
+				startedAt = &sa
+			}
+			sections = append(sections, model.ExamSessionSection{
+				TestID:          td.Test.ID,
+				SortOrder:       i,
+				DurationMinutes: td.Test.DurationMinutes,
+				Status:          st,
+				StartedAt:       startedAt,
+			})
+		}
+		if err := s.storeRepo.CreateSessionSectionsTx(ctx, tx, sess.ID, sections); err != nil {
+			return SessionStartPayload{}, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return SessionStartPayload{}, err
 	}
@@ -283,6 +388,33 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		return SessionStartPayload{}, err
 	}
 	grouped := groupQuestionsByTest(tests)
+
+	if isSectioned {
+		sections, err := s.storeRepo.GetSessionSections(ctx, sess.ID)
+		if err != nil {
+			return SessionStartPayload{}, err
+		}
+		activeID := enrichSectionedTests(grouped, tests, sections)
+		// Top-level remaining_seconds mirrors the active section's remaining so
+		// the field stays meaningful for sectioned mode (it is not omitempty).
+		var topRemaining int64
+		if activeID != nil {
+			for _, tp := range grouped {
+				if tp.ID == *activeID {
+					topRemaining = tp.RemainingSeconds
+					break
+				}
+			}
+		}
+		return SessionStartPayload{
+			SessionID:        sess.ID,
+			RemainingSeconds: topRemaining,
+			TimerMode:        exam.TimerMode,
+			Tests:            grouped,
+			Mode:             exam.Mode,
+			ActiveTestID:     activeID,
+		}, nil
+	}
 
 	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, nil)
 
@@ -335,6 +467,33 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 		return SessionStatePayload{}, err
 	}
 
+	if exam.Mode == "utbk" || exam.Mode == "ielts" {
+		sections, err := s.storeRepo.GetSessionSections(ctx, sessID)
+		if err != nil {
+			return SessionStatePayload{}, err
+		}
+		activeID := enrichSectionedTests(grouped, tests, sections)
+		var topRemaining int64
+		if activeID != nil {
+			for _, tp := range grouped {
+				if tp.ID == *activeID {
+					topRemaining = tp.RemainingSeconds
+					break
+				}
+			}
+		}
+		return SessionStatePayload{
+			SessionID:        sess.ID,
+			Status:           sess.Status,
+			RemainingSeconds: topRemaining,
+			TimerMode:        exam.TimerMode,
+			Tests:            grouped,
+			Answers:          answers,
+			Mode:             exam.Mode,
+			ActiveTestID:     activeID,
+		}, nil
+	}
+
 	return SessionStatePayload{
 		SessionID:        sess.ID,
 		Status:           sess.Status,
@@ -349,6 +508,9 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 // ---------- SaveAnswers ----------
 
 // SaveAnswers upserts the student's answers for a session. FR15–FR16.
+// For sectioned exams (FR-14), a save targeting any question in a non-active
+// section is rejected with ErrSectionLocked; standard mode skips the guard
+// entirely (FR-15).
 func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, inputs []AnswerInput) error {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
@@ -371,6 +533,42 @@ func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, 
 		return ErrAlreadySubmitted
 	}
 
+	// FR-14/FR-15: sectioned-mode guard. Reject any answer whose question belongs
+	// to a Test whose section is not 'active'. Standard mode skips the guard.
+	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return err
+	}
+	if exam.Mode == "utbk" || exam.Mode == "ielts" {
+		tests, err := s.storeRepo.GetSessionWithQuestions(ctx, sess.ExamID)
+		if err != nil {
+			return err
+		}
+		sections, err := s.storeRepo.GetSessionSections(ctx, sessID)
+		if err != nil {
+			return err
+		}
+		sectionByTest := make(map[uuid.UUID]string, len(sections))
+		for _, sec := range sections {
+			sectionByTest[sec.TestID] = sec.Status
+		}
+		questionTest := make(map[uuid.UUID]uuid.UUID)
+		for _, td := range tests {
+			for _, q := range td.Questions {
+				questionTest[q.Question.ID] = td.Test.ID
+			}
+		}
+		for _, in := range inputs {
+			tid, ok := questionTest[in.QuestionID]
+			if !ok {
+				return fmt.Errorf("%w: question not part of this exam", ErrValidation)
+			}
+			if sectionByTest[tid] != "active" {
+				return ErrSectionLocked
+			}
+		}
+	}
+
 	answers := make([]model.ExamSessionAnswer, len(inputs))
 	for i, in := range inputs {
 		answers[i] = model.ExamSessionAnswer{
@@ -382,6 +580,103 @@ func (s *Service) SaveAnswers(ctx context.Context, studentID, sessionID string, 
 	}
 
 	return s.storeRepo.SaveAnswersTx(ctx, sessID, answers)
+}
+
+// ---------- AdvanceSection ----------
+
+// AdvanceSection closes the active section and promotes the next pending one
+// (FR-10/FR-11/FR-12). Idempotent on already-submitted sections (200 no-op);
+// rejected with ErrSectionNotActive when the target section is pending. The
+// repo's atomic WHERE status='active' guard (NFR-5) makes double-fire safe;
+// the service disambiguates the 0-row result via the section's true status.
+func (s *Service) AdvanceSection(ctx context.Context, studentID, sessionID, testID string) (AdvanceSectionResult, error) {
+	sid, err := uuid.Parse(studentID)
+	if err != nil {
+		return AdvanceSectionResult{}, fmt.Errorf("%w: invalid student id", ErrValidation)
+	}
+	sessID, err := uuid.Parse(sessionID)
+	if err != nil {
+		return AdvanceSectionResult{}, fmt.Errorf("%w: invalid session id", ErrValidation)
+	}
+	tid, err := uuid.Parse(testID)
+	if err != nil {
+		return AdvanceSectionResult{}, fmt.Errorf("%w: invalid test id", ErrValidation)
+	}
+
+	sess, err := s.storeRepo.GetExamSessionForStudent(ctx, sessID, sid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return AdvanceSectionResult{}, ErrSessionNotFound
+		}
+		return AdvanceSectionResult{}, err
+	}
+	if sess.Status != "in_progress" {
+		return AdvanceSectionResult{}, ErrAlreadySubmitted
+	}
+
+	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return AdvanceSectionResult{}, err
+	}
+	if exam.Mode != "utbk" && exam.Mode != "ielts" {
+		return AdvanceSectionResult{}, fmt.Errorf("%w: advance only applies to sectioned exams", ErrValidation)
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return AdvanceSectionResult{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = s.storeRepo.AdvanceSessionSectionTx(ctx, tx, sessID, tid)
+	if err != nil {
+		if errors.Is(err, repository.ErrNoActiveSection) {
+			// FR-11 disambiguation: 0 rows means either already-submitted
+			// (idempotent 200 no-op) or still-pending (ErrSectionNotActive).
+			// Read the section's true status via pool (the tx rolls back via defer).
+			sections, rerr := s.storeRepo.GetSessionSections(ctx, sessID)
+			if rerr != nil {
+				return AdvanceSectionResult{}, rerr
+			}
+			for _, sec := range sections {
+				if sec.TestID == tid {
+					if sec.Status == "submitted" {
+						return s.buildAdvanceResult(ctx, exam, sessID)
+					}
+					return AdvanceSectionResult{}, ErrSectionNotActive
+				}
+			}
+			return AdvanceSectionResult{}, ErrSectionNotActive
+		}
+		return AdvanceSectionResult{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AdvanceSectionResult{}, err
+	}
+
+	return s.buildAdvanceResult(ctx, exam, sessID)
+}
+
+// buildAdvanceResult assembles the advance response from the current persisted
+// section + test state. completed is true when no section is active (last
+// section just closed — FR-12).
+func (s *Service) buildAdvanceResult(ctx context.Context, exam *model.Exam, sessID uuid.UUID) (AdvanceSectionResult, error) {
+	sections, err := s.storeRepo.GetSessionSections(ctx, sessID)
+	if err != nil {
+		return AdvanceSectionResult{}, err
+	}
+	tests, err := s.storeRepo.GetSessionWithQuestions(ctx, exam.ID)
+	if err != nil {
+		return AdvanceSectionResult{}, err
+	}
+	grouped := groupQuestionsByTest(tests)
+	activeID := enrichSectionedTests(grouped, tests, sections)
+	return AdvanceSectionResult{
+		Mode:         exam.Mode,
+		ActiveTestID: activeID,
+		Completed:    activeID == nil,
+		Tests:        grouped,
+	}, nil
 }
 
 // ---------- SubmitSession ----------
@@ -492,13 +787,42 @@ func (s *Service) LogViolation(ctx context.Context, studentID, sessionID, violat
 
 // ---------- ReopenSession (admin) ----------
 
-// ReopenSession extends a session's deadline. FR23.
+// ReopenSession extends a session's deadline or the active section's deadline for
+// sectioned exams. FR-22 / FR23.
 func (s *Service) ReopenSession(ctx context.Context, sessionID string, minutes int) error {
 	sessID, err := uuid.Parse(sessionID)
 	if err != nil {
 		return fmt.Errorf("%w: invalid session id", ErrValidation)
 	}
 
+	sess, err := s.storeRepo.GetExamSessionByID(ctx, sessID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrSessionNotFound
+		}
+		return err
+	}
+
+	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
+	if err != nil {
+		return err
+	}
+
+	// FR-22: sectioned path — extend the active section, not the session-level deadline.
+	if exam.Mode == "utbk" || exam.Mode == "ielts" {
+		tx, err := s.storeRepo.BeginTx(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+
+		if err := s.storeRepo.ExtendActiveSectionTx(ctx, tx, sessID, minutes); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+
+	// Standard path — extend session-level extended_until.
 	if err := s.storeRepo.ReopenSession(ctx, sessID, minutes); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrSessionNotFound
@@ -596,6 +920,9 @@ func effectiveDeadline(startedAt time.Time, durationMinutes *int, graceMinutes *
 }
 
 // deriveStatus sets the monitor row's derived status per FR-3.
+// When active-section data is present (FR-20), the deadline is computed from the
+// section's own started_at + duration_minutes + extended_until, not the exam-level clock.
+// Standard sessions (no active-section data) use the existing exam-level path unchanged.
 func deriveStatus(row model.SessionMonitorRow, now time.Time, durationMinutes *int, graceMinutes *int) string {
 	if row.SessionID == nil {
 		if row.CheckedInAt != nil {
@@ -608,7 +935,19 @@ func deriveStatus(row model.SessionMonitorRow, now time.Time, durationMinutes *i
 		return "submitted"
 	}
 
-	// Session is in_progress — check deadline.
+	// FR-20: sectioned path — use active section's deadline.
+	if row.ActiveSectionStartedAt != nil {
+		deadline := effectiveDeadline(*row.ActiveSectionStartedAt, row.ActiveSectionDurationMinutes, nil, row.ActiveSectionExtendedUntil)
+		if deadline.IsZero() {
+			return "in_progress"
+		}
+		if now.After(deadline) {
+			return "overdue"
+		}
+		return "in_progress"
+	}
+
+	// Session is in_progress — check standard exam-level deadline.
 	deadline := effectiveDeadline(*row.StartedAt, durationMinutes, graceMinutes, row.ExtendedUntil)
 	if deadline.IsZero() {
 		return "in_progress"
@@ -656,6 +995,15 @@ func (s *Service) GetSessionMonitor(ctx context.Context, examID string) (model.S
 	for i := range rows {
 		rows[i].TotalQuestions = totalQ
 		rows[i].Status = deriveStatus(rows[i], now, exam.DurationMinutes, exam.GraceWindowMinutes)
+		// FR-21: populate the active section's remaining seconds for the proctor UI.
+		if rows[i].ActiveSectionStartedAt != nil {
+			sec := model.ExamSessionSection{
+				DurationMinutes: *rows[i].ActiveSectionDurationMinutes,
+				StartedAt:       rows[i].ActiveSectionStartedAt,
+				ExtendedUntil:   rows[i].ActiveSectionExtendedUntil,
+			}
+			rows[i].ActiveSectionRemainingSeconds = computeSectionRemaining(sec)
+		}
 	}
 
 	return model.SessionMonitorResponse{

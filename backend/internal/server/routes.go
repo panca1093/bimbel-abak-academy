@@ -126,6 +126,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	exam.GET("/sessions/:id", h.StudentReconnectSession)
 	exam.PATCH("/sessions/:id/answers", h.StudentSaveAnswers)
 	exam.POST("/sessions/:id/submit", h.StudentSubmitSession)
+	exam.POST("/sessions/:id/sections/:testId/advance", h.StudentAdvanceSection)
 	exam.POST("/sessions/:id/violations", h.StudentLogViolation)
 	exam.GET("/sessions/:id/result", h.StudentGetSessionResult)
 	exam.GET("/sessions/:id/leaderboard", h.StudentGetSessionLeaderboard)
