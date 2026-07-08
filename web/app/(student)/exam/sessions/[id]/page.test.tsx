@@ -735,6 +735,53 @@ describe("SessionPage", () => {
     );
   });
 
+  it("periodic save excludes a submitted section's answers (FR-14 seam — backend rejects locked-section saves)", async () => {
+    vi.useFakeTimers();
+
+    // Section 1 is already submitted; section 2 is active (not expired). Both
+    // sections carry a persisted answer, rehydrated into state on reconnect.
+    // The autosave must send ONLY the active section's answer — the backend
+    // rejects the whole batch (ErrSectionLocked) if any answer targets a
+    // non-active section, which would silently lose every section past the first.
+    const section2Active = {
+      ...sectionedSession,
+      active_test_id: "test-section-2",
+      answers: [
+        { question_id: "q-sec1-mcq", answer: "A" },
+        { question_id: "q-sec2-mcq", answer: "B" },
+      ],
+      tests: [
+        {
+          ...sectionedSession.tests[0],
+          status: "submitted" as const,
+          remaining_seconds: 0,
+        },
+        {
+          ...sectionedSession.tests[1],
+          status: "active" as const,
+          remaining_seconds: 1800,
+        },
+      ],
+    };
+    sessionState = { ...sessionState, data: section2Active };
+    render(<SessionPage />);
+    // Flush the init effect so answers hydrate before the autosave fires.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // Fire the 30s periodic autosave.
+    await act(async () => {
+      vi.advanceTimersByTime(30000);
+    });
+
+    expect(saveAnswersMutate).toHaveBeenCalled();
+    const sentIds = saveAnswersMutate.mock.calls.flatMap(([payload]) =>
+      (payload as Array<{ question_id: string }>).map((p) => p.question_id),
+    );
+    expect(sentIds).toContain("q-sec2-mcq"); // active section answer is saved
+    expect(sentIds).not.toContain("q-sec1-mcq"); // submitted section answer is not resent
+  });
+
   it("pending section rail items are not clickable (FR-23)", async () => {
     sessionState = { ...sessionState, data: sectionedSession };
     render(<SessionPage />);

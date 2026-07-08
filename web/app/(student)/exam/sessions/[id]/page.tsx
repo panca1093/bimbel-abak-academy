@@ -74,6 +74,11 @@ export default function SessionPage() {
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
   flaggedRef.current = flagged;
+  // Sectioned mode only: the active section's question ids. Null in standard
+  // mode. buildSavePayload filters against this so a save never carries answers
+  // from a submitted (locked) section — the backend rejects the whole batch
+  // otherwise (ErrSectionLocked), silently dropping every section past the first.
+  const activeQuestionIdsRef = useRef<Set<string> | null>(null);
 
   // buildSavePayload unions answered and flagged questions so a flag on an
   // unanswered question still persists server-side.
@@ -84,7 +89,11 @@ export default function SessionPage() {
       ...Object.keys(curAnswers),
       ...Object.keys(curFlags).filter((id) => curFlags[id]),
     ]);
-    return [...ids].map((qid) => ({
+    const activeIds = activeQuestionIdsRef.current;
+    const scoped = activeIds
+      ? [...ids].filter((qid) => activeIds.has(qid))
+      : [...ids];
+    return scoped.map((qid) => ({
       question_id: qid,
       answer: curAnswers[qid] ?? "",
       flagged_for_review: curFlags[qid] ?? false,
@@ -102,6 +111,10 @@ export default function SessionPage() {
     : null;
   const activeQuestions =
     isSectioned && activeTest ? activeTest.questions : allQuestions;
+  activeQuestionIdsRef.current =
+    isSectioned && activeTest
+      ? new Set(activeTest.questions.map((q) => q.id))
+      : null;
 
   // Initialize from session data (reconnect)
   useEffect(() => {
