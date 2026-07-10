@@ -27,3 +27,33 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: pipeline
         run: ./deploy/pipeline/frontend.sh
+
+  images:
+    if: github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: backend/go.sum
+      - name: build artifact
+        run: ./deploy/pipeline/build-artifact.sh
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: build and push docker image
+        env:
+          REGISTRY: ghcr.io/${{ github.repository }}
+          TAG: ${{ github.sha }}
+          PUSH: '1'
+          TARGET_ENV: staging
+          NEXT_PUBLIC_API_BASE_URL: https://stg.abakacademy.id/api/v1
+          NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${{ secrets.MIDTRANS_CLIENT_KEY }}
+        run: ./deploy/pipeline/build-image.sh
