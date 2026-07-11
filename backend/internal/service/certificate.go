@@ -266,15 +266,14 @@ func buildPDF(content []byte) []byte {
 	return buf.Bytes()
 }
 
-// uploadCertificatePDF uploads a PDF certificate to MinIO at certificates/<sessionID>.pdf
-// and returns its public URL. Ensures the bucket exists with public-read policy.
+// uploadCertificatePDF uploads a PDF certificate at certificates/<sessionID>.pdf
+// and returns its object key. The bucket is private, so callers presign a GET to
+// serve it — see resolveCertificateURL.
 func (s *Service) uploadCertificatePDF(ctx context.Context, sessionID uuid.UUID, pdf []byte) (string, error) {
 	if s.storage == nil {
 		return "", errors.New("storage not configured")
 	}
 
-	// Bucket + public-read policy are provisioned once, out of band — see
-	// GeneratePresignedUploadURL. App code only writes objects.
 	bucket := s.cfg.ObjectStorageBucketName
 	key := fmt.Sprintf("certificates/%s.pdf", sessionID.String())
 	if _, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(pdf), int64(len(pdf)), minio.PutObjectOptions{
@@ -283,7 +282,7 @@ func (s *Service) uploadCertificatePDF(ctx context.Context, sessionID uuid.UUID,
 		return "", err
 	}
 
-	return s.publicObjectURL(bucket, key), nil
+	return key, nil
 }
 
 // latestGradedAt returns the latest non-nil GradedAt across all answers, or nil.
@@ -299,9 +298,11 @@ func latestGradedAt(answers []model.ExamSessionAnswer) *time.Time {
 	return latest
 }
 
-// resolveCertificateURL determines the certificate URL for a session, regenerating when
-// missing or stale (latest graded-at is newer than generated-at). A non-submitted session
-// resolves to (nil, nil); generation/upload/persist failures are returned to the caller.
+// resolveCertificateURL determines a presigned certificate URL for a session,
+// regenerating the PDF when missing or stale (latest graded-at is newer than
+// generated-at). The DB stores the object key; a fresh time-limited GET is
+// signed on every read since the bucket is private. A non-submitted session
+// resolves to (nil, nil); generation/upload/persist failures are returned.
 func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer, studentName string) (*string, error) {
 	if sess.Status != "submitted" {
 		return nil, nil
@@ -315,18 +316,22 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 		if err != nil {
 			return nil, fmt.Errorf("generate certificate pdf: %w", err)
 		}
-		url, err := s.uploadCertificatePDF(ctx, sess.ID, pdf)
+		key, err := s.uploadCertificatePDF(ctx, sess.ID, pdf)
 		if err != nil {
 			return nil, fmt.Errorf("upload certificate pdf: %w", err)
 		}
 		now := time.Now()
-		if err := s.storeRepo.UpdateSessionCertificate(ctx, sess.ID, url, now); err != nil {
-			return nil, fmt.Errorf("persist certificate url: %w", err)
+		if err := s.storeRepo.UpdateSessionCertificate(ctx, sess.ID, key, now); err != nil {
+			return nil, fmt.Errorf("persist certificate key: %w", err)
 		}
-		return &url, nil
+		sess.CertificateURL = &key
 	}
 
-	return sess.CertificateURL, nil
+	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *sess.CertificateURL, time.Hour)
+	if err != nil {
+		return nil, fmt.Errorf("presign certificate url: %w", err)
+	}
+	return &signed, nil
 }
 
 // GetCertificatePreview generates a preview certificate for admin display using a dummy

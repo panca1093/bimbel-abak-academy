@@ -6,6 +6,25 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// ServeFile is an unauthenticated read-proxy for avatars stored in the private
+// object bucket. The service enforces the avatars/ prefix, so certificates and
+// private PII in the same bucket are never reachable here. The stored photo_url
+// is <api-base>/files/<key>, which stays stable and browser-cacheable — unlike a
+// presigned URL, which would expire.
+func (h *Handler) ServeFile(c echo.Context) error {
+	key := c.Param("*")
+	obj, contentType, err := h.svc.OpenAvatar(c.Request().Context(), key)
+	if err != nil {
+		return c.NoContent(http.StatusNotFound)
+	}
+	defer obj.Close()
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+	return c.Stream(http.StatusOK, contentType, obj)
+}
+
 func (h *Handler) StudentDashboard(c echo.Context) error {
 	claims := claimsFromContext(c)
 	if claims == nil || claims.Sub == "" {

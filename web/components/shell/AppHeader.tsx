@@ -16,6 +16,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useCartStore } from "@/stores/cart";
 import { useUIStore, type Lang } from "@/stores/ui";
 import { useLogout } from "@/lib/hooks/auth";
+import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { roleLabelKey, ADMIN_ROLES } from "@/lib/nav-config";
 import type { UserRole } from "@/lib/nav-config";
@@ -161,7 +162,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             >
               <Avatar size="sm">
                 <AvatarImage
-                  src={user?.photo_url ?? undefined}
+                  src={fileUrl(user?.photo_url)}
                   alt={user?.name ?? "User"}
                 />
                 <AvatarFallback className="bg-brand-600 text-xs font-semibold text-white">

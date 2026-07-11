@@ -94,6 +94,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Public school list
 	v1.GET("/schools", h.ListSchools)
 
+	// Avatar read-proxy (no auth; service restricts to the avatars/ prefix)
+	v1.GET("/files/*", h.ServeFile)
+
 	// Upload presign (authenticated)
 	uploads := v1.Group("/uploads")
 	uploads.Use(handler.JWTMiddleware(svc, jwtSigner))

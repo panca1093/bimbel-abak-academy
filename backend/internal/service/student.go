@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
+	"strings"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -56,11 +59,10 @@ type DashboardView struct {
 }
 
 type PresignedUploadURL struct {
-	URL       string            `json:"url"`
-	Method    string            `json:"method"`
-	Fields    map[string]string `json:"fields"`
-	Key       string            `json:"key"`
-	PublicURL string            `json:"public_url"`
+	URL    string            `json:"url"`
+	Method string            `json:"method"`
+	Fields map[string]string `json:"fields"`
+	Key    string            `json:"key"`
 }
 
 func (s *Service) GetDashboard(ctx context.Context, studentID string) (*DashboardView, error) {
@@ -252,16 +254,39 @@ func (s *Service) presignStorage() *minio.Client {
 	return s.presignClient
 }
 
-func (s *Service) publicObjectURL(bucket, key string) string {
-	endpoint := s.cfg.ObjectStoragePublicEndpoint
-	if endpoint == "" {
-		endpoint = s.cfg.ObjectStorageEndpoint
+// presignReadURL signs a time-limited GET for an object. Used where the client
+// fetches directly from object storage (e.g. certificate PDFs). Avatars go
+// through OpenAvatar instead, so their URLs stay stable and browser-cacheable.
+func (s *Service) presignReadURL(ctx context.Context, bucket, key string, ttl time.Duration) (string, error) {
+	u, err := s.presignStorage().PresignedGetObject(ctx, bucket, key, ttl, url.Values{})
+	if err != nil {
+		return "", err
 	}
-	scheme := "http"
-	if s.cfg.ObjectStorageUseSSL {
-		scheme = "https"
+	return u.String(), nil
+}
+
+// OpenAvatar streams a stored avatar for the read-proxy endpoint. Only the
+// avatars/ prefix is served: certificates and private PII live in the same
+// bucket but are reached exclusively through presigned URLs, so they can never
+// be fetched through this unauthenticated proxy.
+func (s *Service) OpenAvatar(ctx context.Context, key string) (io.ReadCloser, string, error) {
+	if s.storage == nil {
+		return nil, "", errors.New("storage not configured")
 	}
-	return fmt.Sprintf("%s://%s/%s/%s", scheme, endpoint, bucket, key)
+	if !strings.HasPrefix(key, "avatars/") || strings.Contains(key, "..") {
+		return nil, "", ErrUploadNotFound
+	}
+	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, "", err
+	}
+	// minio-go defers the request until Stat/Read, so a missing object surfaces here.
+	info, err := obj.Stat()
+	if err != nil {
+		obj.Close()
+		return nil, "", err
+	}
+	return obj, info.ContentType, nil
 }
 
 func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, filename, contentType string) (*PresignedUploadURL, error) {
@@ -283,11 +308,10 @@ func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, filena
 	}
 
 	return &PresignedUploadURL{
-		URL:       presigned.String(),
-		Method:    "PUT",
-		Fields:    map[string]string{},
-		Key:       key,
-		PublicURL: s.publicObjectURL(bucket, key),
+		URL:    presigned.String(),
+		Method: "PUT",
+		Fields: map[string]string{},
+		Key:    key,
 	}, nil
 }
 
