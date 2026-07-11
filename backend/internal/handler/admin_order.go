@@ -43,13 +43,17 @@ func (h *Handler) AdminGetOrder(c echo.Context) error {
 }
 
 func (h *Handler) AdminConfirmOrder(c echo.Context) error {
+	actorID, ok := actorFromClaims(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
 	orderID := c.Param("id")
 	key := c.Request().Header.Get("Idempotency-Key")
 	if key == "" {
 		return badRequest(c, "Idempotency-Key header is required")
 	}
 
-	err := h.svc.AdminConfirmOrder(c.Request().Context(), orderID, key)
+	err := h.svc.AdminConfirmOrder(c.Request().Context(), actorID, orderID, key)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -96,9 +100,13 @@ func (h *Handler) AdminCompleteOrder(c echo.Context) error {
 }
 
 func (h *Handler) AdminRefundOrder(c echo.Context) error {
+	actorID, ok := actorFromClaims(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
 	orderID := c.Param("id")
 
-	err := h.svc.AdminRefundOrder(c.Request().Context(), orderID)
+	err := h.svc.AdminRefundOrder(c.Request().Context(), actorID, orderID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

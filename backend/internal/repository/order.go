@@ -436,22 +436,6 @@ func (r *Repository) InsertWebhookLog(ctx context.Context, tx pgx.Tx, eventType 
 	return err
 }
 
-func (r *Repository) InsertAuditLog(ctx context.Context, tx pgx.Tx, actorID, targetType, targetID, action string) error {
-	var err error
-	if tx != nil {
-		_, err = tx.Exec(ctx,
-			`INSERT INTO audit_log (actor_id, target_type, target_id, action) VALUES ($1, $2, $3, $4)`,
-			actorID, targetType, targetID, action,
-		)
-	} else {
-		_, err = r.pool.Exec(ctx,
-			`INSERT INTO audit_log (actor_id, target_type, target_id, action) VALUES ($1, $2, $3, $4)`,
-			actorID, targetType, targetID, action,
-		)
-	}
-	return err
-}
-
 func (r *Repository) ClearOrderTracking(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
 	_, err := tx.Exec(ctx,
 		`UPDATE orders SET tracking_number = '', shipped_at = NULL, updated_at = now() WHERE id = $1`,

@@ -712,7 +712,7 @@ func (s *Service) AdminGetOrder(ctx context.Context, orderID string) (model.Orde
 	return s.storeRepo.GetOrderByID(ctx, id)
 }
 
-func (s *Service) AdminConfirmOrder(ctx context.Context, orderID, key string) error {
+func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -752,6 +752,15 @@ func (s *Service) AdminConfirmOrder(ctx context.Context, orderID, key string) er
 	}
 
 	if err := s.storeRepo.InsertOutboxEvent(ctx, tx, id, "OrderPaid", payload); err != nil {
+		return err
+	}
+
+	// Manual settlement — a human asserting payment arrived without gateway proof.
+	// Record who/when in the same tx as the status flip so they commit atomically.
+	actor := &actorID
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.confirm", map[string]any{
+		"manual": true,
+	}); err != nil {
 		return err
 	}
 
@@ -858,7 +867,7 @@ func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error 
 	return nil
 }
 
-func (s *Service) AdminRefundOrder(ctx context.Context, orderID string) error {
+func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID string) error {
 	id, err := parseUUID(orderID)
 	if err != nil {
 		return err
@@ -889,7 +898,10 @@ func (s *Service) AdminRefundOrder(ctx context.Context, orderID string) error {
 		return err
 	}
 
-	if err := s.storeRepo.InsertAuditLog(ctx, tx, "", "order", id.String(), "refund"); err != nil {
+	actor := &actorID
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.refund", map[string]any{
+		"manual": true,
+	}); err != nil {
 		return err
 	}
 
