@@ -33,6 +33,13 @@ type Config struct {
 	MidtransClientKey   string
 	MidtransEnv         string
 
+	SMTPHost     string
+	SMTPPort     string
+	SMTPFrom     string
+	SMTPFromName string
+	SMTPUsername string
+	SMTPPassword string
+
 	ObjectStorageEndpoint          string
 	ObjectStoragePublicEndpoint    string
 	ObjectStorageAccessKey         string
@@ -54,6 +61,10 @@ type fileConfig struct {
 	GoogleClientID        string   `yaml:"google_client_id"`
 	FazpassBaseURL        string   `yaml:"fazpass_base_url"`
 	MidtransEnv           string   `yaml:"midtrans_env"`
+	SMTPHost              string   `yaml:"smtp_host"`
+	SMTPPort              string   `yaml:"smtp_port"`
+	SMTPFrom              string   `yaml:"smtp_from"`
+	SMTPFromName          string   `yaml:"smtp_from_name"`
 	ObjectStorageEndpoint         string   `yaml:"object_storage_endpoint"`
 	ObjectStoragePublicEndpoint   string   `yaml:"object_storage_public_endpoint"`
 	ObjectStorageUseSSL           bool     `yaml:"object_storage_use_ssl"`
@@ -74,6 +85,8 @@ type fileSecrets struct {
 	FazpassAPIKey       string `yaml:"fazpass_api_key"`
 	MidtransServerKey   string `yaml:"midtrans_server_key"`
 	MidtransClientKey   string `yaml:"midtrans_client_key"`
+	SMTPUsername        string `yaml:"smtp_username"`
+	SMTPPassword        string `yaml:"smtp_password"`
 }
 
 var requiredSecrets = []struct {
@@ -184,6 +197,10 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		GoogleClientID:  fc.GoogleClientID,
 		FazpassBaseURL:  fc.FazpassBaseURL,
 		MidtransEnv:     fc.MidtransEnv,
+		SMTPHost:        fc.SMTPHost,
+		SMTPPort:        fc.SMTPPort,
+		SMTPFrom:        fc.SMTPFrom,
+		SMTPFromName:    fc.SMTPFromName,
 
 		ObjectStorageEndpoint:          fc.ObjectStorageEndpoint,
 		ObjectStoragePublicEndpoint:    fc.ObjectStoragePublicEndpoint,
@@ -203,5 +220,7 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		FazpassAPIKey:       s.FazpassAPIKey,
 		MidtransServerKey:   s.MidtransServerKey,
 		MidtransClientKey:   s.MidtransClientKey,
+		SMTPUsername:        s.SMTPUsername,
+		SMTPPassword:        s.SMTPPassword,
 	}, nil
 }

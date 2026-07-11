@@ -72,6 +72,16 @@ func main() {
 }
 
 func newEmailProvider(cfg config.Config) service.EmailProvider {
+	if cfg.SMTPHost != "" {
+		return adapter.NewSMTPProvider(adapter.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+			FromName: cfg.SMTPFromName,
+		})
+	}
 	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
 		return &adapter.NoopEmailProvider{}
 	}
