@@ -34,14 +34,8 @@ func checkoutWithKey(t *testing.T, env *testEnv, orderID, token, idempKey string
 	return resp
 }
 
-// sendWebhook POSTs to /api/v1/webhooks/payment with a Midtrans notification body.
-// Pass signature="" to omit signature_key from the JSON body.
-func sendWebhook(t *testing.T, env *testEnv, orderID, idempKey, signature, grossAmount string) *http.Response {
-	t.Helper()
-	return sendWebhookToURL(t, env.server.URL, orderID, idempKey, signature, grossAmount)
-}
-
 // sendWebhookToURL builds and POSTs a Midtrans notification to the given base URL.
+// Pass signature="" to omit signature_key from the JSON body.
 func sendWebhookToURL(t *testing.T, baseURL, orderID, idempKey, signature, grossAmount string) *http.Response {
 	t.Helper()
 	body := map[string]string{
@@ -254,8 +248,11 @@ func TestCheckout(t *testing.T) {
 			fmt.Sprintf("co-%d", time.Now().UnixNano()))
 		require.Equal(t, http.StatusOK, coResp.StatusCode, "checkout failed: %v", decodeBody(t, coResp))
 
+		// A validly-signed webhook settles the order. strictPaymentClient verifies
+		// a non-empty signature — an unsigned webhook can no longer settle anything.
+		strict := webhookServer(t, env, strictPaymentClient{})
 		webhookKey := fmt.Sprintf("wh-%d", time.Now().UnixNano())
-		whResp := sendWebhook(t, env, orderID, webhookKey, "any-sig", fmt.Sprintf("%.2f", float64(25000)))
+		whResp := sendWebhookToURL(t, strict.URL, orderID, webhookKey, "any-sig", fmt.Sprintf("%.2f", float64(25000)))
 		whBody := decodeBody(t, whResp)
 		require.Equal(t, http.StatusOK, whResp.StatusCode, "webhook failed: %v", whBody)
 
@@ -307,13 +304,14 @@ func TestCheckout(t *testing.T) {
 			fmt.Sprintf("co-%d", time.Now().UnixNano()))
 		require.Equal(t, http.StatusOK, coResp.StatusCode, "checkout failed: %v", decodeBody(t, coResp))
 
+		strict := webhookServer(t, env, strictPaymentClient{})
 		webhookKey := fmt.Sprintf("dedup-%d", time.Now().UnixNano())
 
-		wh1 := sendWebhook(t, env, orderID, webhookKey, "sig1", fmt.Sprintf("%.2f", float64(20000)))
+		wh1 := sendWebhookToURL(t, strict.URL, orderID, webhookKey, "sig1", fmt.Sprintf("%.2f", float64(20000)))
 		wh1Body := decodeBody(t, wh1)
 		require.Equal(t, http.StatusOK, wh1.StatusCode, "first delivery: %v", wh1Body)
 
-		wh2 := sendWebhook(t, env, orderID, webhookKey, "sig2", fmt.Sprintf("%.2f", float64(20000)))
+		wh2 := sendWebhookToURL(t, strict.URL, orderID, webhookKey, "sig2", fmt.Sprintf("%.2f", float64(20000)))
 		wh2Body := decodeBody(t, wh2)
 		require.Equal(t, http.StatusOK, wh2.StatusCode, "second delivery: %v", wh2Body)
 

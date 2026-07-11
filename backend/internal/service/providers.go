@@ -120,8 +120,10 @@ func (n *NoopPaymentClient) QueryStatus(ctx context.Context, reference string) (
 	return PaymentStatus{Reference: reference, Paid: false}, nil
 }
 
+// VerifySignature rejects everything: NoopPaymentClient means no gateway is
+// configured, so no signature could be authentic. See adapter.NoopPaymentClient.
 func (n *NoopPaymentClient) VerifySignature(payload []byte, signature string) bool {
-	return true
+	return false
 }
 
 type NoopLogisticsClient struct{}

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, LogOut } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useLogout } from "@/lib/hooks/auth";
+import { fileUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -189,7 +190,7 @@ export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
         {collapsed ? (
           <div className="flex flex-col items-center gap-2 p-2">
             <Avatar className="size-9">
-              <AvatarImage src={user?.photo_url ?? undefined} />
+              <AvatarImage src={fileUrl(user?.photo_url)} />
               <AvatarFallback className="bg-brand-600 text-[13px] font-semibold text-white">
                 {initial}
               </AvatarFallback>
@@ -206,7 +207,7 @@ export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
         ) : (
           <div className="flex items-center gap-3 p-3">
             <Avatar className="size-9">
-              <AvatarImage src={user?.photo_url ?? undefined} />
+              <AvatarImage src={fileUrl(user?.photo_url)} />
               <AvatarFallback className="bg-brand-600 text-[13px] font-semibold text-white">
                 {initial}
               </AvatarFallback>

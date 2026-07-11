@@ -1,4 +1,13 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+
+// fileUrl turns a stored object key (e.g. "avatars/<user>/<uuid>-pic.png") into
+// the avatar read-proxy URL. Values that are already absolute or root-relative
+// URLs (legacy rows) pass through unchanged.
+export function fileUrl(key?: string | null): string | undefined {
+  if (!key) return undefined;
+  if (key.startsWith("http") || key.startsWith("/")) return key;
+  return `${API_BASE}/files/${key}`;
+}
 
 export class ApiError extends Error {
   readonly code: string;

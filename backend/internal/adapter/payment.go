@@ -21,6 +21,10 @@ func (n *NoopPaymentClient) QueryStatus(ctx context.Context, reference string) (
 	return service.PaymentStatus{Reference: reference, Paid: false}, nil
 }
 
+// VerifySignature rejects everything: NoopPaymentClient means no gateway is
+// configured, so no signature could be authentic. Returning true here would let
+// anyone settle any order via the unauthenticated webhook before the super admin
+// enters the Midtrans keys.
 func (n *NoopPaymentClient) VerifySignature(payload []byte, signature string) bool {
-	return true
+	return false
 }

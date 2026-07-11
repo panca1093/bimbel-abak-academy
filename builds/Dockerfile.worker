@@ -1,0 +1,12 @@
+# Build context is backend/. Expects bin/worker to exist — see deploy/pipeline/build-artifact.sh.
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+
+COPY bin/worker /app/worker
+
+# Per-path, never `COPY config/env`: the gitignored dev/ dir holds real secrets and sits in the context.
+COPY config/env/staging/config.yaml /app/config/env/staging/config.yaml
+COPY config/env/prod/config.yaml    /app/config/env/prod/config.yaml
+
+CMD ["/app/worker"]

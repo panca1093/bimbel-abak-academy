@@ -169,6 +169,17 @@ func claimsFromContext(c echo.Context) *infra.Claims {
 	return claims
 }
 
+// actorFromClaims returns the authenticated user id for audit attribution.
+// ok is false when there is no actor to attribute — audit_log.actor_id is
+// NOT NULL, so an empty sub must be rejected before it reaches the service.
+func actorFromClaims(c echo.Context) (actorID string, ok bool) {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return "", false
+	}
+	return claims.Sub, true
+}
+
 func (h *Handler) Logout(c echo.Context) error {
 	claims := claimsFromContext(c)
 	var req struct {

@@ -57,9 +57,13 @@ func TestNoopPaymentClient_QueryStatus(t *testing.T) {
 func TestNoopPaymentClient_VerifySignature(t *testing.T) {
 	client := &NoopPaymentClient{}
 
-	result := client.VerifySignature([]byte("payload"), "signature")
-
-	if !result {
-		t.Error("expected VerifySignature to return true")
+	// No gateway is configured, so nothing could have signed this payload:
+	// every signature — including the empty string — must be rejected, or an
+	// unconfigured deploy leaves the unauthenticated webhook open to anyone.
+	if client.VerifySignature([]byte("payload"), "signature") {
+		t.Error("expected VerifySignature to return false when no gateway is configured")
+	}
+	if client.VerifySignature([]byte("payload"), "") {
+		t.Error("expected VerifySignature to reject an empty signature")
 	}
 }

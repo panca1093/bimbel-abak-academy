@@ -10,6 +10,7 @@ import {
   useUpdatePhoto,
   useUpdateProfile,
 } from "@/lib/hooks/students";
+import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -343,7 +344,7 @@ export default function ProfilePage() {
       if (!uploadRes.ok) {
         throw new Error(`Upload failed: ${uploadRes.status}`);
       }
-      await updatePhoto.mutateAsync(presigned.public_url);
+      await updatePhoto.mutateAsync(presigned.key);
       toast.success(t("photo_uploaded"));
     } catch (err) {
       toast.error(
@@ -413,7 +414,7 @@ export default function ProfilePage() {
                       >
                         {profile?.photo_url ? (
                           <AvatarImage
-                            src={profile.photo_url}
+                            src={fileUrl(profile.photo_url)}
                             alt={displayName}
                             className="object-cover"
                           />
@@ -437,7 +438,7 @@ export default function ProfilePage() {
                     >
                       {profile?.photo_url ? (
                         <AvatarImage
-                          src={profile.photo_url}
+                          src={fileUrl(profile.photo_url)}
                           alt={displayName}
                           className="object-cover"
                         />

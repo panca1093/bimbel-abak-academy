@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"akademi-bimbel/internal/handler"
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
@@ -34,6 +35,7 @@ func TestAdminRefundOrder_BasicCompilation(t *testing.T) {
 	c.SetPath("/api/v1/admin/orders/:id/refund")
 	c.SetParamNames("id")
 	c.SetParamValues("test-id")
+	c.Set("claims", &infra.Claims{Sub: "00000000-0000-0000-0000-000000000001", Role: "super_admin"})
 
 	// Act
 	err = h.AdminRefundOrder(c)

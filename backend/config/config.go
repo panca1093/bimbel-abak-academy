@@ -33,13 +33,14 @@ type Config struct {
 	MidtransClientKey   string
 	MidtransEnv         string
 
-	MinioEndpoint          string
-	MinioPublicEndpoint    string
-	MinioAccessKey         string
-	MinioSecretKey         string
-	MinioUseSSL            bool
-	MinioBucketName        string
-	MinioPrivateBucketName string
+	ObjectStorageEndpoint          string
+	ObjectStoragePublicEndpoint    string
+	ObjectStorageAccessKey         string
+	ObjectStorageSecretKey         string
+	ObjectStorageUseSSL            bool
+	ObjectStorageRegion            string
+	ObjectStorageBucketName        string
+	ObjectStoragePrivateBucketName string
 }
 
 type fileConfig struct {
@@ -53,11 +54,12 @@ type fileConfig struct {
 	GoogleClientID        string   `yaml:"google_client_id"`
 	FazpassBaseURL        string   `yaml:"fazpass_base_url"`
 	MidtransEnv           string   `yaml:"midtrans_env"`
-	MinioEndpoint         string   `yaml:"minio_endpoint"`
-	MinioPublicEndpoint   string   `yaml:"minio_public_endpoint"`
-	MinioUseSSL           bool     `yaml:"minio_use_ssl"`
-	MinioBucketName       string   `yaml:"minio_bucket_name"`
-	MinioPrivateBucketName string  `yaml:"minio_private_bucket_name"`
+	ObjectStorageEndpoint         string   `yaml:"object_storage_endpoint"`
+	ObjectStoragePublicEndpoint   string   `yaml:"object_storage_public_endpoint"`
+	ObjectStorageUseSSL           bool     `yaml:"object_storage_use_ssl"`
+	ObjectStorageRegion           string   `yaml:"object_storage_region"`
+	ObjectStorageBucketName       string   `yaml:"object_storage_bucket_name"`
+	ObjectStoragePrivateBucketName string  `yaml:"object_storage_private_bucket_name"`
 }
 
 type fileSecrets struct {
@@ -65,8 +67,8 @@ type fileSecrets struct {
 	JWTSecret           string `yaml:"jwt_secret"`
 	ConfigEncryptionKey string `yaml:"config_encryption_key"`
 	OTPSecret           string `yaml:"otp_secret"`
-	MinioAccessKey      string `yaml:"minio_access_key"`
-	MinioSecretKey      string `yaml:"minio_secret_key"`
+	ObjectStorageAccessKey      string `yaml:"object_storage_access_key"`
+	ObjectStorageSecretKey      string `yaml:"object_storage_secret_key"`
 	RedisPassword       string `yaml:"redis_password"`
 	FazpassMerchantKey  string `yaml:"fazpass_merchant_key"`
 	FazpassAPIKey       string `yaml:"fazpass_api_key"`
@@ -82,8 +84,8 @@ var requiredSecrets = []struct {
 	{"jwt_secret", func(s *fileSecrets) *string { return &s.JWTSecret }},
 	{"config_encryption_key", func(s *fileSecrets) *string { return &s.ConfigEncryptionKey }},
 	{"otp_secret", func(s *fileSecrets) *string { return &s.OTPSecret }},
-	{"minio_access_key", func(s *fileSecrets) *string { return &s.MinioAccessKey }},
-	{"minio_secret_key", func(s *fileSecrets) *string { return &s.MinioSecretKey }},
+	{"object_storage_access_key", func(s *fileSecrets) *string { return &s.ObjectStorageAccessKey }},
+	{"object_storage_secret_key", func(s *fileSecrets) *string { return &s.ObjectStorageSecretKey }},
 }
 
 func Load(env, configDir string) (Config, error) {
@@ -183,18 +185,19 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		FazpassBaseURL:  fc.FazpassBaseURL,
 		MidtransEnv:     fc.MidtransEnv,
 
-		MinioEndpoint:          fc.MinioEndpoint,
-		MinioPublicEndpoint:    fc.MinioPublicEndpoint,
-		MinioUseSSL:            fc.MinioUseSSL,
-		MinioBucketName:        fc.MinioBucketName,
-		MinioPrivateBucketName: fc.MinioPrivateBucketName,
+		ObjectStorageEndpoint:          fc.ObjectStorageEndpoint,
+		ObjectStoragePublicEndpoint:    fc.ObjectStoragePublicEndpoint,
+		ObjectStorageUseSSL:            fc.ObjectStorageUseSSL,
+		ObjectStorageRegion:            fc.ObjectStorageRegion,
+		ObjectStorageBucketName:        fc.ObjectStorageBucketName,
+		ObjectStoragePrivateBucketName: fc.ObjectStoragePrivateBucketName,
 
 		DatabaseURL:         s.DatabaseURL,
 		JWTSecret:           s.JWTSecret,
 		ConfigEncryptionKey: s.ConfigEncryptionKey,
 		OTPSecret:           s.OTPSecret,
-		MinioAccessKey:      s.MinioAccessKey,
-		MinioSecretKey:      s.MinioSecretKey,
+		ObjectStorageAccessKey:      s.ObjectStorageAccessKey,
+		ObjectStorageSecretKey:      s.ObjectStorageSecretKey,
 		RedisPassword:       s.RedisPassword,
 		FazpassMerchantKey:  s.FazpassMerchantKey,
 		FazpassAPIKey:       s.FazpassAPIKey,

@@ -26,26 +26,16 @@ type PrivateUploadURL struct {
 	Key    string `json:"key"`
 }
 
-// GeneratePresignedPrivateUploadURL mirrors GeneratePresignedUploadURL's
-// bucket-ensure-exists + presigned-PUT pattern but must NOT call
-// SetBucketPolicy — this bucket stays private (no public-read policy),
-// unlike the avatar bucket.
+// GeneratePresignedPrivateUploadURL signs a PUT into the private bucket. The
+// bucket is provisioned out of band and gets no public-read policy, unlike the
+// avatar bucket in GeneratePresignedUploadURL.
 func (s *Service) GeneratePresignedPrivateUploadURL(ctx context.Context, schoolID, filename, contentType string) (*PrivateUploadURL, error) {
 	if s.storage == nil {
 		return nil, errors.New("storage not configured")
 	}
 
-	bucket := s.cfg.MinioPrivateBucketName
-	exists, err := s.storage.BucketExists(ctx, bucket)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		if err := s.storage.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
-			return nil, err
-		}
-	}
-
+	// The private bucket is created at provisioning time, not per-request.
+	bucket := s.cfg.ObjectStoragePrivateBucketName
 	key := fmt.Sprintf("student-bulk/%s/%s-%s", schoolID, uuid.New().String(), filename)
 	presigned, err := s.presignStorage().PresignedPutObject(ctx, bucket, key, 15*time.Minute)
 	if err != nil {
@@ -63,7 +53,7 @@ func (s *Service) GeneratePresignedPrivateUploadURL(ctx context.Context, schoolI
 // call, kept separate so enqueueStudentBulkJobFromData is testable without
 // MinIO.
 func (s *Service) fetchPrivateObject(ctx context.Context, key string) ([]byte, error) {
-	obj, err := s.storage.GetObject(ctx, s.cfg.MinioPrivateBucketName, key, minio.GetObjectOptions{})
+	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStoragePrivateBucketName, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +69,7 @@ func (s *Service) EnqueueStudentBulkJob(ctx context.Context, schoolID, createdBy
 		return "", ErrUploadNotFound
 	}
 
-	if _, err := s.storage.StatObject(ctx, s.cfg.MinioPrivateBucketName, fileKey, minio.StatObjectOptions{}); err != nil {
+	if _, err := s.storage.StatObject(ctx, s.cfg.ObjectStoragePrivateBucketName, fileKey, minio.StatObjectOptions{}); err != nil {
 		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
 			return "", ErrUploadNotFound
 		}
@@ -121,7 +111,7 @@ type JobResponse struct {
 }
 
 func (s *Service) presignedPrivateGetURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	presigned, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.MinioPrivateBucketName, key, ttl, url.Values{})
+	presigned, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.ObjectStoragePrivateBucketName, key, ttl, url.Values{})
 	if err != nil {
 		return "", err
 	}
