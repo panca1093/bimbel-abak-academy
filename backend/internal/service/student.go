@@ -224,23 +224,24 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 }
 
 // presignStorage returns a MinIO client whose endpoint matches the host the
-// browser uses (MinioPublicEndpoint). Presigned URLs bind the host into the
+// browser uses (ObjectStoragePublicEndpoint). Presigned URLs bind the host into the
 // signature, so they must be signed for the public host — not the internal
 // docker hostname the API container connects through.
 func (s *Service) presignStorage() *minio.Client {
 	s.presignOnce.Do(func() {
-		endpoint := s.cfg.MinioPublicEndpoint
-		if endpoint == "" || endpoint == s.cfg.MinioEndpoint {
+		endpoint := s.cfg.ObjectStoragePublicEndpoint
+		if endpoint == "" || endpoint == s.cfg.ObjectStorageEndpoint {
 			s.presignClient = s.storage
 			return
 		}
 		// Region must be set explicitly: this client's endpoint resolves to the
 		// browser host, which the API container cannot reach, so presigning must
-		// not trigger a bucket-region lookup. us-east-1 is MinIO's default.
+		// not trigger a bucket-region lookup. It is also folded into the V4
+		// signature, so it must match the bucket's real region on GCS/S3.
 		c, err := minio.New(endpoint, &minio.Options{
-			Creds:  credentials.NewStaticV4(s.cfg.MinioAccessKey, s.cfg.MinioSecretKey, ""),
-			Secure: s.cfg.MinioUseSSL,
-			Region: "us-east-1",
+			Creds:  credentials.NewStaticV4(s.cfg.ObjectStorageAccessKey, s.cfg.ObjectStorageSecretKey, ""),
+			Secure: s.cfg.ObjectStorageUseSSL,
+			Region: s.cfg.ObjectStorageRegion,
 		})
 		if err != nil {
 			s.presignClient = s.storage
@@ -252,12 +253,12 @@ func (s *Service) presignStorage() *minio.Client {
 }
 
 func (s *Service) publicObjectURL(bucket, key string) string {
-	endpoint := s.cfg.MinioPublicEndpoint
+	endpoint := s.cfg.ObjectStoragePublicEndpoint
 	if endpoint == "" {
-		endpoint = s.cfg.MinioEndpoint
+		endpoint = s.cfg.ObjectStorageEndpoint
 	}
 	scheme := "http"
-	if s.cfg.MinioUseSSL {
+	if s.cfg.ObjectStorageUseSSL {
 		scheme = "https"
 	}
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, endpoint, bucket, key)
@@ -271,23 +272,10 @@ func (s *Service) GeneratePresignedUploadURL(ctx context.Context, userID, filena
 		return nil, errors.New("user_id and filename are required")
 	}
 
-	bucket := s.cfg.MinioBucketName
-	exists, err := s.storage.BucketExists(ctx, bucket)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		if err := s.storage.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
-			return nil, err
-		}
-	}
-	// Uploaded objects are served directly via <img src>, so the bucket needs
-	// anonymous read. Idempotent — safe to re-apply.
-	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}`, bucket)
-	if err := s.storage.SetBucketPolicy(ctx, bucket, policy); err != nil {
-		return nil, err
-	}
-
+	// The public-read bucket is created and its access policy set at
+	// provisioning time, not here — GCS has no bucket-policy operation, so
+	// doing it per-request would hard-fail on managed storage. App code only signs.
+	bucket := s.cfg.ObjectStorageBucketName
 	key := fmt.Sprintf("avatars/%s/%s-%s", userID, uuid.New().String(), filename)
 	presigned, err := s.presignStorage().PresignedPutObject(ctx, bucket, key, 15*time.Minute)
 	if err != nil {

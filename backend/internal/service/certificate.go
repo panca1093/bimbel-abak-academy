@@ -273,21 +273,9 @@ func (s *Service) uploadCertificatePDF(ctx context.Context, sessionID uuid.UUID,
 		return "", errors.New("storage not configured")
 	}
 
-	bucket := s.cfg.MinioBucketName
-	exists, err := s.storage.BucketExists(ctx, bucket)
-	if err != nil {
-		return "", err
-	}
-	if !exists {
-		if err := s.storage.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
-			return "", err
-		}
-	}
-	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}`, bucket)
-	if err := s.storage.SetBucketPolicy(ctx, bucket, policy); err != nil {
-		return "", err
-	}
-
+	// Bucket + public-read policy are provisioned once, out of band — see
+	// GeneratePresignedUploadURL. App code only writes objects.
+	bucket := s.cfg.ObjectStorageBucketName
 	key := fmt.Sprintf("certificates/%s.pdf", sessionID.String())
 	if _, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(pdf), int64(len(pdf)), minio.PutObjectOptions{
 		ContentType: "application/pdf",

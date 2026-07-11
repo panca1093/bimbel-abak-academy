@@ -39,6 +39,23 @@ services:
     volumes:
       - miniodata:/data
 
+  # Buckets are created out of band (not on the request path — see
+  # GeneratePresignedUploadURL). This mirrors, for local dev, the one-off
+  # `gcloud storage buckets create` + IAM binding done on staging/prod.
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do echo 'waiting for minio'; sleep 1; done;
+      mc mb --ignore-existing local/akademi-bimbel;
+      mc mb --ignore-existing local/akademi-bimbel-private;
+      mc anonymous set download local/akademi-bimbel;
+      exit 0;
+      "
+
   api:
     build:
       context: ../backend

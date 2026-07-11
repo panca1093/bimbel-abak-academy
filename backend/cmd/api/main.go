@@ -101,9 +101,10 @@ func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailPr
 }
 
 func newStorageClient(cfg config.Config) *minio.Client {
-	client, err := minio.New(cfg.MinioEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
-		Secure: cfg.MinioUseSSL,
+	client, err := minio.New(cfg.ObjectStorageEndpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.ObjectStorageAccessKey, cfg.ObjectStorageSecretKey, ""),
+		Secure: cfg.ObjectStorageUseSSL,
+		Region: cfg.ObjectStorageRegion,
 	})
 	if err != nil {
 		slog.Default().Error("init minio client", "err", err)

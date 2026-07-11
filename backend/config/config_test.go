@@ -34,19 +34,19 @@ otp_ttl: "10m"
 google_client_id: "gcid-test"
 fazpass_base_url: "https://fazpass.test"
 midtrans_env: "sandbox"
-minio_endpoint: "minio:9000"
-minio_public_endpoint: "minio.public:9000"
-minio_use_ssl: true
-minio_bucket_name: "test-bucket"
-minio_private_bucket_name: "test-private-bucket"
+object_storage_endpoint: "minio:9000"
+object_storage_public_endpoint: "minio.public:9000"
+object_storage_use_ssl: true
+object_storage_bucket_name: "test-bucket"
+object_storage_private_bucket_name: "test-private-bucket"
 `)
 	writeYAML(t, envDir, "secrets.yaml", `
 database_url: "postgres://u:p@host/db"
 jwt_secret: "jwt-secret-val"
 config_encryption_key: "enc-key-val"
 otp_secret: "otp-secret-val"
-minio_access_key: "minio-ak"
-minio_secret_key: "minio-sk"
+object_storage_access_key: "minio-ak"
+object_storage_secret_key: "minio-sk"
 redis_password: "redis-pw"
 fazpass_merchant_key: "fz-mk"
 fazpass_api_key: "fz-ak"
@@ -80,8 +80,8 @@ midtrans_client_key: "mt-ck"
 	if cfg.FazpassMerchantKey != "fz-mk" {
 		t.Errorf("FazpassMerchantKey: got %q", cfg.FazpassMerchantKey)
 	}
-	if cfg.MinioUseSSL != true {
-		t.Errorf("MinioUseSSL: got %v want true", cfg.MinioUseSSL)
+	if cfg.ObjectStorageUseSSL != true {
+		t.Errorf("ObjectStorageUseSSL: got %v want true", cfg.ObjectStorageUseSSL)
 	}
 	if len(cfg.CORSOrigins) != 2 || cfg.CORSOrigins[0] != "http://localhost:3000" {
 		t.Errorf("CORSOrigins: got %v", cfg.CORSOrigins)
@@ -107,11 +107,11 @@ otp_ttl: "5m"
 google_client_id: ""
 fazpass_base_url: ""
 midtrans_env: ""
-minio_endpoint: ""
-minio_public_endpoint: ""
-minio_use_ssl: false
-minio_bucket_name: ""
-minio_private_bucket_name: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
 `)
 
 	cfg, err := Load("dev", dir)
@@ -144,11 +144,11 @@ otp_ttl: "5m"
 google_client_id: ""
 fazpass_base_url: ""
 midtrans_env: ""
-minio_endpoint: ""
-minio_public_endpoint: ""
-minio_use_ssl: false
-minio_bucket_name: ""
-minio_private_bucket_name: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
 `)
 
 	_, err := Load("staging", dir)
@@ -175,19 +175,19 @@ otp_ttl: "5m"
 google_client_id: ""
 fazpass_base_url: ""
 midtrans_env: ""
-minio_endpoint: ""
-minio_public_endpoint: ""
-minio_use_ssl: false
-minio_bucket_name: ""
-minio_private_bucket_name: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
 `)
 	writeYAML(t, envDir, "secrets.yaml", `
 database_url: "postgres://host/db"
 jwt_secret: ""
 config_encryption_key: "enc-key"
 otp_secret: "otp-secret"
-minio_access_key: "minio-ak"
-minio_secret_key: "minio-sk"
+object_storage_access_key: "minio-ak"
+object_storage_secret_key: "minio-sk"
 `)
 
 	_, err := Load("staging", dir)
@@ -217,19 +217,19 @@ otp_ttl: "5m"
 google_client_id: ""
 fazpass_base_url: ""
 midtrans_env: ""
-minio_endpoint: ""
-minio_public_endpoint: ""
-minio_use_ssl: false
-minio_bucket_name: ""
-minio_private_bucket_name: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
 `)
 	writeYAML(t, envDir, "secrets.yaml", `
 database_url: ""
 jwt_secret: ""
 config_encryption_key: "enc-key"
 otp_secret: "otp-secret"
-minio_access_key: "minio-ak"
-minio_secret_key: "minio-sk"
+object_storage_access_key: "minio-ak"
+object_storage_secret_key: "minio-sk"
 `)
 
 	_, err := Load("staging", dir)
@@ -264,19 +264,20 @@ otp_ttl: "3m"
 google_client_id: "gcid"
 fazpass_base_url: "https://fazpass.example.com"
 midtrans_env: "production"
-minio_endpoint: "s3.example.com"
-minio_public_endpoint: "s3-public.example.com"
-minio_use_ssl: true
-minio_bucket_name: "my-bucket"
-minio_private_bucket_name: "my-private-bucket"
+object_storage_endpoint: "s3.example.com"
+object_storage_public_endpoint: "s3-public.example.com"
+object_storage_use_ssl: true
+object_storage_region: "asia-southeast2"
+object_storage_bucket_name: "my-bucket"
+object_storage_private_bucket_name: "my-private-bucket"
 `)
 	writeYAML(t, envDir, "secrets.yaml", `
 database_url: "postgres://user:pass@db.example.com/dbname"
 jwt_secret: "jwt-secret-123"
 config_encryption_key: "enc-key-456"
 otp_secret: "otp-secret-789"
-minio_access_key: "AK123"
-minio_secret_key: "SK456"
+object_storage_access_key: "AK123"
+object_storage_secret_key: "SK456"
 redis_password: "redis-pass"
 fazpass_merchant_key: "fz-merchant"
 fazpass_api_key: "fz-api"
@@ -309,12 +310,13 @@ midtrans_client_key: "mt-client"
 		{"MidtransServerKey", cfg.MidtransServerKey, "mt-server"},
 		{"MidtransClientKey", cfg.MidtransClientKey, "mt-client"},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
-		{"MinioEndpoint", cfg.MinioEndpoint, "s3.example.com"},
-		{"MinioPublicEndpoint", cfg.MinioPublicEndpoint, "s3-public.example.com"},
-		{"MinioAccessKey", cfg.MinioAccessKey, "AK123"},
-		{"MinioSecretKey", cfg.MinioSecretKey, "SK456"},
-		{"MinioBucketName", cfg.MinioBucketName, "my-bucket"},
-		{"MinioPrivateBucketName", cfg.MinioPrivateBucketName, "my-private-bucket"},
+		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "s3.example.com"},
+		{"ObjectStoragePublicEndpoint", cfg.ObjectStoragePublicEndpoint, "s3-public.example.com"},
+		{"ObjectStorageRegion", cfg.ObjectStorageRegion, "asia-southeast2"},
+		{"ObjectStorageAccessKey", cfg.ObjectStorageAccessKey, "AK123"},
+		{"ObjectStorageSecretKey", cfg.ObjectStorageSecretKey, "SK456"},
+		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "my-bucket"},
+		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "my-private-bucket"},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -334,8 +336,8 @@ midtrans_client_key: "mt-client"
 	if cfg.OTPTTL != 3*time.Minute {
 		t.Errorf("OTPTTL: got %v want 3m", cfg.OTPTTL)
 	}
-	if cfg.MinioUseSSL != true {
-		t.Errorf("MinioUseSSL: got %v want true", cfg.MinioUseSSL)
+	if cfg.ObjectStorageUseSSL != true {
+		t.Errorf("ObjectStorageUseSSL: got %v want true", cfg.ObjectStorageUseSSL)
 	}
 }
 
@@ -357,19 +359,19 @@ otp_ttl: "5m"
 google_client_id: ""
 fazpass_base_url: ""
 midtrans_env: ""
-minio_endpoint: ""
-minio_public_endpoint: ""
-minio_use_ssl: false
-minio_bucket_name: ""
-minio_private_bucket_name: ""
+object_storage_endpoint: ""
+object_storage_public_endpoint: ""
+object_storage_use_ssl: false
+object_storage_bucket_name: ""
+object_storage_private_bucket_name: ""
 `)
 	writeYAML(t, envDir, "secrets.yaml", `
 database_url: "postgres://host/db"
 jwt_secret: "jwt"
 config_encryption_key: "enc"
 otp_secret: "otp"
-minio_access_key: "ak"
-minio_secret_key: "sk"
+object_storage_access_key: "ak"
+object_storage_secret_key: "sk"
 `)
 
 	cfg, err := Load("custom-env", dir)
