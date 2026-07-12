@@ -32,10 +32,15 @@ export interface RegisterInput {
   password: string;
 }
 
+export interface RegisterResponse {
+  otp_required: boolean;
+  pending_token: string;
+}
+
 export function useRegister() {
   return useMutation({
     mutationFn: (input: RegisterInput) =>
-      apiFetch<void>(`/auth/register`, {
+      apiFetch<RegisterResponse>(`/auth/register`, {
         method: "POST",
         body: JSON.stringify(input),
       }),

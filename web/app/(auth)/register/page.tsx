@@ -79,9 +79,18 @@ export default function RegisterPage() {
     if (Object.keys(errs).length > 0) return;
 
     try {
-      await register.mutateAsync({ name: name.trim(), email: email.trim(), password });
+      const res = await register.mutateAsync({ name: name.trim(), email: email.trim(), password });
       toast.success(t("register_success"));
-      router.push("/login");
+      // Registration returns an OTP challenge — hand the pending token + email to
+      // the OTP page (it reads ?id= and sessionStorage["abak-pending-token"]).
+      if (res.otp_required && res.pending_token) {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("abak-pending-token", res.pending_token);
+        }
+        router.push(`/otp?id=${encodeURIComponent(email.trim())}`);
+      } else {
+        router.push("/login");
+      }
     } catch (err) {
       const msg =
         err instanceof ApiError ? err.message : t("register_failed");
