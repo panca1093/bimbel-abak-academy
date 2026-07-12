@@ -119,6 +119,16 @@ func (r *Repository) DisableOTP(ctx context.Context, userID string) error {
 	return err
 }
 
+// ActivateUser transitions a pending_verification user to active in a single
+// UPDATE, so verification is atomic (no read-modify-write).
+func (r *Repository) ActivateUser(ctx context.Context, userID string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET status = 'active', otp_enabled = false, updated_at = now() WHERE id = $1`,
+		userID,
+	)
+	return err
+}
+
 // UpdateUserProfile patches the editable profile fields. nil args leave the
 // column unchanged via COALESCE. Email normalization is the caller's job.
 func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error {

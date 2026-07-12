@@ -137,6 +137,16 @@ func (f *fakeRepo) DisableOTP(_ context.Context, userID string) error {
 	return nil
 }
 
+func (f *fakeRepo) ActivateUser(_ context.Context, userID string) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return fmt.Errorf("not found")
+	}
+	u.Status = "active"
+	u.OTPEnabled = false
+	return nil
+}
+
 func (f *fakeRepo) TombstoneUser(_ context.Context, userID string) error {
 	u, ok := f.byID[userID]
 	if !ok {

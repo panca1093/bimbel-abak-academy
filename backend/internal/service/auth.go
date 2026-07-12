@@ -26,6 +26,7 @@ type UserRepository interface {
 	UpdateUserPhoto(ctx context.Context, userID, photoURL string) error
 	ListSchools(ctx context.Context) ([]*model.School, error)
 	DisableOTP(ctx context.Context, userID string) error
+	ActivateUser(ctx context.Context, userID string) error
 	TombstoneUser(ctx context.Context, userID string) error
 }
 
