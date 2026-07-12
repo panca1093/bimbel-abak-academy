@@ -20,7 +20,7 @@ func ResolvePaymentClient(ctx context.Context, repo *repository.Repository, cfg 
 		return NewMidtransClient(serverKey, clientKey, midtransEnv)
 	}
 	slog.Info("payment client resolved", "source", "noop")
-	return &NoopPaymentClient{}
+	return &service.NoopPaymentClient{}
 }
 
 func resolvePaymentKeys(ctx context.Context, repo *repository.Repository, cfg *config.Config) (serverKey, clientKey, midtransEnv, source string) {
