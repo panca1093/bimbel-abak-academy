@@ -28,6 +28,14 @@ export default function LoginPage() {
       const data = await login.mutateAsync({ identifier, password });
       router.push(redirectForRole(data.user?.role));
     } catch (err) {
+      if (err instanceof ApiError && err.code === "verification_pending") {
+        const pendingToken = err.body?.pending_token;
+        if (typeof window !== "undefined" && typeof pendingToken === "string") {
+          sessionStorage.setItem("abak-pending-token", pendingToken);
+        }
+        router.push(`/otp?id=${encodeURIComponent(identifier)}`);
+        return;
+      }
       const msg =
         err instanceof ApiError ? err.message : t("login_failed");
       setError(msg);
