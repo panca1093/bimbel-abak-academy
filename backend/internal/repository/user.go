@@ -112,12 +112,13 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, userID, hash string
 
 // ActivateUser transitions a pending_verification user to active in a single
 // UPDATE, so verification is atomic (no read-modify-write).
-func (r *Repository) ActivateUser(ctx context.Context, userID string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET status = 'active', otp_enabled = false, updated_at = now() WHERE id = $1`,
+func (r *Repository) ActivateUser(ctx context.Context, userID string) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET status = 'active', otp_enabled = false, updated_at = now()
+		WHERE id = $1 AND status = 'pending_verification'`,
 		userID,
 	)
-	return err
+	return tag.RowsAffected() == 1, err
 }
 
 // UpdateUserProfile patches the editable profile fields. nil args leave the

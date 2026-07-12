@@ -128,14 +128,17 @@ func (f *fakeUserRepo) ListSchools(_ context.Context) ([]*model.School, error) {
 	return nil, nil
 }
 
-func (f *fakeUserRepo) ActivateUser(_ context.Context, userID string) error {
+func (f *fakeUserRepo) ActivateUser(_ context.Context, userID string) (bool, error) {
 	u, ok := f.byID[userID]
 	if !ok {
-		return errors.New("not found")
+		return false, errors.New("not found")
+	}
+	if u.Status != "pending_verification" {
+		return false, nil
 	}
 	u.Status = "active"
 	u.OTPEnabled = false
-	return nil
+	return true, nil
 }
 
 func (f *fakeUserRepo) TombstoneUser(_ context.Context, userID string) error {
@@ -226,7 +229,20 @@ func TestRegister(t *testing.T) {
 		}
 	})
 
-	t.Run("re-register on pending email resends", func(t *testing.T) {
+	t.Run("re-register on pending email is rate limited", func(t *testing.T) {
+		repo := newFakeUserRepo()
+		svc, _ := newTestService(t, repo)
+		if _, err := svc.Register(ctx, "pending@example.com", "password123", "Budi"); err != nil {
+			t.Fatalf("first Register: %v", err)
+		}
+
+		_, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
+		if !errors.Is(err, ErrOTPRateLimit) {
+			t.Errorf("want ErrOTPRateLimit, got %v", err)
+		}
+	})
+
+	t.Run("re-register on pending email resends after rate limit expires", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
 		first, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
@@ -234,6 +250,7 @@ func TestRegister(t *testing.T) {
 			t.Fatalf("first Register: %v", err)
 		}
 		before, _ := repo.GetUserByEmail(ctx, "pending@example.com")
+		mr.FastForward(time.Minute)
 
 		second, err := svc.Register(ctx, "pending@example.com", "password123", "Budi")
 		if err != nil {
@@ -413,6 +430,24 @@ func TestVerifyOTP(t *testing.T) {
 		}
 		if u == nil || u.Status != "active" {
 			t.Errorf("want status active after verification, got %v", u)
+		}
+	})
+
+	t.Run("deactivated user cannot be activated by a pending otp", func(t *testing.T) {
+		svc, mr, repo, pending, userID := setup(t)
+		code, _ := mr.Get("otp:" + userID)
+		repo.byID[userID].Status = "deactivated"
+
+		access, refresh, err := svc.VerifyOTP(ctx, pending, code)
+		if !errors.Is(err, ErrInvalidPendingToken) {
+			t.Errorf("want ErrInvalidPendingToken, got %v", err)
+		}
+		if access != "" || refresh != "" {
+			t.Errorf("want no session tokens, got access=%q refresh=%q", access, refresh)
+		}
+		u, _ := repo.GetUserByID(ctx, userID)
+		if u == nil || u.Status != "deactivated" {
+			t.Errorf("want status deactivated, got %v", u)
 		}
 	})
 

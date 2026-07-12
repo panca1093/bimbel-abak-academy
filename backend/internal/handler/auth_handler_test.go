@@ -128,14 +128,17 @@ func (f *fakeRepo) ListSchools(_ context.Context) ([]*model.School, error) {
 	return nil, nil
 }
 
-func (f *fakeRepo) ActivateUser(_ context.Context, userID string) error {
+func (f *fakeRepo) ActivateUser(_ context.Context, userID string) (bool, error) {
 	u, ok := f.byID[userID]
 	if !ok {
-		return fmt.Errorf("not found")
+		return false, fmt.Errorf("not found")
+	}
+	if u.Status != "pending_verification" {
+		return false, nil
 	}
 	u.Status = "active"
 	u.OTPEnabled = false
-	return nil
+	return true, nil
 }
 
 func (f *fakeRepo) TombstoneUser(_ context.Context, userID string) error {
@@ -495,6 +498,7 @@ func TestRegisterHandler_ResendOnPendingEmail(t *testing.T) {
 	var firstResp map[string]any
 	json.NewDecoder(firstRec.Body).Decode(&firstResp)
 	firstToken := firstResp["pending_token"]
+	env.mr.FastForward(time.Minute)
 
 	rec := postJSON(t, env.e, "/api/v1/auth/register", map[string]string{
 		"email":    "resend@example.com",

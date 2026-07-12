@@ -25,7 +25,7 @@ type UserRepository interface {
 	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error
 	UpdateUserPhoto(ctx context.Context, userID, photoURL string) error
 	ListSchools(ctx context.Context) ([]*model.School, error)
-	ActivateUser(ctx context.Context, userID string) error
+	ActivateUser(ctx context.Context, userID string) (bool, error)
 	TombstoneUser(ctx context.Context, userID string) error
 }
 
@@ -66,7 +66,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 	}
 	if existing != nil {
 		if existing.Status == "pending_verification" {
-			return s.startOTPChallenge(ctx, existing)
+			return s.startRegistrationOTPChallenge(ctx, existing)
 		}
 		return "", ErrEmailTaken
 	}
@@ -86,7 +86,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 	if err := s.repo.CreateUser(ctx, user); err != nil {
 		return "", err
 	}
-	return s.startOTPChallenge(ctx, user)
+	return s.startRegistrationOTPChallenge(ctx, user)
 }
 
 func (s *Service) Login(ctx context.Context, identifier, password string) (accessToken, refreshToken, pendingToken string, err error) {
@@ -141,6 +141,13 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *model.User) (pend
 	return pendingToken, nil
 }
 
+func (s *Service) startRegistrationOTPChallenge(ctx context.Context, user *model.User) (string, error) {
+	if err := s.limitOTPSend(ctx, user.ID); err != nil {
+		return "", err
+	}
+	return s.startOTPChallenge(ctx, user)
+}
+
 func (s *Service) dispatchOTP(ctx context.Context, user *model.User) error {
 	code, err := genOTP()
 	if err != nil {
@@ -173,12 +180,8 @@ func (s *Service) ResolveUserFromEmail(ctx context.Context, email string) (strin
 }
 
 func (s *Service) SendOTP(ctx context.Context, userID string) error {
-	rl := s.rdb.SetNX(ctx, "otpsend:"+userID, "1", 60*time.Second)
-	if err := rl.Err(); err != nil {
+	if err := s.limitOTPSend(ctx, userID); err != nil {
 		return err
-	}
-	if !rl.Val() {
-		return ErrOTPRateLimit
 	}
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
@@ -188,6 +191,17 @@ func (s *Service) SendOTP(ctx context.Context, userID string) error {
 		return ErrUserNotFound
 	}
 	return s.dispatchOTP(ctx, user)
+}
+
+func (s *Service) limitOTPSend(ctx context.Context, userID string) error {
+	rl := s.rdb.SetNX(ctx, "otpsend:"+userID, "1", 60*time.Second)
+	if err := rl.Err(); err != nil {
+		return err
+	}
+	if !rl.Val() {
+		return ErrOTPRateLimit
+	}
+	return nil
 }
 
 func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (accessToken, refreshToken string, err error) {
@@ -210,8 +224,6 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (acc
 		return "", "", ErrInvalidOTP
 	}
 
-	s.rdb.Del(ctx, "otp:"+userID, "pending:"+pendingToken)
-
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return "", "", err
@@ -219,9 +231,14 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (acc
 	if user == nil {
 		return "", "", ErrUserNotFound
 	}
-	if err := s.repo.ActivateUser(ctx, userID); err != nil {
+	activated, err := s.repo.ActivateUser(ctx, userID)
+	if err != nil {
 		return "", "", err
 	}
+	if !activated {
+		return "", "", ErrInvalidPendingToken
+	}
+	s.rdb.Del(ctx, "otp:"+userID, "pending:"+pendingToken)
 	return s.mintSession(ctx, user)
 }
 
