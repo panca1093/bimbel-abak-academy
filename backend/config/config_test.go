@@ -264,6 +264,10 @@ otp_ttl: "3m"
 google_client_id: "gcid"
 fazpass_base_url: "https://fazpass.example.com"
 midtrans_env: "production"
+smtp_host: "smtp.gmail.com"
+smtp_port: "587"
+smtp_from: "no-reply@example.com"
+smtp_from_name: "Abak Academy"
 object_storage_endpoint: "s3.example.com"
 object_storage_public_endpoint: "s3-public.example.com"
 object_storage_use_ssl: true
@@ -283,6 +287,8 @@ fazpass_merchant_key: "fz-merchant"
 fazpass_api_key: "fz-api"
 midtrans_server_key: "mt-server"
 midtrans_client_key: "mt-client"
+smtp_username: "smtp-user"
+smtp_password: "smtp-pass"
 `)
 
 	cfg, err := Load("dev", dir)
@@ -310,6 +316,12 @@ midtrans_client_key: "mt-client"
 		{"MidtransServerKey", cfg.MidtransServerKey, "mt-server"},
 		{"MidtransClientKey", cfg.MidtransClientKey, "mt-client"},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
+		{"SMTPHost", cfg.SMTPHost, "smtp.gmail.com"},
+		{"SMTPPort", cfg.SMTPPort, "587"},
+		{"SMTPFrom", cfg.SMTPFrom, "no-reply@example.com"},
+		{"SMTPFromName", cfg.SMTPFromName, "Abak Academy"},
+		{"SMTPUsername", cfg.SMTPUsername, "smtp-user"},
+		{"SMTPPassword", cfg.SMTPPassword, "smtp-pass"},
 		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "s3.example.com"},
 		{"ObjectStoragePublicEndpoint", cfg.ObjectStoragePublicEndpoint, "s3-public.example.com"},
 		{"ObjectStorageRegion", cfg.ObjectStorageRegion, "asia-southeast2"},

@@ -89,6 +89,18 @@ func main() {
 }
 
 func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailProvider) {
+	// SMTP (email OTP) takes precedence when configured — staging uses it.
+	if cfg.SMTPHost != "" {
+		sm := adapter.NewSMTPProvider(adapter.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			From:     cfg.SMTPFrom,
+			FromName: cfg.SMTPFromName,
+		})
+		return sm, sm
+	}
 	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
 		return &adapter.NoopOTPProvider{}, &adapter.NoopEmailProvider{}
 	}
