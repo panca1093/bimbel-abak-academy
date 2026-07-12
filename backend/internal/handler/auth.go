@@ -41,7 +41,7 @@ func (h *Handler) Login(c echo.Context) error {
 	if req.Identifier == "" || req.Password == "" {
 		return badRequest(c, "identifier and password are required")
 	}
-	access, refresh, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
+	access, refresh, _, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

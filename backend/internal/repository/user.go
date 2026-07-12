@@ -110,15 +110,6 @@ func (r *Repository) UpdatePasswordHash(ctx context.Context, userID, hash string
 	return err
 }
 
-// DisableOTP sets otp_enabled=false after the user verifies their registration.
-func (r *Repository) DisableOTP(ctx context.Context, userID string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET otp_enabled = false, updated_at = now() WHERE id = $1`,
-		userID,
-	)
-	return err
-}
-
 // ActivateUser transitions a pending_verification user to active in a single
 // UPDATE, so verification is atomic (no read-modify-write).
 func (r *Repository) ActivateUser(ctx context.Context, userID string) error {

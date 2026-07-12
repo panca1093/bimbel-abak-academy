@@ -128,15 +128,6 @@ func (f *fakeRepo) ListSchools(_ context.Context) ([]*model.School, error) {
 	return nil, nil
 }
 
-func (f *fakeRepo) DisableOTP(_ context.Context, userID string) error {
-	u, ok := f.byID[userID]
-	if !ok {
-		return fmt.Errorf("not found")
-	}
-	u.OTPEnabled = false
-	return nil
-}
-
 func (f *fakeRepo) ActivateUser(_ context.Context, userID string) error {
 	u, ok := f.byID[userID]
 	if !ok {

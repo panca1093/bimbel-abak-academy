@@ -25,7 +25,6 @@ type UserRepository interface {
 	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error
 	UpdateUserPhoto(ctx context.Context, userID, photoURL string) error
 	ListSchools(ctx context.Context) ([]*model.School, error)
-	DisableOTP(ctx context.Context, userID string) error
 	ActivateUser(ctx context.Context, userID string) error
 	TombstoneUser(ctx context.Context, userID string) error
 }
@@ -44,6 +43,7 @@ var (
 	ErrWeakPassword        = errors.New("password too weak")
 	ErrInvalidToken        = errors.New("invalid token")
 	ErrInvalidUUID         = errors.New("invalid uuid")
+	ErrVerificationPending = errors.New("email verification pending")
 )
 
 const minPasswordLen = 8
@@ -65,6 +65,9 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 		return "", err
 	}
 	if existing != nil {
+		if existing.Status == "pending_verification" {
+			return s.startOTPChallenge(ctx, existing)
+		}
 		return "", ErrEmailTaken
 	}
 
@@ -77,7 +80,7 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 		PasswordHash: string(hash),
 		Role:         RoleStudent,
 		Name:         name,
-		Status:       "active",
+		Status:       "pending_verification",
 		OTPEnabled:   true,
 	}
 	if err := s.repo.CreateUser(ctx, user); err != nil {
@@ -86,18 +89,30 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 	return s.startOTPChallenge(ctx, user)
 }
 
-func (s *Service) Login(ctx context.Context, identifier, password string) (accessToken string, refreshToken string, err error) {
+func (s *Service) Login(ctx context.Context, identifier, password string) (accessToken, refreshToken, pendingToken string, err error) {
 	user, err := s.lookupByIdentifier(ctx, identifier)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	if user == nil || user.Status != "active" {
-		return "", "", ErrInvalidCredentials
+	if user == nil {
+		return "", "", "", ErrInvalidCredentials
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
-		return "", "", ErrInvalidCredentials
+		return "", "", "", ErrInvalidCredentials
 	}
-	return s.mintSession(ctx, user)
+	switch user.Status {
+	case "active":
+		accessToken, refreshToken, err = s.mintSession(ctx, user)
+		return accessToken, refreshToken, "", err
+	case "pending_verification":
+		pendingToken, err = s.startOTPChallenge(ctx, user)
+		if err != nil {
+			return "", "", "", err
+		}
+		return "", "", pendingToken, ErrVerificationPending
+	default:
+		return "", "", "", ErrInvalidCredentials
+	}
 }
 
 func (s *Service) lookupByIdentifier(ctx context.Context, identifier string) (*model.User, error) {
@@ -204,7 +219,7 @@ func (s *Service) VerifyOTP(ctx context.Context, pendingToken, code string) (acc
 	if user == nil {
 		return "", "", ErrUserNotFound
 	}
-	if err := s.repo.DisableOTP(ctx, userID); err != nil {
+	if err := s.repo.ActivateUser(ctx, userID); err != nil {
 		return "", "", err
 	}
 	return s.mintSession(ctx, user)
