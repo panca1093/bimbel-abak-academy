@@ -284,6 +284,104 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 	return model.QuestionWithOptions{Question: q, Options: options}, nil
 }
 
+// AttachQuestions appends bank questions to a test. Already-attached questions are
+// idempotent (no duplicate, no error). Every supplied question must exist; the
+// test must exist (FR-21).
+func (s *Service) AttachQuestions(ctx context.Context, testID uuid.UUID, questionIDs []uuid.UUID) error {
+	if len(questionIDs) == 0 {
+		return fmt.Errorf("%w: question_ids cannot be empty", ErrValidation)
+	}
+	if _, err := s.storeRepo.GetTestByID(ctx, testID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrTestNotFound
+		}
+		return err
+	}
+
+	exists, err := s.storeRepo.CountQuestionsByIDs(ctx, questionIDs)
+	if err != nil {
+		return err
+	}
+	if exists != len(questionIDs) {
+		return ErrQuestionNotFound
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.AttachQuestionsToTestTx(ctx, tx, testID, questionIDs); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+// DetachQuestion removes only the test_question join row; the bank question and any
+// other attachments survive (FR-22).
+func (s *Service) DetachQuestion(ctx context.Context, testID, questionID uuid.UUID) error {
+	if _, err := s.storeRepo.GetTestByID(ctx, testID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrTestNotFound
+		}
+		return err
+	}
+	return s.storeRepo.DetachQuestionFromTest(ctx, testID, questionID)
+}
+
+// ReorderTestQuestions validates that the supplied id set equals the currently
+// attached set, then atomically rewrites sort_order to match the list position
+// (FR-23).
+func (s *Service) ReorderTestQuestions(ctx context.Context, testID uuid.UUID, orderedQuestionIDs []uuid.UUID) error {
+	if len(orderedQuestionIDs) == 0 {
+		return fmt.Errorf("%w: question_ids cannot be empty", ErrValidation)
+	}
+	if _, err := s.storeRepo.GetTestByID(ctx, testID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrTestNotFound
+		}
+		return err
+	}
+
+	attached, err := s.storeRepo.ListAttachedQuestionIDs(ctx, testID)
+	if err != nil {
+		return err
+	}
+	if !sameUUIDSet(attached, orderedQuestionIDs) {
+		return fmt.Errorf("%w: question_ids must match the current attached set", ErrValidation)
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.ReorderTestQuestionsTx(ctx, tx, testID, orderedQuestionIDs); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func sameUUIDSet(a, b []uuid.UUID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := make(map[uuid.UUID]bool, len(a))
+	for _, v := range a {
+		m[v] = true
+	}
+	for _, v := range b {
+		if !m[v] {
+			return false
+		}
+	}
+	return true
+}
+
 // CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
 func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
 	if err := validateQuestion(q, options); err != nil {

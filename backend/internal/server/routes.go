@@ -223,6 +223,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminTests.DELETE("/:id", h.AdminDeleteTest)
 	adminTests.GET("/:id/questions", h.AdminListQuestions)
 	adminTests.POST("/:id/questions", h.AdminCreateQuestion)
+	adminTests.POST("/:id/questions/attach", h.AdminAttachQuestions)
+	adminTests.DELETE("/:id/questions/:questionId", h.AdminDetachQuestion)
+	adminTests.PUT("/:id/questions/order", h.AdminReorderTestQuestions)
 
 	adminQuestions := admin.Group("/questions")
 	adminQuestions.Use(handler.RBACMiddleware("questions:*"))

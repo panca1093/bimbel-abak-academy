@@ -762,6 +762,13 @@ func countQuestionAttachments(t *testing.T, ctx context.Context, repo *repositor
 	return count
 }
 
+func listTestQuestions(t *testing.T, ctx context.Context, svc *Service, testID uuid.UUID) []model.QuestionWithOptions {
+	t.Helper()
+	detail, err := svc.GetTestDetail(ctx, testID)
+	require.NoError(t, err)
+	return detail.Questions
+}
+
 func TestCreateBankQuestion_creates_no_attachment(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
@@ -892,6 +899,159 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	require.Len(t, items, 1)
 	assert.Empty(t, nextCursor)
 	assert.False(t, page1IDs[items[0].ID], "cursor should advance to a new row")
+}
+
+// --- FR-21..FR-25: test ↔ question attach / detach / reorder ---
+
+func TestAttachQuestions_appends_after_max_order_and_is_idempotent(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Attach "+uniqueSuffix(), "math", "algebra")
+	q1 := seedBankQuestionDirect(t, ctx, repo, "short", "q1 "+uniqueSuffix())
+	q2 := seedBankQuestionDirect(t, ctx, repo, "short", "q2 "+uniqueSuffix())
+	q3 := seedBankQuestionDirect(t, ctx, repo, "short", "q3 "+uniqueSuffix())
+
+	// First attach: q1 and q2 get orders 1 and 2.
+	require.NoError(t, svc.AttachQuestions(ctx, testID, []uuid.UUID{q1, q2}))
+	questions := listTestQuestions(t, ctx, svc, testID)
+	require.Len(t, questions, 2)
+	assert.Equal(t, q1, questions[0].Question.ID)
+	assert.Equal(t, 1, questions[0].SortOrder)
+	assert.Equal(t, q2, questions[1].Question.ID)
+	assert.Equal(t, 2, questions[1].SortOrder)
+
+	// Second attach includes an already-attached q2 plus a new q3: q3 appends as order 3.
+	require.NoError(t, svc.AttachQuestions(ctx, testID, []uuid.UUID{q2, q3}))
+	questions = listTestQuestions(t, ctx, svc, testID)
+	require.Len(t, questions, 3)
+	assert.Equal(t, q3, questions[2].Question.ID)
+	assert.Equal(t, 3, questions[2].SortOrder)
+}
+
+func TestAttachQuestions_rejects_missing_test(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	missingTest := uuid.New()
+	q := uuid.New()
+	err := svc.AttachQuestions(ctx, missingTest, []uuid.UUID{q})
+	assert.ErrorIs(t, err, ErrTestNotFound)
+}
+
+func TestAttachQuestions_rejects_missing_question(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Attach "+uniqueSuffix(), "math", "algebra")
+	realQ := seedBankQuestionDirect(t, ctx, repo, "short", "real "+uniqueSuffix())
+	missingQ := uuid.New()
+
+	err := svc.AttachQuestions(ctx, testID, []uuid.UUID{realQ, missingQ})
+	assert.ErrorIs(t, err, ErrQuestionNotFound)
+
+	// No partial attachment must occur.
+	assert.Equal(t, 0, countQuestionAttachments(t, ctx, repo, realQ))
+}
+
+func TestDetachQuestion_removes_only_join(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testA := seedTestDirect(t, ctx, repo, "A "+uniqueSuffix(), "math", "algebra")
+	testB := seedTestDirect(t, ctx, repo, "B "+uniqueSuffix(), "math", "algebra")
+	q := seedBankQuestionDirect(t, ctx, repo, "short", "shared "+uniqueSuffix())
+	attachQuestionDirect(t, ctx, repo, testA, q, 0)
+	attachQuestionDirect(t, ctx, repo, testB, q, 0)
+
+	require.NoError(t, svc.DetachQuestion(ctx, testA, q))
+
+	assert.Equal(t, 1, countQuestionAttachments(t, ctx, repo, q))
+	questionsA := listTestQuestions(t, ctx, svc, testA)
+	assert.Len(t, questionsA, 0)
+	questionsB := listTestQuestions(t, ctx, svc, testB)
+	assert.Len(t, questionsB, 1)
+
+	// Bank question survives.
+	var exists bool
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, q).Scan(&exists))
+	assert.True(t, exists)
+}
+
+func TestDetachQuestion_rejects_missing_test(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	err := svc.DetachQuestion(ctx, uuid.New(), uuid.New())
+	assert.ErrorIs(t, err, ErrTestNotFound)
+}
+
+func TestReorderTestQuestions_rewrites_order_without_conflict(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Reorder "+uniqueSuffix(), "math", "algebra")
+	q1 := seedBankQuestionDirect(t, ctx, repo, "short", "r1 "+uniqueSuffix())
+	q2 := seedBankQuestionDirect(t, ctx, repo, "short", "r2 "+uniqueSuffix())
+	q3 := seedBankQuestionDirect(t, ctx, repo, "short", "r3 "+uniqueSuffix())
+	attachQuestionDirect(t, ctx, repo, testID, q1, 0)
+	attachQuestionDirect(t, ctx, repo, testID, q2, 1)
+	attachQuestionDirect(t, ctx, repo, testID, q3, 2)
+
+	// Reverse the order.
+	require.NoError(t, svc.ReorderTestQuestions(ctx, testID, []uuid.UUID{q3, q2, q1}))
+
+	questions := listTestQuestions(t, ctx, svc, testID)
+	require.Len(t, questions, 3)
+	assert.Equal(t, q3, questions[0].Question.ID)
+	assert.Equal(t, 0, questions[0].SortOrder)
+	assert.Equal(t, q2, questions[1].Question.ID)
+	assert.Equal(t, 1, questions[1].SortOrder)
+	assert.Equal(t, q1, questions[2].Question.ID)
+	assert.Equal(t, 2, questions[2].SortOrder)
+}
+
+func TestReorderTestQuestions_rejects_mismatched_set(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Reorder "+uniqueSuffix(), "math", "algebra")
+	q1 := seedBankQuestionDirect(t, ctx, repo, "short", "m1 "+uniqueSuffix())
+	q2 := seedBankQuestionDirect(t, ctx, repo, "short", "m2 "+uniqueSuffix())
+	attachQuestionDirect(t, ctx, repo, testID, q1, 0)
+	attachQuestionDirect(t, ctx, repo, testID, q2, 1)
+
+	// Missing q2, extra q3 (not attached).
+	q3 := seedBankQuestionDirect(t, ctx, repo, "short", "m3 "+uniqueSuffix())
+	err := svc.ReorderTestQuestions(ctx, testID, []uuid.UUID{q1, q3})
+	assert.ErrorIs(t, err, ErrValidation)
+	assert.Contains(t, err.Error(), "must match the current attached set")
+}
+
+func TestCreateQuestionForTest_creates_bank_question_and_join(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "CreateInTest "+uniqueSuffix(), "math", "algebra")
+	// Pre-attach one question so the new one appends after it.
+	existingQ := seedBankQuestionDirect(t, ctx, repo, "short", "existing "+uniqueSuffix())
+	attachQuestionDirect(t, ctx, repo, testID, existingQ, 0)
+
+	q := model.Question{Format: "essay", Body: "explain relativity", PointCorrect: 1, PointWrong: 0}
+	out, err := svc.CreateQuestionForTest(ctx, testID, q, nil)
+	require.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, out.Question.ID)
+
+	// It lives in the bank.
+	var exists bool
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, out.Question.ID).Scan(&exists))
+	assert.True(t, exists)
+
+	// It is attached to the test as the last item.
+	questions := listTestQuestions(t, ctx, svc, testID)
+	require.Len(t, questions, 2)
+	assert.Equal(t, out.Question.ID, questions[1].Question.ID)
+	assert.Equal(t, 1, questions[1].SortOrder)
 }
 
 // suppress unused: uuid is imported to avoid unused-import lint if tests get trimmed later

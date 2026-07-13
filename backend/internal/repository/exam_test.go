@@ -24,6 +24,12 @@ var _ interface {
 	CreateQuestionTx(context.Context, pgx.Tx, *model.Question, []model.QuestionOption) error
 	UpdateQuestionTx(context.Context, pgx.Tx, *model.Question, []model.QuestionOption) error
 	DeleteQuestion(context.Context, uuid.UUID) error
+	CountQuestionsByIDs(context.Context, []uuid.UUID) (int, error)
+	ListAttachedQuestionIDs(context.Context, uuid.UUID) ([]uuid.UUID, error)
+	GetMaxSortOrderForTestTx(context.Context, pgx.Tx, uuid.UUID) (int, error)
+	AttachQuestionsToTestTx(context.Context, pgx.Tx, uuid.UUID, []uuid.UUID) error
+	DetachQuestionFromTest(context.Context, uuid.UUID, uuid.UUID) error
+	ReorderTestQuestionsTx(context.Context, pgx.Tx, uuid.UUID, []uuid.UUID) error
 } = (*Repository)(nil)
 
 // Compile-time check: *Repository must implement all exam repository methods added

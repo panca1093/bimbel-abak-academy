@@ -421,6 +421,45 @@ func (r *Repository) CountQuestionAttachments(ctx context.Context, id uuid.UUID)
 	return count, nil
 }
 
+// CountQuestionsByIDs returns how many of the supplied IDs exist in the question table.
+func (r *Repository) CountQuestionsByIDs(ctx context.Context, ids []uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM question WHERE id = ANY($1)`,
+		ids,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// ListAttachedQuestionIDs returns the question_ids attached to a test, ordered by
+// sort_order.
+func (r *Repository) ListAttachedQuestionIDs(ctx context.Context, testID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT question_id FROM test_question WHERE test_id = $1 ORDER BY sort_order`,
+		testID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // CountAnswerReferences returns the number of exam_session_answer rows for a question.
 func (r *Repository) CountAnswerReferences(ctx context.Context, id uuid.UUID) (int, error) {
 	var count int
@@ -531,19 +570,108 @@ WHERE 1=1`
 // next sort_order. Attaching an already-attached question is idempotent (no duplicate,
 // no error — FR-21).
 func (r *Repository) AttachQuestionToTestTx(ctx context.Context, tx pgx.Tx, testID, questionID uuid.UUID) error {
-	var nextOrder int
-	if err := tx.QueryRow(ctx,
-		`SELECT COALESCE(MAX(sort_order), 0) + 1 FROM test_question WHERE test_id = $1`,
-		testID,
-	).Scan(&nextOrder); err != nil {
+	nextOrder, err := r.GetMaxSortOrderForTestTx(ctx, tx, testID)
+	if err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx,
+	nextOrder++
+	_, err = tx.Exec(ctx,
 		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)
 		ON CONFLICT (test_id, question_id) DO NOTHING`,
 		testID, questionID, nextOrder,
 	)
 	return err
+}
+
+// GetMaxSortOrderForTestTx returns the current maximum sort_order for a test, or 0
+// when the test has no attached questions.
+func (r *Repository) GetMaxSortOrderForTestTx(ctx context.Context, tx pgx.Tx, testID uuid.UUID) (int, error) {
+	var maxOrder int
+	err := tx.QueryRow(ctx,
+		`SELECT COALESCE(MAX(sort_order), 0) FROM test_question WHERE test_id = $1`,
+		testID,
+	).Scan(&maxOrder)
+	return maxOrder, err
+}
+
+// AttachQuestionsToTestTx attaches a batch of bank questions to a test, appending
+// after the current max sort_order and skipping already-attached questions (FR-21).
+func (r *Repository) AttachQuestionsToTestTx(ctx context.Context, tx pgx.Tx, testID uuid.UUID, questionIDs []uuid.UUID) error {
+	maxOrder, err := r.GetMaxSortOrderForTestTx(ctx, tx, testID)
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(ctx,
+		`SELECT question_id FROM test_question WHERE test_id = $1`,
+		testID,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	existing := make(map[uuid.UUID]bool)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		existing[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	nextOrder := maxOrder + 1
+	for _, qid := range questionIDs {
+		if existing[qid] {
+			continue
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
+			testID, qid, nextOrder,
+		); err != nil {
+			return err
+		}
+		nextOrder++
+	}
+	return nil
+}
+
+// DetachQuestionFromTest removes the test_question join row for (testID, questionID).
+// It is idempotent: deleting a non-existent attachment returns no error (FR-22).
+func (r *Repository) DetachQuestionFromTest(ctx context.Context, testID, questionID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx,
+		`DELETE FROM test_question WHERE test_id = $1 AND question_id = $2`,
+		testID, questionID,
+	)
+	return err
+}
+
+// ReorderTestQuestionsTx atomically rewrites sort_order for all attached questions
+// to match the provided order. The offset rewrite avoids UNIQUE(test_id, sort_order)
+// conflicts during the update (FR-23).
+func (r *Repository) ReorderTestQuestionsTx(ctx context.Context, tx pgx.Tx, testID uuid.UUID, orderedQuestionIDs []uuid.UUID) error {
+	// Shift existing orders far out of range so the subsequent per-row updates cannot
+	// collide with each other or with stale values under the unique index.
+	offset := len(orderedQuestionIDs) + 1000000
+	if _, err := tx.Exec(ctx,
+		`UPDATE test_question SET sort_order = sort_order + $1 WHERE test_id = $2`,
+		offset, testID,
+	); err != nil {
+		return err
+	}
+
+	for i, qid := range orderedQuestionIDs {
+		if _, err := tx.Exec(ctx,
+			`UPDATE test_question SET sort_order = $1 WHERE test_id = $2 AND question_id = $3`,
+			i, testID, qid,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, options []model.QuestionOption) error {

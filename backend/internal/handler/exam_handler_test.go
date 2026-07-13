@@ -48,6 +48,9 @@ func TestExamSessionRoutes_Registered(t *testing.T) {
 		{"POST", "/api/v1/admin/topics"},
 		{"PATCH", "/api/v1/admin/topics/:id"},
 		{"DELETE", "/api/v1/admin/topics/:id"},
+		{"POST", "/api/v1/admin/tests/:id/questions/attach"},
+		{"DELETE", "/api/v1/admin/tests/:id/questions/:questionId"},
+		{"PUT", "/api/v1/admin/tests/:id/questions/order"},
 	}
 
 	for _, exp := range expected {

@@ -187,6 +187,92 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 	return c.JSON(http.StatusCreated, out)
 }
 
+// AdminAttachQuestions attaches one or many bank questions to a test (FR-21).
+func (h *Handler) AdminAttachQuestions(c echo.Context) error {
+	testID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+
+	var req struct {
+		QuestionID  string   `json:"question_id"`
+		QuestionIDs []string `json:"question_ids"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	ids := req.QuestionIDs
+	if len(ids) == 0 && req.QuestionID != "" {
+		ids = []string{req.QuestionID}
+	}
+	if len(ids) == 0 {
+		return badRequest(c, "question_id or question_ids required")
+	}
+
+	questionIDs := make([]uuid.UUID, 0, len(ids))
+	for _, raw := range ids {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return badRequest(c, "invalid question_id")
+		}
+		questionIDs = append(questionIDs, id)
+	}
+
+	if err := h.svc.AttachQuestions(c.Request().Context(), testID, questionIDs); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// AdminDetachQuestion removes a question attachment from a test (FR-22).
+func (h *Handler) AdminDetachQuestion(c echo.Context) error {
+	testID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	questionID, err := uuid.Parse(c.Param("questionId"))
+	if err != nil {
+		return badRequest(c, "invalid question id")
+	}
+	if err := h.svc.DetachQuestion(c.Request().Context(), testID, questionID); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// AdminReorderTestQuestions rewrites the order of attached questions (FR-23).
+func (h *Handler) AdminReorderTestQuestions(c echo.Context) error {
+	testID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+
+	var req struct {
+		QuestionIDs []string `json:"question_ids"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if len(req.QuestionIDs) == 0 {
+		return badRequest(c, "question_ids required")
+	}
+
+	questionIDs := make([]uuid.UUID, 0, len(req.QuestionIDs))
+	for _, raw := range req.QuestionIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return badRequest(c, "invalid question_id")
+		}
+		questionIDs = append(questionIDs, id)
+	}
+
+	if err := h.svc.ReorderTestQuestions(c.Request().Context(), testID, questionIDs); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 	qID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
