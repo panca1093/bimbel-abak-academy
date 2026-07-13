@@ -423,6 +423,7 @@ export const DICT = {
     auth_back: "Kembali",
     auth_show_password: "Tampilkan kata sandi",
     auth_hide_password: "Sembunyikan kata sandi",
+    auth_or_divider: "atau",
 
     /* Auth — login */
     login_eyebrow: "Selamat datang kembali",
@@ -1302,6 +1303,7 @@ export const DICT = {
     auth_back: "Back",
     auth_show_password: "Show password",
     auth_hide_password: "Hide password",
+    auth_or_divider: "or",
 
     /* Auth — login */
     login_eyebrow: "Welcome back",
