@@ -435,7 +435,6 @@ export interface Test {
 
 export interface Question {
   id: string;
-  test_id: string;
   format: QuestionFormat;
   body: string;
   correct_answer?: string | null;
@@ -445,6 +444,27 @@ export interface Question {
   sort_order: number;
   point_correct: number;
   point_wrong: number;
+  topic_id?: string | null;
+  topic?: string | null;
+}
+
+export interface ExamTopic {
+  id: string;
+  name: string;
+  subject: string;
+  question_count?: number;
+  created_at?: string;
+}
+
+export interface BankQuestionListItem {
+  question: Question;
+  options: QuestionOption[];
+  attached_count: number;
+}
+
+export interface BankQuestionListResponse {
+  data: BankQuestionListItem[];
+  next_cursor?: string;
 }
 
 export interface QuestionOption {
@@ -505,6 +525,15 @@ export interface AdminQuestionInput {
   options?: AdminQuestionOptionInput[];
   point_correct?: number;
   point_wrong?: number;
+  topic_id?: string;
+}
+
+export interface AdminAttachQuestionsInput {
+  question_ids: string[];
+}
+
+export interface AdminReorderQuestionsInput {
+  question_ids: string[];
 }
 
 export interface TestListResponse {

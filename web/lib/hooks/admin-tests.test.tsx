@@ -10,8 +10,12 @@ import {
   useTestQuestions,
   useSaveQuestion,
   useDeleteQuestion,
+  useAttachQuestions,
+  useDetachQuestion,
+  useReorderTestQuestions,
   adminTestsKeys,
 } from "./admin-tests";
+import { adminBankQuestionsKeys } from "./admin-bank-questions";
 
 const mockAuthFetch = vi.fn();
 
@@ -201,7 +205,8 @@ describe("admin-tests hooks", () => {
         {
           question: {
             id: "q1",
-            test_id: "t1",
+            topic_id: null,
+            topic: null,
             format: "mcq",
             body: "What is 1+1?",
             sort_order: 1,
@@ -259,6 +264,9 @@ describe("admin-tests hooks", () => {
     expect(spy).toHaveBeenCalledWith({
       queryKey: adminTestsKeys.questions("t1"),
     });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: adminBankQuestionsKeys.lists(),
+    });
   });
 
   it("useSaveQuestion_routes_to_PATCH_when_id_present", async () => {
@@ -292,6 +300,9 @@ describe("admin-tests hooks", () => {
     expect(spy).toHaveBeenCalledWith({
       queryKey: adminTestsKeys.questions("t1"),
     });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: adminBankQuestionsKeys.lists(),
+    });
   });
 
   it("useDeleteQuestion_calls_DELETE", async () => {
@@ -307,6 +318,74 @@ describe("admin-tests hooks", () => {
 
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/questions/q1", {
       method: "DELETE",
+    });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: adminTestsKeys.questions("t1"),
+    });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: adminBankQuestionsKeys.lists(),
+    });
+  });
+
+  it("useAttachQuestions_calls_POST_attach", async () => {
+    mockAuthFetch.mockResolvedValueOnce(undefined);
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useAttachQuestions("t1"), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ question_ids: ["q1", "q2"] });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/tests/t1/questions/attach", {
+      method: "POST",
+      body: JSON.stringify({ question_ids: ["q1", "q2"] }),
+    });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: adminTestsKeys.questions("t1"),
+    });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: adminBankQuestionsKeys.lists(),
+    });
+  });
+
+  it("useDetachQuestion_calls_DELETE_join", async () => {
+    mockAuthFetch.mockResolvedValueOnce(undefined);
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useDetachQuestion("t1"), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync("q1");
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/tests/t1/questions/q1", {
+      method: "DELETE",
+    });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: adminTestsKeys.questions("t1"),
+    });
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: adminBankQuestionsKeys.lists(),
+    });
+  });
+
+  it("useReorderTestQuestions_calls_PUT_order", async () => {
+    mockAuthFetch.mockResolvedValueOnce(undefined);
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useReorderTestQuestions("t1"), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ question_ids: ["q2", "q1"] });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/tests/t1/questions/order", {
+      method: "PUT",
+      body: JSON.stringify({ question_ids: ["q2", "q1"] }),
     });
     expect(spy).toHaveBeenCalledWith({
       queryKey: adminTestsKeys.questions("t1"),

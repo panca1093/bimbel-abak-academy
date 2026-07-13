@@ -19,12 +19,13 @@ function renderWithClient(ui: React.ReactNode) {
 function makeQuestion(overrides: Partial<Question> = {}): Question {
   return {
     id: "q1",
-    test_id: "test-1",
     format: "mcq" as QuestionFormat,
     body: "Apa ibu kota Indonesia?",
     sort_order: 1,
     point_correct: 1,
     point_wrong: 0,
+    topic_id: null,
+    topic: null,
     ...overrides,
   };
 }
