@@ -11,9 +11,12 @@ import (
 // AdminListStudents returns cursor-paginated students scoped to the caller's school.
 func (h *Handler) AdminListStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	statusFilter := c.QueryParam("status")
@@ -30,7 +33,7 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 		}
 	}
 
-	students, nextCursor, err := h.svc.ListStudents(c.Request().Context(), *schoolID, statusFilter, q, limit, cursor)
+	students, nextCursor, err := h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -44,9 +47,12 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 // AdminRegisterStudent creates a new student under the caller's school.
 func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	var req struct {
@@ -75,7 +81,7 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 		dob = &parsed
 	}
 
-	resp, err := h.svc.RegisterStudent(c.Request().Context(), *schoolID, req.Name, req.NIS, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam)
+	resp, err := h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.NIS, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -85,9 +91,12 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 // AdminChangeStudentStatus toggles a student's active/deactivated status.
 func (h *Handler) AdminChangeStudentStatus(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	id := c.Param("id")
@@ -102,7 +111,7 @@ func (h *Handler) AdminChangeStudentStatus(c echo.Context) error {
 		return badRequest(c, "status must be active or deactivated")
 	}
 
-	if err := h.svc.ChangeStudentStatus(c.Request().Context(), *schoolID, id, req.Status); err != nil {
+	if err := h.svc.ChangeStudentStatus(c.Request().Context(), schoolID, id, req.Status); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "status updated"})
@@ -111,14 +120,17 @@ func (h *Handler) AdminChangeStudentStatus(c echo.Context) error {
 // AdminGetStudentCredentials resets and reissues a student's credentials.
 func (h *Handler) AdminGetStudentCredentials(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	id := c.Param("id")
 
-	resp, err := h.svc.ReissueStudentCredentials(c.Request().Context(), *schoolID, id)
+	resp, err := h.svc.ReissueStudentCredentials(c.Request().Context(), schoolID, id)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

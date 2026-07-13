@@ -289,12 +289,30 @@ func (s *shimCourseService) UpdateCourse(ctx context.Context, id, title, level, 
 	if err != nil {
 		return model.Course{}, err
 	}
+
+	// Fetch existing to preserve fields not sent by partial PATCH.
+	existing, err := s.fake.GetCourseByID(ctx, courseID)
+	if err != nil {
+		return model.Course{}, err
+	}
+
 	c := model.Course{
 		Title:          title,
 		Level:          level,
 		Subject:        subject,
 		InstructorName: instructorName,
 	}
+	// Preserve existing values for any field not supplied (zero-value).
+	if c.Level == "" {
+		c.Level = existing.Level
+	}
+	if c.Subject == "" {
+		c.Subject = existing.Subject
+	}
+	if c.InstructorName == "" {
+		c.InstructorName = existing.InstructorName
+	}
+
 	return s.fake.UpdateCourse(ctx, courseID, c)
 }
 
@@ -669,6 +687,10 @@ func TestCreateCourse_RejectsNonStoreRole(t *testing.T) {
 	}
 }
 
+// UpdateCourse preserve-fields regression: see
+// integration/TestUpdateCourse_PreservesTitleAndFields_RealService (real service +
+// Postgres; the shim-based test here was tautological and did not cover title).
+
 // Test: UpdateCourse rejects non-store role
 func TestUpdateCourse_RejectsNonStoreRole(t *testing.T) {
 	ctx := context.Background()
@@ -967,6 +989,10 @@ func TestLesson_RejectsNonStoreRole(t *testing.T) {
 		t.Errorf("want ErrForbidden for student ReorderLessons, got %v", err)
 	}
 }
+
+// UpdateLesson position-preservation regression: see
+// integration/TestUpdateLesson_PreservesPosition_RealRepo (real Postgres +
+// Repository.UpdateLesson; the fake-repo test here was tautological).
 
 // --- Student-facing course tests ---
 

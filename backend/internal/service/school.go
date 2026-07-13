@@ -164,6 +164,15 @@ func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alama
 	}, nil
 }
 
+// SchoolExists checks whether a school with the given ID exists.
+func (s *Service) SchoolExists(ctx context.Context, id string) (bool, error) {
+	school, err := s.storeRepo.GetSchoolByID(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return school != nil, nil
+}
+
 // ChangeSchoolStatus sets a school's status to active or deactivated.
 func (s *Service) ChangeSchoolStatus(ctx context.Context, id, status string) (*SchoolResponse, error) {
 	if status != "active" && status != "deactivated" {

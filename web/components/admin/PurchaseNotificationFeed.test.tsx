@@ -136,4 +136,14 @@ describe("PurchaseNotificationFeed", () => {
 
     expect(screen.getByText("Belum ada notifikasi")).toBeInTheDocument();
   });
+
+  it("renders empty state without crash when data.data is null", () => {
+    mockUseAdminNotifications.mockReturnValue(
+      buildQueryResult({ data: { data: null, next_cursor: "" } })
+    );
+
+    render(<PurchaseNotificationFeed />);
+
+    expect(screen.getByText("Belum ada notifikasi")).toBeInTheDocument();
+  });
 });

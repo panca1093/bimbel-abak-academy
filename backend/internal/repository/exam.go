@@ -207,7 +207,7 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	}
 	defer rows.Close()
 
-	var tests []model.Test
+	tests := []model.Test{}
 	for rows.Next() {
 		t := model.Test{}
 		if err := scanTestWithCount(rows, &t); err != nil {
@@ -259,7 +259,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 	}
 	defer rows.Close()
 
-	var questions []model.Question
+	questions := []model.Question{}
 	for rows.Next() {
 		q := model.Question{}
 		if err := scanQuestion(rows, &q); err != nil {
@@ -272,7 +272,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 	}
 
 	if len(questions) == 0 {
-		return nil, nil
+		return []model.QuestionWithOptions{}, nil
 	}
 
 	questionIDs := make([]uuid.UUID, len(questions))
@@ -568,7 +568,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	}
 	defer rows.Close()
 
-	var items []model.ExamListItem
+	items := []model.ExamListItem{}
 	for rows.Next() {
 		var item model.ExamListItem
 		if err := scanExamListItem(rows, &item); err != nil {
@@ -1396,7 +1396,7 @@ func (r *Repository) ListExamLeaderboard(ctx context.Context, examID uuid.UUID, 
 	}
 	defer rows.Close()
 
-	var entries []model.ExamLeaderboardEntry
+	entries := []model.ExamLeaderboardEntry{}
 	for rows.Next() {
 		var e model.ExamLeaderboardEntry
 		if err := rows.Scan(&e.SessionID, &e.StudentID, &e.StudentName, &e.Score, &e.Rank); err != nil {

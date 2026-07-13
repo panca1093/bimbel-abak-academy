@@ -108,6 +108,79 @@ func TestAdmin(t *testing.T) {
 		assert.Equal(t, "forbidden", body["code"], "error code must be 'forbidden'")
 	})
 
+	// BUG-A: Empty list endpoints return [] not null.
+	t.Run("empty list endpoints return [] not null", func(t *testing.T) {
+		adminID := seedUser(t, env, "super_admin", "active", false)
+		adminToken := authToken(t, env, adminID, "super_admin")
+
+		// Products list — no RBAC, just JWT.
+		resp := env.doJSON(t, http.MethodGet, "/api/v1/admin/products", nil, adminToken)
+		body := decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok := body["data"].([]any)
+		require.True(t, ok, "products data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+
+		// Promo codes list — super_admin has promos:write via wildcard, no seed data.
+		resp = env.doJSON(t, http.MethodGet, "/api/v1/admin/promo-codes", nil, adminToken)
+		body = decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok = body["data"].([]any)
+		require.True(t, ok, "promo-codes data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+
+		// Courses list — no courses seeded.
+		resp = env.doJSON(t, http.MethodGet, "/api/v1/admin/courses", nil, adminToken)
+		body = decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok = body["data"].([]any)
+		require.True(t, ok, "courses data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+
+		// Tests list — no tests seeded.
+		resp = env.doJSON(t, http.MethodGet, "/api/v1/admin/tests", nil, adminToken)
+		body = decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok = body["data"].([]any)
+		require.True(t, ok, "tests data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+
+		// Exams list — no exams seeded.
+		resp = env.doJSON(t, http.MethodGet, "/api/v1/admin/exams", nil, adminToken)
+		body = decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok = body["data"].([]any)
+		require.True(t, ok, "exams data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+
+		// Sections list — seed a course with no sections, then list its sections.
+		courseID := seedCourse(t, env, "Empty Sections Course")
+		resp = env.doJSON(t, http.MethodGet, "/api/v1/admin/courses/"+courseID+"/sections", nil, adminToken)
+		body = decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok = body["data"].([]any)
+		require.True(t, ok, "sections data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+
+		// Questions list — seed a test with no questions, then list its questions.
+		testID := seedTest(t, env, "Empty Q Test", "math", "algebra", 30)
+		resp = env.doJSON(t, http.MethodGet, "/api/v1/admin/tests/"+testID+"/questions", nil, adminToken)
+		body = decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok = body["data"].([]any)
+		require.True(t, ok, "questions data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+
+		// Exam leaderboard — seed an exam with no sessions, then fetch its leaderboard.
+		examID := seedExam(t, env, "Empty Leaderboard Exam", "score_only", nil)
+		resp = env.doJSON(t, http.MethodGet, "/api/v1/admin/exams/"+examID+"/leaderboard", nil, adminToken)
+		body = decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok = body["data"].([]any)
+		require.True(t, ok, "exam leaderboard data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+	})
+
 	// FR-INT-24: Validate promo computes discount against a real DB row.
 	t.Run("FR-INT-24 validate promo computes discount against real DB row", func(t *testing.T) {
 		discountPct := 10.0

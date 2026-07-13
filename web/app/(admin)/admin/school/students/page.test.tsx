@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import { toast } from "sonner";
 import SchoolStudentsPage from "./page";
-import type { AdminStudent, StudentRegistrationResult, StudentCredentials } from "@/lib/types";
+import type { AdminStudent, StudentRegistrationResult, StudentCredentials, School } from "@/lib/types";
 
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
@@ -20,11 +20,35 @@ let registerState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPendin
 let changeStatusState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 let reissueState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
 
+// Auth store mock
+let authStore: {
+  token: string | null;
+  user: { role?: string; name?: string } | null;
+} = {
+  token: "t",
+  user: { role: "admin_school" },
+};
+
+// Schools mock
+let schoolsState = {
+  data: null as { data: School[]; next_cursor?: string } | null,
+  isLoading: false,
+  isError: false,
+};
+
 vi.mock("@/lib/hooks/admin-students", () => ({
   useAdminStudents: () => studentsState,
   useRegisterStudent: () => registerState,
   useChangeStudentStatus: () => changeStatusState,
   useReissueStudentCredentials: () => reissueState,
+}));
+
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
+}));
+
+vi.mock("@/lib/hooks/admin-schools", () => ({
+  useAdminSchools: () => schoolsState,
 }));
 
 vi.mock("sonner", () => ({
@@ -63,6 +87,15 @@ const paginatedResponse = (students: AdminStudent[]) => ({
 
 describe("SchoolStudentsPage", () => {
   beforeEach(() => {
+    authStore = {
+      token: "t",
+      user: { role: "admin_school" },
+    };
+    schoolsState = {
+      data: { data: [{ id: "s1", name: "SMAN 1 Jakarta" }, { id: "s2", name: "SMAN 2 Bandung" }], next_cursor: undefined },
+      isLoading: false,
+      isError: false,
+    };
     studentsState = {
       data: paginatedResponse(sampleStudents),
       isLoading: false,
@@ -173,7 +206,9 @@ describe("SchoolStudentsPage", () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Dewi Lestari", nis: "11111" }),
+        expect.objectContaining({
+          input: expect.objectContaining({ name: "Dewi Lestari", nis: "11111" }),
+        }),
       );
       expect(toast.success).toHaveBeenCalledWith("Siswa berhasil didaftarkan.");
     });
@@ -249,7 +284,9 @@ describe("SchoolStudentsPage", () => {
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith("st1");
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "st1" }),
+      );
       expect(toast.success).toHaveBeenCalledWith("Kredensial baru berhasil diterbitkan.");
     });
 
@@ -304,5 +341,34 @@ describe("SchoolStudentsPage", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("gagal register");
     });
+  });
+
+  // ── School dropdown (Bug B) ──
+
+  it("shows school dropdown for super_admin role", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+
+    // The school combobox should appear
+    const schoolPicker = screen.getByRole("combobox", { name: /sekolah/i });
+    expect(schoolPicker).toBeInTheDocument();
+  });
+
+  it("does not show school dropdown for admin_school role", async () => {
+    authStore = { token: "t", user: { role: "admin_school" } };
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+
+    // No school combobox should exist
+    expect(screen.queryByRole("combobox", { name: /sekolah/i })).not.toBeInTheDocument();
   });
 });

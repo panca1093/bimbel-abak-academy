@@ -16,7 +16,7 @@ export function useProducts(type?: ProductType) {
     queryFn: async () => {
       const qs = type ? `?type=${encodeURIComponent(type)}` : "";
       const res = await apiFetch<{ data: Product[]; next_cursor?: string }>(`/products${qs}`);
-      return res.data;
+      return res.data ?? [];
     },
   });
 }

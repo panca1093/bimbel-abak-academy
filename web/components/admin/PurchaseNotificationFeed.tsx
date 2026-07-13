@@ -32,7 +32,7 @@ export function PurchaseNotificationFeed() {
 
   useEffect(() => {
     if (!query.data) return;
-    const items = query.data.data;
+    const items = query.data.data ?? [];
     if (!cursor) {
       setAllItems(items);
     } else {
