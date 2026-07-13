@@ -79,6 +79,26 @@ export function useLogout() {
   });
 }
 
+export interface GoogleLoginInput {
+  id_token: string;
+}
+
+export function useGoogleLogin() {
+  const setSession = useAuthStore((s) => s.setSession);
+  return useMutation({
+    mutationFn: (input: GoogleLoginInput) =>
+      apiFetch<LoginResponse>(`/auth/google`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (data) => {
+      if (data.access_token && data.user) {
+        setSession(data.access_token, data.refresh_token ?? "", data.user);
+      }
+    },
+  });
+}
+
 export function useMe(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["auth", "me"],
