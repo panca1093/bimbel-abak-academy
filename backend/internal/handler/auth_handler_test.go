@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,6 +198,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 168 * time.Hour,
 		OTPTTL:          5 * time.Minute,
+		GoogleClientID:  "handler-google-client",
 	}
 	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	repo := newFakeRepo()
@@ -209,6 +211,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	auth := v1.Group("/auth")
 	auth.POST("/register", h.Register)
 	auth.POST("/login", h.Login, handler.LoginRateLimiter())
+	auth.POST("/google", h.GoogleLogin)
 	auth.POST("/otp/send", h.SendOTP)
 	auth.POST("/otp/verify", h.VerifyOTP)
 	auth.POST("/logout", h.Logout, handler.JWTMiddleware(svc, signer))
@@ -335,6 +338,60 @@ func TestLoginHandler_HappyPath(t *testing.T) {
 	}
 }
 
+func TestGoogleLoginHandler_ResponseIncludesProfileGateFields(t *testing.T) {
+	tokenInfo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"aud":            "handler-google-client",
+			"email":          "google@example.com",
+			"email_verified": "true",
+			"name":           "Google Student",
+		})
+	}))
+	t.Cleanup(tokenInfo.Close)
+
+	originalTransport := http.DefaultClient.Transport
+	http.DefaultClient.Transport = googleTokenInfoTransport{fakeURL: tokenInfo.URL}
+	t.Cleanup(func() { http.DefaultClient.Transport = originalTransport })
+
+	env := newTestEnv(t)
+	schoolID := "school-db"
+	grade := 12
+	env.repo.seed(&model.User{
+		ID:           "google-user",
+		Email:        strptr("google@example.com"),
+		Role:         service.RoleStudent,
+		Status:       "active",
+		AuthProvider: "google",
+		SchoolID:     &schoolID,
+		Grade:        &grade,
+	})
+
+	rec := postJSON(t, env.e, "/api/v1/auth/google", map[string]string{
+		"id_token": "google-id-token",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	user, ok := resp["user"].(map[string]any)
+	if !ok {
+		t.Fatalf("want user object, got %T", resp["user"])
+	}
+	if got := user["auth_provider"]; got != "google" {
+		t.Errorf("auth_provider: want google, got %v", got)
+	}
+	if got := user["school_id"]; got != schoolID {
+		t.Errorf("school_id: want %s, got %v", schoolID, got)
+	}
+	if got := user["grade"]; got != float64(grade) {
+		t.Errorf("grade: want %d, got %v", grade, got)
+	}
+}
+
 func TestVerifyOTPHandler_HappyPath(t *testing.T) {
 	env := newTestEnv(t)
 
@@ -432,12 +489,14 @@ func TestLoginHandler_RateLimit(t *testing.T) {
 func TestMeHandler_ValidToken(t *testing.T) {
 	env := newTestEnv(t)
 	email := "me@example.com"
+	jwtSchoolID := "school-jwt"
 	env.repo.seed(&model.User{
 		ID:           "u1",
 		Email:        &email,
 		PasswordHash: mustHash("password123"),
 		Role:         service.RoleStudent,
 		Status:       "active",
+		SchoolID:     &jwtSchoolID,
 	})
 
 	// Login to get access token
@@ -451,6 +510,15 @@ func TestMeHandler_ValidToken(t *testing.T) {
 	if !ok || accessToken == "" {
 		t.Fatalf("want access_token in login response, got %v", loginResp)
 	}
+	claims, err := env.signer.ParseAccess(accessToken)
+	if err != nil {
+		t.Fatalf("parse access token: %v", err)
+	}
+	if claims.SchoolID == nil || *claims.SchoolID != jwtSchoolID {
+		t.Fatalf("JWT school_id: want %s, got %v", jwtSchoolID, claims.SchoolID)
+	}
+	dbSchoolID := "school-db"
+	env.repo.byID["u1"].SchoolID = &dbSchoolID
 
 	rec := getWithToken(t, env.e, "/api/v1/auth/me", accessToken)
 	if rec.Code != http.StatusOK {
@@ -467,9 +535,24 @@ func TestMeHandler_ValidToken(t *testing.T) {
 	if ap, _ := resp["auth_provider"].(string); ap != "password" {
 		t.Errorf("auth_provider: want 'password' (DB truth), got '%s'", ap)
 	}
-	if _, ok := resp["school_id"]; !ok {
-		t.Error("school_id missing from /auth/me response")
+	if got := resp["school_id"]; got != dbSchoolID {
+		t.Errorf("school_id: want DB value %s, got %v", dbSchoolID, got)
 	}
+}
+
+type googleTokenInfoTransport struct {
+	fakeURL string
+}
+
+func (t googleTokenInfoTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.Contains(req.URL.Host, "googleapis.com") {
+		fakeReq, err := http.NewRequestWithContext(req.Context(), req.Method, t.fakeURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		return http.DefaultTransport.RoundTrip(fakeReq)
+	}
+	return http.DefaultTransport.RoundTrip(req)
 }
 
 // TestLoginHandler_UnverifiedUser covers FR-5: login for a pending_verification

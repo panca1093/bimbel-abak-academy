@@ -23,7 +23,6 @@ declare global {
 }
 
 const GSI_SRC = "https://accounts.google.com/gsi/client";
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
 interface Props {
   /** Button text passed to GSI renderButton. "signin_with" | "signup_with" */
@@ -31,6 +30,7 @@ interface Props {
 }
 
 export function GoogleSignInButton({ text }: Props) {
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
   const containerRef = useRef<HTMLDivElement>(null);
   const googleLogin = useGoogleLogin();
   const router = useRouter();
@@ -38,22 +38,31 @@ export function GoogleSignInButton({ text }: Props) {
 
   // Inject GSI script once.
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
-    if (document.querySelector('script[src*="gsi/client"]')) {
+    if (!googleClientId) return;
+    if (window.google?.accounts?.id) {
       setScriptLoaded(true);
       return;
     }
-    const script = document.createElement("script");
-    script.src = GSI_SRC;
-    script.async = true;
-    script.onload = () => setScriptLoaded(true);
-    document.head.appendChild(script);
-  }, []);
+
+    let script = document.querySelector<HTMLScriptElement>(
+      'script[src*="gsi/client"]',
+    );
+    if (!script) {
+      script = document.createElement("script");
+      script.src = GSI_SRC;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    const handleLoad = () => setScriptLoaded(true);
+    script.addEventListener("load", handleLoad);
+    return () => script.removeEventListener("load", handleLoad);
+  }, [googleClientId]);
 
   // Initialize + render after script is loaded and container is mounted.
   const handleCredential = useCallback(
     (response: { credential: string }) => {
-      googleLogin.mutate(response.credential, {
+      googleLogin.mutate({ id_token: response.credential }, {
         onSuccess: (data) => {
           if (!data.user) return;
           // Route: incomplete Google user → /complete-profile, else role home.
@@ -72,12 +81,12 @@ export function GoogleSignInButton({ text }: Props) {
   );
 
   useEffect(() => {
-    if (!scriptLoaded || !containerRef.current || !GOOGLE_CLIENT_ID) return;
+    if (!scriptLoaded || !containerRef.current || !googleClientId) return;
     const w = window as Window;
     if (!w.google?.accounts?.id) return;
 
     w.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
+      client_id: googleClientId,
       callback: handleCredential,
     });
     w.google.accounts.id.renderButton(containerRef.current, {
@@ -85,9 +94,9 @@ export function GoogleSignInButton({ text }: Props) {
       size: "large",
       text,
     });
-  }, [scriptLoaded, handleCredential, text]);
+  }, [scriptLoaded, handleCredential, googleClientId, text]);
 
-  if (!GOOGLE_CLIENT_ID) return null;
+  if (!googleClientId) return null;
 
   return (
     <div className="flex flex-col items-center gap-3">

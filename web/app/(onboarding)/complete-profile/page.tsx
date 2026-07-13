@@ -72,7 +72,7 @@ export default function CompleteProfilePage() {
         grade: parseInt(grade, 10),
       });
       // Invalidate the profile query so the gate re-evaluates with fresh data.
-      queryClient.invalidateQueries({ queryKey: studentsKeys.profile() });
+      await queryClient.invalidateQueries({ queryKey: studentsKeys.profile() });
       toast.success("Profil berhasil dilengkapi!");
       router.replace("/");
     } catch (err) {

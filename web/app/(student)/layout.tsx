@@ -28,7 +28,13 @@ export default function StudentLayout({
   const role = user?.role as UserRole | undefined;
 
   // Durable Google-only completeness gate — re-evaluated each session from DB-truth.
-  const { data: profile, isLoading: profileLoading } = useProfile();
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    isFetching: profileFetching,
+    isError: profileError,
+  } = useProfile();
+  const profilePending = profileLoading || profileFetching || profileError;
 
   useEffect(() => {
     setHydrated(true);
@@ -48,7 +54,7 @@ export default function StudentLayout({
   // Google-only gate: incomplete Google students go to /complete-profile.
   // Password students with NULL school_id are never redirected.
   useEffect(() => {
-    if (!hydrated || !token || profileLoading) return;
+    if (!hydrated || !token || profilePending) return;
     if (
       profile &&
       profile.auth_provider === "google" &&
@@ -56,7 +62,7 @@ export default function StudentLayout({
     ) {
       router.replace("/complete-profile");
     }
-  }, [hydrated, token, profileLoading, profile, router]);
+  }, [hydrated, token, profilePending, profile, router]);
 
   // Load Midtrans Snap JS with client key from backend (DB-sourced).
   useEffect(() => {
@@ -93,7 +99,7 @@ export default function StudentLayout({
   }, [hydrated, token]);
 
   // Show loading while profile resolves (gate needs it) or during no-token/admin checks.
-  if (!hydrated || !token || (role && ADMIN_ROLES.includes(role)) || profileLoading) {
+  if (!hydrated || !token || (role && ADMIN_ROLES.includes(role)) || profilePending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
         Memuat…
