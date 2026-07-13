@@ -108,6 +108,28 @@ func TestAdmin(t *testing.T) {
 		assert.Equal(t, "forbidden", body["code"], "error code must be 'forbidden'")
 	})
 
+	// BUG-A: Empty list endpoints return [] not null.
+	t.Run("empty list endpoints return [] not null", func(t *testing.T) {
+		adminID := seedUser(t, env, "super_admin", "active", false)
+		adminToken := authToken(t, env, adminID, "super_admin")
+
+		// Products list — no RBAC, just JWT.
+		resp := env.doJSON(t, http.MethodGet, "/api/v1/admin/products", nil, adminToken)
+		body := decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok := body["data"].([]any)
+		require.True(t, ok, "products data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+
+		// Promo codes list — super_admin has promos:write via wildcard, no seed data.
+		resp = env.doJSON(t, http.MethodGet, "/api/v1/admin/promo-codes", nil, adminToken)
+		body = decodeBody(t, resp)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		data, ok = body["data"].([]any)
+		require.True(t, ok, "promo-codes data must be an array (not null), got: %v", body["data"])
+		require.Empty(t, data)
+	})
+
 	// FR-INT-24: Validate promo computes discount against a real DB row.
 	t.Run("FR-INT-24 validate promo computes discount against real DB row", func(t *testing.T) {
 		discountPct := 10.0

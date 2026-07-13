@@ -55,7 +55,7 @@ func (r *Repository) ListAnnouncements(ctx context.Context) ([]model.Announcemen
 	}
 	defer rows.Close()
 
-	var announcements []model.Announcement
+	announcements := []model.Announcement{}
 	for rows.Next() {
 		var a model.Announcement
 		if err := rows.Scan(
@@ -109,7 +109,7 @@ func (r *Repository) ClaimDueAnnouncements(ctx context.Context, now time.Time, l
 	}
 	defer rows.Close()
 
-	var announcements []model.Announcement
+	announcements := []model.Announcement{}
 	for rows.Next() {
 		var a model.Announcement
 		if err := rows.Scan(

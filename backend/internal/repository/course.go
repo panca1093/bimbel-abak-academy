@@ -388,7 +388,7 @@ func (r *Repository) ListActiveSessionsByStudent(ctx context.Context, studentID 
 	}
 	defer rows.Close()
 
-	var sessions []model.CourseSession
+	sessions := []model.CourseSession{}
 	for rows.Next() {
 		var s model.CourseSession
 		var lessonBytes []byte
