@@ -16,7 +16,7 @@ export function useOrders() {
     queryKey: ordersKeys.list(),
     queryFn: async () => {
       const res = await authFetch<{ data: Order[]; next_cursor?: string }>(`/orders`);
-      return res.data;
+      return res.data ?? [];
     },
   });
 }
