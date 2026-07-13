@@ -6,7 +6,7 @@ cors_origins:
 access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
-google_client_id: ""
+google_client_id: "823500183775-miq3ligvku7uota4tkodatkie4gnp4u4.apps.googleusercontent.com"
 fazpass_base_url: "https://api.fazpass.com"
 midtrans_env: "sandbox"
 smtp_host: "smtp.gmail.com"

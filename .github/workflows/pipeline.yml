@@ -56,4 +56,5 @@ jobs:
           TARGET_ENV: staging
           NEXT_PUBLIC_API_BASE_URL: https://stg.abakacademy.id/api/v1
           NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${{ secrets.MIDTRANS_CLIENT_KEY }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: 823500183775-miq3ligvku7uota4tkodatkie4gnp4u4.apps.googleusercontent.com
         run: ./deploy/pipeline/build-image.sh
