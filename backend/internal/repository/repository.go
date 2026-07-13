@@ -27,6 +27,9 @@ func (r *Repository) BeginTx(ctx context.Context) (pgx.Tx, error) {
 	return r.pool.Begin(ctx)
 }
 
+// Pool returns the underlying connection pool for test seeding / advanced queries.
+func (r *Repository) Pool() *pgxpool.Pool { return r.pool }
+
 func isNotFound(err error) bool {
 	return errors.Is(err, pgx.ErrNoRows)
 }

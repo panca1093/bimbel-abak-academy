@@ -284,7 +284,46 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 	return model.QuestionWithOptions{Question: q, Options: options}, nil
 }
 
+// CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
+func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	if err := validateQuestion(q, options); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	return model.QuestionWithOptions{Question: q, Options: options}, nil
+}
+
 func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
+	attached, err := s.storeRepo.CountQuestionAttachments(ctx, id)
+	if err != nil {
+		return err
+	}
+	if attached > 0 {
+		return fmt.Errorf("%w: question is attached to %d test(s); detach before deleting", ErrValidation, attached)
+	}
+
+	answered, err := s.storeRepo.CountAnswerReferences(ctx, id)
+	if err != nil {
+		return err
+	}
+	if answered > 0 {
+		return fmt.Errorf("%w: question has been answered in %d session(s) and cannot be deleted", ErrValidation, answered)
+	}
+
 	if err := s.storeRepo.DeleteQuestion(ctx, id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrQuestionNotFound
@@ -292,6 +331,12 @@ func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	return nil
+}
+
+// ListBankQuestions returns cursor-paginated bank questions with topic name and
+// attached-test count (FR-14).
+func (s *Service) ListBankQuestions(ctx context.Context, filter repository.QuestionFilter) ([]model.BankQuestionListItem, string, error) {
+	return s.storeRepo.ListBankQuestions(ctx, filter)
 }
 
 var validTimerModes = map[string]bool{

@@ -167,6 +167,13 @@ type QuestionWithOptions struct {
 	SortOrder int              `json:"sort_order"`
 }
 
+// BankQuestionListItem is one row of GET /admin/questions — a bank question with
+// its topic name and the count of tests it is currently attached to (Used-in).
+type BankQuestionListItem struct {
+	Question     `json:",inline"`
+	UsedInCount  int `json:"used_in_count"`
+}
+
 // ExamListItem is the read shape returned by GET /admin/exams — an Exam row joined
 // with product.price and product.status. Cursor pagination assembles a slice of these.
 type ExamListItem struct {

@@ -226,6 +226,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	adminQuestions := admin.Group("/questions")
 	adminQuestions.Use(handler.RBACMiddleware("questions:*"))
+	adminQuestions.GET("", h.AdminListBankQuestions)
+	adminQuestions.POST("", h.AdminCreateBankQuestion)
 	adminQuestions.PATCH("/:id", h.AdminUpdateQuestion)
 	adminQuestions.DELETE("/:id", h.AdminDeleteQuestion)
 

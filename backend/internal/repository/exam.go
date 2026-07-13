@@ -119,6 +119,15 @@ type TestFilter struct {
 	Limit   int
 }
 
+// QuestionFilter is the filter for the bank question list endpoint (FR-14).
+type QuestionFilter struct {
+	Format  string
+	TopicID string
+	Search  string
+	Cursor  string
+	Limit   int
+}
+
 func (r *Repository) CreateTest(ctx context.Context, t *model.Test) error {
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO test (title, subject, topic, duration_minutes, audio_url, audio_play_limit, section_type)
@@ -397,6 +406,125 @@ func (r *Repository) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 		id,
 	)
 	return err
+}
+
+// CountQuestionAttachments returns the number of test_question rows for a question.
+func (r *Repository) CountQuestionAttachments(ctx context.Context, id uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM test_question WHERE question_id = $1`,
+		id,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountAnswerReferences returns the number of exam_session_answer rows for a question.
+func (r *Repository) CountAnswerReferences(ctx context.Context, id uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM exam_session_answer WHERE question_id = $1`,
+		id,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// ListBankQuestions returns cursor-paginated bank questions with their topic name
+// and the count of tests they are attached to (FR-14).
+func (r *Repository) ListBankQuestions(ctx context.Context, filter QuestionFilter) ([]model.BankQuestionListItem, string, error) {
+	if filter.Limit == 0 {
+		filter.Limit = 20
+	}
+
+	query := `SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0)
+FROM question q
+LEFT JOIN exam_topic et ON et.id = q.topic_id
+LEFT JOIN (
+    SELECT question_id, COUNT(*) AS cnt FROM test_question GROUP BY question_id
+) tq ON tq.question_id = q.id
+WHERE 1=1`
+	args := []interface{}{}
+	argIdx := 1
+
+	if filter.Format != "" {
+		query += fmt.Sprintf(` AND q.format = $%d`, argIdx)
+		args = append(args, filter.Format)
+		argIdx++
+	}
+	if filter.TopicID != "" {
+		query += fmt.Sprintf(` AND q.topic_id = $%d::uuid`, argIdx)
+		args = append(args, filter.TopicID)
+		argIdx++
+	}
+	if filter.Search != "" {
+		query += fmt.Sprintf(` AND (LOWER(q.body) LIKE LOWER($%d) OR q.id::text LIKE $%d)`, argIdx, argIdx)
+		args = append(args, "%"+filter.Search+"%")
+		argIdx++
+	}
+	if filter.Cursor != "" {
+		query += fmt.Sprintf(` AND q.id > $%d`, argIdx)
+		args = append(args, filter.Cursor)
+		argIdx++
+	}
+
+	query += ` ORDER BY q.id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	args = append(args, filter.Limit+1)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	var items []model.BankQuestionListItem
+	for rows.Next() {
+		var item model.BankQuestionListItem
+		var correctAnswer, explanation, difficulty, imageURL, topic *string
+		var topicID *uuid.UUID
+		if err := rows.Scan(
+			&item.ID, &item.Format, &item.Body,
+			&correctAnswer, &explanation, &difficulty, &imageURL,
+			&topicID, &topic, &item.PointCorrect, &item.PointWrong, &item.UsedInCount,
+		); err != nil {
+			return nil, "", err
+		}
+		if correctAnswer != nil {
+			item.CorrectAnswer = correctAnswer
+		}
+		if explanation != nil {
+			item.Explanation = explanation
+		}
+		if difficulty != nil {
+			item.Difficulty = difficulty
+		}
+		if imageURL != nil {
+			item.ImageURL = imageURL
+		}
+		if topicID != nil {
+			item.TopicID = topicID
+		}
+		if topic != nil {
+			item.Topic = topic
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+
+	var nextCursor string
+	if len(items) > filter.Limit {
+		// Cursor is the last *returned* row; the next page starts after it.
+		nextCursor = items[filter.Limit-1].ID.String()
+		items = items[:filter.Limit]
+	}
+
+	return items, nextCursor, nil
 }
 
 // AttachQuestionToTestTx appends an existing bank question to a test, assigning the

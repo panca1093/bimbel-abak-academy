@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -670,6 +672,226 @@ func TestCheckTypeRBAC_admin_exam_blocks_course(t *testing.T) {
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("admin_exam on course type should return ErrForbidden, got %v", err)
 	}
+}
+
+// --- FR-9..FR-15: bank question CRUD + delete-guard + list-bank ---
+
+func seedTopicDirect(t *testing.T, ctx context.Context, repo *repository.Repository, name, subject string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam_topic (name, subject) VALUES ($1, $2) RETURNING id`,
+		name, subject,
+	).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+func seedTestDirect(t *testing.T, ctx context.Context, repo *repository.Repository, title, subject, topic string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO test (title, subject, topic, duration_minutes) VALUES ($1, $2, $3, $4) RETURNING id`,
+		title, subject, topic, 60,
+	).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+func seedBankQuestionDirect(t *testing.T, ctx context.Context, repo *repository.Repository, format, body string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO question (format, body, point_correct, point_wrong) VALUES ($1, $2, 1, 0) RETURNING id`,
+		format, body,
+	).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+func attachQuestionDirect(t *testing.T, ctx context.Context, repo *repository.Repository, testID, questionID uuid.UUID, sortOrder int) {
+	t.Helper()
+	_, err := repo.Pool().Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
+		testID, questionID, sortOrder,
+	)
+	require.NoError(t, err)
+}
+
+func answerQuestionDirect(t *testing.T, ctx context.Context, repo *repository.Repository, questionID uuid.UUID) {
+	t.Helper()
+	// exam_session_answer requires a session; create the minimal session row.
+	var studentID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (email, name, role, status) VALUES ($1, $2, 'student', 'active') RETURNING id`,
+		"student-"+uniqueSuffix()+"@example.com", "Student",
+	).Scan(&studentID)
+	require.NoError(t, err)
+	var examID uuid.UUID
+	err = repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ($1, 'draft') RETURNING id`,
+		"Exam "+uniqueSuffix(),
+	).Scan(&examID)
+	require.NoError(t, err)
+	var regID uuid.UUID
+	err = repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status) VALUES ($1, $2, $3, 'registered') RETURNING id`,
+		studentID, examID, "TOKEN"+uniqueSuffix(),
+	).Scan(&regID)
+	require.NoError(t, err)
+	var sessionID uuid.UUID
+	err = repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status) VALUES ($1, $2, $3, 1, now(), 'submitted') RETURNING id`,
+		regID, studentID, examID,
+	).Scan(&sessionID)
+	require.NoError(t, err)
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO exam_session_answer (session_id, question_id, answer, saved_at) VALUES ($1, $2, $3, now())`,
+		sessionID, questionID, "answer",
+	)
+	require.NoError(t, err)
+}
+
+func countQuestionAttachments(t *testing.T, ctx context.Context, repo *repository.Repository, id uuid.UUID) int {
+	t.Helper()
+	var count int
+	err := repo.Pool().QueryRow(ctx,
+		`SELECT COUNT(*) FROM test_question WHERE question_id = $1`, id,
+	).Scan(&count)
+	require.NoError(t, err)
+	return count
+}
+
+func TestCreateBankQuestion_creates_no_attachment(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 1, PointWrong: 0}
+	out, err := svc.CreateBankQuestion(ctx, q, nil)
+	require.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, out.Question.ID)
+	assert.Equal(t, "essay", out.Question.Format)
+	assert.Equal(t, 0, countQuestionAttachments(t, ctx, repo, out.Question.ID))
+}
+
+func TestDeleteQuestion_rejects_when_attached(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Math "+uniqueSuffix(), "math", "algebra")
+	qID := seedBankQuestionDirect(t, ctx, repo, "essay", "explain")
+	attachQuestionDirect(t, ctx, repo, testID, qID, 1)
+
+	err := svc.DeleteQuestion(ctx, qID)
+	assert.ErrorIs(t, err, ErrValidation)
+	assert.Contains(t, err.Error(), "attached")
+
+	// Guard must be a no-op: the question and attachment survive.
+	assert.Equal(t, 1, countQuestionAttachments(t, ctx, repo, qID))
+}
+
+func TestDeleteQuestion_rejects_when_answered(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	qID := seedBankQuestionDirect(t, ctx, repo, "short", "capital of France")
+	answerQuestionDirect(t, ctx, repo, qID)
+
+	err := svc.DeleteQuestion(ctx, qID)
+	assert.ErrorIs(t, err, ErrValidation)
+	assert.Contains(t, err.Error(), "answered")
+
+	// Guard must be a no-op: the question survives.
+	var exists bool
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, qID).Scan(&exists))
+	assert.True(t, exists)
+}
+
+func TestDeleteQuestion_succeeds_when_unattached_and_unanswered(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	qID := seedBankQuestionDirect(t, ctx, repo, "essay", "explain relativity")
+
+	err := svc.DeleteQuestion(ctx, qID)
+	require.NoError(t, err)
+
+	var exists bool
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM question WHERE id = $1)`, qID).Scan(&exists))
+	assert.False(t, exists)
+}
+
+func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	topicA := seedTopicDirect(t, ctx, repo, "Algebra "+uniqueSuffix(), "math")
+	topicB := seedTopicDirect(t, ctx, repo, "Geometry "+uniqueSuffix(), "math")
+
+	// Three questions: mcq in topicA (attached to 2 tests), essay in topicB (unattached), short no topic.
+	test1 := seedTestDirect(t, ctx, repo, "T1 "+uniqueSuffix(), "math", "algebra")
+	test2 := seedTestDirect(t, ctx, repo, "T2 "+uniqueSuffix(), "math", "algebra")
+
+	uniqueToken := "cursorbatch " + uniqueSuffix()
+
+	mcqID := seedBankQuestionDirect(t, ctx, repo, "mcq", uniqueToken+" 2+2")
+	_, err := repo.Pool().Exec(ctx, `UPDATE question SET topic_id = $1 WHERE id = $2`, topicA, mcqID)
+	require.NoError(t, err)
+	attachQuestionDirect(t, ctx, repo, test1, mcqID, 1)
+	attachQuestionDirect(t, ctx, repo, test2, mcqID, 2)
+
+	essayBody := uniqueToken + " explain photosynthesis " + uniqueSuffix()
+	essayID := seedBankQuestionDirect(t, ctx, repo, "essay", essayBody)
+	_, err = repo.Pool().Exec(ctx, `UPDATE question SET topic_id = $1 WHERE id = $2`, topicB, essayID)
+	require.NoError(t, err)
+
+	shortID := seedBankQuestionDirect(t, ctx, repo, "short", uniqueToken+" short")
+
+	// Full list (filtered by unique token) returns exactly the three bank questions.
+	all, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: uniqueToken, Limit: 50})
+	require.NoError(t, err)
+	ids := map[uuid.UUID]bool{}
+	for _, it := range all {
+		ids[it.ID] = true
+	}
+	assert.True(t, ids[mcqID] && ids[essayID] && ids[shortID], "expected all three bank questions")
+
+	// Filter by format.
+	items, nextCursor, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Format: "mcq", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, mcqID, items[0].ID)
+	assert.Equal(t, 2, items[0].UsedInCount)
+	assert.Empty(t, nextCursor)
+
+	// Filter by topic_id.
+	items, nextCursor, err = svc.ListBankQuestions(ctx, repository.QuestionFilter{TopicID: topicB.String(), Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, essayID, items[0].ID)
+	assert.Equal(t, 0, items[0].UsedInCount)
+	assert.Empty(t, nextCursor)
+
+	// Search by body substring (unique term so leftover rows don't match).
+	items, nextCursor, err = svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: "photosynthesis", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, essayID, items[0].ID)
+	assert.Empty(t, nextCursor)
+
+	// Cursor pagination: limit 2 on the unique-token batch should give first two rows and a cursor.
+	items, nextCursor, err = svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: uniqueToken, Limit: 2})
+	require.NoError(t, err)
+	assert.Len(t, items, 2)
+	assert.NotEmpty(t, nextCursor)
+	page1IDs := map[uuid.UUID]bool{items[0].ID: true, items[1].ID: true}
+
+	// Follow cursor should return the remaining row.
+	items, nextCursor, err = svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: uniqueToken, Limit: 2, Cursor: nextCursor})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Empty(t, nextCursor)
+	assert.False(t, page1IDs[items[0].ID], "cursor should advance to a new row")
 }
 
 // suppress unused: uuid is imported to avoid unused-import lint if tests get trimmed later

@@ -221,6 +221,50 @@ func (h *Handler) AdminDeleteQuestion(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// AdminListBankQuestions returns the bank question list with cursor pagination (FR-14).
+func (h *Handler) AdminListBankQuestions(c echo.Context) error {
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	filter := repository.QuestionFilter{
+		Format:  c.QueryParam("format"),
+		TopicID: c.QueryParam("topic_id"),
+		Search:  c.QueryParam("search"),
+		Cursor:  c.QueryParam("cursor"),
+		Limit:   limit,
+	}
+
+	items, nextCursor, err := h.svc.ListBankQuestions(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data":        items,
+		"next_cursor": nextCursor,
+	})
+}
+
+// AdminCreateBankQuestion creates a question in the bank with no test attachment (FR-9).
+func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
+	var req questionRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	q, err := req.toQuestion()
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, out)
+}
+
 // questionRequest is the shared body for AdminCreateQuestion / AdminUpdateQuestion.
 type questionRequest struct {
 	Format        string          `json:"format"`

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -659,7 +660,7 @@ func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
 	assert.NotContains(t, keys, "a")
 }
 
-func TestExam_AdminDeleteQuestion_returns_204(t *testing.T) {
+func TestExam_AdminDeleteQuestion_attached_returns_422(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)
 	token := authToken(t, env, adminID, "admin_exam")
@@ -667,9 +668,129 @@ func TestExam_AdminDeleteQuestion_returns_204(t *testing.T) {
 	testID := seedTest(t, env, "X", "math", "algebra", 60)
 	qID := seedQuestion(t, env, testID, "essay", "explain", 1)
 
+	resp, out := doJSONBody(t, env, http.MethodDelete, "/api/v1/admin/questions/"+qID, nil, token)
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+	assert.Equal(t, "validation_failed", out["code"])
+}
+
+func TestExam_AdminCreateBankQuestion_returns_201_and_no_attachment(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	body := map[string]any{
+		"format":        "essay",
+		"body":          "explain gravity",
+		"point_correct": 2,
+		"point_wrong":   0,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+	q, ok := out["question"].(map[string]any)
+	require.True(t, ok, "expected nested question object, got %T", out["question"])
+	assert.NotEmpty(t, q["id"])
+	assert.Equal(t, "essay", q["format"])
+	assert.Equal(t, "explain gravity", q["body"])
+	assert.Equal(t, float64(2), q["point_correct"])
+
+	qID := q["id"].(string)
+	ctx := context.Background()
+	var count int
+	err := env.pool.QueryRow(ctx, `SELECT COUNT(*) FROM test_question WHERE question_id = $1`, qID).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestExam_AdminDeleteQuestion_unattached_returns_204(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	ctx := context.Background()
+	var qID string
+	err := env.pool.QueryRow(ctx,
+		`INSERT INTO question (format, body, point_correct, point_wrong) VALUES ('essay', 'standalone', 1, 0) RETURNING id`,
+	).Scan(&qID)
+	require.NoError(t, err)
+
 	resp := env.doJSON(t, http.MethodDelete, "/api/v1/admin/questions/"+qID, nil, token)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+}
+
+func TestExam_AdminListBankQuestions_returns_rows_and_cursor(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	ctx := context.Background()
+	var topicID string
+	err := env.pool.QueryRow(ctx,
+		`INSERT INTO exam_topic (name, subject) VALUES ($1, 'math') RETURNING id`,
+		"Algebra "+fmt.Sprintf("%d", time.Now().UnixNano()),
+	).Scan(&topicID)
+	require.NoError(t, err)
+
+	uniqueToken := fmt.Sprintf("banklist-%d", time.Now().UnixNano())
+	var mcqID, essayID string
+	err = env.pool.QueryRow(ctx,
+		`INSERT INTO question (format, body, topic_id, point_correct, point_wrong) VALUES ('mcq', $1, $2, 1, 0) RETURNING id`,
+		uniqueToken+" mcq", topicID,
+	).Scan(&mcqID)
+	require.NoError(t, err)
+	err = env.pool.QueryRow(ctx,
+		`INSERT INTO question (format, body, topic_id, point_correct, point_wrong) VALUES ('essay', $1, $2, 1, 0) RETURNING id`,
+		uniqueToken+" essay", topicID,
+	).Scan(&essayID)
+	require.NoError(t, err)
+
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	_, err = env.pool.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2::uuid, 1)`,
+		testID, mcqID,
+	)
+	require.NoError(t, err)
+
+	// Filter by format.
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?format=mcq", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data := out["data"].([]any)
+	assert.Len(t, data, 1)
+	row := data[0].(map[string]any)
+	assert.Equal(t, mcqID, row["id"])
+	assert.Equal(t, float64(1), row["used_in_count"])
+
+	// Filter by topic_id.
+	resp, out = doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?topic_id="+topicID, nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data = out["data"].([]any)
+	assert.Len(t, data, 2)
+
+	// Search by body.
+	resp, out = doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?search="+url.QueryEscape(uniqueToken+" essay"), nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data = out["data"].([]any)
+	assert.Len(t, data, 1)
+	row = data[0].(map[string]any)
+	assert.Equal(t, essayID, row["id"])
+
+	// Cursor pagination with limit 1.
+	resp, out = doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?search="+url.QueryEscape(uniqueToken)+"&limit=1", nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data = out["data"].([]any)
+	require.Len(t, data, 1)
+	page1ID := data[0].(map[string]any)["id"].(string)
+	assert.NotEmpty(t, out["next_cursor"])
+	cursor := out["next_cursor"].(string)
+
+	resp, out = doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?search="+url.QueryEscape(uniqueToken)+"&limit=1&cursor="+cursor, nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+	data = out["data"].([]any)
+	require.Len(t, data, 1)
+	page2ID := data[0].(map[string]any)["id"].(string)
+	assert.NotEqual(t, page1ID, page2ID)
+	// Both seeded questions appear across the two pages.
+	assert.True(t, (page1ID == mcqID || page2ID == mcqID) && (page1ID == essayID || page2ID == essayID))
 }
 
 // Post-0025 sort_order lives on test_question and is assigned automatically when a
