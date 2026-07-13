@@ -10,9 +10,12 @@ import (
 // bucket for a student-bulk CSV upload.
 func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	filename := c.QueryParam("filename")
@@ -21,7 +24,7 @@ func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 		return badRequest(c, "filename is required")
 	}
 
-	resp, err := h.svc.GeneratePresignedPrivateUploadURL(c.Request().Context(), *schoolID, filename, contentType)
+	resp, err := h.svc.GeneratePresignedPrivateUploadURL(c.Request().Context(), schoolID, filename, contentType)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -32,9 +35,12 @@ func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 // already-uploaded CSV.
 func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	var req struct {
@@ -47,7 +53,7 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 		return badRequest(c, "file_key is required")
 	}
 
-	jobID, err := h.svc.EnqueueStudentBulkJob(c.Request().Context(), *schoolID, claims.Sub, req.FileKey)
+	jobID, err := h.svc.EnqueueStudentBulkJob(c.Request().Context(), schoolID, claims.Sub, req.FileKey)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -58,9 +64,12 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 // (or the whole school) and returns the per-row report as a CSV attachment.
 func (h *Handler) AdminBulkReissueCredentials(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	var req struct {
@@ -74,7 +83,7 @@ func (h *Handler) AdminBulkReissueCredentials(c echo.Context) error {
 		return badRequest(c, "specify either student_ids or all, not both/neither")
 	}
 
-	csvBytes, err := h.svc.ReissueStudentCredentialsBulk(c.Request().Context(), *schoolID, req.StudentIDs, req.All)
+	csvBytes, err := h.svc.ReissueStudentCredentialsBulk(c.Request().Context(), schoolID, req.StudentIDs, req.All)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
