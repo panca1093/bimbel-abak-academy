@@ -12,11 +12,12 @@ export const adminResultsKeys = {
 };
 
 export function useAdminResults(
-  opts: { examId: string; q?: string; cursor?: string; limit?: number; schoolId?: string },
+  opts: { examId: string; q?: string; cursor?: string; limit?: number; schoolId?: string; enabled?: boolean },
 ) {
-  const { examId, q, cursor, limit, schoolId } = opts;
+  const { examId, q, cursor, limit, schoolId, enabled } = opts;
   return useQuery({
     queryKey: adminResultsKeys.list(examId, q, cursor, limit, schoolId),
+    enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("exam_id", examId);

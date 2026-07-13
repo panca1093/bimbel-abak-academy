@@ -76,6 +76,7 @@ export default function SchoolReportsPage() {
     cursor: activeCursor,
     limit: 20,
     ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
+    enabled: Boolean(selectedExamId) && (!isSuperAdmin || Boolean(selectedSchoolId)),
   });
 
   // Accumulate pages as they arrive

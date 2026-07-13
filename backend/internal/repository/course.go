@@ -49,7 +49,7 @@ func (r *Repository) ListCourses(ctx context.Context, limit int, cursor string) 
 	}
 	defer rows.Close()
 
-	var courses []model.Course
+	courses := []model.Course{}
 	for rows.Next() {
 		var c model.Course
 		err := rows.Scan(&c.ID, &c.Title, &c.Level, &c.Subject, &c.InstructorName, &c.CreatedAt, &c.UpdatedAt)
@@ -119,7 +119,7 @@ func (r *Repository) GetCoursesByProductID(ctx context.Context, productID uuid.U
 	}
 	defer rows.Close()
 
-	var courses []model.Course
+	courses := []model.Course{}
 	for rows.Next() {
 		var c model.Course
 		err := rows.Scan(&c.ID, &c.Title, &c.Level, &c.Subject, &c.InstructorName, &c.CreatedAt, &c.UpdatedAt)
@@ -190,7 +190,7 @@ func (r *Repository) ListSections(ctx context.Context, courseID uuid.UUID) ([]mo
 	}
 	defer rows.Close()
 
-	var sections []model.Section
+	sections := []model.Section{}
 	for rows.Next() {
 		s := model.Section{}
 		var lessonBytes []byte

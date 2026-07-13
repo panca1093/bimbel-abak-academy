@@ -108,6 +108,7 @@ export default function SchoolStudentsPage() {
     cursor: activeCursor,
     limit: 20,
     ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
+    enabled: !isSuperAdmin || Boolean(selectedSchoolId),
   });
 
   // Accumulate pages as they arrive

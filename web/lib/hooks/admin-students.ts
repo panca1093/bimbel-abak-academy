@@ -16,11 +16,12 @@ export const adminStudentsKeys = {
 };
 
 export function useAdminStudents(
-  opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string }
+  opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string; enabled?: boolean }
 ) {
-  const { status, q, cursor, limit, schoolId } = opts ?? {};
+  const { status, q, cursor, limit, schoolId, enabled } = opts ?? {};
   return useQuery({
     queryKey: adminStudentsKeys.list(status, q, cursor, limit, schoolId),
+    enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
