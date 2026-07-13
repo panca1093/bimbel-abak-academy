@@ -16,18 +16,21 @@ func (r *Repository) CreateUser(ctx context.Context, u *model.User) error {
 		normalized := normalizeEmail(*u.Email)
 		u.Email = &normalized
 	}
+	if u.AuthProvider == "" {
+		u.AuthProvider = "password"
+	}
 	return r.pool.QueryRow(ctx,
 		`INSERT INTO users (
 			email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled,
+			school_id, photo_url, status, otp_enabled, auth_provider,
 			nis, dob, gender, grade, alamat_domisili, target_exam
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
-			$7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16
+			$7, $8, $9, $10, $11,
+			$12, $13, $14, $15, $16, $17
 		) RETURNING id, created_at, updated_at`,
 		u.Email, u.Username, u.Phone, u.PasswordHash, u.Role, u.Name,
-		u.SchoolID, u.PhotoURL, u.Status, u.OTPEnabled,
+		u.SchoolID, u.PhotoURL, u.Status, u.OTPEnabled, u.AuthProvider,
 		u.NIS, u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
@@ -37,14 +40,14 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*model.U
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
 			nis, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE email = $1 AND status != 'deleted'`,
 		email,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
 		&u.NIS, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
@@ -60,14 +63,14 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
 			nis, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE username = $1 AND status != 'deleted'`,
 		username,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
 		&u.NIS, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
@@ -83,14 +86,14 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, e
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, created_at, updated_at,
+			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
 			nis, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE id = $1`,
 		id,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
 		&u.NIS, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {

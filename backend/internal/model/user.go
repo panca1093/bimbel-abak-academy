@@ -13,6 +13,7 @@ type User struct {
 	SchoolID     *string    `json:"school_id"`
 	PhotoURL     *string    `json:"photo_url"`
 	Status       string     `json:"status"`
+	AuthProvider string     `json:"auth_provider"`
 	OTPEnabled   bool       `json:"otp_enabled"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
