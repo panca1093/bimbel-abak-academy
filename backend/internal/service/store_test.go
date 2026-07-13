@@ -335,6 +335,28 @@ func (s *shimService) ValidatePromo(ctx context.Context, code string, subtotal f
 	return PromoValidation{Code: code, Discount: discount, Total: subtotal - discount}, nil
 }
 
+func (s *shimService) UpdateProduct(ctx context.Context, id string, p model.Product, role string) (model.Product, error) {
+	existing, err := s.fake.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+	// Preserve non-editable fields from existing record (Bug C fix)
+	p.Type = existing.Type
+	p.WeightGrams = existing.WeightGrams
+	p.ImageURL = existing.ImageURL
+	if err := s.fake.UpdateProduct(ctx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	p.ID = id
+	return p, nil
+}
+
 func (s *shimService) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
 	return s.logistics.GetRates(ctx, req)
 }
@@ -1165,6 +1187,10 @@ func (s *shimUpdateProductWithCourses) UpdateProductWithCourses(ctx context.Cont
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
+	// Preserve non-editable fields from existing record (Bug C fix)
+	p.Type = existing.Type
+	p.WeightGrams = existing.WeightGrams
+	p.ImageURL = existing.ImageURL
 
 	var ids []uuid.UUID
 	for _, cid := range courseIDs {
@@ -1235,6 +1261,10 @@ func (s *shimUpdateProductWithCoursesAtomic) UpdateProductWithCourses(ctx contex
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
+	// Preserve non-editable fields from existing record (Bug C fix)
+	p.Type = existing.Type
+	p.WeightGrams = existing.WeightGrams
+	p.ImageURL = existing.ImageURL
 
 	var ids []uuid.UUID
 	for _, cid := range courseIDs {
@@ -1375,5 +1405,86 @@ func TestPurchaseNotifyEnabled_EnabledByMissingKey(t *testing.T) {
 	cfg := map[string]string{}
 	if !purchaseNotifyEnabled(cfg) {
 		t.Error("want true for missing key")
+	}
+}
+
+// Bug C — product update preserves Type/WeightGrams/ImageURL from existing record.
+
+func TestUpdateProduct_PreservesTypeWeightImage(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedProduct(model.Product{
+		ID:          "prod-1",
+		Type:        "book",
+		Name:        "Original Name",
+		WeightGrams: 500,
+		ImageURL:    "http://example.com/img.jpg",
+		Price:       10000,
+		Stock:       10,
+		Status:      "published",
+	})
+
+	svc := newShim(fake)
+
+	// Update only name — Type/WeightGrams/ImageURL are zero-valued in the request
+	updated, err := svc.UpdateProduct(ctx, "prod-1", model.Product{
+		Name: "Updated Name",
+	}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("UpdateProduct returned error: %v", err)
+	}
+
+	if updated.Type != "book" {
+		t.Errorf("want type=book preserved, got %q", updated.Type)
+	}
+	if updated.WeightGrams != 500 {
+		t.Errorf("want weight_grams=500 preserved, got %d", updated.WeightGrams)
+	}
+	if updated.ImageURL != "http://example.com/img.jpg" {
+		t.Errorf("want image_url preserved, got %q", updated.ImageURL)
+	}
+}
+
+func TestUpdateProductWithCourses_PreservesTypeWeightImage(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	svc := newShim(fake)
+
+	course, _ := fake.CreateCourse(ctx, model.Course{
+		Title: "Math 101", Level: "beginner", Subject: "math", InstructorName: "Mr. A",
+	})
+
+	// Create product through the normal path to get a real UUID
+	product, err := svc.CreateProductWithCourses(ctx, model.Product{
+		Type:        "course",
+		Name:        "Original Name",
+		WeightGrams: 500,
+		ImageURL:    "http://example.com/img.jpg",
+		Price:       10000,
+		Stock:       10,
+		Status:      "published",
+	}, []string{course.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithCourses: %v", err)
+	}
+
+	updSvc := &shimUpdateProductWithCourses{fake: fake}
+
+	// Update only name — Type/WeightGrams/ImageURL are zero-valued in the request
+	updated, err := updSvc.UpdateProductWithCourses(ctx, product.ID, model.Product{
+		Name: "Updated Name",
+	}, []string{course.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("UpdateProductWithCourses returned error: %v", err)
+	}
+
+	if updated.Type != "course" {
+		t.Errorf("want type=course preserved, got %q", updated.Type)
+	}
+	if updated.WeightGrams != 500 {
+		t.Errorf("want weight_grams=500 preserved, got %d", updated.WeightGrams)
+	}
+	if updated.ImageURL != "http://example.com/img.jpg" {
+		t.Errorf("want image_url preserved, got %q", updated.ImageURL)
 	}
 }
