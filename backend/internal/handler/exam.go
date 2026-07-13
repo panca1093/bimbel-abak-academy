@@ -221,6 +221,69 @@ func (h *Handler) AdminDeleteQuestion(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// AdminListTopics returns all curated topics with a per-topic question count (FR-16).
+func (h *Handler) AdminListTopics(c echo.Context) error {
+	filter := repository.TopicFilter{Subject: c.QueryParam("subject")}
+	items, err := h.svc.ListTopics(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": items})
+}
+
+// AdminCreateTopic creates a new topic (FR-17).
+func (h *Handler) AdminCreateTopic(c echo.Context) error {
+	var req struct {
+		Name    string `json:"name"`
+		Subject string `json:"subject"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	t := model.ExamTopic{Name: req.Name, Subject: req.Subject}
+	out, err := h.svc.CreateTopic(c.Request().Context(), t)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, out)
+}
+
+// AdminUpdateTopic updates an existing topic (FR-18).
+func (h *Handler) AdminUpdateTopic(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+
+	var req struct {
+		Name    string `json:"name"`
+		Subject string `json:"subject"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	t := model.ExamTopic{Name: req.Name, Subject: req.Subject}
+	out, err := h.svc.UpdateTopic(c.Request().Context(), id, t)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, out)
+}
+
+// AdminDeleteTopic deletes a topic when no question references it (FR-19).
+func (h *Handler) AdminDeleteTopic(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	if err := h.svc.DeleteTopic(c.Request().Context(), id); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 // AdminListBankQuestions returns the bank question list with cursor pagination (FR-14).
 func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 	limit := 20
@@ -273,6 +336,7 @@ type questionRequest struct {
 	Explanation   *string         `json:"explanation,omitempty"`
 	ImageURL      *string         `json:"image_url,omitempty"`
 	CorrectAnswer *string         `json:"correct_answer,omitempty"`
+	TopicID       *string         `json:"topic_id,omitempty"`
 	Options       []optionRequest `json:"options,omitempty"`
 	PointCorrect  *float64        `json:"point_correct,omitempty"`
 	PointWrong    *float64        `json:"point_wrong,omitempty"`
@@ -303,6 +367,16 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		}
 		pointWrong = int(v)
 	}
+
+	var topicID *uuid.UUID
+	if r.TopicID != nil && *r.TopicID != "" {
+		tid, err := uuid.Parse(*r.TopicID)
+		if err != nil {
+			return model.Question{}, fmt.Errorf("%w: topic_id is not a valid UUID", service.ErrValidation)
+		}
+		topicID = &tid
+	}
+
 	return model.Question{
 		Format:        r.Format,
 		Body:          r.Body,
@@ -310,6 +384,7 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		Explanation:   r.Explanation,
 		Difficulty:    r.Difficulty,
 		ImageURL:      r.ImageURL,
+		TopicID:       topicID,
 		PointCorrect:  pointCorrect,
 		PointWrong:    pointWrong,
 	}, nil

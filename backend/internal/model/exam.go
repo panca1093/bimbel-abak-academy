@@ -6,6 +6,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// ExamTopic is a curated (subject, name) pair used by reusable bank questions.
+// QuestionCount is only populated by list-style reads.
+type ExamTopic struct {
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	Subject       string    `json:"subject"`
+	QuestionCount int       `json:"question_count"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 // Test is the top-level authoring unit (a set of questions). Nullable audio fields
 // are pointer types so we can persist / return "not set" distinctly from empty strings.
 type Test struct {
