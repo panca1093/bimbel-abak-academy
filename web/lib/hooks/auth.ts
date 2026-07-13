@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import type { LoginResponse, User } from "@/lib/types";
@@ -71,10 +71,15 @@ export function useVerifyOtp() {
 
 export function useLogout() {
   const clear = useAuthStore((s) => s.clear);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => authFetch<void>(`/auth/logout`, { method: "POST" }),
     onSettled: () => {
       clear();
+      // Drop all cached queries so the next user in this tab can't read the
+      // previous session's data (e.g. the durable profile gate reading a stale
+      // Google profile for a password user within staleTime).
+      queryClient.clear();
     },
   });
 }

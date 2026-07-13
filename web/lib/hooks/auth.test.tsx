@@ -1,10 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useGoogleLogin } from "./auth";
+import { useGoogleLogin, useLogout } from "./auth";
 
 const apiFetch = vi.fn();
 const setSession = vi.fn();
+const clear = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   apiFetch: (...args: unknown[]) => apiFetch(...args),
@@ -12,8 +13,9 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("@/stores/auth", () => ({
-  useAuthStore: (selector: (state: { setSession: typeof setSession }) => unknown) =>
-    selector({ setSession }),
+  useAuthStore: (
+    selector: (state: { setSession: typeof setSession; clear: typeof clear }) => unknown,
+  ) => selector({ setSession, clear }),
 }));
 
 describe("useGoogleLogin", () => {
@@ -46,5 +48,30 @@ describe("useGoogleLogin", () => {
       body: JSON.stringify({ id_token: "google-token" }),
     });
     expect(setSession).toHaveBeenCalledWith("access", "refresh", user);
+  });
+});
+
+describe("useLogout", () => {
+  beforeEach(() => {
+    clear.mockReset();
+  });
+
+  it("clears the react-query cache so a prior session's data can't leak to the next user", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    // Seed a cached profile from the previous session.
+    queryClient.setQueryData(["students", "profile"], { id: "prev-user" });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useLogout(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    expect(clear).toHaveBeenCalled();
+    expect(queryClient.getQueryData(["students", "profile"])).toBeUndefined();
   });
 });
