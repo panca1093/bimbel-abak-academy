@@ -968,6 +968,52 @@ func TestLesson_RejectsNonStoreRole(t *testing.T) {
 	}
 }
 
+// Test: UpdateLesson preserves lesson position (regression: Bug D)
+func TestUpdateLesson_PreservesPosition(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+
+	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateCourse: %v", err)
+	}
+
+	sec, err := svc.CreateSection(ctx, course.ID.String(), "Intro", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateSection: %v", err)
+	}
+
+	// Create two lessons: positions 0 and 1
+	l1, err := svc.CreateLesson(ctx, course.ID.String(), sec.ID.String(), "Welcome", "https://video/1", 300, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateLesson 1: %v", err)
+	}
+	if l1.Position != 0 {
+		t.Errorf("want l1 position 0, got %d", l1.Position)
+	}
+
+	l2, err := svc.CreateLesson(ctx, course.ID.String(), sec.ID.String(), "Basics", "https://video/2", 400, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateLesson 2: %v", err)
+	}
+	if l2.Position != 1 {
+		t.Errorf("want l2 position 1, got %d", l2.Position)
+	}
+
+	// Update the second lesson's title only
+	updated, err := svc.UpdateLesson(ctx, course.ID.String(), sec.ID.String(), l2.ID.String(), "Basics Updated", "https://video/2", 400, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("UpdateLesson: %v", err)
+	}
+	if updated.Title != "Basics Updated" {
+		t.Errorf("want title 'Basics Updated', got %s", updated.Title)
+	}
+	if updated.Position != 1 {
+		t.Errorf("lesson position reset: want 1, got %d", updated.Position)
+	}
+}
+
 // --- Student-facing course tests ---
 
 func TestCourseProgressPct(t *testing.T) {

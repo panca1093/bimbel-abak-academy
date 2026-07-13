@@ -267,9 +267,9 @@ func (r *Repository) CreateLesson(ctx context.Context, l model.Lesson) (model.Le
 func (r *Repository) UpdateLesson(ctx context.Context, id uuid.UUID, l model.Lesson) (model.Lesson, error) {
 	result := model.Lesson{}
 	err := r.pool.QueryRow(ctx,
-		`UPDATE lesson SET title = $1, video_url = $2, duration_seconds = $3, position = $4 WHERE id = $5
+		`UPDATE lesson SET title = $1, video_url = $2, duration_seconds = $3 WHERE id = $4
 		RETURNING id, section_id, title, video_url, duration_seconds, position, created_at`,
-		l.Title, l.VideoURL, l.DurationSeconds, l.Position, id,
+		l.Title, l.VideoURL, l.DurationSeconds, id,
 	).Scan(&result.ID, &result.SectionID, &result.Title, &result.VideoURL, &result.DurationSeconds, &result.Position, &result.CreatedAt)
 	return result, err
 }
