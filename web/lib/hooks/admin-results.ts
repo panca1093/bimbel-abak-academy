@@ -6,23 +6,24 @@ import type { AdminResultRow, AdminResultDetail } from "@/lib/types";
 
 export const adminResultsKeys = {
   all: ["admin", "results"] as const,
-  list: (examId: string, q?: string, cursor?: string, limit?: number) =>
-    [...adminResultsKeys.all, "list", examId, q ?? "", cursor ?? "initial", limit ?? 20] as const,
+  list: (examId: string, q?: string, cursor?: string, limit?: number, schoolId?: string) =>
+    [...adminResultsKeys.all, "list", examId, q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? ""] as const,
   detail: (sessionId: string) => [...adminResultsKeys.all, "detail", sessionId] as const,
 };
 
 export function useAdminResults(
-  opts: { examId: string; q?: string; cursor?: string; limit?: number },
+  opts: { examId: string; q?: string; cursor?: string; limit?: number; schoolId?: string },
 ) {
-  const { examId, q, cursor, limit } = opts;
+  const { examId, q, cursor, limit, schoolId } = opts;
   return useQuery({
-    queryKey: adminResultsKeys.list(examId, q, cursor, limit),
+    queryKey: adminResultsKeys.list(examId, q, cursor, limit, schoolId),
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("exam_id", examId);
       if (q) params.set("q", q);
       if (cursor) params.set("cursor", cursor);
       if (limit) params.set("limit", String(limit));
+      if (schoolId) params.set("school_id", schoolId);
       const query = params.toString();
       return authFetch<{ data: AdminResultRow[]; next_cursor?: string }>(
         `/admin/results?${query}`,
@@ -42,11 +43,16 @@ export function useAdminResultDetail(sessionId: string) {
   });
 }
 
-export async function exportAdminResults(examId: string): Promise<void> {
+export async function exportAdminResults(examId: string, schoolId?: string): Promise<void> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
 
-  const res = await fetch(`${API_BASE}/admin/results/export?exam_id=${encodeURIComponent(examId)}`, {
+  const params = new URLSearchParams();
+  params.set("exam_id", examId);
+  if (schoolId) params.set("school_id", schoolId);
+  const query = params.toString();
+
+  const res = await fetch(`${API_BASE}/admin/results/export?${query}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
 

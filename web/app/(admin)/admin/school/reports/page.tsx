@@ -31,11 +31,19 @@ import {
   useAdminResultDetail,
   exportAdminResults,
 } from "@/lib/hooks/admin-results";
+import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useAuthStore } from "@/stores/auth";
 import type { AdminResultRow, AdminResultDetail, ProductType } from "@/lib/types";
 
 export default function SchoolReportsPage() {
   const { t, lang } = useTranslation();
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
+
+  // Role-gated school picker (super_admin only)
+  const currentRole = useAuthStore((s) => s.user?.role);
+  const isSuperAdmin = currentRole === "super_admin";
+  const { data: schoolsData, isLoading: schoolsLoading } = useAdminSchools();
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
 
   // Exam picker
   const { data: examProducts = [], isLoading: examsLoading } = useProducts("exam" as ProductType);
@@ -50,7 +58,7 @@ export default function SchoolReportsPage() {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
 
   // Guard: reset pagination on filter change
-  const filterKey = `${selectedExamId}:${search}`;
+  const filterKey = `${selectedExamId}:${search}:${selectedSchoolId}`;
   const pageFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -67,6 +75,7 @@ export default function SchoolReportsPage() {
     q: search || undefined,
     cursor: activeCursor,
     limit: 20,
+    ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
   });
 
   // Accumulate pages as they arrive
@@ -104,7 +113,7 @@ export default function SchoolReportsPage() {
     if (!selectedExamId) return;
     setExporting(true);
     try {
-      await exportAdminResults(selectedExamId);
+      await exportAdminResults(selectedExamId, isSuperAdmin ? selectedSchoolId : undefined);
     } catch {
       // Export errors handled silently — the CSV download is best-effort
     } finally {
@@ -135,6 +144,15 @@ export default function SchoolReportsPage() {
             </Button>
           }
         />
+        {isSuperAdmin && (
+          <SchoolPicker
+            schoolsData={schoolsData?.data ?? []}
+            selectedSchoolId={selectedSchoolId}
+            onSelect={setSelectedSchoolId}
+            isLoading={schoolsLoading}
+            label={t("select_school")}
+          />
+        )}
         <ExamPicker
           examProducts={examProducts}
           selectedExamId={selectedExamId}
@@ -171,6 +189,15 @@ export default function SchoolReportsPage() {
             </Button>
           }
         />
+        {isSuperAdmin && (
+          <SchoolPicker
+            schoolsData={schoolsData?.data ?? []}
+            selectedSchoolId={selectedSchoolId}
+            onSelect={setSelectedSchoolId}
+            isLoading={schoolsLoading}
+            label={t("select_school")}
+          />
+        )}
         <ExamPicker
           examProducts={examProducts}
           selectedExamId={selectedExamId}
@@ -206,6 +233,15 @@ export default function SchoolReportsPage() {
             </Button>
           }
         />
+        {isSuperAdmin && (
+          <SchoolPicker
+            schoolsData={schoolsData?.data ?? []}
+            selectedSchoolId={selectedSchoolId}
+            onSelect={setSelectedSchoolId}
+            isLoading={schoolsLoading}
+            label={t("select_school")}
+          />
+        )}
         <ExamPicker
           examProducts={examProducts}
           selectedExamId={selectedExamId}
@@ -240,6 +276,16 @@ export default function SchoolReportsPage() {
           </Button>
         }
       />
+
+      {isSuperAdmin && (
+        <SchoolPicker
+          schoolsData={schoolsData?.data ?? []}
+          selectedSchoolId={selectedSchoolId}
+          onSelect={setSelectedSchoolId}
+          isLoading={schoolsLoading}
+          label={t("select_school")}
+        />
+      )}
 
       <ExamPicker
         examProducts={examProducts}
@@ -357,6 +403,47 @@ export default function SchoolReportsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function SchoolPicker({
+  schoolsData,
+  selectedSchoolId,
+  onSelect,
+  isLoading,
+  label,
+}: {
+  schoolsData: { id: string; name: string }[];
+  selectedSchoolId: string;
+  onSelect: (id: string) => void;
+  isLoading: boolean;
+  label: string;
+}) {
+  if (isLoading) {
+    return (
+      <div className="mb-4">
+        <p className="text-xs text-ink-500">{label}</p>
+        <div className="mt-1 h-9 w-[240px] animate-pulse rounded-md bg-surface-2" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4">
+      <p className="text-xs text-ink-500">{label}</p>
+      <Select value={selectedSchoolId} onValueChange={onSelect}>
+        <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={label}>
+          <SelectValue placeholder={label} />
+        </SelectTrigger>
+        <SelectContent>
+          {schoolsData.map((s) => (
+            <SelectItem key={s.id} value={s.id}>
+              {s.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

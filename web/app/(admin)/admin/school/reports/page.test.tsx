@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import SchoolReportsPage from "./page";
-import type { Product, AdminResultRow, AdminResultDetail } from "@/lib/types";
+import type { Product, AdminResultRow, AdminResultDetail, School } from "@/lib/types";
 
 const mockExport = vi.fn();
 
@@ -25,6 +25,22 @@ let detailState = {
   error: null as Error | null,
 };
 
+// Auth store mock
+let authStore: {
+  token: string | null;
+  user: { role?: string; name?: string } | null;
+} = {
+  token: "t",
+  user: { role: "admin_school" },
+};
+
+// Schools mock
+let schoolsState = {
+  data: null as { data: School[]; next_cursor?: string } | null,
+  isLoading: false,
+  isError: false,
+};
+
 vi.mock("@/lib/hooks/products", () => ({
   useProducts: () => mockProducts(),
 }));
@@ -33,6 +49,14 @@ vi.mock("@/lib/hooks/admin-results", () => ({
   useAdminResults: () => resultsState,
   useAdminResultDetail: (sessionId: string) => detailState,
   exportAdminResults: (...args: Parameters<typeof mockExport>) => mockExport(...args),
+}));
+
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
+}));
+
+vi.mock("@/lib/hooks/admin-schools", () => ({
+  useAdminSchools: () => schoolsState,
 }));
 
 const sampleExamProducts = [
@@ -114,6 +138,15 @@ const scorePembahasanDetail: AdminResultDetail = {
 
 describe("SchoolReportsPage", () => {
   beforeEach(() => {
+    authStore = {
+      token: "t",
+      user: { role: "admin_school" },
+    };
+    schoolsState = {
+      data: { data: [{ id: "s1", name: "SMAN 1 Jakarta" }, { id: "s2", name: "SMAN 2 Bandung" }], next_cursor: undefined },
+      isLoading: false,
+      isError: false,
+    };
     mockProducts.mockReturnValue({ data: sampleExamProducts, isLoading: false });
     mockExport.mockReset();
 
@@ -393,6 +426,28 @@ describe("SchoolReportsPage", () => {
 
     fireEvent.click(exportBtn);
 
-    expect(mockExport).toHaveBeenCalledWith("exam-1");
+    expect(mockExport).toHaveBeenCalledWith("exam-1", undefined);
+  });
+
+  // ── School dropdown (Bug B) ──
+
+  it("shows school dropdown for super_admin role", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolReportsPage />);
+
+    // There should be at least 2 comboboxes: exam picker + school picker
+    const comboboxes = screen.getAllByRole("combobox");
+    expect(comboboxes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not show school dropdown for admin_school role", async () => {
+    authStore = { token: "t", user: { role: "admin_school" } };
+
+    render(<SchoolReportsPage />);
+
+    // Only the exam combobox should exist, no school combobox
+    const comboboxes = screen.getAllByRole("combobox");
+    expect(comboboxes.length).toBe(1);
   });
 });

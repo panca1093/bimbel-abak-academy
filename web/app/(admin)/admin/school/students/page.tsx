@@ -47,6 +47,8 @@ import {
   useChangeStudentStatus,
   useReissueStudentCredentials,
 } from "@/lib/hooks/admin-students";
+import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useAuthStore } from "@/stores/auth";
 import type {
   AdminStudent,
   StudentRegistrationInput,
@@ -72,6 +74,12 @@ export default function SchoolStudentsPage() {
   const { t, lang } = useTranslation();
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
+  // Role-gated school picker (super_admin only)
+  const currentRole = useAuthStore((s) => s.user?.role);
+  const isSuperAdmin = currentRole === "super_admin";
+  const { data: schoolsData, isLoading: schoolsLoading } = useAdminSchools();
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
+
   // Filters
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -82,7 +90,7 @@ export default function SchoolStudentsPage() {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
 
   // Guard: reset pagination on filter change
-  const filterKey = `${statusFilter}:${search}`;
+  const filterKey = `${statusFilter}:${search}:${selectedSchoolId}`;
   const pageFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -99,6 +107,7 @@ export default function SchoolStudentsPage() {
     q: search || undefined,
     cursor: activeCursor,
     limit: 20,
+    ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
   });
 
   // Accumulate pages as they arrive
@@ -281,6 +290,29 @@ export default function SchoolStudentsPage() {
           </Button>
         }
       />
+
+      {/* School picker (super_admin only) */}
+      {isSuperAdmin && (
+        <div className="mb-6">
+          <p className="text-xs text-ink-500">{t("select_school")}</p>
+          {schoolsLoading ? (
+            <div className="mt-1 h-9 w-[240px] animate-pulse rounded-md bg-surface-2" />
+          ) : (
+            <Select value={selectedSchoolId} onValueChange={setSelectedSchoolId}>
+              <SelectTrigger className="mt-1 h-9 w-[240px] text-xs" aria-label={t("select_school")}>
+                <SelectValue placeholder={t("select_school")} />
+              </SelectTrigger>
+              <SelectContent>
+                {(schoolsData?.data ?? []).map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

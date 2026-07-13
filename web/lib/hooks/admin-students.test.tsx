@@ -91,6 +91,36 @@ describe("admin-students hooks", () => {
     );
   });
 
+  it("useAdminStudents passes school_id when schoolId is provided", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(
+      () =>
+        useAdminStudents({
+          schoolId: "school-1",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        "/admin/students?school_id=school-1",
+      ),
+    );
+  });
+
+  it("useAdminStudents omits school_id when schoolId is undefined", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminStudents(), { wrapper });
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/students"),
+    );
+  });
+
   it("useRegisterStudent posts to /admin/students and invalidates list", async () => {
     const input: StudentRegistrationInput = {
       name: "Siti Aisyah",

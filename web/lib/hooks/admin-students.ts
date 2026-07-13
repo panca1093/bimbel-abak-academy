@@ -11,22 +11,23 @@ import type {
 
 export const adminStudentsKeys = {
   all: ["admin", "students"] as const,
-  list: (status?: string, q?: string, cursor?: string, limit?: number) =>
-    [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20] as const,
+  list: (status?: string, q?: string, cursor?: string, limit?: number, schoolId?: string) =>
+    [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? ""] as const,
 };
 
 export function useAdminStudents(
-  opts?: { status?: string; q?: string; cursor?: string; limit?: number }
+  opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string }
 ) {
-  const { status, q, cursor, limit } = opts ?? {};
+  const { status, q, cursor, limit, schoolId } = opts ?? {};
   return useQuery({
-    queryKey: adminStudentsKeys.list(status, q, cursor, limit),
+    queryKey: adminStudentsKeys.list(status, q, cursor, limit, schoolId),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
       if (q) params.set("q", q);
       if (cursor) params.set("cursor", cursor);
       if (limit) params.set("limit", String(limit));
+      if (schoolId) params.set("school_id", schoolId);
       const query = params.toString();
       const path = query ? `/admin/students?${query}` : "/admin/students";
       return authFetch<{ data: AdminStudent[]; next_cursor?: string }>(path);
