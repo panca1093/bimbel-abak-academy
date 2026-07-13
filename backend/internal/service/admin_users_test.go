@@ -1,14 +1,19 @@
 package service
 
 import (
+	"akademi-bimbel/config"
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestIsValidAdminRole(t *testing.T) {
@@ -247,4 +252,69 @@ func TestChangeAccountRole_SchoolBinding_Integration(t *testing.T) {
 			t.Errorf("SchoolID: want nil after moving away from admin_school, got %v", *u.SchoolID)
 		}
 	})
+}
+
+func TestChangeAccountStatus_ReactivatesDeactivatedAccount(t *testing.T) {
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	cfg := &config.Config{
+		JWTSecret:       "admin-reactivation-test-secret",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 168 * time.Hour,
+	}
+	svc := NewWithStore(
+		repo,
+		repo,
+		rdb,
+		infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL),
+		&NoopOTPProvider{},
+		&NoopEmailProvider{},
+		nil,
+		nil,
+		nil,
+		cfg,
+	)
+	ctx := context.Background()
+	actorID := uuid.NewString()
+	email := "reactivate-" + uniqueSuffix() + "@test.com"
+
+	account, err := svc.CreateAdminAccount(
+		ctx,
+		actorID,
+		email,
+		"Reactivation Target",
+		RoleAdminStore,
+		"password123",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if err := svc.ChangeAccountStatus(ctx, actorID, account.ID, "deactivated"); err != nil {
+		t.Fatalf("ChangeAccountStatus (deactivate): %v", err)
+	}
+	if err := svc.ChangeAccountStatus(ctx, actorID, account.ID, "active"); err != nil {
+		t.Fatalf("ChangeAccountStatus (reactivate): %v", err)
+	}
+
+	user, err := repo.GetAdminUserByID(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAdminUserByID: %v", err)
+	}
+	if user == nil || user.Status != "active" {
+		t.Errorf("want status active after reactivation, got %v", user)
+	}
+	access, refresh, _, err := svc.Login(ctx, email, "password123")
+	if err != nil {
+		t.Fatalf("Login after reactivation: %v", err)
+	}
+	if access == "" || refresh == "" {
+		t.Errorf("want session tokens after reactivation, got access=%q refresh=%q", access, refresh)
+	}
 }

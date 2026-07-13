@@ -128,13 +128,17 @@ func (f *fakeRepo) ListSchools(_ context.Context) ([]*model.School, error) {
 	return nil, nil
 }
 
-func (f *fakeRepo) DisableOTP(_ context.Context, userID string) error {
+func (f *fakeRepo) ActivateUser(_ context.Context, userID string) (bool, error) {
 	u, ok := f.byID[userID]
 	if !ok {
-		return fmt.Errorf("not found")
+		return false, fmt.Errorf("not found")
 	}
+	if u.Status != "pending_verification" {
+		return false, nil
+	}
+	u.Status = "active"
 	u.OTPEnabled = false
-	return nil
+	return true, nil
 }
 
 func (f *fakeRepo) TombstoneUser(_ context.Context, userID string) error {
@@ -440,5 +444,79 @@ func TestMeHandler_ValidToken(t *testing.T) {
 	}
 	if resp["role"] == nil {
 		t.Error("want role in response")
+	}
+}
+
+// TestLoginHandler_UnverifiedUser covers FR-5: login for a pending_verification
+// user returns 403 verification_pending with otp_required and a pending_token,
+// not the generic invalid_credentials error.
+func TestLoginHandler_UnverifiedUser(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:           "u1",
+		Email:        strptr("pending@example.com"),
+		PasswordHash: mustHash("password123"),
+		Role:         service.RoleStudent,
+		Status:       "pending_verification",
+	})
+	rec := postJSON(t, env.e, "/api/v1/auth/login", map[string]string{
+		"identifier": "pending@example.com",
+		"password":   "password123",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "verification_pending" {
+		t.Errorf("want code=verification_pending, got %v", resp["code"])
+	}
+	if resp["otp_required"] != true {
+		t.Errorf("want otp_required=true, got %v", resp["otp_required"])
+	}
+	if resp["pending_token"] == "" || resp["pending_token"] == nil {
+		t.Error("want non-empty pending_token")
+	}
+	if resp["id"] != "pending@example.com" {
+		t.Errorf("want id=pending@example.com, got %v", resp["id"])
+	}
+}
+
+// TestRegisterHandler_ResendOnPendingEmail covers FR-6: re-registering with an
+// email that already has a pending_verification account resends the OTP and
+// returns 201 with a fresh pending_token, not 409 email_taken.
+func TestRegisterHandler_ResendOnPendingEmail(t *testing.T) {
+	env := newTestEnv(t)
+	firstRec := postJSON(t, env.e, "/api/v1/auth/register", map[string]string{
+		"email":    "resend@example.com",
+		"password": "strongpass123",
+		"name":     "Budi",
+	})
+	if firstRec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d body=%s", firstRec.Code, firstRec.Body.String())
+	}
+	var firstResp map[string]any
+	json.NewDecoder(firstRec.Body).Decode(&firstResp)
+	firstToken := firstResp["pending_token"]
+	env.mr.FastForward(time.Minute)
+
+	rec := postJSON(t, env.e, "/api/v1/auth/register", map[string]string{
+		"email":    "resend@example.com",
+		"password": "strongpass123",
+		"name":     "Budi",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["otp_required"] != true {
+		t.Errorf("want otp_required=true, got %v", resp["otp_required"])
+	}
+	if resp["pending_token"] == "" || resp["pending_token"] == nil {
+		t.Error("want non-empty pending_token")
+	}
+	if resp["pending_token"] == firstToken {
+		t.Error("want a fresh pending_token on resend, got same as first")
 	}
 }

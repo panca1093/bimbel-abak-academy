@@ -39,6 +39,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "reset_invalid", Message: err.Error()}
 	case errors.Is(err, service.ErrAccountDeactivated):
 		status, apiErr = http.StatusForbidden, APIError{Code: "account_deactivated", Message: err.Error()}
+	case errors.Is(err, service.ErrVerificationPending):
+		status, apiErr = http.StatusForbidden, APIError{Code: "verification_pending", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidToken):
 		status, apiErr = http.StatusUnauthorized, APIError{Code: "invalid_google_token", Message: "invalid or expired Google token"}
 	case errors.Is(err, service.ErrInvalidUUID):

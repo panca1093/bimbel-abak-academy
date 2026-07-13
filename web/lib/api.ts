@@ -12,12 +12,14 @@ export function fileUrl(key?: string | null): string | undefined {
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  readonly body?: Record<string, unknown>;
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, body?: Record<string, unknown>) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -25,6 +27,7 @@ interface ErrorBody {
   code?: string;
   message?: string;
   error?: string;
+  [key: string]: unknown;
 }
 
 async function parseError(res: Response): Promise<ApiError> {
@@ -44,7 +47,7 @@ async function parseError(res: Response): Promise<ApiError> {
     res.statusText ??
     `Request failed with status ${status}`;
   const code = body?.code ?? `HTTP_${status}`;
-  return new ApiError(code, message, status);
+  return new ApiError(code, message, status, body ?? undefined);
 }
 
 function withJsonHeaders(init?: RequestInit): HeadersInit {

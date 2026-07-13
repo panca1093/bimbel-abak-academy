@@ -77,7 +77,7 @@ func TestParseAccess_ValidToken(t *testing.T) {
 	svc, _ := newTestService(t, repo)
 
 	// Mint a token via the service's own login flow to get a valid JWT.
-	access, _, err := svc.Login(context.Background(), "parse@example.com", "password123")
+	access, _, _, err := svc.Login(context.Background(), "parse@example.com", "password123")
 	if err != nil {
 		t.Fatalf("Login: %v", err)
 	}

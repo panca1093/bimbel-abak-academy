@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
 
@@ -41,7 +43,15 @@ func (h *Handler) Login(c echo.Context) error {
 	if req.Identifier == "" || req.Password == "" {
 		return badRequest(c, "identifier and password are required")
 	}
-	access, refresh, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
+	access, refresh, pendingToken, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
+	if errors.Is(err, service.ErrVerificationPending) {
+		return c.JSON(http.StatusForbidden, map[string]any{
+			"code":          "verification_pending",
+			"otp_required":  true,
+			"pending_token": pendingToken,
+			"id":            req.Identifier,
+		})
+	}
 	if err != nil {
 		return mapServiceError(c, err)
 	}
