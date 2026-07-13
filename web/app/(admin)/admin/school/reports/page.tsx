@@ -97,7 +97,10 @@ export default function SchoolReportsPage() {
 
   // Drill-down dialog
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-  const detailResult = useAdminResultDetail(selectedSessionId);
+  const detailResult = useAdminResultDetail(
+    selectedSessionId,
+    isSuperAdmin ? selectedSchoolId : undefined,
+  );
 
   // Export
   const [exporting, setExporting] = useState(false);

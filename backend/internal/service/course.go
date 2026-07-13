@@ -99,6 +99,9 @@ func (s *Service) UpdateCourse(ctx context.Context, id, title, level, subject, i
 		InstructorName: instructorName,
 	}
 	// Preserve existing values for any field not supplied (zero-value).
+	if c.Title == "" {
+		c.Title = existing.Title
+	}
 	if c.Level == "" {
 		c.Level = existing.Level
 	}

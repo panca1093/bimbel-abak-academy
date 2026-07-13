@@ -308,11 +308,13 @@ var (
 )
 
 type adminResultsDBTestEnv struct {
-	pool   *pgxpool.Pool
-	e      *echo.Echo
-	svc    *service.Service
-	signer *infra.JWTSigner
-	mr     *miniredis.Miniredis
+	pool        *pgxpool.Pool
+	pgContainer *tcpostgres.PostgresContainer
+	rdb         *redis.Client
+	e           *echo.Echo
+	svc         *service.Service
+	signer      *infra.JWTSigner
+	mr          *miniredis.Miniredis
 }
 
 func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
@@ -377,11 +379,13 @@ func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
 		adminResults.GET("/:session_id", h.AdminGetResultDetail)
 
 		adminResultsDBEnv = &adminResultsDBTestEnv{
-			pool:   pool,
-			e:      e,
-			svc:    svc,
-			signer: signer,
-			mr:     mr,
+			pool:        pool,
+			pgContainer: pgContainer,
+			rdb:         rdb,
+			e:           e,
+			svc:         svc,
+			signer:      signer,
+			mr:          mr,
 		}
 	})
 	if adminResultsDBEnv == nil {

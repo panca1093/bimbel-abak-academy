@@ -206,7 +206,9 @@ describe("SchoolStudentsPage", () => {
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Dewi Lestari", nis: "11111" }),
+        expect.objectContaining({
+          input: expect.objectContaining({ name: "Dewi Lestari", nis: "11111" }),
+        }),
       );
       expect(toast.success).toHaveBeenCalledWith("Siswa berhasil didaftarkan.");
     });
@@ -282,7 +284,9 @@ describe("SchoolStudentsPage", () => {
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith("st1");
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "st1" }),
+      );
       expect(toast.success).toHaveBeenCalledWith("Kredensial baru berhasil diterbitkan.");
     });
 

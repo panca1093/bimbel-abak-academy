@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"akademi-bimbel/internal/infra"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -30,6 +31,10 @@ func (h *Handler) resolveSchoolScope(c echo.Context, claims *infra.Claims) (stri
 		sid := c.QueryParam("school_id")
 		if sid == "" {
 			c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id is required"})
+			return "", errScopeDone
+		}
+		if _, err := uuid.Parse(sid); err != nil {
+			c.JSON(http.StatusBadRequest, APIError{Code: "invalid_request", Message: "school_id must be a valid UUID"})
 			return "", errScopeDone
 		}
 		exists, err := h.svc.SchoolExists(c.Request().Context(), sid)

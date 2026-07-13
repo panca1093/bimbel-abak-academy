@@ -252,11 +252,13 @@ var (
 )
 
 type adminStuDBTestEnv struct {
-	pool   *pgxpool.Pool
-	e      *echo.Echo
-	svc    *service.Service
-	signer *infra.JWTSigner
-	mr     *miniredis.Miniredis
+	pool        *pgxpool.Pool
+	pgContainer *tcpostgres.PostgresContainer
+	rdb         *redis.Client
+	e           *echo.Echo
+	svc         *service.Service
+	signer      *infra.JWTSigner
+	mr          *miniredis.Miniredis
 }
 
 func newAdminStuDBEnv(t *testing.T) *adminStuDBTestEnv {
@@ -325,11 +327,13 @@ func newAdminStuDBEnv(t *testing.T) *adminStuDBTestEnv {
 		adminStudents.POST("/bulk/credentials", h.AdminBulkReissueCredentials)
 
 		adminStuDBEnv = &adminStuDBTestEnv{
-			pool:   pool,
-			e:      e,
-			svc:    svc,
-			signer: signer,
-			mr:     mr,
+			pool:        pool,
+			pgContainer: pgContainer,
+			rdb:         rdb,
+			e:           e,
+			svc:         svc,
+			signer:      signer,
+			mr:          mr,
 		}
 	})
 	if adminStuDBEnv == nil {
@@ -383,6 +387,26 @@ func TestAdminListStudents_SuperAdmin_NonexistentSchool_404(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&resp)
 	if resp["code"] != "not_found" {
 		t.Errorf("code: want not_found, got %v", resp["code"])
+	}
+}
+
+func TestAdminListStudents_SuperAdmin_MalformedSchoolID_400(t *testing.T) {
+	env := newAdminStuDBEnv(t)
+
+	superToken := mintSuperAdminStuToken(t, env, "super1")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students?school_id=not-a-uuid", nil)
+	req.Header.Set("Authorization", "Bearer "+superToken)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for malformed school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "invalid_request" {
+		t.Errorf("code: want invalid_request, got %v", resp["code"])
 	}
 }
 

@@ -164,6 +164,22 @@ describe("admin-results hooks", () => {
     expect(result.current.isFetching).toBe(false);
     expect(mockAuthFetch).not.toHaveBeenCalled();
   });
+
+  it("useAdminResultDetail threads school_id when schoolId is provided", async () => {
+    mockAuthFetch.mockResolvedValueOnce({} as AdminResultDetail);
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => useAdminResultDetail("s1", "school-1"),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/results/s1?school_id=school-1",
+    );
+  });
 });
 
 describe("exportAdminResults", () => {

@@ -168,7 +168,10 @@ export default function SchoolStudentsPage() {
       return;
     }
     try {
-      const result = await registerStudent.mutateAsync(registerForm);
+      const result = await registerStudent.mutateAsync({
+        input: registerForm,
+        schoolId: isSuperAdmin ? selectedSchoolId : undefined,
+      });
       setRegisterResult(result);
       toast.success(t("students_register_success"));
     } catch (err: unknown) {
@@ -186,7 +189,11 @@ export default function SchoolStudentsPage() {
         ? t("students_toast_activated")
         : t("students_toast_deactivated");
     try {
-      await changeStatus.mutateAsync({ id: student.id, status: newStatus });
+      await changeStatus.mutateAsync({
+        id: student.id,
+        status: newStatus,
+        schoolId: isSuperAdmin ? selectedSchoolId : undefined,
+      });
       toast.success(success);
     } catch (err: unknown) {
       const msg =
@@ -198,7 +205,10 @@ export default function SchoolStudentsPage() {
   const handleReissue = async () => {
     if (!reissueTarget) return;
     try {
-      const result = await reissueCreds.mutateAsync(reissueTarget.id);
+      const result = await reissueCreds.mutateAsync({
+        id: reissueTarget.id,
+        schoolId: isSuperAdmin ? selectedSchoolId : undefined,
+      });
       setReissueResult(result);
       toast.success(t("students_credential_reissued"));
     } catch (err: unknown) {

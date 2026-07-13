@@ -36,11 +36,18 @@ export function useAdminStudents(
   });
 }
 
+// scopeQuery returns the ?school_id= suffix for super_admin acting on a chosen
+// school, or "" for admin_school (whose scope rides on the JWT).
+function scopeQuery(schoolId?: string): string {
+  if (!schoolId) return "";
+  return `?school_id=${encodeURIComponent(schoolId)}`;
+}
+
 export function useRegisterStudent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: StudentRegistrationInput) =>
-      authFetch<StudentRegistrationResult>("/admin/students", {
+    mutationFn: ({ input, schoolId }: { input: StudentRegistrationInput; schoolId?: string }) =>
+      authFetch<StudentRegistrationResult>(`/admin/students${scopeQuery(schoolId)}`, {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -53,11 +60,14 @@ export function useRegisterStudent() {
 export function useChangeStudentStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      authFetch<{ message: string }>(`/admin/students/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      }),
+    mutationFn: ({ id, status, schoolId }: { id: string; status: string; schoolId?: string }) =>
+      authFetch<{ message: string }>(
+        `/admin/students/${encodeURIComponent(id)}${scopeQuery(schoolId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status }),
+        }
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminStudentsKeys.all });
     },
@@ -67,8 +77,10 @@ export function useChangeStudentStatus() {
 export function useReissueStudentCredentials() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      authFetch<StudentCredentials>(`/admin/students/${encodeURIComponent(id)}/credentials`),
+    mutationFn: ({ id, schoolId }: { id: string; schoolId?: string }) =>
+      authFetch<StudentCredentials>(
+        `/admin/students/${encodeURIComponent(id)}/credentials${scopeQuery(schoolId)}`
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminStudentsKeys.all });
     },

@@ -8,7 +8,8 @@ export const adminResultsKeys = {
   all: ["admin", "results"] as const,
   list: (examId: string, q?: string, cursor?: string, limit?: number, schoolId?: string) =>
     [...adminResultsKeys.all, "list", examId, q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? ""] as const,
-  detail: (sessionId: string) => [...adminResultsKeys.all, "detail", sessionId] as const,
+  detail: (sessionId: string, schoolId?: string) =>
+    [...adminResultsKeys.all, "detail", sessionId, schoolId ?? ""] as const,
 };
 
 export function useAdminResults(
@@ -33,13 +34,15 @@ export function useAdminResults(
   });
 }
 
-export function useAdminResultDetail(sessionId: string) {
+export function useAdminResultDetail(sessionId: string, schoolId?: string) {
   return useQuery({
-    queryKey: adminResultsKeys.detail(sessionId),
-    queryFn: () =>
-      authFetch<AdminResultDetail>(
-        `/admin/results/${encodeURIComponent(sessionId)}`,
-      ),
+    queryKey: adminResultsKeys.detail(sessionId, schoolId),
+    queryFn: () => {
+      const qs = schoolId ? `?school_id=${encodeURIComponent(schoolId)}` : "";
+      return authFetch<AdminResultDetail>(
+        `/admin/results/${encodeURIComponent(sessionId)}${qs}`,
+      );
+    },
     enabled: Boolean(sessionId),
   });
 }

@@ -687,56 +687,9 @@ func TestCreateCourse_RejectsNonStoreRole(t *testing.T) {
 	}
 }
 
-// Test: UpdateCourse preserves fields not sent by partial PATCH (Bug-C pattern).
-func TestUpdateCourse_PreservesFieldsWhenNotSent(t *testing.T) {
-	ctx := context.Background()
-	fake := newFakeCourseRepo()
-	svc := &shimCourseService{fake: fake}
-
-	// Create a course with specific level, subject, instructor
-	course, err := svc.CreateCourse(ctx, "Math", "SMA", "Matematika", "Budi", RoleAdminStore)
-	if err != nil {
-		t.Fatalf("CreateCourse: %v", err)
-	}
-	if course.Level != "SMA" {
-		t.Fatalf("want level SMA, got %s", course.Level)
-	}
-
-	// Update with only title — level, subject, instructor become empty strings
-	// (simulating partial PATCH where only title was sent)
-	updated, err := svc.UpdateCourse(ctx, course.ID.String(), "New Title", "", "", "", RoleAdminStore)
-	if err != nil {
-		t.Fatalf("UpdateCourse: %v", err)
-	}
-
-	if updated.Title != "New Title" {
-		t.Errorf("want title 'New Title', got %s", updated.Title)
-	}
-	if updated.Level != "SMA" {
-		t.Errorf("level was blanked: want 'SMA', got %q", updated.Level)
-	}
-	if updated.Subject != "Matematika" {
-		t.Errorf("subject was blanked: want 'Matematika', got %q", updated.Subject)
-	}
-	if updated.InstructorName != "Budi" {
-		t.Errorf("instructor_name was blanked: want 'Budi', got %q", updated.InstructorName)
-	}
-
-	// Verify the stored course also preserved the fields
-	stored, err := fake.GetCourseByID(ctx, course.ID)
-	if err != nil {
-		t.Fatalf("GetCourseByID: %v", err)
-	}
-	if stored.Level != "SMA" {
-		t.Errorf("stored level was blanked: want 'SMA', got %q", stored.Level)
-	}
-	if stored.Subject != "Matematika" {
-		t.Errorf("stored subject was blanked: want 'Matematika', got %q", stored.Subject)
-	}
-	if stored.InstructorName != "Budi" {
-		t.Errorf("stored instructor_name was blanked: want 'Budi', got %q", stored.InstructorName)
-	}
-}
+// UpdateCourse preserve-fields regression: see
+// integration/TestUpdateCourse_PreservesTitleAndFields_RealService (real service +
+// Postgres; the shim-based test here was tautological and did not cover title).
 
 // Test: UpdateCourse rejects non-store role
 func TestUpdateCourse_RejectsNonStoreRole(t *testing.T) {
@@ -1037,51 +990,9 @@ func TestLesson_RejectsNonStoreRole(t *testing.T) {
 	}
 }
 
-// Test: UpdateLesson preserves lesson position (regression: Bug D)
-func TestUpdateLesson_PreservesPosition(t *testing.T) {
-	ctx := context.Background()
-	fake := newFakeCourseRepo()
-	svc := &shimCourseService{fake: fake}
-
-	course, err := svc.CreateCourse(ctx, "Math", "beginner", "math", "Mr. A", RoleAdminStore)
-	if err != nil {
-		t.Fatalf("CreateCourse: %v", err)
-	}
-
-	sec, err := svc.CreateSection(ctx, course.ID.String(), "Intro", RoleAdminStore)
-	if err != nil {
-		t.Fatalf("CreateSection: %v", err)
-	}
-
-	// Create two lessons: positions 0 and 1
-	l1, err := svc.CreateLesson(ctx, course.ID.String(), sec.ID.String(), "Welcome", "https://video/1", 300, RoleAdminStore)
-	if err != nil {
-		t.Fatalf("CreateLesson 1: %v", err)
-	}
-	if l1.Position != 0 {
-		t.Errorf("want l1 position 0, got %d", l1.Position)
-	}
-
-	l2, err := svc.CreateLesson(ctx, course.ID.String(), sec.ID.String(), "Basics", "https://video/2", 400, RoleAdminStore)
-	if err != nil {
-		t.Fatalf("CreateLesson 2: %v", err)
-	}
-	if l2.Position != 1 {
-		t.Errorf("want l2 position 1, got %d", l2.Position)
-	}
-
-	// Update the second lesson's title only
-	updated, err := svc.UpdateLesson(ctx, course.ID.String(), sec.ID.String(), l2.ID.String(), "Basics Updated", "https://video/2", 400, RoleAdminStore)
-	if err != nil {
-		t.Fatalf("UpdateLesson: %v", err)
-	}
-	if updated.Title != "Basics Updated" {
-		t.Errorf("want title 'Basics Updated', got %s", updated.Title)
-	}
-	if updated.Position != 1 {
-		t.Errorf("lesson position reset: want 1, got %d", updated.Position)
-	}
-}
+// UpdateLesson position-preservation regression: see
+// integration/TestUpdateLesson_PreservesPosition_RealRepo (real Postgres +
+// Repository.UpdateLesson; the fake-repo test here was tautological).
 
 // --- Student-facing course tests ---
 

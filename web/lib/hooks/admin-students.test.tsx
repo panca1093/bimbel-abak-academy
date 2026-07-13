@@ -121,7 +121,7 @@ describe("admin-students hooks", () => {
     );
   });
 
-  it("useRegisterStudent posts to /admin/students and invalidates list", async () => {
+  it("useRegisterStudent posts to /admin/students, threads school_id, and invalidates list", async () => {
     const input: StudentRegistrationInput = {
       name: "Siti Aisyah",
       nis: "67890",
@@ -145,17 +145,36 @@ describe("admin-students hooks", () => {
     });
 
     await act(async () => {
-      await hookResult.current.mutateAsync(input);
+      await hookResult.current.mutateAsync({ input, schoolId: "school-1" });
     });
 
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/students", {
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/students?school_id=school-1", {
       method: "POST",
       body: JSON.stringify(input),
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: adminStudentsKeys.all });
   });
 
-  it("useChangeStudentStatus patches /admin/students/:id and invalidates list", async () => {
+  it("useRegisterStudent omits school_id when schoolId is undefined", async () => {
+    const input: StudentRegistrationInput = { name: "X", nis: "1" };
+    mockAuthFetch.mockResolvedValueOnce({} as StudentRegistrationResult);
+
+    const { wrapper } = wrapperFactory();
+    const { result: hookResult } = renderHook(() => useRegisterStudent(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await hookResult.current.mutateAsync({ input });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/students", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  });
+
+  it("useChangeStudentStatus patches /admin/students/:id, threads school_id, and invalidates list", async () => {
     mockAuthFetch.mockResolvedValueOnce({ message: "status updated" });
 
     const { wrapper, queryClient } = wrapperFactory();
@@ -163,17 +182,21 @@ describe("admin-students hooks", () => {
     const { result } = renderHook(() => useChangeStudentStatus(), { wrapper });
 
     await act(async () => {
-      await result.current.mutateAsync({ id: "st1", status: "deactivated" });
+      await result.current.mutateAsync({
+        id: "st1",
+        status: "deactivated",
+        schoolId: "school-1",
+      });
     });
 
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/students/st1", {
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/students/st1?school_id=school-1", {
       method: "PATCH",
       body: JSON.stringify({ status: "deactivated" }),
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: adminStudentsKeys.all });
   });
 
-  it("useReissueStudentCredentials fetches /admin/students/:id/credentials and invalidates list", async () => {
+  it("useReissueStudentCredentials fetches /admin/students/:id/credentials, threads school_id, and invalidates list", async () => {
     const creds: StudentCredentials = {
       username: "budi",
       temp_password: "newPass789",
@@ -187,13 +210,30 @@ describe("admin-students hooks", () => {
     });
 
     await act(async () => {
-      await result.current.mutateAsync("st1");
+      await result.current.mutateAsync({ id: "st1", schoolId: "school-1" });
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/students/st1/credentials?school_id=school-1",
+    );
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminStudentsKeys.all });
+  });
+
+  it("useReissueStudentCredentials omits school_id when schoolId is undefined", async () => {
+    mockAuthFetch.mockResolvedValueOnce({} as StudentCredentials);
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useReissueStudentCredentials(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: "st1" });
     });
 
     expect(mockAuthFetch).toHaveBeenCalledWith(
       "/admin/students/st1/credentials",
     );
-    expect(spy).toHaveBeenCalledWith({ queryKey: adminStudentsKeys.all });
   });
 });
 
