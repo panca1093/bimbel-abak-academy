@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
+import { useProfile } from "@/lib/hooks/students";
+import { isProfileComplete } from "@/lib/profile";
 import { AppShell } from "@/components/shell/AppShell";
 import { ADMIN_ROLES } from "@/lib/nav-config";
 import type { UserRole } from "@/lib/nav-config";
@@ -25,6 +27,9 @@ export default function StudentLayout({
 
   const role = user?.role as UserRole | undefined;
 
+  // Durable Google-only completeness gate — re-evaluated each session from DB-truth.
+  const { data: profile, isLoading: profileLoading } = useProfile();
+
   useEffect(() => {
     setHydrated(true);
   }, []);
@@ -39,6 +44,19 @@ export default function StudentLayout({
       router.replace("/admin");
     }
   }, [hydrated, token, role, router]);
+
+  // Google-only gate: incomplete Google students go to /complete-profile.
+  // Password students with NULL school_id are never redirected.
+  useEffect(() => {
+    if (!hydrated || !token || profileLoading) return;
+    if (
+      profile &&
+      profile.auth_provider === "google" &&
+      !isProfileComplete(profile)
+    ) {
+      router.replace("/complete-profile");
+    }
+  }, [hydrated, token, profileLoading, profile, router]);
 
   // Load Midtrans Snap JS with client key from backend (DB-sourced).
   useEffect(() => {
@@ -74,7 +92,17 @@ export default function StudentLayout({
     };
   }, [hydrated, token]);
 
-  if (!hydrated || !token || (role && ADMIN_ROLES.includes(role))) {
+  // Show loading while profile resolves (gate needs it) or during no-token/admin checks.
+  if (!hydrated || !token || (role && ADMIN_ROLES.includes(role)) || profileLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-ink-500">
+        Memuat…
+      </div>
+    );
+  }
+
+  // Don't render shell for gated Google students (gate redirects above).
+  if (profile && profile.auth_provider === "google" && !isProfileComplete(profile)) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
         Memuat…
