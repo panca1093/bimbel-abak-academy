@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"akademi-bimbel/internal/model"
 )
@@ -74,9 +73,9 @@ func scanTestWithCount(row interface{ Scan(dest ...any) error }, t *model.Test) 
 func scanQuestion(row interface{ Scan(dest ...any) error }, q *model.Question) error {
 	var correctAnswer, explanation, difficulty, imageURL *string
 	err := row.Scan(
-		&q.ID, &q.TestID, &q.Format, &q.Body,
+		&q.ID, &q.Format, &q.Body,
 		&correctAnswer, &explanation, &difficulty, &imageURL,
-		&q.SortOrder, &q.PointCorrect, &q.PointWrong,
+		&q.TopicID, &q.PointCorrect, &q.PointWrong,
 	)
 	if err != nil {
 		return err
@@ -170,13 +169,12 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	}
 
 	// LEFT JOIN with a grouped count keeps tests without questions counted as 0.
-	// We count per test_id and join back — the GROUP BY in the subquery avoids
-	// inflating the row count over the outer filters (subject/topic/cursor).
+	// Count through test_question since post-0025 attachment lives on the join.
 	query := `SELECT t.id, t.title, t.subject, t.topic, t.duration_minutes,
 		t.audio_url, t.audio_play_limit, t.section_type, COALESCE(q.cnt, 0), t.created_at
 	FROM test t
 	LEFT JOIN (
-		SELECT test_id, COUNT(*) AS cnt FROM question GROUP BY test_id
+		SELECT test_id, COUNT(*) AS cnt FROM test_question GROUP BY test_id
 	) q ON q.test_id = t.id
 	WHERE 1=1`
 	args := []interface{}{}
@@ -248,10 +246,12 @@ func (r *Repository) DeleteTest(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]model.QuestionWithOptions, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order, point_correct, point_wrong
-		FROM question
-		WHERE test_id = $1
-		ORDER BY sort_order`,
+		`SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, tq.sort_order
+		FROM question q
+		JOIN test_question tq ON tq.question_id = q.id
+		LEFT JOIN exam_topic et ON et.id = q.topic_id
+		WHERE tq.test_id = $1
+		ORDER BY tq.sort_order`,
 		testID,
 	)
 	if err != nil {
@@ -259,13 +259,41 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 	}
 	defer rows.Close()
 
-	var questions []model.Question
+	var questions []model.QuestionWithOptions
 	for rows.Next() {
 		q := model.Question{}
-		if err := scanQuestion(rows, &q); err != nil {
+		var sortOrder int
+		var correctAnswer, explanation, difficulty, imageURL, topic *string
+		var topicID *uuid.UUID
+		if err := rows.Scan(
+			&q.ID, &q.Format, &q.Body,
+			&correctAnswer, &explanation, &difficulty, &imageURL,
+			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &sortOrder,
+		); err != nil {
 			return nil, err
 		}
-		questions = append(questions, q)
+		if correctAnswer != nil {
+			q.CorrectAnswer = correctAnswer
+		}
+		if explanation != nil {
+			q.Explanation = explanation
+		}
+		if difficulty != nil {
+			q.Difficulty = difficulty
+		}
+		if imageURL != nil {
+			q.ImageURL = imageURL
+		}
+		if topicID != nil {
+			q.TopicID = topicID
+		}
+		if topic != nil {
+			q.Topic = topic
+		}
+		questions = append(questions, model.QuestionWithOptions{
+			Question:  q,
+			SortOrder: sortOrder,
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -277,7 +305,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 
 	questionIDs := make([]uuid.UUID, len(questions))
 	for i, q := range questions {
-		questionIDs[i] = q.ID
+		questionIDs[i] = q.Question.ID
 	}
 
 	opts, err := r.queryOptionsForQuestions(ctx, questionIDs)
@@ -285,14 +313,10 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		return nil, err
 	}
 
-	result := make([]model.QuestionWithOptions, len(questions))
-	for i, q := range questions {
-		result[i] = model.QuestionWithOptions{
-			Question: q,
-			Options:  opts[q.ID],
-		}
+	for i := range questions {
+		questions[i].Options = opts[questions[i].Question.ID]
 	}
-	return result, nil
+	return questions, nil
 }
 
 func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionOption, error) {
@@ -324,15 +348,12 @@ func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs [
 
 func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order, point_correct, point_wrong)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		`INSERT INTO question (format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`,
-		q.TestID, q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder, q.PointCorrect, q.PointWrong,
+		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.TopicID, q.PointCorrect, q.PointWrong,
 	).Scan(&q.ID)
 	if err != nil {
-		if isSortOrderConflict(err) {
-			return ErrSortOrderConflict
-		}
 		return err
 	}
 
@@ -346,16 +367,13 @@ func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	var updatedID uuid.UUID
 	err := tx.QueryRow(ctx,
 		`UPDATE question
-		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, sort_order = $7, point_correct = $8, point_wrong = $9
+		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, topic_id = $7, point_correct = $8, point_wrong = $9
 		WHERE id = $10 RETURNING id`,
-		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder, q.PointCorrect, q.PointWrong, q.ID,
+		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.TopicID, q.PointCorrect, q.PointWrong, q.ID,
 	).Scan(&updatedID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return pgx.ErrNoRows
-		}
-		if isSortOrderConflict(err) {
-			return ErrSortOrderConflict
 		}
 		return err
 	}
@@ -381,6 +399,25 @@ func (r *Repository) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+// AttachQuestionToTestTx appends an existing bank question to a test, assigning the
+// next sort_order. Attaching an already-attached question is idempotent (no duplicate,
+// no error — FR-21).
+func (r *Repository) AttachQuestionToTestTx(ctx context.Context, tx pgx.Tx, testID, questionID uuid.UUID) error {
+	var nextOrder int
+	if err := tx.QueryRow(ctx,
+		`SELECT COALESCE(MAX(sort_order), 0) + 1 FROM test_question WHERE test_id = $1`,
+		testID,
+	).Scan(&nextOrder); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)
+		ON CONFLICT (test_id, question_id) DO NOTHING`,
+		testID, questionID, nextOrder,
+	)
+	return err
+}
+
 func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, options []model.QuestionOption) error {
 	for _, o := range options {
 		_, err := tx.Exec(ctx,
@@ -393,14 +430,6 @@ func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID,
 		}
 	}
 	return nil
-}
-
-func isSortOrderConflict(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "uq_question_order" {
-		return true
-	}
-	return false
 }
 
 // ExamFilter mirrors TestFilter/ProductFilter for cursor-paginated ListExams.
@@ -630,7 +659,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		FROM exam_test et
 		JOIN test t ON t.id = et.test_id
 		LEFT JOIN (
-			SELECT test_id, COUNT(*) AS cnt FROM question GROUP BY test_id
+			SELECT test_id, COUNT(*) AS cnt FROM test_question GROUP BY test_id
 		) q ON q.test_id = t.id
 		WHERE et.exam_id = $1
 		ORDER BY et.sort_order ASC`,
@@ -1215,13 +1244,26 @@ func (r *Repository) ListSessionsNeedingGrading(ctx context.Context, examID uuid
 
 // GetSessionEssayAnswers returns each essay answer for a session joined to its question
 // (body, point_correct), for the admin per-session grading read (FR-S5-17).
+// Ordering uses the essay question's test_question.sort_order within the session's
+// exam, falling back to question.id so the list is stable even when a question is
+// no longer attached to any test in that exam.
 func (r *Repository) GetSessionEssayAnswers(ctx context.Context, sessionID uuid.UUID) ([]model.GradingEssayItem, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT a.question_id, q.body, a.answer, q.point_correct, a.score, a.grader_comment, a.graded_at
+		`SELECT a.question_id, q.body, a.answer, q.point_correct, a.score, a.grader_comment, a.graded_at,
+			COALESCE(tq.sort_order, 0) AS q_order
 		FROM exam_session_answer a
 		JOIN question q ON q.id = a.question_id
+		JOIN exam_session s ON s.id = a.session_id
+		LEFT JOIN LATERAL (
+			SELECT tq.sort_order
+			FROM exam_test et
+			JOIN test_question tq ON tq.test_id = et.test_id
+			WHERE et.exam_id = s.exam_id AND tq.question_id = a.question_id
+			ORDER BY tq.sort_order
+			LIMIT 1
+		) tq ON true
 		WHERE a.session_id = $1 AND q.format = 'essay'
-		ORDER BY q.sort_order ASC`,
+		ORDER BY q_order, q.id`,
 		sessionID,
 	)
 	if err != nil {
@@ -1232,7 +1274,9 @@ func (r *Repository) GetSessionEssayAnswers(ctx context.Context, sessionID uuid.
 	var items []model.GradingEssayItem
 	for rows.Next() {
 		var item model.GradingEssayItem
-		if err := rows.Scan(&item.QuestionID, &item.Body, &item.Answer, &item.PointCorrect, &item.Score, &item.GraderComment, &item.GradedAt); err != nil {
+		var qOrder int
+		if err := rows.Scan(
+			&item.QuestionID, &item.Body, &item.Answer, &item.PointCorrect, &item.Score, &item.GraderComment, &item.GradedAt, &qOrder); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1566,7 +1610,7 @@ func (r *Repository) GetExamQuestionTotal(ctx context.Context, examID uuid.UUID)
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*)
 		FROM exam_test et
-		JOIN question q ON q.test_id = et.test_id
+		JOIN test_question tq ON tq.test_id = et.test_id
 		WHERE et.exam_id = $1`,
 		examID,
 	).Scan(&total)

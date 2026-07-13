@@ -46,16 +46,21 @@ func seedTest(t *testing.T, env *testEnv, title, subject, topic string, duration
 	return id
 }
 
-// seedQuestion inserts a question row and returns its ID.
+// seedQuestion inserts a bank question and attaches it to the test, returning the question id.
 func seedQuestion(t *testing.T, env *testEnv, testID, format, body string, sortOrder int) string {
 	t.Helper()
 	ctx := context.Background()
 	var id string
 	err := env.pool.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, sort_order)
-		 VALUES ($1, $2, $3, $4) RETURNING id`,
-		testID, format, body, sortOrder,
+		`INSERT INTO question (format, body)
+		 VALUES ($1, $2) RETURNING id`,
+		format, body,
 	).Scan(&id)
+	require.NoError(t, err)
+	_, err = env.pool.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2::uuid, $3)`,
+		testID, id, sortOrder,
+	)
 	require.NoError(t, err)
 	return id
 }
@@ -231,14 +236,22 @@ func TestExam_AdminDeleteTest_returns_204_and_cascades(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 
-	// Verify cascade: question should be gone
+	// Post-0025: deleting a test removes the test_question links (CASCADE) but
+	// leaves the bank question intact.
 	ctx := context.Background()
-	var count int
+	var qCount int
 	err := env.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM question WHERE id = $1`, qID,
-	).Scan(&count)
+	).Scan(&qCount)
 	require.NoError(t, err)
-	assert.Equal(t, 0, count, "question should be cascade-deleted")
+	assert.Equal(t, 1, qCount, "bank question must survive test deletion")
+
+	var linkCount int
+	err = env.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM test_question WHERE test_id = $1`, testID,
+	).Scan(&linkCount)
+	require.NoError(t, err)
+	assert.Equal(t, 0, linkCount, "test_question links must be cascade-deleted")
 }
 
 // ----- Question CRUD -----
@@ -467,9 +480,8 @@ func TestExam_AdminPatchQuestion_nonexistent_id_returns_404(t *testing.T) {
 		"body":       "doesn't matter",
 		"sort_order": 1,
 	}
-	// Use a non-zero UUID so the service takes the UPDATE branch (not the CREATE-on-uuid.Nil branch
-	// which would FK-violate on question.test_id). This exercises the UpdateQuestionTx
-	// not-found path → ErrQuestionNotFound → 404.
+	// Use a non-zero UUID so the service takes the UPDATE branch (not the CREATE-on-uuid.Nil branch).
+	// This exercises the UpdateQuestionTx not-found path → ErrQuestionNotFound → 404.
 	fakeQuestionID := "11111111-1111-1111-1111-111111111111"
 	resp, out := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+fakeQuestionID, body, token)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "body=%v", out)
@@ -660,23 +672,9 @@ func TestExam_AdminDeleteQuestion_returns_204(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 }
 
-func TestExam_AdminCreateQuestion_sort_order_conflict_returns_422(t *testing.T) {
-	env := newTestEnv(t)
-	adminID := seedUser(t, env, "admin_exam", "active", false)
-	token := authToken(t, env, adminID, "admin_exam")
-
-	testID := seedTest(t, env, "X", "math", "algebra", 60)
-	_ = seedQuestion(t, env, testID, "essay", "first", 1)
-
-	body := map[string]any{
-		"format":     "essay",
-		"body":       "duplicate sort order",
-		"sort_order": 1,
-	}
-	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
-	assert.Equal(t, "validation_failed", out["code"])
-}
+// Post-0025 sort_order lives on test_question and is assigned automatically when a
+// question is attached, so a duplicate sort_order conflict can no longer occur
+// through this endpoint. The old uq_question_order constraint is gone.
 
 // ----- RBAC enforcement -----
 
@@ -1035,10 +1033,15 @@ func seedQuestionWithPoints(t *testing.T, env *testEnv, testID, format, body str
 	ctx := context.Background()
 	var id string
 	err := env.pool.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		testID, format, body, sortOrder, pointCorrect, pointWrong,
+		`INSERT INTO question (format, body, point_correct, point_wrong)
+		 VALUES ($1, $2, $3, $4) RETURNING id`,
+		format, body, pointCorrect, pointWrong,
 	).Scan(&id)
+	require.NoError(t, err)
+	_, err = env.pool.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2::uuid, $3)`,
+		testID, id, sortOrder,
+	)
 	require.NoError(t, err)
 	return id
 }

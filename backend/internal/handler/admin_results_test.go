@@ -387,12 +387,18 @@ func seedExamWithMCQ(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 
 	var qID uuid.UUID
 	err = pool.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-		VALUES ($1, 'mcq', 'Sample question', 1, 1, 0) RETURNING id`,
-		testID,
+		`INSERT INTO question (format, body, point_correct, point_wrong)
+		VALUES ('mcq', 'Sample question', 1, 0) RETURNING id`,
 	).Scan(&qID)
 	if err != nil {
 		t.Fatalf("insert question: %v", err)
+	}
+	_, err = pool.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, 1)`,
+		testID, qID,
+	)
+	if err != nil {
+		t.Fatalf("insert test_question: %v", err)
 	}
 
 	for i, o := range []struct{ key, text string; correct bool }{
@@ -438,7 +444,8 @@ func seedSubmittedSession(t *testing.T, pool *pgxpool.Pool, studentID, examID uu
 	var qID uuid.UUID
 	err = pool.QueryRow(ctx,
 		`SELECT q.id FROM question q
-		JOIN exam_test et ON et.test_id = q.test_id
+		JOIN test_question tq ON tq.question_id = q.id
+		JOIN exam_test et ON et.test_id = tq.test_id
 		WHERE et.exam_id = $1 LIMIT 1`, examID,
 	).Scan(&qID)
 	if err != nil {

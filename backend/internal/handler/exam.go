@@ -180,8 +180,7 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	q.TestID = testID
-	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions())
+	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -226,7 +225,6 @@ func (h *Handler) AdminDeleteQuestion(c echo.Context) error {
 type questionRequest struct {
 	Format        string          `json:"format"`
 	Body          string          `json:"body"`
-	SortOrder     int             `json:"sort_order"`
 	Difficulty    *string         `json:"difficulty,omitempty"`
 	Explanation   *string         `json:"explanation,omitempty"`
 	ImageURL      *string         `json:"image_url,omitempty"`
@@ -268,7 +266,6 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		Explanation:   r.Explanation,
 		Difficulty:    r.Difficulty,
 		ImageURL:      r.ImageURL,
-		SortOrder:     r.SortOrder,
 		PointCorrect:  pointCorrect,
 		PointWrong:    pointWrong,
 	}, nil

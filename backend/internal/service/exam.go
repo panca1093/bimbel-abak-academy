@@ -238,21 +238,43 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 
 	if q.ID == uuid.Nil {
 		if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
-			if errors.Is(err, repository.ErrSortOrderConflict) {
-				return model.QuestionWithOptions{}, fmt.Errorf("%w: sort order conflict", ErrValidation)
-			}
 			return model.QuestionWithOptions{}, err
 		}
 	} else {
 		if err := s.storeRepo.UpdateQuestionTx(ctx, tx, &q, options); err != nil {
-			if errors.Is(err, repository.ErrSortOrderConflict) {
-				return model.QuestionWithOptions{}, fmt.Errorf("%w: sort order conflict", ErrValidation)
-			}
 			if errors.Is(err, pgx.ErrNoRows) {
 				return model.QuestionWithOptions{}, ErrQuestionNotFound
 			}
 			return model.QuestionWithOptions{}, err
 		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	return model.QuestionWithOptions{Question: q, Options: options}, nil
+}
+
+// CreateQuestionForTest creates a bank question and atomically attaches it to the
+// given test (FR-25). This preserves the existing POST /admin/tests/:id/questions
+// behavior after migration 0025 moved attachment to test_question.
+func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	if err := validateQuestion(q, options); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+	if err := s.storeRepo.AttachQuestionToTestTx(ctx, tx, testID, q.ID); err != nil {
+		return model.QuestionWithOptions{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {

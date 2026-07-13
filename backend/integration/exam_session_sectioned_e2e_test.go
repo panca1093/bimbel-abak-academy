@@ -42,9 +42,9 @@ func seedSectionedE2EExam(t *testing.T, env *testEnv, sectionDurations []int) (s
 
 		var qID string
 		err = env.pool.QueryRow(ctx,
-			`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-			 VALUES ($1, 'mcq', $2, 0, 1, 0) RETURNING id`,
-			testID, fmt.Sprintf("E2E Q%d", i+1),
+			`INSERT INTO question (format, body, point_correct, point_wrong)
+			 VALUES ('mcq', $1, 1, 0) RETURNING id`,
+			fmt.Sprintf("E2E Q%d", i+1),
 		).Scan(&qID)
 		require.NoError(t, err)
 		questionIDs = append(questionIDs, qID)
@@ -53,6 +53,12 @@ func seedSectionedE2EExam(t *testing.T, env *testEnv, sectionDurations []int) (s
 			`INSERT INTO question_option (question_id, key, text, is_correct, sort_order)
 			 VALUES ($1, 'a', 'correct', true, 0), ($1, 'b', 'wrong', false, 1)`,
 			qID,
+		)
+		require.NoError(t, err)
+
+		_, err = env.pool.Exec(ctx,
+			`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, 0)`,
+			testID, qID,
 		)
 		require.NoError(t, err)
 

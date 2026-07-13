@@ -372,14 +372,14 @@ func TestComputeRank_higherCount_addsOne(t *testing.T) {
 
 func TestTopicBreakdown_onePerTest_earnedAndMax(t *testing.T) {
 	testID := uuid.New()
-	q1 := model.Question{ID: uuid.New(), TestID: testID, Format: "mcq", PointCorrect: 2, PointWrong: 1}
-	q2 := model.Question{ID: uuid.New(), TestID: testID, Format: "essay", PointCorrect: 5, PointWrong: 0}
+	q1 := model.Question{ID: uuid.New(), Format: "mcq", PointCorrect: 2, PointWrong: 1}
+	q2 := model.Question{ID: uuid.New(), Format: "essay", PointCorrect: 5, PointWrong: 0}
 	tests := []model.TestDetail{
 		{
 			Test: model.Test{ID: testID, Title: "Math", Subject: "Math", Topic: "Algebra"},
 			Questions: []model.QuestionWithOptions{
-				{Question: q1},
-				{Question: q2},
+				{Question: q1, SortOrder: 1},
+				{Question: q2, SortOrder: 2},
 			},
 		},
 	}
@@ -401,11 +401,11 @@ func TestTopicBreakdown_onePerTest_earnedAndMax(t *testing.T) {
 
 func TestTopicBreakdown_ungradedEssay_earnedZeroContribution(t *testing.T) {
 	testID := uuid.New()
-	qEssay := model.Question{ID: uuid.New(), TestID: testID, Format: "essay", PointCorrect: 5, PointWrong: 0}
+	qEssay := model.Question{ID: uuid.New(), Format: "essay", PointCorrect: 5, PointWrong: 0}
 	tests := []model.TestDetail{
 		{
 			Test:      model.Test{ID: testID, Title: "Essay Test", Subject: "Bahasa", Topic: "Writing"},
-			Questions: []model.QuestionWithOptions{{Question: qEssay}},
+			Questions: []model.QuestionWithOptions{{Question: qEssay, SortOrder: 1}},
 		},
 	}
 	answers := []model.ExamSessionAnswer{
@@ -427,13 +427,13 @@ func TestTopicBreakdown_sectionType_populatedForIelts(t *testing.T) {
 	test1 := uuid.New()
 	test2 := uuid.New()
 	test3 := uuid.New()
-	q1 := model.Question{ID: uuid.New(), TestID: test1, Format: "mcq", PointCorrect: 1, PointWrong: 0}
-	q2 := model.Question{ID: uuid.New(), TestID: test2, Format: "mcq", PointCorrect: 1, PointWrong: 0}
-	q3 := model.Question{ID: uuid.New(), TestID: test3, Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	q1 := model.Question{ID: uuid.New(), Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	q2 := model.Question{ID: uuid.New(), Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	q3 := model.Question{ID: uuid.New(), Format: "mcq", PointCorrect: 1, PointWrong: 0}
 	tests := []model.TestDetail{
-		{Test: model.Test{ID: test1, Title: "Listening", Subject: "EN", Topic: "Listening", SectionType: &listening}, Questions: []model.QuestionWithOptions{{Question: q1}}},
-		{Test: model.Test{ID: test2, Title: "Reading", Subject: "EN", Topic: "Reading", SectionType: &reading}, Questions: []model.QuestionWithOptions{{Question: q2}}},
-		{Test: model.Test{ID: test3, Title: "Writing", Subject: "EN", Topic: "Writing", SectionType: &writing}, Questions: []model.QuestionWithOptions{{Question: q3}}},
+		{Test: model.Test{ID: test1, Title: "Listening", Subject: "EN", Topic: "Listening", SectionType: &listening}, Questions: []model.QuestionWithOptions{{Question: q1, SortOrder: 1}}},
+		{Test: model.Test{ID: test2, Title: "Reading", Subject: "EN", Topic: "Reading", SectionType: &reading}, Questions: []model.QuestionWithOptions{{Question: q2, SortOrder: 1}}},
+		{Test: model.Test{ID: test3, Title: "Writing", Subject: "EN", Topic: "Writing", SectionType: &writing}, Questions: []model.QuestionWithOptions{{Question: q3, SortOrder: 1}}},
 	}
 	answers := []model.ExamSessionAnswer{
 		{QuestionID: q1.ID, Score: floatPtr(1)},
@@ -453,11 +453,11 @@ func TestTopicBreakdown_sectionType_populatedForIelts(t *testing.T) {
 func TestTopicBreakdown_multipleTests_oneRowEach(t *testing.T) {
 	test1 := uuid.New()
 	test2 := uuid.New()
-	q1 := model.Question{ID: uuid.New(), TestID: test1, Format: "mcq", PointCorrect: 1, PointWrong: 0}
-	q2 := model.Question{ID: uuid.New(), TestID: test2, Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	q1 := model.Question{ID: uuid.New(), Format: "mcq", PointCorrect: 1, PointWrong: 0}
+	q2 := model.Question{ID: uuid.New(), Format: "mcq", PointCorrect: 1, PointWrong: 0}
 	tests := []model.TestDetail{
-		{Test: model.Test{ID: test1, Title: "T1", Subject: "S1", Topic: "Top1"}, Questions: []model.QuestionWithOptions{{Question: q1}}},
-		{Test: model.Test{ID: test2, Title: "T2", Subject: "S2", Topic: "Top2"}, Questions: []model.QuestionWithOptions{{Question: q2}}},
+		{Test: model.Test{ID: test1, Title: "T1", Subject: "S1", Topic: "Top1"}, Questions: []model.QuestionWithOptions{{Question: q1, SortOrder: 1}}},
+		{Test: model.Test{ID: test2, Title: "T2", Subject: "S2", Topic: "Top2"}, Questions: []model.QuestionWithOptions{{Question: q2, SortOrder: 1}}},
 	}
 	answers := []model.ExamSessionAnswer{
 		{QuestionID: q1.ID, Score: floatPtr(1)},

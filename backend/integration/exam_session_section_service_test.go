@@ -50,9 +50,9 @@ func seedSectionedExamForService(t *testing.T, env *testEnv, mode string, sectio
 		// One mcq question per test so SaveAnswers has a target.
 		var qID string
 		err = env.pool.QueryRow(ctx,
-			`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-			 VALUES ($1, 'mcq', $2, 0, 1, 0) RETURNING id`,
-			testID, "Q body "+uuid.NewString()[:8],
+			`INSERT INTO question (format, body, point_correct, point_wrong)
+			 VALUES ('mcq', $1, 1, 0) RETURNING id`,
+			"Q body "+uuid.NewString()[:8],
 		).Scan(&qID)
 		require.NoError(t, err)
 
@@ -60,6 +60,12 @@ func seedSectionedExamForService(t *testing.T, env *testEnv, mode string, sectio
 			`INSERT INTO question_option (question_id, key, text, is_correct, sort_order)
 			 VALUES ($1, 'a', 'opt a', true, 0), ($1, 'b', 'opt b', false, 1)`,
 			qID,
+		)
+		require.NoError(t, err)
+
+		_, err = env.pool.Exec(ctx,
+			`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, 0)`,
+			testID, qID,
 		)
 		require.NoError(t, err)
 
@@ -267,14 +273,18 @@ func TestService_StandardMode_Regression(t *testing.T) {
 
 	var qID string
 	err = env.pool.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-		 VALUES ($1, 'mcq', 'q', 0, 1, 0) RETURNING id`,
-		testID,
+		`INSERT INTO question (format, body, point_correct, point_wrong)
+		 VALUES ('mcq', 'q', 1, 0) RETURNING id`,
 	).Scan(&qID)
 	require.NoError(t, err)
 	_, err = env.pool.Exec(ctx,
 		`INSERT INTO question_option (question_id, key, text, is_correct, sort_order) VALUES ($1,'a','a',true,0),($1,'b','b',false,1)`,
 		qID,
+	)
+	require.NoError(t, err)
+	_, err = env.pool.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, 0)`,
+		testID, qID,
 	)
 	require.NoError(t, err)
 	_, err = env.pool.Exec(ctx,

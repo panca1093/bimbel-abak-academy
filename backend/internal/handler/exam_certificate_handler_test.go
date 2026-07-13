@@ -212,12 +212,19 @@ func seedMCQuestion(t *testing.T, pool *pgxpool.Pool, testID uuid.UUID, body str
 	t.Helper()
 	var id uuid.UUID
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-		VALUES ($1, 'mcq', $2, $3, $4, 0) RETURNING id`,
-		testID, body, sortOrder, pointCorrect,
+		`INSERT INTO question (format, body, point_correct, point_wrong)
+		VALUES ('mcq', $1, $2, 0) RETURNING id`,
+		body, pointCorrect,
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert mcq: %v", err)
+	}
+	_, err = pool.Exec(context.Background(),
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
+		testID, id, sortOrder,
+	)
+	if err != nil {
+		t.Fatalf("insert test_question: %v", err)
 	}
 	// Insert options (2 options, first correct)
 	for i, o := range []struct {

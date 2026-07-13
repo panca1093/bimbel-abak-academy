@@ -143,8 +143,9 @@ func TestAdminSessionMonitor_FullFlow_Returns200(t *testing.T) {
 	// Re-fetch question IDs for the answer inserts
 	rows, err := env.pool.Query(context.Background(),
 		`SELECT q.id FROM question q
-		 JOIN exam_test et ON et.test_id = q.test_id
-		 WHERE et.exam_id = $1 ORDER BY q.sort_order`, examID)
+		 JOIN test_question tq ON tq.question_id = q.id
+		 JOIN exam_test et ON et.test_id = tq.test_id
+		 WHERE et.exam_id = $1 ORDER BY tq.sort_order`, examID)
 	if err != nil {
 		t.Fatalf("query questions: %v", err)
 	}
