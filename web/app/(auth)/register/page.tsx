@@ -6,6 +6,7 @@ import { User, Mail, Lock, Eye, EyeOff, CheckCircle2, Loader2, AlertCircle } fro
 import { toast } from "sonner";
 
 import { useRegister } from "@/lib/hooks/auth";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,6 +114,16 @@ export default function RegisterPage() {
         <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-500">
           {t("register_subtitle")}
         </p>
+      </div>
+
+      <div className="mb-5">
+        <GoogleSignInButton text="signup_with" />
+      </div>
+
+      <div className="mb-5 flex items-center gap-3">
+        <div className="h-px flex-1 bg-line" />
+        <span className="text-xs font-medium text-ink-400">{t("auth_or_divider")}</span>
+        <div className="h-px flex-1 bg-line" />
       </div>
 
       <form onSubmit={onSubmit} noValidate>

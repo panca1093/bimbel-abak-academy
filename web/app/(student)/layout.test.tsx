@@ -25,14 +25,33 @@ let authStore = {
   user: null as { role?: string } | null,
 };
 
+let profileState = {
+  data: undefined as
+    | { auth_provider: "google" | "password"; school_id?: string; grade?: number }
+    | undefined,
+  isLoading: false,
+  isFetching: false,
+  isError: false,
+};
+
 vi.mock("@/stores/auth", () => ({
   useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
+}));
+
+vi.mock("@/lib/hooks/students", () => ({
+  useProfile: () => profileState,
 }));
 
 describe("StudentLayout", () => {
   beforeEach(() => {
     replace.mockClear();
     authStore = { token: null, user: null };
+    profileState = {
+      data: undefined,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+    };
   });
 
   it("redirects to /login when there is no token", async () => {
@@ -51,5 +70,54 @@ describe("StudentLayout", () => {
     authStore = { token: "t", user: { role: "admin_store" } };
     render(<StudentLayout>protected</StudentLayout>);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin"));
+  });
+
+  it("redirects an incomplete Google student to /complete-profile", async () => {
+    authStore = { token: "t", user: { role: "student" } };
+    profileState.data = { auth_provider: "google" };
+
+    const { queryByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/complete-profile"));
+    expect(queryByTestId("shell")).not.toBeInTheDocument();
+  });
+
+  it("renders the shell for a complete Google student", async () => {
+    authStore = { token: "t", user: { role: "student" } };
+    profileState.data = {
+      auth_provider: "google",
+      school_id: "school-db",
+      grade: 12,
+    };
+
+    const { getByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(getByTestId("shell")).toBeInTheDocument());
+    expect(replace).not.toHaveBeenCalledWith("/complete-profile");
+  });
+
+  it("renders the shell for an incomplete password student", async () => {
+    authStore = { token: "t", user: { role: "student" } };
+    profileState.data = { auth_provider: "password" };
+
+    const { getByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(getByTestId("shell")).toBeInTheDocument());
+    expect(replace).not.toHaveBeenCalledWith("/complete-profile");
+  });
+
+  it("does not trust cached profile data while DB truth is refetching", async () => {
+    authStore = { token: "t", user: { role: "student" } };
+    profileState = {
+      data: { auth_provider: "google" },
+      isLoading: false,
+      isFetching: true,
+      isError: false,
+    };
+
+    const { queryByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(queryByTestId("shell")).not.toBeInTheDocument());
+    expect(replace).not.toHaveBeenCalledWith("/complete-profile");
   });
 });

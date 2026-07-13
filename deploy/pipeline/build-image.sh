@@ -9,6 +9,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 NEXT_PUBLIC_MIDTRANS_SNAP_URL="${NEXT_PUBLIC_MIDTRANS_SNAP_URL:-https://app.sandbox.midtrans.com/snap/snap.js}"
 NEXT_PUBLIC_MIDTRANS_CLIENT_KEY="${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY:-}"
+NEXT_PUBLIC_GOOGLE_CLIENT_ID="${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}"
 
 # build-artifact.sh emits GOARCH=amd64, so the images must be amd64 or the binary will not execute.
 PLATFORM=linux/amd64
@@ -21,6 +22,7 @@ docker build --platform "$PLATFORM" -f web/Dockerfile \
   --build-arg "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}" \
   --build-arg "NEXT_PUBLIC_MIDTRANS_SNAP_URL=${NEXT_PUBLIC_MIDTRANS_SNAP_URL}" \
   --build-arg "NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}" \
+  --build-arg "NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}" \
   -t "${REGISTRY}/web:${TARGET_ENV}-${TAG}" web
 
 if [[ "${PUSH:-0}" == "1" ]]; then

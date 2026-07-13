@@ -13,6 +13,13 @@ const mutateAsyncMock = vi.fn();
 
 vi.mock("@/lib/hooks/auth", () => ({
   useLogin: () => ({ mutateAsync: mutateAsyncMock, isPending: false }),
+  useGoogleLogin: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock("@/components/auth/GoogleSignInButton", () => ({
+  GoogleSignInButton: ({ text }: { text: string }) => (
+    <div data-testid="google-sign-in" data-text={text} />
+  ),
 }));
 
 describe("LoginPage", () => {
@@ -20,6 +27,15 @@ describe("LoginPage", () => {
     pushMock.mockClear();
     mutateAsyncMock.mockClear();
     sessionStorage.clear();
+  });
+
+  it("renders the Google sign-in button above the password form", () => {
+    const { container } = render(<LoginPage />);
+    const form = container.querySelector("form");
+
+    expect(screen.getByTestId("google-sign-in")).toHaveAttribute("data-text", "signin_with");
+    expect(screen.getByTestId("google-sign-in").compareDocumentPosition(form!))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("stores the pending token and navigates to /otp on verification_pending", async () => {

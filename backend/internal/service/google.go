@@ -34,11 +34,12 @@ func (s *Service) GoogleLogin(ctx context.Context, idToken string) (accessToken 
 
 	if user == nil {
 		newUser := &model.User{
-			Email:      &email,
-			Role:       RoleStudent,
-			Name:       info.Name,
-			Status:     "active",
-			OTPEnabled: false,
+			Email:        &email,
+			Role:         RoleStudent,
+			Name:         info.Name,
+			Status:       "active",
+			OTPEnabled:   false,
+			AuthProvider: "google",
 		}
 		if err := s.repo.CreateUser(ctx, newUser); err != nil {
 			return "", "", err

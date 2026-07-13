@@ -40,6 +40,9 @@ func (f *fakeUserRepo) CreateUser(_ context.Context, u *model.User) error {
 	now := time.Now()
 	u.CreatedAt = now
 	u.UpdatedAt = now
+	if u.AuthProvider == "" {
+		u.AuthProvider = "password"
+	}
 	cp := *u
 	f.byID[u.ID] = &cp
 	return nil

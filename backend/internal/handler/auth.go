@@ -262,28 +262,28 @@ func (h *Handler) Me(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	var schoolID *string
-	if claims.SchoolID != nil {
-		schoolID = claims.SchoolID
-	}
 	return c.JSON(http.StatusOK, map[string]any{
-		"id":        user.ID,
-		"email":     derefStr(user.Email),
-		"username":  derefStr(user.Username),
-		"name":      user.Name,
-		"role":      user.Role,
-		"school_id": schoolID,
-		"status":    user.Status,
+		"id":            user.ID,
+		"email":         derefStr(user.Email),
+		"username":      derefStr(user.Username),
+		"name":          user.Name,
+		"role":          user.Role,
+		"school_id":     user.SchoolID,
+		"auth_provider": user.AuthProvider,
+		"status":        user.Status,
 	})
 }
 
 func userPayload(user *model.User) map[string]any {
 	return map[string]any{
-		"id":       user.ID,
-		"role":     user.Role,
-		"name":     user.Name,
-		"email":    derefStr(user.Email),
-		"username": derefStr(user.Username),
+		"id":            user.ID,
+		"role":          user.Role,
+		"name":          user.Name,
+		"email":         derefStr(user.Email),
+		"username":      derefStr(user.Username),
+		"auth_provider": user.AuthProvider,
+		"school_id":     user.SchoolID,
+		"grade":         user.Grade,
 	}
 }
 
