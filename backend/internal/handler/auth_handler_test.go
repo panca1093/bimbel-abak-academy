@@ -40,6 +40,9 @@ func (f *fakeRepo) CreateUser(_ context.Context, u *model.User) error {
 	now := time.Now()
 	u.CreatedAt = now
 	u.UpdatedAt = now
+	if u.AuthProvider == "" {
+		u.AuthProvider = "password"
+	}
 	cp := *u
 	f.byID[u.ID] = &cp
 	return nil
@@ -154,6 +157,9 @@ func (f *fakeRepo) seed(u *model.User) {
 	f.seq++
 	if u.ID == "" {
 		u.ID = fmt.Sprintf("seed%d", f.seq)
+	}
+	if u.AuthProvider == "" {
+		u.AuthProvider = "password"
 	}
 	cp := *u
 	f.byID[u.ID] = &cp
@@ -314,6 +320,19 @@ func TestLoginHandler_HappyPath(t *testing.T) {
 	if resp["refresh_token"] == "" || resp["refresh_token"] == nil {
 		t.Error("want refresh_token")
 	}
+	user, _ := resp["user"].(map[string]any)
+	if user == nil {
+		t.Fatal("want user in response")
+	}
+	if ap, _ := user["auth_provider"].(string); ap != "password" {
+		t.Errorf("user.auth_provider: want 'password' (default), got '%s'", ap)
+	}
+	if _, ok := user["school_id"]; !ok {
+		t.Error("user.school_id missing from response")
+	}
+	if _, ok := user["grade"]; !ok {
+		t.Error("user.grade missing from response")
+	}
 }
 
 func TestVerifyOTPHandler_HappyPath(t *testing.T) {
@@ -444,6 +463,12 @@ func TestMeHandler_ValidToken(t *testing.T) {
 	}
 	if resp["role"] == nil {
 		t.Error("want role in response")
+	}
+	if ap, _ := resp["auth_provider"].(string); ap != "password" {
+		t.Errorf("auth_provider: want 'password' (DB truth), got '%s'", ap)
+	}
+	if _, ok := resp["school_id"]; !ok {
+		t.Error("school_id missing from /auth/me response")
 	}
 }
 
