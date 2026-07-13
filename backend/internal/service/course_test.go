@@ -289,12 +289,30 @@ func (s *shimCourseService) UpdateCourse(ctx context.Context, id, title, level, 
 	if err != nil {
 		return model.Course{}, err
 	}
+
+	// Fetch existing to preserve fields not sent by partial PATCH.
+	existing, err := s.fake.GetCourseByID(ctx, courseID)
+	if err != nil {
+		return model.Course{}, err
+	}
+
 	c := model.Course{
 		Title:          title,
 		Level:          level,
 		Subject:        subject,
 		InstructorName: instructorName,
 	}
+	// Preserve existing values for any field not supplied (zero-value).
+	if c.Level == "" {
+		c.Level = existing.Level
+	}
+	if c.Subject == "" {
+		c.Subject = existing.Subject
+	}
+	if c.InstructorName == "" {
+		c.InstructorName = existing.InstructorName
+	}
+
 	return s.fake.UpdateCourse(ctx, courseID, c)
 }
 
@@ -666,6 +684,57 @@ func TestCreateCourse_RejectsNonStoreRole(t *testing.T) {
 	}
 	if course.Title != "Math" {
 		t.Errorf("want title Math, got %s", course.Title)
+	}
+}
+
+// Test: UpdateCourse preserves fields not sent by partial PATCH (Bug-C pattern).
+func TestUpdateCourse_PreservesFieldsWhenNotSent(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeCourseRepo()
+	svc := &shimCourseService{fake: fake}
+
+	// Create a course with specific level, subject, instructor
+	course, err := svc.CreateCourse(ctx, "Math", "SMA", "Matematika", "Budi", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateCourse: %v", err)
+	}
+	if course.Level != "SMA" {
+		t.Fatalf("want level SMA, got %s", course.Level)
+	}
+
+	// Update with only title — level, subject, instructor become empty strings
+	// (simulating partial PATCH where only title was sent)
+	updated, err := svc.UpdateCourse(ctx, course.ID.String(), "New Title", "", "", "", RoleAdminStore)
+	if err != nil {
+		t.Fatalf("UpdateCourse: %v", err)
+	}
+
+	if updated.Title != "New Title" {
+		t.Errorf("want title 'New Title', got %s", updated.Title)
+	}
+	if updated.Level != "SMA" {
+		t.Errorf("level was blanked: want 'SMA', got %q", updated.Level)
+	}
+	if updated.Subject != "Matematika" {
+		t.Errorf("subject was blanked: want 'Matematika', got %q", updated.Subject)
+	}
+	if updated.InstructorName != "Budi" {
+		t.Errorf("instructor_name was blanked: want 'Budi', got %q", updated.InstructorName)
+	}
+
+	// Verify the stored course also preserved the fields
+	stored, err := fake.GetCourseByID(ctx, course.ID)
+	if err != nil {
+		t.Fatalf("GetCourseByID: %v", err)
+	}
+	if stored.Level != "SMA" {
+		t.Errorf("stored level was blanked: want 'SMA', got %q", stored.Level)
+	}
+	if stored.Subject != "Matematika" {
+		t.Errorf("stored subject was blanked: want 'Matematika', got %q", stored.Subject)
+	}
+	if stored.InstructorName != "Budi" {
+		t.Errorf("stored instructor_name was blanked: want 'Budi', got %q", stored.InstructorName)
 	}
 }
 
