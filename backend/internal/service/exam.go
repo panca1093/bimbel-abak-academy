@@ -107,6 +107,13 @@ func validateQuestion(q model.Question, options []model.QuestionOption) error {
 		return fmt.Errorf("%w: unknown question format: %s", ErrValidation, q.Format)
 	}
 
+	// Callers sanitize q.Body via sanitizeQuestionBody before calling here, which
+	// strips non-allowlisted tags (e.g. <br>) with no text content down to "".
+	// Reject that post-sanitize emptiness so a blank question can't be saved.
+	if strings.TrimSpace(q.Body) == "" {
+		return fmt.Errorf("%w: body cannot be empty", ErrValidation)
+	}
+
 	seenKeys := map[string]bool{}
 	for _, o := range options {
 		if o.Key == "" {

@@ -386,6 +386,19 @@ func TestValidateQuestion_accepts_valid_points(t *testing.T) {
 	}
 }
 
+func TestValidateQuestion_rejects_body_empty_after_sanitization(t *testing.T) {
+	// Simulates what every write path does: sanitize, then validate. <br> has
+	// no allowlisted tag and no text content, so it sanitizes to "".
+	q := model.Question{Format: "essay", Body: sanitizeQuestionBody("<br>"), PointCorrect: 1}
+	err := validateQuestion(q, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("body that sanitizes to empty should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "body cannot be empty") {
+		t.Errorf("empty-body msg should mention 'body cannot be empty', got %q", err.Error())
+	}
+}
+
 func TestValidateExam_rejects_empty_title(t *testing.T) {
 	e := model.Exam{Title: "   "}
 	err := validateExam(e)
@@ -799,6 +812,23 @@ func TestCreateBankQuestion_creates_no_attachment(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, out.Question.ID)
 	assert.Equal(t, "essay", out.Question.Format)
 	assert.Equal(t, 0, countQuestionAttachments(t, ctx, repo, out.Question.ID))
+}
+
+func TestCreateBankQuestion_rejects_body_that_sanitizes_to_empty(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	// <br> is not in questionBodyPolicy's allowlist and carries no text
+	// content, so sanitizeQuestionBody reduces it to "" before validateQuestion
+	// runs — a blank question must not be persisted.
+	q := model.Question{Format: "essay", Body: "<br>", PointCorrect: 1, PointWrong: 0}
+	_, err := svc.CreateBankQuestion(ctx, q, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrValidation)
+
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: "<br>", Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, items)
 }
 
 func TestListBankQuestions_populates_nested_question_and_options(t *testing.T) {

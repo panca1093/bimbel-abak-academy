@@ -45,4 +45,16 @@ describe("RichContent", () => {
     });
     expect(target.querySelector(".katex")).not.toBeNull();
   });
+
+  it("sanitizes a legacy unsanitized body at render time (defense-in-depth for pre-PR rows)", async () => {
+    const legacyMaliciousBody = '<img src=x onerror="window.__xss = true">safe text';
+    const { container } = render(<RichContent html={legacyMaliciousBody} />);
+
+    const target = container.querySelector("[data-rich-content]") as HTMLElement;
+    await waitFor(() => {
+      expect(target.querySelector("img")?.getAttribute("onerror")).toBeNull();
+    });
+    expect((window as unknown as { __xss?: boolean }).__xss).toBeUndefined();
+    expect(target.textContent).toBe("safe text");
+  });
 });
