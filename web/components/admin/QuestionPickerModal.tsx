@@ -152,7 +152,7 @@ export function QuestionPickerModal({
             </select>
           </div>
 
-          <div className="max-h-[360px] overflow-y-auto rounded-lg border">
+          <div className="max-h-[360px] overflow-y-auto rounded-md border border-input p-2">
             {bank.isLoading && (
               <div className="p-4 text-center text-muted-foreground">{t("sys_loading")}</div>
             )}
@@ -165,7 +165,7 @@ export function QuestionPickerModal({
               return (
                 <label
                   key={row.question.id}
-                  className={`flex items-center gap-3 border-b p-3 last:border-b-0 ${
+                  className={`flex items-center gap-3 rounded-md px-2 py-1.5 ${
                     isAttached ? "bg-muted/40" : "hover:bg-muted/20"
                   }`}
                 >
