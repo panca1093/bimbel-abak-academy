@@ -352,6 +352,7 @@ export const DICT = {
 
     // Admin — products
     product_type_package: "Paket",
+    product_type_exam: "Ujian",
     products: "Produk",
     products_create: "Buat produk",
     products_created: "Produk dibuat.",
@@ -1274,6 +1275,7 @@ export const DICT = {
 
     // Admin — products
     product_type_package: "Package",
+    product_type_exam: "Exam",
     products: "Products",
     products_create: "Create product",
     products_created: "Product created.",

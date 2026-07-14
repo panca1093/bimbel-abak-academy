@@ -30,6 +30,7 @@ const TYPE_LABELS: Record<ProductType, string> = {
   book: "Buku",
   course: "Kursus",
   package: "Paket",
+  exam: "Ujian",
 };
 
 const STATUS_LABELS: Record<ProductStatus, string> = {
