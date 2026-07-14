@@ -67,6 +67,11 @@ function formatScheduled(iso?: string | null): string {
   return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 }
 
+function formatMode(mode?: string | null): string {
+  if (!mode || mode === "standard") return "Standard";
+  return mode.toUpperCase();
+}
+
 function statusBadgeClass(status?: string): string {
   switch (status) {
     case "published":
@@ -340,6 +345,7 @@ export default function ExamPackageDetailPage() {
               <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <OverviewRow label="Title" value={data.title} />
                 <OverviewRow label="Scheduled" value={formatScheduled(data.scheduled_at)} />
+                <OverviewRow label="Mode" value={formatMode(data.mode)} />
                 <OverviewRow label="Timer mode" value={data.timer_mode ?? "—"} />
                 <OverviewRow
                   label="Duration"
@@ -376,6 +382,40 @@ export default function ExamPackageDetailPage() {
                       ? t("status_label_active")
                       : t("status_label_inactive")
                   }
+                />
+                <OverviewRow
+                  label={t("exam_packages_overview_result_config")}
+                  value={data.result_config ?? "—"}
+                />
+                <OverviewRow
+                  label={t("exam_packages_overview_result_release_at")}
+                  value={formatScheduled(data.result_release_at)}
+                />
+                <OverviewRow
+                  label={t("exam_packages_overview_check_in_window")}
+                  value={
+                    data.check_in_window_minutes != null
+                      ? `${data.check_in_window_minutes} ${t("minutes")}`
+                      : "—"
+                  }
+                />
+                <OverviewRow
+                  label={t("exam_packages_overview_grace_window")}
+                  value={
+                    data.grace_window_minutes != null
+                      ? `${data.grace_window_minutes} ${t("minutes")}`
+                      : "—"
+                  }
+                />
+                <OverviewRow
+                  label={t("exam_packages_overview_max_attempts")}
+                  value={
+                    data.max_attempts != null ? String(data.max_attempts) : t("unlimited")
+                  }
+                />
+                <OverviewRow
+                  label={t("exam_packages_overview_certificate_template")}
+                  value={data.certificate_template ?? "—"}
                 />
                 <OverviewRow label="Status" value={data.status ?? "—"} />
                 <OverviewRow

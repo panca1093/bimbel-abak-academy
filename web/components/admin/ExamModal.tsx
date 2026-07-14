@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
 import { fetchCertificatePreview, useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
-import type { ExamListItem, CreateExamPayload, UpdateExamPayload } from "@/lib/types";
+import type { ExamListItem, CreateExamPayload, UpdateExamPayload, ExamResultConfig } from "@/lib/types";
 
 interface ExamModalProps {
   open: boolean;
@@ -40,6 +40,16 @@ function scheduledAtIso(value: string): string | null {
   return d.toISOString();
 }
 
+function nonNegativeInt(value: string): number | null {
+  const n = value === "" ? NaN : Number(value);
+  if (!Number.isInteger(n)) return null;
+  return Math.max(0, n);
+}
+
+function inputValueFromNumber(n: number | null | undefined): string {
+  return n != null ? String(n) : "";
+}
+
 export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const { t } = useTranslation();
   const isEdit = Boolean(exam);
@@ -56,6 +66,11 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [randomize, setRandomize] = useState(false);
   const [certificateTemplate, setCertificateTemplate] = useState<CertificateTemplate>("classic");
   const [mode, setMode] = useState("standard");
+  const [resultConfig, setResultConfig] = useState<ExamResultConfig>("hidden");
+  const [resultReleaseAt, setResultReleaseAt] = useState("");
+  const [checkInWindow, setCheckInWindow] = useState("");
+  const [graceWindow, setGraceWindow] = useState("");
+  const [maxAttempts, setMaxAttempts] = useState("");
   const previewUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -71,6 +86,11 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setRandomize(Boolean(exam.randomize));
       setCertificateTemplate((exam.certificate_template as CertificateTemplate) ?? "classic");
       setMode(exam.mode ?? "standard");
+      setResultConfig((exam.result_config as ExamResultConfig) ?? "hidden");
+      setResultReleaseAt(scheduledAtInputValue(exam.result_release_at));
+      setCheckInWindow(inputValueFromNumber(exam.check_in_window_minutes));
+      setGraceWindow(inputValueFromNumber(exam.grace_window_minutes));
+      setMaxAttempts(inputValueFromNumber(exam.max_attempts));
     } else {
       setTitle("");
       setScheduledAt("");
@@ -82,6 +102,11 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setRandomize(false);
       setCertificateTemplate("classic");
       setMode("standard");
+      setResultConfig("hidden");
+      setResultReleaseAt("");
+      setCheckInWindow("");
+      setGraceWindow("");
+      setMaxAttempts("");
     }
   }, [open, exam]);
 
@@ -109,6 +134,11 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       randomize,
       certificate_template: certificateTemplate,
       mode,
+      result_config: resultConfig,
+      result_release_at: scheduledAtIso(resultReleaseAt),
+      check_in_window_minutes: nonNegativeInt(checkInWindow),
+      grace_window_minutes: nonNegativeInt(graceWindow),
+      max_attempts: nonNegativeInt(maxAttempts),
     };
 
     try {
@@ -365,6 +395,68 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
               >
                 {t("admin_exam_certificate_preview")}
               </Button>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="exam-result-config">{t("exam_packages_modal_result_config")}</Label>
+              <select
+                id="exam-result-config"
+                value={resultConfig}
+                onChange={(e) => setResultConfig(e.target.value as ExamResultConfig)}
+                disabled={isPending}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <option value="hidden">{t("exam_packages_modal_result_config_hidden")}</option>
+                <option value="score_only">{t("exam_packages_modal_result_config_score_only")}</option>
+                <option value="score_pembahasan">{t("exam_packages_modal_result_config_score_pembahasan")}</option>
+              </select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="exam-result-release-at">{t("exam_packages_modal_result_release_at")}</Label>
+              <Input
+                id="exam-result-release-at"
+                type="datetime-local"
+                value={resultReleaseAt}
+                onChange={(e) => setResultReleaseAt(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="exam-check-in-window">{t("exam_packages_modal_check_in_window")}</Label>
+                <Input
+                  id="exam-check-in-window"
+                  type="number"
+                  min={0}
+                  value={checkInWindow}
+                  onChange={(e) => setCheckInWindow(e.target.value)}
+                  disabled={isPending}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="exam-grace-window">{t("exam_packages_modal_grace_window")}</Label>
+                <Input
+                  id="exam-grace-window"
+                  type="number"
+                  min={0}
+                  value={graceWindow}
+                  onChange={(e) => setGraceWindow(e.target.value)}
+                  disabled={isPending}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="exam-max-attempts">{t("exam_packages_modal_max_attempts")}</Label>
+                <Input
+                  id="exam-max-attempts"
+                  type="number"
+                  min={0}
+                  value={maxAttempts}
+                  onChange={(e) => setMaxAttempts(e.target.value)}
+                  disabled={isPending}
+                />
+              </div>
             </div>
           </div>
 

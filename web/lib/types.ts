@@ -595,6 +595,8 @@ export interface ExamDetail extends ExamListItem {
   tests: ExamTestEntry[];
 }
 
+export type ExamResultConfig = "hidden" | "score_only" | "score_pembahasan";
+
 export interface CreateExamPayload {
   title: string;
   scheduled_at?: string | null;
@@ -606,6 +608,11 @@ export interface CreateExamPayload {
   randomize?: boolean;
   certificate_template?: string;
   mode?: string;
+  result_config?: ExamResultConfig;
+  result_release_at?: string | null;
+  check_in_window_minutes?: number | null;
+  grace_window_minutes?: number | null;
+  max_attempts?: number | null;
 }
 
 export interface UpdateExamPayload {
@@ -619,6 +626,11 @@ export interface UpdateExamPayload {
   randomize?: boolean;
   certificate_template?: string;
   mode?: string;
+  result_config?: ExamResultConfig;
+  result_release_at?: string | null;
+  check_in_window_minutes?: number | null;
+  grace_window_minutes?: number | null;
+  max_attempts?: number | null;
 }
 
 // ── Session engine types (FR26) ──────────────────────────────────────────

@@ -20,6 +20,11 @@ const sampleExam: ExamListItem = {
   certificate_template: "modern",
   timer_mode: "overall",
   duration_minutes: 90,
+  result_config: "score_only",
+  result_release_at: "2026-07-02T10:00:00Z",
+  check_in_window_minutes: 15,
+  grace_window_minutes: 5,
+  max_attempts: 2,
 };
 
 describe("ExamModal", () => {
@@ -205,5 +210,110 @@ describe("ExamModal", () => {
     });
 
     expect(screen.getByRole("button", { name: "Pratinjau Sertifikat" })).toBeEnabled();
+  });
+
+  it("pre-fills extended package fields from exam data on edit", async () => {
+    render(
+      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText(/konfigurasi hasil/i) as HTMLSelectElement).value,
+      ).toBe("score_only");
+    });
+
+    expect(
+      (screen.getByLabelText(/jendela check-in/i) as HTMLInputElement).value,
+    ).toBe("15");
+    expect(
+      (screen.getByLabelText(/jendela toleransi/i) as HTMLInputElement).value,
+    ).toBe("5");
+    expect(
+      (screen.getByLabelText(/maks\. percobaan/i) as HTMLInputElement).value,
+    ).toBe("2");
+  });
+
+  it("submitted update payload includes extended package fields", async () => {
+    mockUpdateExam.mockResolvedValue({ id: "exam-1", title: "UTS Matematika" });
+
+    render(
+      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/judul/i)).toBeInTheDocument();
+    });
+
+    fireEvent.input(screen.getByLabelText(/judul/i), {
+      target: { value: "UTS Matematika Updated" },
+    });
+    fireEvent.change(screen.getByLabelText(/konfigurasi hasil/i), {
+      target: { value: "score_pembahasan" },
+    });
+    fireEvent.input(screen.getByLabelText(/jendela check-in/i), {
+      target: { value: "30" },
+    });
+    fireEvent.input(screen.getByLabelText(/jendela toleransi/i), {
+      target: { value: "10" },
+    });
+    fireEvent.input(screen.getByLabelText(/maks\. percobaan/i), {
+      target: { value: "3" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateExam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "UTS Matematika Updated",
+          result_config: "score_pembahasan",
+          check_in_window_minutes: 30,
+          grace_window_minutes: 10,
+          max_attempts: 3,
+        }),
+      );
+    });
+  });
+
+  it("number window and attempts inputs reject negatives via min attribute", () => {
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(screen.getByLabelText(/jendela check-in/i)).toHaveAttribute("min", "0");
+    expect(screen.getByLabelText(/jendela toleransi/i)).toHaveAttribute("min", "0");
+    expect(screen.getByLabelText(/maks\. percobaan/i)).toHaveAttribute("min", "0");
+  });
+
+  it("omits empty window and attempts from create payload", async () => {
+    mockCreateExam.mockResolvedValue({ exam: { id: "exam-1" } });
+
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    fireEvent.input(screen.getByLabelText(/judul/i), {
+      target: { value: "Paket Minimal" },
+    });
+    fireEvent.click(screen.getByLabelText("Per Tes"));
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockCreateExam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          check_in_window_minutes: null,
+          grace_window_minutes: null,
+          max_attempts: null,
+        }),
+      );
+    });
+  });
+
+  it("result_config is constrained to allowed options", () => {
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    const select = screen.getByLabelText(/konfigurasi hasil/i) as HTMLSelectElement;
+    const options = Array.from(select.options).map((o) => o.value);
+    expect(options).toContain("hidden");
+    expect(options).toContain("score_only");
+    expect(options).toContain("score_pembahasan");
   });
 });
