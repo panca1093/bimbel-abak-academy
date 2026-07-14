@@ -9,6 +9,7 @@ import {
   useImportBankQuestions,
   adminBankQuestionsKeys,
 } from "./admin-bank-questions";
+import type { AdminQuestionImportResponse } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 const mockAuthFetchMultipart = vi.fn();
@@ -136,7 +137,10 @@ describe("admin-bank-questions hooks", () => {
   });
 
   it("useImportBankQuestion_posts_multipart_and_invalidates", async () => {
-    const response = { inserted: 1, rows: [{ row_number: 2, status: "error", error: "bad format" }] };
+    const response: AdminQuestionImportResponse = {
+      inserted: 1,
+      rows: [{ row_number: 2, status: "error", error: "bad format" }],
+    };
     mockAuthFetchMultipart.mockResolvedValueOnce(response);
 
     const { wrapper, queryClient } = wrapperFactory();
@@ -144,7 +148,7 @@ describe("admin-bank-questions hooks", () => {
     const { result } = renderHook(() => useImportBankQuestions(), { wrapper });
 
     const file = new File(["csv"], "questions.csv", { type: "text/csv" });
-    let returned: typeof response | undefined;
+    let returned: AdminQuestionImportResponse | undefined;
     await act(async () => {
       returned = await result.current.mutateAsync(file);
     });
