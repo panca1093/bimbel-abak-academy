@@ -11,8 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useBankQuestions } from "@/lib/hooks/admin-bank-questions";
+import { useQueryClient } from "@tanstack/react-query";
+import { useBankQuestions, adminBankQuestionsKeys } from "@/lib/hooks/admin-bank-questions";
 import { useTopics } from "@/lib/hooks/admin-topics";
+import { QuestionImportModal } from "@/components/admin/QuestionImportModal";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
@@ -54,6 +56,9 @@ export default function QuestionBankPage() {
   const [editorItem, setEditorItem] = useState<BankQuestionListItem | null>(null);
 
   const [topicsOpen, setTopicsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const queryClient = useQueryClient();
 
   const filters = useMemo(
     () => ({
@@ -105,7 +110,11 @@ export default function QuestionBankPage() {
   }
 
   function handleCsvClick() {
-    toast.info(t("maint_default_desc"));
+    setImportOpen(true);
+  }
+
+  function handleImportSuccess() {
+    queryClient.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
   }
 
   function errorMessage(err: unknown): string {
@@ -264,6 +273,12 @@ export default function QuestionBankPage() {
       />
 
       <TopicsModal open={topicsOpen} onOpenChange={setTopicsOpen} />
+
+      <QuestionImportModal
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSuccess={handleImportSuccess}
+      />
 
       {editorOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">

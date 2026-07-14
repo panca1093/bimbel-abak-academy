@@ -528,6 +528,18 @@ export interface AdminQuestionInput {
   topic_id?: string;
 }
 
+export interface AdminQuestionImportResultRow {
+  row_number: number;
+  status: "inserted" | "error";
+  question_id?: string;
+  error?: string;
+}
+
+export interface AdminQuestionImportResponse {
+  inserted: number;
+  rows: AdminQuestionImportResultRow[];
+}
+
 export interface AdminAttachQuestionsInput {
   question_ids: string[];
 }

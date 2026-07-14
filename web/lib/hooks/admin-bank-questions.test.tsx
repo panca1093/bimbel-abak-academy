@@ -6,13 +6,17 @@ import {
   useCreateBankQuestion,
   useUpdateBankQuestion,
   useDeleteBankQuestion,
+  useImportBankQuestions,
   adminBankQuestionsKeys,
 } from "./admin-bank-questions";
 
 const mockAuthFetch = vi.fn();
+const mockAuthFetchMultipart = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   authFetch: (...args: Parameters<typeof mockAuthFetch>) => mockAuthFetch(...args),
+  authFetchMultipart: (...args: Parameters<typeof mockAuthFetchMultipart>) =>
+    mockAuthFetchMultipart(...args),
   ApiError: class extends Error {
     code: string;
     status: number;
@@ -33,6 +37,7 @@ vi.mock("@/stores/auth", () => ({
 describe("admin-bank-questions hooks", () => {
   beforeEach(() => {
     mockAuthFetch.mockReset();
+    mockAuthFetchMultipart.mockReset();
   });
 
   afterEach(() => {
@@ -127,6 +132,29 @@ describe("admin-bank-questions hooks", () => {
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/questions/q1", {
       method: "DELETE",
     });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminBankQuestionsKeys.lists() });
+  });
+
+  it("useImportBankQuestion_posts_multipart_and_invalidates", async () => {
+    const response = { inserted: 1, rows: [{ row_number: 2, status: "error", error: "bad format" }] };
+    mockAuthFetchMultipart.mockResolvedValueOnce(response);
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useImportBankQuestions(), { wrapper });
+
+    const file = new File(["csv"], "questions.csv", { type: "text/csv" });
+    let returned: typeof response | undefined;
+    await act(async () => {
+      returned = await result.current.mutateAsync(file);
+    });
+
+    expect(returned).toEqual(response);
+    const callInit = mockAuthFetchMultipart.mock.calls[0][1] as RequestInit | undefined;
+    expect(callInit?.method).toBe("POST");
+    const body = callInit?.body as FormData;
+    expect(body.get("file")).toBe(file);
+    expect(mockAuthFetchMultipart).toHaveBeenCalledWith("/admin/questions/import", expect.any(Object));
     expect(spy).toHaveBeenCalledWith({ queryKey: adminBankQuestionsKeys.lists() });
   });
 });

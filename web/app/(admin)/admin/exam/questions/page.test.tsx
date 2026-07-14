@@ -69,6 +69,13 @@ vi.mock("@/lib/hooks/admin-bank-questions", () => ({
   useBankQuestions: () => bankState,
   useCreateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useImportBankQuestions: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  adminBankQuestionsKeys: {
+    all: ["admin", "bank-questions"],
+    lists: () => ["admin", "bank-questions", "list"],
+    list: (filters: unknown) => ["admin", "bank-questions", "list", filters ?? {}],
+    detail: (id: string) => ["admin", "bank-questions", "detail", id],
+  },
 }));
 
 vi.mock("@/lib/hooks/admin-topics", () => ({
@@ -258,7 +265,7 @@ describe("QuestionBankPage", () => {
     });
   });
 
-  it("shows a placeholder toast on CSV click", async () => {
+  it("opens the import modal on CSV click", async () => {
     renderWithClient(<QuestionBankPage />);
 
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
@@ -267,7 +274,7 @@ describe("QuestionBankPage", () => {
     fireEvent.click(csvButton);
 
     await waitFor(() => {
-      expect(toast.info).toHaveBeenCalledWith("maint_default_desc");
+      expect(screen.getByRole("dialog", { name: /import_questions_title/i })).toBeInTheDocument();
     });
   });
 

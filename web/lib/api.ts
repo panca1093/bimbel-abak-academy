@@ -88,12 +88,16 @@ async function tryRefresh(): Promise<string | null> {
   }
 }
 
-export async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function doAuthFetch<T>(
+  path: string,
+  init: RequestInit | undefined,
+  baseHeaders: HeadersInit
+): Promise<T> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
 
   const buildHeaders = (t: string | null): HeadersInit => ({
-    "Content-Type": "application/json",
+    ...baseHeaders,
     ...(init?.headers ?? {}),
     ...(t ? { Authorization: `Bearer ${t}` } : {}),
   });
@@ -118,4 +122,12 @@ export async function authFetch<T>(path: string, init?: RequestInit): Promise<T>
   }
   if (res.status === 204 || res.status === 205) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+export async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  return doAuthFetch<T>(path, init, { "Content-Type": "application/json" });
+}
+
+export async function authFetchMultipart<T>(path: string, init?: RequestInit): Promise<T> {
+  return doAuthFetch<T>(path, init, {});
 }

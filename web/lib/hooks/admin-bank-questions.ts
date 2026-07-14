@@ -1,8 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authFetch } from "@/lib/api";
+import { authFetch, authFetchMultipart } from "@/lib/api";
 import type {
+  AdminQuestionImportResponse,
   AdminQuestionInput,
   BankQuestionListResponse,
   QuestionFormat,
@@ -79,6 +80,23 @@ export function useDeleteBankQuestion() {
       authFetch<void>(`/admin/questions/${encodeURIComponent(id)}`, {
         method: "DELETE",
       }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+    },
+  });
+}
+
+export function useImportBankQuestions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.set("file", file);
+      return authFetchMultipart<AdminQuestionImportResponse>("/admin/questions/import", {
+        method: "POST",
+        body: formData,
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
     },
