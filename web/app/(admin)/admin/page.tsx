@@ -64,6 +64,8 @@ export default function AdminIndexPage() {
 
   const schoolCount = schools?.length ?? null;
   const schoolCountStr = schoolCount !== null ? String(schoolCount) : "—";
+  const totalStudents = schools?.reduce((sum, s) => sum + (s.student_count ?? 0), 0) ?? null;
+  const totalStudentsStr = totalStudents !== null ? String(totalStudents) : "—";
 
   return (
     <div className="fade-in">
@@ -118,7 +120,7 @@ export default function AdminIndexPage() {
         ) : (
           <StatCard
             label={t("admin_home_stat_students")}
-            value={schoolCountStr}
+            value={totalStudentsStr}
             accent="secondary"
             icon={Users}
           />

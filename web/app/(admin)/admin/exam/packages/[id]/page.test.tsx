@@ -158,6 +158,68 @@ function openGradingTab() {
   fireEvent.click(screen.getByRole("button", { name: /^penilaian$/i }));
 }
 
+const sampleExamWithExtendedFields: ExamDetail = {
+  ...sampleExam,
+  mode: "utbk",
+  result_config: "score_pembahasan",
+  result_release_at: "2026-07-02T10:00:00Z",
+  check_in_window_minutes: 15,
+  grace_window_minutes: 5,
+  max_attempts: 2,
+  certificate_template: "modern",
+};
+
+describe("ExamPackageDetailPage — overview tab", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    examState = {
+      data: sampleExamWithExtendedFields,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  });
+
+  it("renders extended package fields in the overview", async () => {
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTBK")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("score_pembahasan")).toBeInTheDocument();
+    expect(screen.getByText("15 menit")).toBeInTheDocument();
+    expect(screen.getByText("5 menit")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("modern")).toBeInTheDocument();
+  });
+
+  it("shows unlimited when max_attempts is null", async () => {
+    examState.data = { ...sampleExamWithExtendedFields, max_attempts: null };
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/tidak terbatas/i)).toBeInTheDocument();
+    });
+  });
+
+  it("opens the edit modal when the overview edit button is clicked", async () => {
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit Paket")).toBeInTheDocument();
+    });
+  });
+});
+
 describe("ExamPackageDetailPage — grading tab", () => {
   beforeEach(() => {
     (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });

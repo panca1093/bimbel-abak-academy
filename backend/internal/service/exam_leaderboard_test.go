@@ -610,7 +610,7 @@ func TestGetExamAnalytics_BucketBoundaries(t *testing.T) {
 	td := model.TestDetail{
 		Test: model.Test{ID: testID, Title: "Math", Subject: "Math", Topic: "Algebra"},
 		Questions: []model.QuestionWithOptions{
-			{Question: model.Question{ID: uuid.New(), TestID: testID, Format: "mcq", PointCorrect: 100}},
+			{Question: model.Question{ID: uuid.New(), Format: "mcq", PointCorrect: 100}, SortOrder: 1},
 		},
 	}
 	svc.repo.seedTests(examID, []model.TestDetail{td})

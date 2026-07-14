@@ -238,16 +238,10 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 
 	if q.ID == uuid.Nil {
 		if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
-			if errors.Is(err, repository.ErrSortOrderConflict) {
-				return model.QuestionWithOptions{}, fmt.Errorf("%w: sort order conflict", ErrValidation)
-			}
 			return model.QuestionWithOptions{}, err
 		}
 	} else {
 		if err := s.storeRepo.UpdateQuestionTx(ctx, tx, &q, options); err != nil {
-			if errors.Is(err, repository.ErrSortOrderConflict) {
-				return model.QuestionWithOptions{}, fmt.Errorf("%w: sort order conflict", ErrValidation)
-			}
 			if errors.Is(err, pgx.ErrNoRows) {
 				return model.QuestionWithOptions{}, ErrQuestionNotFound
 			}
@@ -262,7 +256,182 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 	return model.QuestionWithOptions{Question: q, Options: options}, nil
 }
 
+// CreateQuestionForTest creates a bank question and atomically attaches it to the
+// given test (FR-25). This preserves the existing POST /admin/tests/:id/questions
+// behavior after migration 0025 moved attachment to test_question.
+func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	if err := validateQuestion(q, options); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+	if err := s.storeRepo.AttachQuestionToTestTx(ctx, tx, testID, q.ID); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	return model.QuestionWithOptions{Question: q, Options: options}, nil
+}
+
+// AttachQuestions appends bank questions to a test. Already-attached questions are
+// idempotent (no duplicate, no error). Every supplied question must exist; the
+// test must exist (FR-21).
+func (s *Service) AttachQuestions(ctx context.Context, testID uuid.UUID, questionIDs []uuid.UUID) error {
+	if len(questionIDs) == 0 {
+		return fmt.Errorf("%w: question_ids cannot be empty", ErrValidation)
+	}
+	if _, err := s.storeRepo.GetTestByID(ctx, testID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrTestNotFound
+		}
+		return err
+	}
+
+	exists, err := s.storeRepo.CountQuestionsByIDs(ctx, questionIDs)
+	if err != nil {
+		return err
+	}
+	if exists != len(questionIDs) {
+		return ErrQuestionNotFound
+	}
+
+	colliding, err := s.storeRepo.FindQuestionsAttachedToSiblingTests(ctx, testID, questionIDs)
+	if err != nil {
+		return err
+	}
+	if len(colliding) > 0 {
+		return fmt.Errorf("%w: question(s) already attached to another test in the same exam: %v", ErrValidation, colliding)
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.AttachQuestionsToTestTx(ctx, tx, testID, questionIDs); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+// DetachQuestion removes only the test_question join row; the bank question and any
+// other attachments survive (FR-22).
+func (s *Service) DetachQuestion(ctx context.Context, testID, questionID uuid.UUID) error {
+	if _, err := s.storeRepo.GetTestByID(ctx, testID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrTestNotFound
+		}
+		return err
+	}
+	return s.storeRepo.DetachQuestionFromTest(ctx, testID, questionID)
+}
+
+// ReorderTestQuestions validates that the supplied id set equals the currently
+// attached set, then atomically rewrites sort_order to match the list position
+// (FR-23).
+func (s *Service) ReorderTestQuestions(ctx context.Context, testID uuid.UUID, orderedQuestionIDs []uuid.UUID) error {
+	if len(orderedQuestionIDs) == 0 {
+		return fmt.Errorf("%w: question_ids cannot be empty", ErrValidation)
+	}
+	if _, err := s.storeRepo.GetTestByID(ctx, testID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrTestNotFound
+		}
+		return err
+	}
+
+	attached, err := s.storeRepo.ListAttachedQuestionIDs(ctx, testID)
+	if err != nil {
+		return err
+	}
+	if !sameUUIDSet(attached, orderedQuestionIDs) {
+		return fmt.Errorf("%w: question_ids must match the current attached set", ErrValidation)
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.ReorderTestQuestionsTx(ctx, tx, testID, orderedQuestionIDs); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func sameUUIDSet(a, b []uuid.UUID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := make(map[uuid.UUID]bool, len(a))
+	for _, v := range a {
+		m[v] = true
+	}
+	seen := make(map[uuid.UUID]bool, len(b))
+	for _, v := range b {
+		if !m[v] || seen[v] {
+			return false
+		}
+		seen[v] = true
+	}
+	return true
+}
+
+// CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
+func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	if err := validateQuestion(q, options); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.QuestionWithOptions{}, err
+	}
+
+	return model.QuestionWithOptions{Question: q, Options: options}, nil
+}
+
 func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
+	attached, err := s.storeRepo.CountQuestionAttachments(ctx, id)
+	if err != nil {
+		return err
+	}
+	if attached > 0 {
+		return fmt.Errorf("%w: question is attached to %d test(s); detach before deleting", ErrValidation, attached)
+	}
+
+	answered, err := s.storeRepo.CountAnswerReferences(ctx, id)
+	if err != nil {
+		return err
+	}
+	if answered > 0 {
+		return fmt.Errorf("%w: question has been answered in %d session(s) and cannot be deleted", ErrValidation, answered)
+	}
+
 	if err := s.storeRepo.DeleteQuestion(ctx, id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrQuestionNotFound
@@ -270,6 +439,12 @@ func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	return nil
+}
+
+// ListBankQuestions returns cursor-paginated bank questions with topic name and
+// attached-test count (FR-14).
+func (s *Service) ListBankQuestions(ctx context.Context, filter repository.QuestionFilter) ([]model.BankQuestionListItem, string, error) {
+	return s.storeRepo.ListBankQuestions(ctx, filter)
 }
 
 var validTimerModes = map[string]bool{
@@ -315,6 +490,15 @@ func validateExam(e model.Exam) error {
 		if err := validateCertificateTemplate(e.CertificateTemplate); err != nil {
 			return err
 		}
+	}
+	if e.CheckInWindowMinutes != nil && *e.CheckInWindowMinutes < 0 {
+		return fmt.Errorf("%w: check_in_window_minutes cannot be negative", ErrValidation)
+	}
+	if e.GraceWindowMinutes != nil && *e.GraceWindowMinutes < 0 {
+		return fmt.Errorf("%w: grace_window_minutes cannot be negative", ErrValidation)
+	}
+	if e.MaxAttempts != nil && *e.MaxAttempts < 0 {
+		return fmt.Errorf("%w: max_attempts cannot be negative", ErrValidation)
 	}
 	return nil
 }

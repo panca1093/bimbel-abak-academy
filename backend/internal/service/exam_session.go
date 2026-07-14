@@ -116,7 +116,9 @@ var validViolationTypes = map[string]bool{
 // ---------- Shared helpers ----------
 
 // groupQuestionsByTest groups questions by their parent test and strips
-// correct_answer / is_correct from the student-facing payload.
+// correct_answer / is_correct from the student-facing payload. Per-question
+// test_id and sort_order come from the owning test context, not from the bank
+// question (FR-26).
 func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 	var out []SessionTestPayload
 	for _, td := range tests {
@@ -129,10 +131,10 @@ func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 		for _, q := range td.Questions {
 			sq := SessionQuestion{
 				ID:        q.Question.ID,
-				TestID:    q.Question.TestID,
+				TestID:    td.Test.ID,
 				Format:    q.Question.Format,
 				Body:      q.Question.Body,
-				SortOrder: q.Question.SortOrder,
+				SortOrder: q.SortOrder,
 			}
 			for _, o := range q.Options {
 				sq.Options = append(sq.Options, SessionOption{

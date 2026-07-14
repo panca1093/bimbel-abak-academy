@@ -55,12 +55,18 @@ func insertAdminResultsMCQQuestion(t *testing.T, pool *pgxpool.Pool, testID uuid
 	ctx := context.Background()
 	var id uuid.UUID
 	err := pool.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-		VALUES ($1, 'mcq', $2, $3, $4, 0) RETURNING id`,
-		testID, body, sortOrder, pointCorrect,
+		`INSERT INTO question (format, body, point_correct, point_wrong)
+		VALUES ('mcq', $1, $2, 0) RETURNING id`,
+		body, pointCorrect,
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert mcq question: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
+		testID, id, sortOrder,
+	); err != nil {
+		t.Fatalf("insert test_question: %v", err)
 	}
 	return id
 }

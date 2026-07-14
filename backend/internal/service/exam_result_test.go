@@ -204,12 +204,13 @@ func (s *shimSessionService) GradeEssayAnswer(ctx context.Context, sessionID, qu
 // ---------- fixtures ----------
 
 func mcqTest(testID, examID uuid.UUID) model.TestDetail {
-	q := model.Question{ID: uuid.New(), TestID: testID, Format: "mcq", Body: "2+2", PointCorrect: 2, PointWrong: 1}
+	q := model.Question{ID: uuid.New(), Format: "mcq", Body: "2+2", PointCorrect: 2, PointWrong: 1}
 	return model.TestDetail{
 		Test: model.Test{ID: testID, Title: "Math", Subject: "Math", Topic: "Algebra"},
 		Questions: []model.QuestionWithOptions{
 			{
-				Question: q,
+				Question:  q,
+				SortOrder: 1,
 				Options: []model.QuestionOption{
 					{Key: "a", Text: "3", SortOrder: 1},
 					{Key: "b", Text: "4", IsCorrect: true, SortOrder: 2},
@@ -221,10 +222,10 @@ func mcqTest(testID, examID uuid.UUID) model.TestDetail {
 
 func essayTest(testID uuid.UUID, pointCorrect int) (model.TestDetail, uuid.UUID) {
 	qID := uuid.New()
-	q := model.Question{ID: qID, TestID: testID, Format: "essay", Body: "Explain X", PointCorrect: pointCorrect, PointWrong: 0}
+	q := model.Question{ID: qID, Format: "essay", Body: "Explain X", PointCorrect: pointCorrect, PointWrong: 0}
 	return model.TestDetail{
 		Test:      model.Test{ID: testID, Title: "Essay", Subject: "Bahasa", Topic: "Writing"},
-		Questions: []model.QuestionWithOptions{{Question: q}},
+		Questions: []model.QuestionWithOptions{{Question: q, SortOrder: 1}},
 	}, qID
 }
 

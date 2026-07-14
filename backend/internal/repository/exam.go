@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"akademi-bimbel/internal/model"
 )
@@ -74,9 +73,9 @@ func scanTestWithCount(row interface{ Scan(dest ...any) error }, t *model.Test) 
 func scanQuestion(row interface{ Scan(dest ...any) error }, q *model.Question) error {
 	var correctAnswer, explanation, difficulty, imageURL *string
 	err := row.Scan(
-		&q.ID, &q.TestID, &q.Format, &q.Body,
+		&q.ID, &q.Format, &q.Body,
 		&correctAnswer, &explanation, &difficulty, &imageURL,
-		&q.SortOrder, &q.PointCorrect, &q.PointWrong,
+		&q.TopicID, &q.PointCorrect, &q.PointWrong,
 	)
 	if err != nil {
 		return err
@@ -116,6 +115,15 @@ func scanQuestionOption(row interface{ Scan(dest ...any) error }, o *model.Quest
 type TestFilter struct {
 	Subject string
 	Topic   string
+	Cursor  string
+	Limit   int
+}
+
+// QuestionFilter is the filter for the bank question list endpoint (FR-14).
+type QuestionFilter struct {
+	Format  string
+	TopicID string
+	Search  string
 	Cursor  string
 	Limit   int
 }
@@ -170,13 +178,12 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	}
 
 	// LEFT JOIN with a grouped count keeps tests without questions counted as 0.
-	// We count per test_id and join back — the GROUP BY in the subquery avoids
-	// inflating the row count over the outer filters (subject/topic/cursor).
+	// Count through test_question since post-0025 attachment lives on the join.
 	query := `SELECT t.id, t.title, t.subject, t.topic, t.duration_minutes,
 		t.audio_url, t.audio_play_limit, t.section_type, COALESCE(q.cnt, 0), t.created_at
 	FROM test t
 	LEFT JOIN (
-		SELECT test_id, COUNT(*) AS cnt FROM question GROUP BY test_id
+		SELECT test_id, COUNT(*) AS cnt FROM test_question GROUP BY test_id
 	) q ON q.test_id = t.id
 	WHERE 1=1`
 	args := []interface{}{}
@@ -248,10 +255,12 @@ func (r *Repository) DeleteTest(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]model.QuestionWithOptions, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order, point_correct, point_wrong
-		FROM question
-		WHERE test_id = $1
-		ORDER BY sort_order`,
+		`SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, tq.sort_order
+		FROM question q
+		JOIN test_question tq ON tq.question_id = q.id
+		LEFT JOIN exam_topic et ON et.id = q.topic_id
+		WHERE tq.test_id = $1
+		ORDER BY tq.sort_order`,
 		testID,
 	)
 	if err != nil {
@@ -259,25 +268,49 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 	}
 	defer rows.Close()
 
-	questions := []model.Question{}
+	questions := make([]model.QuestionWithOptions, 0)
 	for rows.Next() {
 		q := model.Question{}
-		if err := scanQuestion(rows, &q); err != nil {
+		var sortOrder int
+		var correctAnswer, explanation, difficulty, imageURL, topic *string
+		var topicID *uuid.UUID
+		if err := rows.Scan(
+			&q.ID, &q.Format, &q.Body,
+			&correctAnswer, &explanation, &difficulty, &imageURL,
+			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &sortOrder,
+		); err != nil {
 			return nil, err
 		}
-		questions = append(questions, q)
+		if correctAnswer != nil {
+			q.CorrectAnswer = correctAnswer
+		}
+		if explanation != nil {
+			q.Explanation = explanation
+		}
+		if difficulty != nil {
+			q.Difficulty = difficulty
+		}
+		if imageURL != nil {
+			q.ImageURL = imageURL
+		}
+		if topicID != nil {
+			q.TopicID = topicID
+		}
+		if topic != nil {
+			q.Topic = topic
+		}
+		questions = append(questions, model.QuestionWithOptions{
+			Question:  q,
+			SortOrder: sortOrder,
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	if len(questions) == 0 {
-		return []model.QuestionWithOptions{}, nil
-	}
-
 	questionIDs := make([]uuid.UUID, len(questions))
 	for i, q := range questions {
-		questionIDs[i] = q.ID
+		questionIDs[i] = q.Question.ID
 	}
 
 	opts, err := r.queryOptionsForQuestions(ctx, questionIDs)
@@ -285,14 +318,10 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		return nil, err
 	}
 
-	result := make([]model.QuestionWithOptions, len(questions))
-	for i, q := range questions {
-		result[i] = model.QuestionWithOptions{
-			Question: q,
-			Options:  opts[q.ID],
-		}
+	for i := range questions {
+		questions[i].Options = opts[questions[i].Question.ID]
 	}
-	return result, nil
+	return questions, nil
 }
 
 func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionOption, error) {
@@ -324,15 +353,12 @@ func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs [
 
 func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, correct_answer, explanation, difficulty, image_url, sort_order, point_correct, point_wrong)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		`INSERT INTO question (format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`,
-		q.TestID, q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder, q.PointCorrect, q.PointWrong,
+		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.TopicID, q.PointCorrect, q.PointWrong,
 	).Scan(&q.ID)
 	if err != nil {
-		if isSortOrderConflict(err) {
-			return ErrSortOrderConflict
-		}
 		return err
 	}
 
@@ -346,16 +372,13 @@ func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	var updatedID uuid.UUID
 	err := tx.QueryRow(ctx,
 		`UPDATE question
-		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, sort_order = $7, point_correct = $8, point_wrong = $9
+		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, topic_id = $7, point_correct = $8, point_wrong = $9
 		WHERE id = $10 RETURNING id`,
-		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.SortOrder, q.PointCorrect, q.PointWrong, q.ID,
+		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.TopicID, q.PointCorrect, q.PointWrong, q.ID,
 	).Scan(&updatedID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return pgx.ErrNoRows
-		}
-		if isSortOrderConflict(err) {
-			return ErrSortOrderConflict
 		}
 		return err
 	}
@@ -381,6 +404,325 @@ func (r *Repository) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+// CountQuestionAttachments returns the number of test_question rows for a question.
+func (r *Repository) CountQuestionAttachments(ctx context.Context, id uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM test_question WHERE question_id = $1`,
+		id,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountQuestionsByIDs returns how many of the supplied IDs exist in the question table.
+func (r *Repository) CountQuestionsByIDs(ctx context.Context, ids []uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM question WHERE id = ANY($1)`,
+		ids,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// ListAttachedQuestionIDs returns the question_ids attached to a test, ordered by
+// sort_order.
+func (r *Repository) ListAttachedQuestionIDs(ctx context.Context, testID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT question_id FROM test_question WHERE test_id = $1 ORDER BY sort_order`,
+		testID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// CountAnswerReferences returns the number of exam_session_answer rows for a question.
+func (r *Repository) CountAnswerReferences(ctx context.Context, id uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM exam_session_answer WHERE question_id = $1`,
+		id,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// ListBankQuestions returns cursor-paginated bank questions with their topic name
+// and the count of tests they are attached to (FR-14).
+func (r *Repository) ListBankQuestions(ctx context.Context, filter QuestionFilter) ([]model.BankQuestionListItem, string, error) {
+	if filter.Limit == 0 {
+		filter.Limit = 20
+	}
+
+	query := `SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0)
+FROM question q
+LEFT JOIN exam_topic et ON et.id = q.topic_id
+LEFT JOIN (
+    SELECT question_id, COUNT(*) AS cnt FROM test_question GROUP BY question_id
+) tq ON tq.question_id = q.id
+WHERE 1=1`
+	args := []interface{}{}
+	argIdx := 1
+
+	if filter.Format != "" {
+		query += fmt.Sprintf(` AND q.format = $%d`, argIdx)
+		args = append(args, filter.Format)
+		argIdx++
+	}
+	if filter.TopicID != "" {
+		query += fmt.Sprintf(` AND q.topic_id = $%d::uuid`, argIdx)
+		args = append(args, filter.TopicID)
+		argIdx++
+	}
+	if filter.Search != "" {
+		query += fmt.Sprintf(` AND (LOWER(q.body) LIKE LOWER($%d) OR q.id::text LIKE $%d)`, argIdx, argIdx)
+		args = append(args, "%"+filter.Search+"%")
+		argIdx++
+	}
+	if filter.Cursor != "" {
+		query += fmt.Sprintf(` AND q.id > $%d`, argIdx)
+		args = append(args, filter.Cursor)
+		argIdx++
+	}
+
+	query += ` ORDER BY q.id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	args = append(args, filter.Limit+1)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	items := make([]model.BankQuestionListItem, 0)
+	for rows.Next() {
+		q := model.Question{}
+		var attachedCount int
+		var correctAnswer, explanation, difficulty, imageURL, topic *string
+		var topicID *uuid.UUID
+		if err := rows.Scan(
+			&q.ID, &q.Format, &q.Body,
+			&correctAnswer, &explanation, &difficulty, &imageURL,
+			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount,
+		); err != nil {
+			return nil, "", err
+		}
+		if correctAnswer != nil {
+			q.CorrectAnswer = correctAnswer
+		}
+		if explanation != nil {
+			q.Explanation = explanation
+		}
+		if difficulty != nil {
+			q.Difficulty = difficulty
+		}
+		if imageURL != nil {
+			q.ImageURL = imageURL
+		}
+		if topicID != nil {
+			q.TopicID = topicID
+		}
+		if topic != nil {
+			q.Topic = topic
+		}
+		items = append(items, model.BankQuestionListItem{
+			Question:      q,
+			AttachedCount: attachedCount,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+
+	var nextCursor string
+	if len(items) > filter.Limit {
+		// Cursor is the last *returned* row; the next page starts after it.
+		nextCursor = items[filter.Limit-1].Question.ID.String()
+		items = items[:filter.Limit]
+	}
+
+	questionIDs := make([]uuid.UUID, len(items))
+	for i, item := range items {
+		questionIDs[i] = item.Question.ID
+	}
+	opts, err := r.queryOptionsForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, "", err
+	}
+	for i := range items {
+		items[i].Options = opts[items[i].Question.ID]
+	}
+
+	return items, nextCursor, nil
+}
+
+// AttachQuestionToTestTx appends an existing bank question to a test, assigning the
+// next sort_order. Attaching an already-attached question is idempotent (no duplicate,
+// no error — FR-21).
+func (r *Repository) AttachQuestionToTestTx(ctx context.Context, tx pgx.Tx, testID, questionID uuid.UUID) error {
+	nextOrder, err := r.GetMaxSortOrderForTestTx(ctx, tx, testID)
+	if err != nil {
+		return err
+	}
+	nextOrder++
+	_, err = tx.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)
+		ON CONFLICT (test_id, question_id) DO NOTHING`,
+		testID, questionID, nextOrder,
+	)
+	return err
+}
+
+// GetMaxSortOrderForTestTx returns the current maximum sort_order for a test, or 0
+// when the test has no attached questions.
+func (r *Repository) GetMaxSortOrderForTestTx(ctx context.Context, tx pgx.Tx, testID uuid.UUID) (int, error) {
+	var maxOrder int
+	err := tx.QueryRow(ctx,
+		`SELECT COALESCE(MAX(sort_order), 0) FROM test_question WHERE test_id = $1`,
+		testID,
+	).Scan(&maxOrder)
+	return maxOrder, err
+}
+
+// FindQuestionsAttachedToSiblingTests returns the subset of questionIDs that are
+// already attached to some OTHER test sharing an exam with testID. A reusable
+// question attached to two tests inside the same exam would render twice in a
+// session, but exam_session_answer keys answers only by question_id (its
+// PRIMARY KEY is (session_id, question_id)) — a second occurrence overwrites the
+// first. This is used to block that cross-test-in-same-exam collision at attach
+// time (testID's own current attachments don't count as siblings).
+func (r *Repository) FindQuestionsAttachedToSiblingTests(ctx context.Context, testID uuid.UUID, questionIDs []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT tq.question_id
+		FROM test_question tq
+		JOIN exam_test sibling ON sibling.test_id = tq.test_id
+		JOIN exam_test target ON target.exam_id = sibling.exam_id
+		WHERE target.test_id = $1
+		  AND tq.test_id != $1
+		  AND tq.question_id = ANY($2)`,
+		testID, questionIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var colliding []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		colliding = append(colliding, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return colliding, nil
+}
+
+// AttachQuestionsToTestTx attaches a batch of bank questions to a test, appending
+// after the current max sort_order and skipping already-attached questions (FR-21).
+func (r *Repository) AttachQuestionsToTestTx(ctx context.Context, tx pgx.Tx, testID uuid.UUID, questionIDs []uuid.UUID) error {
+	maxOrder, err := r.GetMaxSortOrderForTestTx(ctx, tx, testID)
+	if err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(ctx,
+		`SELECT question_id FROM test_question WHERE test_id = $1`,
+		testID,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	existing := make(map[uuid.UUID]bool)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		existing[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	nextOrder := maxOrder + 1
+	for _, qid := range questionIDs {
+		if existing[qid] {
+			continue
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
+			testID, qid, nextOrder,
+		); err != nil {
+			return err
+		}
+		nextOrder++
+	}
+	return nil
+}
+
+// DetachQuestionFromTest removes the test_question join row for (testID, questionID).
+// It is idempotent: deleting a non-existent attachment returns no error (FR-22).
+func (r *Repository) DetachQuestionFromTest(ctx context.Context, testID, questionID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx,
+		`DELETE FROM test_question WHERE test_id = $1 AND question_id = $2`,
+		testID, questionID,
+	)
+	return err
+}
+
+// ReorderTestQuestionsTx atomically rewrites sort_order for all attached questions
+// to match the provided order. The offset rewrite avoids UNIQUE(test_id, sort_order)
+// conflicts during the update (FR-23).
+func (r *Repository) ReorderTestQuestionsTx(ctx context.Context, tx pgx.Tx, testID uuid.UUID, orderedQuestionIDs []uuid.UUID) error {
+	// Shift existing orders far out of range so the subsequent per-row updates cannot
+	// collide with each other or with stale values under the unique index.
+	offset := len(orderedQuestionIDs) + 1000000
+	if _, err := tx.Exec(ctx,
+		`UPDATE test_question SET sort_order = sort_order + $1 WHERE test_id = $2`,
+		offset, testID,
+	); err != nil {
+		return err
+	}
+
+	for i, qid := range orderedQuestionIDs {
+		if _, err := tx.Exec(ctx,
+			`UPDATE test_question SET sort_order = $1 WHERE test_id = $2 AND question_id = $3`,
+			i, testID, qid,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, options []model.QuestionOption) error {
 	for _, o := range options {
 		_, err := tx.Exec(ctx,
@@ -393,14 +735,6 @@ func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID,
 		}
 	}
 	return nil
-}
-
-func isSortOrderConflict(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "uq_question_order" {
-		return true
-	}
-	return false
 }
 
 // ExamFilter mirrors TestFilter/ProductFilter for cursor-paginated ListExams.
@@ -630,7 +964,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		FROM exam_test et
 		JOIN test t ON t.id = et.test_id
 		LEFT JOIN (
-			SELECT test_id, COUNT(*) AS cnt FROM question GROUP BY test_id
+			SELECT test_id, COUNT(*) AS cnt FROM test_question GROUP BY test_id
 		) q ON q.test_id = t.id
 		WHERE et.exam_id = $1
 		ORDER BY et.sort_order ASC`,
@@ -1215,13 +1549,26 @@ func (r *Repository) ListSessionsNeedingGrading(ctx context.Context, examID uuid
 
 // GetSessionEssayAnswers returns each essay answer for a session joined to its question
 // (body, point_correct), for the admin per-session grading read (FR-S5-17).
+// Ordering uses the essay question's test_question.sort_order within the session's
+// exam, falling back to question.id so the list is stable even when a question is
+// no longer attached to any test in that exam.
 func (r *Repository) GetSessionEssayAnswers(ctx context.Context, sessionID uuid.UUID) ([]model.GradingEssayItem, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT a.question_id, q.body, a.answer, q.point_correct, a.score, a.grader_comment, a.graded_at
+		`SELECT a.question_id, q.body, a.answer, q.point_correct, a.score, a.grader_comment, a.graded_at,
+			COALESCE(tq.sort_order, 0) AS q_order
 		FROM exam_session_answer a
 		JOIN question q ON q.id = a.question_id
+		JOIN exam_session s ON s.id = a.session_id
+		LEFT JOIN LATERAL (
+			SELECT tq.sort_order
+			FROM exam_test et
+			JOIN test_question tq ON tq.test_id = et.test_id
+			WHERE et.exam_id = s.exam_id AND tq.question_id = a.question_id
+			ORDER BY tq.sort_order
+			LIMIT 1
+		) tq ON true
 		WHERE a.session_id = $1 AND q.format = 'essay'
-		ORDER BY q.sort_order ASC`,
+		ORDER BY q_order, q.id`,
 		sessionID,
 	)
 	if err != nil {
@@ -1232,7 +1579,9 @@ func (r *Repository) GetSessionEssayAnswers(ctx context.Context, sessionID uuid.
 	var items []model.GradingEssayItem
 	for rows.Next() {
 		var item model.GradingEssayItem
-		if err := rows.Scan(&item.QuestionID, &item.Body, &item.Answer, &item.PointCorrect, &item.Score, &item.GraderComment, &item.GradedAt); err != nil {
+		var qOrder int
+		if err := rows.Scan(
+			&item.QuestionID, &item.Body, &item.Answer, &item.PointCorrect, &item.Score, &item.GraderComment, &item.GradedAt, &qOrder); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1566,7 +1915,7 @@ func (r *Repository) GetExamQuestionTotal(ctx context.Context, examID uuid.UUID)
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*)
 		FROM exam_test et
-		JOIN question q ON q.test_id = et.test_id
+		JOIN test_question tq ON tq.test_id = et.test_id
 		WHERE et.exam_id = $1`,
 		examID,
 	).Scan(&total)

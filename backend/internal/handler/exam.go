@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -96,14 +97,17 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
+	// Nullable[T] fields distinguish "absent — preserve" from "present and
+	// null — clear" (a plain *T cannot: encoding/json leaves it nil either way),
+	// so clearing audio/section settings via PATCH actually clears them.
 	var req struct {
-		Title           string  `json:"title"`
-		Subject         string  `json:"subject"`
-		Topic           string  `json:"topic"`
-		DurationMinutes int     `json:"duration_minutes"`
-		AudioURL        *string `json:"audio_url,omitempty"`
-		AudioPlayLimit  *int    `json:"audio_play_limit,omitempty"`
-		SectionType     *string `json:"section_type,omitempty"`
+		Title           string           `json:"title"`
+		Subject         string           `json:"subject"`
+		Topic           string           `json:"topic"`
+		DurationMinutes int              `json:"duration_minutes"`
+		AudioURL        Nullable[string] `json:"audio_url"`
+		AudioPlayLimit  Nullable[int]    `json:"audio_play_limit"`
+		SectionType     Nullable[string] `json:"section_type"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -122,15 +126,9 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	if req.DurationMinutes > 0 {
 		t.DurationMinutes = req.DurationMinutes
 	}
-	if req.AudioURL != nil {
-		t.AudioURL = req.AudioURL
-	}
-	if req.AudioPlayLimit != nil {
-		t.AudioPlayLimit = req.AudioPlayLimit
-	}
-	if req.SectionType != nil {
-		t.SectionType = req.SectionType
-	}
+	applyNullable(req.AudioURL, &t.AudioURL)
+	applyNullable(req.AudioPlayLimit, &t.AudioPlayLimit)
+	applyNullable(req.SectionType, &t.SectionType)
 
 	out, err := h.svc.UpdateTest(c.Request().Context(), id, t)
 	if err != nil {
@@ -180,12 +178,97 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	q.TestID = testID
-	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions())
+	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusCreated, out)
+}
+
+// AdminAttachQuestions attaches one or many bank questions to a test (FR-21).
+func (h *Handler) AdminAttachQuestions(c echo.Context) error {
+	testID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+
+	var req struct {
+		QuestionID  string   `json:"question_id"`
+		QuestionIDs []string `json:"question_ids"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	ids := req.QuestionIDs
+	if len(ids) == 0 && req.QuestionID != "" {
+		ids = []string{req.QuestionID}
+	}
+	if len(ids) == 0 {
+		return badRequest(c, "question_id or question_ids required")
+	}
+
+	questionIDs := make([]uuid.UUID, 0, len(ids))
+	for _, raw := range ids {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return badRequest(c, "invalid question_id")
+		}
+		questionIDs = append(questionIDs, id)
+	}
+
+	if err := h.svc.AttachQuestions(c.Request().Context(), testID, questionIDs); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// AdminDetachQuestion removes a question attachment from a test (FR-22).
+func (h *Handler) AdminDetachQuestion(c echo.Context) error {
+	testID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	questionID, err := uuid.Parse(c.Param("questionId"))
+	if err != nil {
+		return badRequest(c, "invalid question id")
+	}
+	if err := h.svc.DetachQuestion(c.Request().Context(), testID, questionID); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// AdminReorderTestQuestions rewrites the order of attached questions (FR-23).
+func (h *Handler) AdminReorderTestQuestions(c echo.Context) error {
+	testID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+
+	var req struct {
+		QuestionIDs []string `json:"question_ids"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if len(req.QuestionIDs) == 0 {
+		return badRequest(c, "question_ids required")
+	}
+
+	questionIDs := make([]uuid.UUID, 0, len(req.QuestionIDs))
+	for _, raw := range req.QuestionIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return badRequest(c, "invalid question_id")
+		}
+		questionIDs = append(questionIDs, id)
+	}
+
+	if err := h.svc.ReorderTestQuestions(c.Request().Context(), testID, questionIDs); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
@@ -222,15 +305,152 @@ func (h *Handler) AdminDeleteQuestion(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// AdminListTopics returns all curated topics with a per-topic question count (FR-16).
+func (h *Handler) AdminListTopics(c echo.Context) error {
+	filter := repository.TopicFilter{Subject: c.QueryParam("subject")}
+	items, err := h.svc.ListTopics(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": items})
+}
+
+// AdminCreateTopic creates a new topic (FR-17).
+func (h *Handler) AdminCreateTopic(c echo.Context) error {
+	var req struct {
+		Name    string `json:"name"`
+		Subject string `json:"subject"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	t := model.ExamTopic{Name: req.Name, Subject: req.Subject}
+	out, err := h.svc.CreateTopic(c.Request().Context(), t)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, out)
+}
+
+// AdminUpdateTopic updates an existing topic (FR-18).
+func (h *Handler) AdminUpdateTopic(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+
+	var req struct {
+		Name    string `json:"name"`
+		Subject string `json:"subject"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	t := model.ExamTopic{Name: req.Name, Subject: req.Subject}
+	out, err := h.svc.UpdateTopic(c.Request().Context(), id, t)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, out)
+}
+
+// AdminDeleteTopic deletes a topic when no question references it (FR-19).
+func (h *Handler) AdminDeleteTopic(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	if err := h.svc.DeleteTopic(c.Request().Context(), id); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// AdminListBankQuestions returns the bank question list with cursor pagination (FR-14).
+func (h *Handler) AdminListBankQuestions(c echo.Context) error {
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	filter := repository.QuestionFilter{
+		Format:  c.QueryParam("format"),
+		TopicID: c.QueryParam("topic_id"),
+		Search:  c.QueryParam("search"),
+		Cursor:  c.QueryParam("cursor"),
+		Limit:   limit,
+	}
+
+	items, nextCursor, err := h.svc.ListBankQuestions(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data":        items,
+		"next_cursor": nextCursor,
+	})
+}
+
+// AdminImportQuestions imports questions from a multipart CSV (FR-45/46).
+// Expected form field: "file". Returns a per-row report with inserted count.
+func (h *Handler) AdminImportQuestions(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return badRequest(c, "file required")
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, APIError{Code: "internal", Message: "cannot open uploaded file"})
+	}
+	defer src.Close()
+
+	data, err := io.ReadAll(src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, APIError{Code: "internal", Message: "cannot read uploaded file"})
+	}
+
+	result, err := h.svc.ImportQuestionsFromCSV(c.Request().Context(), data)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"inserted": result.Inserted,
+		"rows":     result.Rows,
+	})
+}
+
+// AdminCreateBankQuestion creates a question in the bank with no test attachment (FR-9).
+func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
+	var req questionRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	q, err := req.toQuestion()
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, out)
+}
+
 // questionRequest is the shared body for AdminCreateQuestion / AdminUpdateQuestion.
 type questionRequest struct {
 	Format        string          `json:"format"`
 	Body          string          `json:"body"`
-	SortOrder     int             `json:"sort_order"`
 	Difficulty    *string         `json:"difficulty,omitempty"`
 	Explanation   *string         `json:"explanation,omitempty"`
 	ImageURL      *string         `json:"image_url,omitempty"`
 	CorrectAnswer *string         `json:"correct_answer,omitempty"`
+	TopicID       *string         `json:"topic_id,omitempty"`
 	Options       []optionRequest `json:"options,omitempty"`
 	PointCorrect  *float64        `json:"point_correct,omitempty"`
 	PointWrong    *float64        `json:"point_wrong,omitempty"`
@@ -261,6 +481,16 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		}
 		pointWrong = int(v)
 	}
+
+	var topicID *uuid.UUID
+	if r.TopicID != nil && *r.TopicID != "" {
+		tid, err := uuid.Parse(*r.TopicID)
+		if err != nil {
+			return model.Question{}, fmt.Errorf("%w: topic_id is not a valid UUID", service.ErrValidation)
+		}
+		topicID = &tid
+	}
+
 	return model.Question{
 		Format:        r.Format,
 		Body:          r.Body,
@@ -268,7 +498,7 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		Explanation:   r.Explanation,
 		Difficulty:    r.Difficulty,
 		ImageURL:      r.ImageURL,
-		SortOrder:     r.SortOrder,
+		TopicID:       topicID,
 		PointCorrect:  pointCorrect,
 		PointWrong:    pointWrong,
 	}, nil

@@ -212,12 +212,19 @@ func seedMCQuestion(t *testing.T, pool *pgxpool.Pool, testID uuid.UUID, body str
 	t.Helper()
 	var id uuid.UUID
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-		VALUES ($1, 'mcq', $2, $3, $4, 0) RETURNING id`,
-		testID, body, sortOrder, pointCorrect,
+		`INSERT INTO question (format, body, point_correct, point_wrong)
+		VALUES ('mcq', $1, $2, 0) RETURNING id`,
+		body, pointCorrect,
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert mcq: %v", err)
+	}
+	_, err = pool.Exec(context.Background(),
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
+		testID, id, sortOrder,
+	)
+	if err != nil {
+		t.Fatalf("insert test_question: %v", err)
 	}
 	// Insert options (2 options, first correct)
 	for i, o := range []struct {
@@ -746,5 +753,135 @@ func TestAdminUpdateExam_InvalidCertificateTemplate_Returns422(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&resp)
 	if resp["code"] != "validation_failed" {
 		t.Errorf("code: want validation_failed, got %v", resp["code"])
+	}
+}
+
+func TestAdminUpdateExam_ExplicitNullClearsCheckInWindow(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Clear CheckIn")
+
+	examID := seedExam(t, env.pool, "Clear CheckIn Exam", false, "hidden", "classic")
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE exam SET check_in_window_minutes = 30 WHERE id = $1`, examID,
+	); err != nil {
+		t.Fatalf("seed check_in_window_minutes: %v", err)
+	}
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+
+	// Explicit null must CLEAR the field, not be treated as "absent."
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String(), token,
+		map[string]any{"check_in_window_minutes": nil},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var persisted *int
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT check_in_window_minutes FROM exam WHERE id = $1`, examID,
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query check_in_window_minutes: %v", err)
+	}
+	if persisted != nil {
+		t.Errorf("check_in_window_minutes: want cleared (nil), got %v", *persisted)
+	}
+}
+
+func TestAdminUpdateExam_OmittedFieldPreservesCheckInWindow(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preserve CheckIn")
+
+	examID := seedExam(t, env.pool, "Preserve CheckIn Exam", false, "hidden", "classic")
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE exam SET check_in_window_minutes = 30 WHERE id = $1`, examID,
+	); err != nil {
+		t.Fatalf("seed check_in_window_minutes: %v", err)
+	}
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+
+	// An unrelated-field PATCH that omits check_in_window_minutes must PRESERVE it.
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String(), token,
+		map[string]string{"certificate_template": "modern"},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var persisted *int
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT check_in_window_minutes FROM exam WHERE id = $1`, examID,
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query check_in_window_minutes: %v", err)
+	}
+	if persisted == nil || *persisted != 30 {
+		t.Errorf("check_in_window_minutes: want preserved 30, got %v", persisted)
+	}
+}
+
+func seedTestRow(t *testing.T, pool *pgxpool.Pool, title string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO test (title, subject, topic, duration_minutes, audio_url, audio_play_limit)
+		VALUES ($1, 'english', 'listening', 30, 'https://example.com/audio.mp3', 2) RETURNING id`,
+		title,
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert test: %v", err)
+	}
+	return id
+}
+
+func TestAdminUpdateTest_ExplicitNullClearsAudioURL(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Clear Audio")
+	testID := seedTestRow(t, env.pool, "Clear Audio Test")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+
+	// Explicit null must CLEAR audio_url, not be treated as "absent."
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/tests/"+testID.String(), token,
+		map[string]any{"audio_url": nil},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var persisted *string
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT audio_url FROM test WHERE id = $1`, testID,
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query audio_url: %v", err)
+	}
+	if persisted != nil {
+		t.Errorf("audio_url: want cleared (nil), got %v", *persisted)
+	}
+}
+
+func TestAdminUpdateTest_OmittedFieldPreservesAudioURL(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preserve Audio")
+	testID := seedTestRow(t, env.pool, "Preserve Audio Test")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+
+	// An unrelated-field PATCH that omits audio_url must PRESERVE it.
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/tests/"+testID.String(), token,
+		map[string]string{"title": "Renamed Test"},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var persisted *string
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT audio_url FROM test WHERE id = $1`, testID,
+	).Scan(&persisted); err != nil {
+		t.Fatalf("query audio_url: %v", err)
+	}
+	if persisted == nil || *persisted != "https://example.com/audio.mp3" {
+		t.Errorf("audio_url: want preserved, got %v", persisted)
 	}
 }

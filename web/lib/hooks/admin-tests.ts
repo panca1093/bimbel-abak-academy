@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
+import { adminBankQuestionsKeys } from "./admin-bank-questions";
 import type {
   Test,
   TestDetail,
@@ -10,6 +11,8 @@ import type {
   AdminCreateTestInput,
   AdminUpdateTestInput,
   AdminQuestionInput,
+  AdminAttachQuestionsInput,
+  AdminReorderQuestionsInput,
 } from "@/lib/types";
 
 export const adminTestsKeys = {
@@ -137,6 +140,7 @@ export function useSaveQuestion(testId: string) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
+      qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
     },
   });
 }
@@ -148,6 +152,59 @@ export function useDeleteQuestion(testId: string) {
       authFetch<void>(`/admin/questions/${encodeURIComponent(questionId)}`, {
         method: "DELETE",
       }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
+      qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+    },
+  });
+}
+
+export function useAttachQuestions(testId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AdminAttachQuestionsInput) =>
+      authFetch<void>(
+        `/admin/tests/${encodeURIComponent(testId)}/questions/attach`,
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
+      qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+    },
+  });
+}
+
+export function useDetachQuestion(testId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (questionId: string) =>
+      authFetch<void>(
+        `/admin/tests/${encodeURIComponent(testId)}/questions/${encodeURIComponent(questionId)}`,
+        {
+          method: "DELETE",
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
+      qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
+    },
+  });
+}
+
+export function useReorderTestQuestions(testId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AdminReorderQuestionsInput) =>
+      authFetch<void>(
+        `/admin/tests/${encodeURIComponent(testId)}/questions/order`,
+        {
+          method: "PUT",
+          body: JSON.stringify(input),
+        },
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
     },

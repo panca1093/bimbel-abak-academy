@@ -84,12 +84,18 @@ func insertGradingEssayQuestion(t *testing.T, pool *pgxpool.Pool, testID uuid.UU
 	ctx := context.Background()
 	var id uuid.UUID
 	err := pool.QueryRow(ctx,
-		`INSERT INTO question (test_id, format, body, sort_order, point_correct, point_wrong)
-		VALUES ($1, 'essay', $2, $3, $4, 0) RETURNING id`,
-		testID, body, sortOrder, pointCorrect,
+		`INSERT INTO question (format, body, point_correct, point_wrong)
+		VALUES ('essay', $1, $2, 0) RETURNING id`,
+		body, pointCorrect,
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert essay question: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`,
+		testID, id, sortOrder,
+	); err != nil {
+		t.Fatalf("insert test_question: %v", err)
 	}
 	return id
 }
@@ -447,5 +453,44 @@ func TestUpdateSessionScoreTx(t *testing.T) {
 	}
 	if score != 7 {
 		t.Errorf("score = %v, want 7", score)
+	}
+}
+
+// TestGetSessionEssayAnswers_orderUsesTestQuestionSortOrder verifies that essay answers
+// are returned in the order defined by test_question.sort_order for the session's exam,
+// not by question insertion order or the dropped question.sort_order (FR-27).
+func TestGetSessionEssayAnswers_orderUsesTestQuestionSortOrder(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	student := insertGradingUser(t, pool, "student", "Student Order")
+	testID := insertGradingTest(t, pool)
+
+	// Insert two essay questions. qLate is created first but attached with a higher
+	// sort_order; qEarly is created second but attached with a lower sort_order.
+	qLate := insertGradingEssayQuestion(t, pool, testID, "Late question", 5, 2)
+	qEarly := insertGradingEssayQuestion(t, pool, testID, "Early question", 5, 1)
+
+	examID := insertGradingExam(t, pool, testID)
+	now := time.Now()
+	sessionID := insertGradingSession(t, pool, student, examID, "submitted", &now, f64PtrG(0))
+
+	insertGradingAnswer(t, pool, sessionID, qLate, strPtrG("answer late"), nil, nil, nil)
+	insertGradingAnswer(t, pool, sessionID, qEarly, strPtrG("answer early"), nil, nil, nil)
+
+	items, err := repo.GetSessionEssayAnswers(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("GetSessionEssayAnswers: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("want 2 essay answers, got %d", len(items))
+	}
+
+	if items[0].QuestionID != qEarly {
+		t.Errorf("first question = %v, want %v (lower test_question.sort_order)", items[0].QuestionID, qEarly)
+	}
+	if items[1].QuestionID != qLate {
+		t.Errorf("second question = %v, want %v (higher test_question.sort_order)", items[1].QuestionID, qLate)
 	}
 }

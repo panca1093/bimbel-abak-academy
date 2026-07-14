@@ -6,6 +6,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// ExamTopic is a curated (subject, name) pair used by reusable bank questions.
+// QuestionCount is only populated by list-style reads.
+type ExamTopic struct {
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	Subject       string    `json:"subject"`
+	QuestionCount int       `json:"question_count"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 // Test is the top-level authoring unit (a set of questions). Nullable audio fields
 // are pointer types so we can persist / return "not set" distinctly from empty strings.
 type Test struct {
@@ -25,19 +35,20 @@ type Test struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-// Question belongs to a Test. `Format` is one of: mcq, multi_answer, short, fill_blank, essay.
-// Options are stored separately on QuestionOption (composite PK) and surfaced via
-// QuestionWithOptions for read paths.
+// Question is a reusable bank item. `Format` is one of: mcq, multi_answer, short,
+// fill_blank, essay. Options are stored separately on QuestionOption (composite PK)
+// and surfaced via QuestionWithOptions for read paths. topic_id links to the curated
+// exam_topic list; it is nullable for questions created before topics were assigned.
 type Question struct {
-	ID            uuid.UUID `json:"id"`
-	TestID        uuid.UUID `json:"test_id"`
-	Format        string    `json:"format"`
-	Body          string    `json:"body"`
-	CorrectAnswer *string   `json:"correct_answer"`
-	Explanation   *string   `json:"explanation"`
-	Difficulty    *string   `json:"difficulty"`
-	ImageURL      *string   `json:"image_url"`
-	SortOrder     int       `json:"sort_order"`
+	ID            uuid.UUID  `json:"id"`
+	Format        string     `json:"format"`
+	Body          string     `json:"body"`
+	CorrectAnswer *string    `json:"correct_answer"`
+	Explanation   *string    `json:"explanation"`
+	Difficulty    *string    `json:"difficulty"`
+	ImageURL      *string    `json:"image_url"`
+	TopicID       *uuid.UUID `json:"topic_id"`
+	Topic         *string    `json:"topic"`
 	// PointCorrect and PointWrong are positive-integer magnitudes authored per question;
 	// the scoring engine (not the author) applies the sign for wrong answers.
 	PointCorrect int `json:"point_correct"`
@@ -158,10 +169,22 @@ type TestDetail struct {
 }
 
 // QuestionWithOptions is a composite read shape: a Question plus its inline option list.
+// SortOrder carries the per-test order from test_question for authoring/ session reads.
 // Options are empty for non-option formats (short / fill_blank / essay).
 type QuestionWithOptions struct {
-	Question Question         `json:"question"`
-	Options  []QuestionOption `json:"options"`
+	Question  Question         `json:"question"`
+	Options   []QuestionOption `json:"options"`
+	SortOrder int              `json:"sort_order"`
+}
+
+// BankQuestionListItem is one row of GET /admin/questions — a bank question with
+// its inline options, topic name, and the count of tests it is currently attached
+// to (Used-in). Nested (not embedded) to match the {question, options, ...} shape
+// the admin bank page and QuestionWithOptions both expect.
+type BankQuestionListItem struct {
+	Question      Question         `json:"question"`
+	Options       []QuestionOption `json:"options"`
+	AttachedCount int              `json:"attached_count"`
 }
 
 // ExamListItem is the read shape returned by GET /admin/exams — an Exam row joined

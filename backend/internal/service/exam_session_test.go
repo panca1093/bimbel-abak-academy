@@ -16,6 +16,58 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
+// ---------- groupQuestionsByTest (FR-26) ----------
+
+func TestGroupQuestionsByTest_derivesTestIDAndOrderFromOwningTest(t *testing.T) {
+	test1 := uuid.New()
+	test2 := uuid.New()
+
+	tests := []model.TestDetail{
+		{
+			Test: model.Test{ID: test1, Title: "T1"},
+			Questions: []model.QuestionWithOptions{
+				{Question: model.Question{ID: uuid.New(), Format: "mcq"}, SortOrder: 2},
+				{Question: model.Question{ID: uuid.New(), Format: "mcq"}, SortOrder: 1},
+			},
+		},
+		{
+			Test: model.Test{ID: test2, Title: "T2"},
+			Questions: []model.QuestionWithOptions{
+				{Question: model.Question{ID: uuid.New(), Format: "essay"}, SortOrder: 1},
+			},
+		},
+	}
+
+	grouped := groupQuestionsByTest(tests)
+
+	if len(grouped) != 2 {
+		t.Fatalf("want 2 tests, got %d", len(grouped))
+	}
+	if grouped[0].ID != test1 {
+		t.Errorf("test[0].id: want %v, got %v", test1, grouped[0].ID)
+	}
+	if len(grouped[0].Questions) != 2 {
+		t.Fatalf("test[0] questions: want 2, got %d", len(grouped[0].Questions))
+	}
+	// Per-question test_id must be the owning test's id, never a (now-dropped) q.Question.TestID.
+	if grouped[0].Questions[0].TestID != test1 {
+		t.Errorf("question[0].test_id: want %v, got %v", test1, grouped[0].Questions[0].TestID)
+	}
+	if grouped[0].Questions[1].TestID != test1 {
+		t.Errorf("question[1].test_id: want %v, got %v", test1, grouped[0].Questions[1].TestID)
+	}
+	// Order must come from the read shape's SortOrder (test_question order), preserving input order.
+	if grouped[0].Questions[0].SortOrder != 2 {
+		t.Errorf("question[0].sort_order: want 2, got %d", grouped[0].Questions[0].SortOrder)
+	}
+	if grouped[0].Questions[1].SortOrder != 1 {
+		t.Errorf("question[1].sort_order: want 1, got %d", grouped[0].Questions[1].SortOrder)
+	}
+	if grouped[1].Questions[0].TestID != test2 {
+		t.Errorf("test2 question.test_id: want %v, got %v", test2, grouped[1].Questions[0].TestID)
+	}
+}
+
 // ---------- fakeSessionRepo ----------
 
 type fakeSessionRepo struct {

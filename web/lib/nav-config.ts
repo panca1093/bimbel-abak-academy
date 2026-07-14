@@ -100,6 +100,7 @@ const ADMIN_EXAM_NAV: RoleNavConfig = [
     items: [
       { labelKey: "tests", href: "/admin/exam/tests", icon: ClipboardList },
       { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar },
+      { labelKey: "question_bank", href: "/admin/exam/questions", icon: Library },
       { labelKey: "session_monitor", href: "/admin/exam/monitor", icon: BarChart },
     ],
   },
