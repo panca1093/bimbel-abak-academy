@@ -31,7 +31,10 @@ let reorderState = { mutateAsync: mockMutateAsync, isPending: false };
 let attachState = { mutateAsync: mockMutateAsync, isPending: false };
 let saveQuestionState = { mutateAsync: mockMutateAsync, isPending: false };
 
-const mockTopics: ExamTopic[] = [{ id: "topic-1", name: "Aljabar", subject: "Matematika" }];
+const mockTopics: ExamTopic[] = [
+  { id: "topic-1", name: "Aljabar", subject: "Matematika" },
+  { id: "topic-2", name: "Geometri", subject: "Matematika" },
+];
 const mockBankQuestions: { data: QuestionWithOptions[] } = {
   data: [
     {
@@ -147,9 +150,7 @@ describe("TestDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { level: 1, name: /detail tes/i })).toBeInTheDocument();
     });
-    expect(screen.getByText(/Matematika/)).toBeInTheDocument();
-    expect(screen.getByText(/Aljabar/)).toBeInTheDocument();
-    expect(screen.getByText(/90/)).toBeInTheDocument();
+    expect(screen.getByText("Matematika · Aljabar · 90 min")).toBeInTheDocument();
   });
 
   it("renders two columns with test details form and questions panel", async () => {
@@ -170,7 +171,7 @@ describe("TestDetailPage", () => {
       expect(screen.getByLabelText(/judul/i)).toHaveValue("Tryout UTBK Saintek");
     });
 
-    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Geometri" } });
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "Geometri" } });
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {

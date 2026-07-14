@@ -27,6 +27,7 @@ import {
   useReorderTestQuestions,
   useAttachQuestions,
 } from "@/lib/hooks/admin-tests";
+import { useTopics } from "@/lib/hooks/admin-topics";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { QuestionWithOptions, QuestionFormat } from "@/lib/types";
@@ -115,7 +116,10 @@ function QuestionRow({
   const isLast = index === total - 1;
 
   return (
-    <div data-question-row className="flex items-center gap-3 rounded-lg border bg-card p-3">
+    <div
+      data-question-row
+      className={`flex items-center gap-3 p-3 ${index < total - 1 ? "border-b" : ""}`}
+    >
       <span className="w-6 text-xs text-muted-foreground">#{index + 1}</span>
       <Badge variant="outline">{t(FORMAT_BADGE[question.question.format])}</Badge>
       <span className="flex-1 truncate text-sm">{stripHtmlToPlainText(question.question.body)}</span>
@@ -173,6 +177,8 @@ export default function TestDetailPage() {
     isError: questionsError,
     error: questionsErr,
   } = useTestQuestions(id);
+  const { data: topicsResp } = useTopics();
+  const topics = topicsResp?.data ?? [];
 
   const update = useUpdateTest(id);
   const detach = useDetachQuestion(id);
@@ -187,6 +193,10 @@ export default function TestDetailPage() {
   const questions = questionsResp?.data ?? detail?.questions ?? [];
 
   const questionIds = useMemo(() => questions.map((q) => q.question.id), [questions]);
+  const topicNames = useMemo(
+    () => Array.from(new Set(topics.map((tp) => tp.name))).sort((a, b) => a.localeCompare(b)),
+    [topics],
+  );
 
   const listeningRequiresAudio = form.sectionType === "listening" && form.audioUrl.trim() === "";
   const canSaveTest =
@@ -259,6 +269,13 @@ export default function TestDetailPage() {
             ? `${detail.test.subject} · ${detail.test.topic} · ${detail.test.duration_minutes} min`
             : undefined
         }
+        actions={
+          !isLoading && !isError ? (
+            <Button type="submit" form="test-detail-form" disabled={!canSaveTest}>
+              {update.isPending ? t("saving") : t("save")}
+            </Button>
+          ) : undefined
+        }
       />
 
       {isLoading && (
@@ -279,10 +296,11 @@ export default function TestDetailPage() {
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[360px_1fr]">
           {/* Left: sticky test details form */}
           <form
+            id="test-detail-form"
             onSubmit={handleSaveTest}
             className="space-y-4 rounded-lg border bg-card p-4 lg:sticky lg:top-6 lg:self-start"
           >
-            <h2 className="text-lg font-semibold">{t("tests_field_title")}</h2>
+            <h2 className="text-lg font-semibold">{t("tests_detail_section_heading")}</h2>
 
             <div className="grid gap-2">
               <Label htmlFor="test-title">{t("tests_field_title")}</Label>
@@ -308,13 +326,25 @@ export default function TestDetailPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="test-topic">{t("tests_field_topic")}</Label>
-                <Input
+                <select
                   id="test-topic"
                   value={form.topic}
                   onChange={(e) => form.setTopic(e.target.value)}
-                  placeholder={t("tests_field_topic")}
                   disabled={update.isPending}
-                />
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                >
+                  <option value="" disabled>
+                    {t("tests_field_topic")}
+                  </option>
+                  {form.topic && !topicNames.includes(form.topic) && (
+                    <option value={form.topic}>{form.topic}</option>
+                  )}
+                  {topicNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -371,28 +401,30 @@ export default function TestDetailPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="test-audio-play-limit">{t("tests_field_audio_play_limit")}</Label>
-                <Input
+                <select
                   id="test-audio-play-limit"
-                  type="number"
-                  min={0}
                   value={form.audioPlayLimit}
                   onChange={(e) => form.setAudioPlayLimit(e.target.value)}
-                  placeholder="0"
                   disabled={update.isPending}
-                />
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                >
+                  <option value="">{t("unlimited")}</option>
+                  {!["", "1", "2", "3"].includes(form.audioPlayLimit) && (
+                    <option value={form.audioPlayLimit}>{form.audioPlayLimit}×</option>
+                  )}
+                  <option value="1">1×</option>
+                  <option value="2">2×</option>
+                  <option value="3">3×</option>
+                </select>
               </div>
             </div>
-
-            <Button type="submit" disabled={!canSaveTest} className="w-full">
-              {update.isPending ? t("saving") : t("save")}
-            </Button>
           </form>
 
           {/* Right: questions panel */}
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">
-                {t("tests_question_count")} ({questions.length})
+                {t("tests_question_count")} · {questions.length}
               </h2>
               <div className="flex items-center gap-2">
                 <Button
@@ -424,13 +456,33 @@ export default function TestDetailPage() {
               />
             )}
 
-            {questions.length === 0 ? (
-              <div className="rounded-lg border p-8 text-center text-muted-foreground">
-                {t("tests_questions_empty")}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {questions.map((q, idx) => (
+            <div className="rounded-lg border">
+              {questions.length === 0 ? (
+                <div className="space-y-3 p-8 text-center text-muted-foreground">
+                  <p>{t("tests_questions_empty")}</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPickerOpen(true)}
+                    >
+                      <Library className="mr-1 size-4" />
+                      {t("tests_from_bank")}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setCreating(true)}
+                      disabled={creating}
+                    >
+                      <Plus className="mr-1 size-4" />
+                      {t("tests_new_question")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                questions.map((q, idx) => (
                   <QuestionRow
                     key={q.question.id}
                     question={q}
@@ -439,9 +491,9 @@ export default function TestDetailPage() {
                     onReorder={handleReorder}
                     onDetach={handleDetach}
                   />
-                ))}
-              </div>
-            )}
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
