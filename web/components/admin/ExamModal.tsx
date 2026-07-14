@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
+import { toast } from "sonner";
 import { fetchCertificatePreview, useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
 import type { ExamListItem, CreateExamPayload, UpdateExamPayload, ExamResultConfig } from "@/lib/types";
 
@@ -161,7 +162,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       }
       onClose();
     } catch {
-      // mutation hook handles errors via global state; close on success only
+      toast.error(t("error_generic"));
     }
   }
 
@@ -180,7 +181,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
         }
       }, 30000);
     } catch {
-      // fetchCertificatePreview throws ApiError on failure
+      toast.error(t("error_generic"));
     }
   }
 

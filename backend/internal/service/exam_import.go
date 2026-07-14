@@ -27,6 +27,7 @@ type QuestionImportRow struct {
 	PointWrong    int
 	CorrectAnswer *string
 	Options       []model.QuestionOption
+	Error         string
 }
 
 // QuestionImportResult is the per-row report for a question import.
@@ -104,14 +105,18 @@ func ParseQuestionImportCSV(data []byte) ([]QuestionImportRow, error) {
 			return strings.TrimSpace(record[idx])
 		}
 
-		pointCorrect, err := parseImportInt(get("point_correct"), "point_correct")
-		if err != nil {
-			return nil, fmt.Errorf("row %d: %w", line, err)
-		}
-		pointWrong, err := parseImportInt(get("point_wrong"), "point_wrong")
-		if err != nil {
-			return nil, fmt.Errorf("row %d: %w", line, err)
-		}
+		pointCorrect, pcErr := parseImportInt(get("point_correct"), "point_correct")
+		pointWrong, pwErr := parseImportInt(get("point_wrong"), "point_wrong")
+
+		rowErr := func() string {
+			if pcErr != nil {
+				return pcErr.Error()
+			}
+			if pwErr != nil {
+				return pwErr.Error()
+			}
+			return ""
+		}()
 
 		var difficulty *string
 		if d := get("difficulty"); d != "" {
@@ -154,6 +159,7 @@ func ParseQuestionImportCSV(data []byte) ([]QuestionImportRow, error) {
 			PointWrong:    pointWrong,
 			CorrectAnswer: correctAnswer,
 			Options:       options,
+			Error:         rowErr,
 		})
 	}
 
@@ -189,6 +195,13 @@ func (s *Service) ProcessQuestionImportRows(ctx context.Context, rows []Question
 
 	for i, row := range rows {
 		res := QuestionImportResultRow{RowNumber: i + 1}
+
+		if row.Error != "" {
+			res.Status = "error"
+			res.Error = row.Error
+			result.Rows[i] = res
+			continue
+		}
 
 		q, err := importRowToQuestion(row)
 		if err != nil {

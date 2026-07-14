@@ -517,7 +517,7 @@ export interface AdminQuestionOptionInput {
 export interface AdminQuestionInput {
   format: QuestionFormat;
   body: string;
-  sort_order: number;
+  sort_order?: number;
   difficulty?: string;
   explanation?: string;
   image_url?: string;

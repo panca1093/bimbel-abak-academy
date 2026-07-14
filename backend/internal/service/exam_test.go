@@ -868,7 +868,7 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, mcqID, items[0].ID)
-	assert.Equal(t, 2, items[0].UsedInCount)
+	assert.Equal(t, 2, items[0].AttachedCount)
 	assert.Empty(t, nextCursor)
 
 	// Filter by topic_id.
@@ -876,7 +876,7 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, essayID, items[0].ID)
-	assert.Equal(t, 0, items[0].UsedInCount)
+	assert.Equal(t, 0, items[0].AttachedCount)
 	assert.Empty(t, nextCursor)
 
 	// Search by body substring (unique term so leftover rows don't match).

@@ -161,7 +161,6 @@ const FORMAT_LABELS: Record<QuestionFormat, "tests_format_mcq" | "tests_format_m
 
 const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay"];
 
-const DIFFICULTY_POINT_DEFAULTS: Record<string, string> = { easy: "1", medium: "2", hard: "3" };
 
 function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionInput[] {
   if (q.options.length === 0) {
@@ -190,15 +189,16 @@ function buildInput(
   options: AdminQuestionOptionInput[],
   pointCorrect: string,
   pointWrong: string,
-  topicId: string
+  topicId: string,
+  isTestScoped: boolean
 ): AdminQuestionInput {
   const base: AdminQuestionInput = {
     format,
     body: body.trim(),
-    sort_order: Number(sortOrder) || 0,
     point_correct: Number(pointCorrect) || 1,
     point_wrong: Number(pointWrong) || 0,
   };
+  if (isTestScoped) base.sort_order = Number(sortOrder) || 0;
   if (topicId) base.topic_id = topicId;
   if (difficulty) base.difficulty = difficulty;
   if (explanation.trim()) base.explanation = explanation.trim();
@@ -260,7 +260,6 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const [correctAnswer, setCorrectAnswer] = useState(question?.question.correct_answer ?? "");
   const [pointCorrect, setPointCorrect] = useState(String(question?.question.point_correct ?? 1));
   const [pointWrong, setPointWrong] = useState(String(question?.question.point_wrong ?? 0));
-  const [pointCorrectTouched, setPointCorrectTouched] = useState(isEdit);
   const [topicId, setTopicId] = useState(question?.question.topic_id ?? "");
   const [options, setOptions] = useState<AdminQuestionOptionInput[]>(
     question ? buildOptionsFromQuestion(question) : [
@@ -286,7 +285,6 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setCorrectAnswer("");
       setPointCorrect("1");
       setPointWrong("0");
-      setPointCorrectTouched(false);
       setTopicId("");
       setOptions([
         { key: "a", text: "", is_correct: true, sort_order: 1 },
@@ -296,11 +294,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   }, [question]);
 
   function handleDifficultyChange(value: string) {
-    const next = value === "none" ? "" : value;
-    setDifficulty(next);
-    if (!pointCorrectTouched && DIFFICULTY_POINT_DEFAULTS[next]) {
-      setPointCorrect(DIFFICULTY_POINT_DEFAULTS[next]);
-    }
+    setDifficulty(value === "none" ? "" : value);
   }
 
   async function handleSave() {
@@ -321,7 +315,8 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       options,
       pointCorrect,
       pointWrong,
-      topicId
+      topicId,
+      isTestScoped
     );
     try {
       if (isTestScoped) {
@@ -478,10 +473,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                   min={1}
                   step={1}
                   value={pointCorrect}
-                  onChange={(e) => {
-                    setPointCorrect(e.target.value);
-                    setPointCorrectTouched(true);
-                  }}
+                  onChange={(e) => setPointCorrect(e.target.value)}
                   disabled={savePending}
                 />
               </div>

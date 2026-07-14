@@ -268,7 +268,7 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 	}
 	defer rows.Close()
 
-	var questions []model.QuestionWithOptions
+	questions := make([]model.QuestionWithOptions, 0)
 	for rows.Next() {
 		q := model.Question{}
 		var sortOrder int
@@ -306,10 +306,6 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
-	}
-
-	if len(questions) == 0 {
-		return nil, nil
 	}
 
 	questionIDs := make([]uuid.UUID, len(questions))
@@ -520,7 +516,7 @@ WHERE 1=1`
 	}
 	defer rows.Close()
 
-	var items []model.BankQuestionListItem
+	items := make([]model.BankQuestionListItem, 0)
 	for rows.Next() {
 		var item model.BankQuestionListItem
 		var correctAnswer, explanation, difficulty, imageURL, topic *string
@@ -528,7 +524,7 @@ WHERE 1=1`
 		if err := rows.Scan(
 			&item.ID, &item.Format, &item.Body,
 			&correctAnswer, &explanation, &difficulty, &imageURL,
-			&topicID, &topic, &item.PointCorrect, &item.PointWrong, &item.UsedInCount,
+			&topicID, &topic, &item.PointCorrect, &item.PointWrong, &item.AttachedCount,
 		); err != nil {
 			return nil, "", err
 		}

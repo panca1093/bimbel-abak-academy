@@ -336,39 +336,6 @@ describe("QuestionEditor", () => {
     expect(pointWrong).toHaveValue(0);
   });
 
-  it("changing difficulty updates the point_correct default when untouched (easy→1/medium→2/hard→3)", () => {
-    renderWithClient(
-      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
-    );
-
-    const difficultySelect = screen.getByLabelText(/^tingkat kesulitan$/i);
-    const pointCorrect = screen.getByLabelText(/poin benar/i);
-
-    fireEvent.change(difficultySelect, { target: { value: "medium" } });
-    expect(pointCorrect).toHaveValue(2);
-
-    fireEvent.change(difficultySelect, { target: { value: "hard" } });
-    expect(pointCorrect).toHaveValue(3);
-
-    fireEvent.change(difficultySelect, { target: { value: "easy" } });
-    expect(pointCorrect).toHaveValue(1);
-  });
-
-  it("does not overwrite a manually-edited point_correct on a later difficulty change", () => {
-    renderWithClient(
-      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
-    );
-
-    const difficultySelect = screen.getByLabelText(/^tingkat kesulitan$/i);
-    const pointCorrect = screen.getByLabelText(/poin benar/i);
-
-    fireEvent.input(pointCorrect, { target: { value: "5" } });
-    expect(pointCorrect).toHaveValue(5);
-
-    fireEvent.change(difficultySelect, { target: { value: "hard" } });
-    expect(pointCorrect).toHaveValue(5);
-  });
-
   it("save payload carries both point_correct and point_wrong", async () => {
     renderWithClient(
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
@@ -469,7 +436,7 @@ describe("QuestionEditor", () => {
     expect(mockCreateBankAsync).not.toHaveBeenCalled();
   });
 
-  it("bank standalone create includes sort_order in payload", async () => {
+  it("bank standalone create omits sort_order in payload", async () => {
     renderWithClient(
       <QuestionEditor onCancel={vi.fn()} onSaved={vi.fn()} />
     );
@@ -479,7 +446,7 @@ describe("QuestionEditor", () => {
 
     await waitFor(() => {
       expect(mockCreateBankAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ sort_order: expect.any(Number) })
+        expect.not.objectContaining({ sort_order: expect.any(Number) })
       );
     });
   });

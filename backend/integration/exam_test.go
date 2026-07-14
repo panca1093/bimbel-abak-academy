@@ -758,7 +758,7 @@ func TestExam_AdminListBankQuestions_returns_rows_and_cursor(t *testing.T) {
 	assert.Len(t, data, 1)
 	row := data[0].(map[string]any)
 	assert.Equal(t, mcqID, row["id"])
-	assert.Equal(t, float64(1), row["used_in_count"])
+	assert.Equal(t, float64(1), row["attached_count"])
 
 	// Filter by topic_id.
 	resp, out = doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?topic_id="+topicID, nil, token)

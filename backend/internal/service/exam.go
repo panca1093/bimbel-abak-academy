@@ -481,6 +481,15 @@ func validateExam(e model.Exam) error {
 			return err
 		}
 	}
+	if e.CheckInWindowMinutes != nil && *e.CheckInWindowMinutes < 0 {
+		return fmt.Errorf("%w: check_in_window_minutes cannot be negative", ErrValidation)
+	}
+	if e.GraceWindowMinutes != nil && *e.GraceWindowMinutes < 0 {
+		return fmt.Errorf("%w: grace_window_minutes cannot be negative", ErrValidation)
+	}
+	if e.MaxAttempts != nil && *e.MaxAttempts < 0 {
+		return fmt.Errorf("%w: max_attempts cannot be negative", ErrValidation)
+	}
 	return nil
 }
 
