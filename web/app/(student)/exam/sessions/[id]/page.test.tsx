@@ -441,6 +441,54 @@ describe("SessionPage", () => {
     expect(textareas.length).toBeGreaterThan(0);
   });
 
+  it("renders rich body via RichContent (LaTeX + bold HTML) on the question card", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-rich",
+                test_id: "test-1",
+                format: "mcq",
+                body: "Hitung \\(x^2\\) dan buat <b>tebal</b>",
+                sort_order: 1,
+                options: [
+                  { key: "A", text: "Ya", sort_order: 1 },
+                  { key: "B", text: "Tidak", sort_order: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+
+    // Body should be wrapped in RichContent; KaTeX renders \(x^2\) and <b> renders bold.
+    const richNode = await waitFor(
+      () => {
+        const el = document.querySelector("[data-rich-content] .katex");
+        if (!el) throw new Error("not yet");
+        return el.closest("[data-rich-content]") as HTMLElement;
+      },
+      { timeout: 3000 }
+    );
+    expect(richNode).not.toBeNull();
+    const b = richNode.querySelector("b");
+    expect(b).not.toBeNull();
+    expect(b?.textContent).toBe("tebal");
+    // Literal LaTeX delimiters are replaced by KaTeX — not visible as text.
+    expect(richNode.textContent).not.toContain("\\(");
+  });
+
   // ── Flag toggle ─────────────────────────────────────────────────────────
 
   it("toggles flag for review (FR29)", async () => {

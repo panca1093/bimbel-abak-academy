@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionPreview } from "./QuestionPreview";
 import type { BankQuestionListItem } from "@/lib/types";
@@ -81,5 +81,81 @@ describe("QuestionPreview", () => {
       />
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it("renders LaTeX in body as KaTeX (not literal delimiters)", async () => {
+    const richItem: BankQuestionListItem = {
+      ...sampleItem,
+      question: { ...sampleItem.question, body: "Solve \\(x^2\\) now" },
+    };
+    renderWithClient(
+      <QuestionPreview
+        item={richItem}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    const richNode = document.querySelector("[data-rich-content]") as HTMLElement;
+    expect(richNode).not.toBeNull();
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-rich-content] .katex")
+      ).not.toBeNull();
+    });
+    expect(richNode.textContent).not.toContain("\\(");
+    expect(richNode.textContent).not.toContain("x^2\\)");
+  });
+
+  it("renders bold HTML in body as a <b> element (not literal tags)", () => {
+    const richItem: BankQuestionListItem = {
+      ...sampleItem,
+      question: { ...sampleItem.question, body: "Make it <b>bold</b> please" },
+    };
+    renderWithClient(
+      <QuestionPreview
+        item={richItem}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    const richNode = document.querySelector("[data-rich-content]") as HTMLElement;
+    expect(richNode).not.toBeNull();
+    const b = richNode.querySelector("b");
+    expect(b).not.toBeNull();
+    expect(b?.textContent).toBe("bold");
+    // The visible text contains "bold" but not the literal tag text "<b>" / "</b>".
+    expect(richNode.textContent).not.toContain("<b>");
+    expect(richNode.textContent).not.toContain("</b>");
+  });
+
+  it("renders explanation as plain text (no RichContent, no KaTeX)", () => {
+    const richItem: BankQuestionListItem = {
+      ...sampleItem,
+      question: {
+        ...sampleItem.question,
+        explanation: "Because \\(x^2\\) means x squared. <b>literally</b>.",
+      },
+    };
+    renderWithClient(
+      <QuestionPreview
+        item={richItem}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    // Only the body field is inside a RichContent node. Explanation must NOT be.
+    const richNodes = document.querySelectorAll("[data-rich-content]");
+    const allRichText = Array.from(richNodes)
+      .map((n) => n.textContent ?? "")
+      .join("|");
+    expect(allRichText).not.toContain("x squared");
+    // Explanation renders as plain text — the text is visible as a single string
+    // (JSX escapes the <b> tag), literal LaTeX delimiters are not rendered as math.
+    expect(
+      screen.getByText(/Because.*x squared.*literally/)
+    ).toBeInTheDocument();
   });
 });
