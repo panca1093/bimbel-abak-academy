@@ -154,8 +154,8 @@ export default function CoursesPage() {
     <div className="space-y-6 fade-in">
       <AdminPageHeader
         icon={Library}
-        title="Manajemen Kursus"
-        description="Buat dan kelola konten video kursus."
+        title={t("courses_page_title")}
+        description={t("courses_page_description")}
         actions={<Button onClick={() => setModalOpen(true)}>{t("courses_create")}</Button>}
       />
 

@@ -47,8 +47,8 @@ export default function RevenuePage() {
     <div className="space-y-6 fade-in">
       <AdminPageHeader
         icon={BarChart3}
-        title="Pendapatan"
-        description="Ringkasan pendapatan dan tren penjualan."
+        title={t("revenue_page_title")}
+        description={t("revenue_page_description")}
       />
 
       {isLoading && (

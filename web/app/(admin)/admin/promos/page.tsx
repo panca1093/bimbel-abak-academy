@@ -104,8 +104,8 @@ export default function PromosPage() {
     <div className="space-y-6 fade-in">
       <AdminPageHeader
         icon={Tag}
-        title="Promo &amp; Diskon"
-        description="Kelola kode promo dan diskon aktif."
+        title={t("promos_page_title")}
+        description={t("promos_page_description")}
         actions={<Button onClick={openCreate}>{t("promo_create")}</Button>}
       />
 
