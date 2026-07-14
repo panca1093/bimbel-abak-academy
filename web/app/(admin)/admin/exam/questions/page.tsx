@@ -281,18 +281,14 @@ export default function QuestionBankPage() {
       />
 
       {editorOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">
-          <div className="w-full max-w-4xl rounded-lg bg-background p-4 shadow-lg">
-            <QuestionEditor
-              question={editorItem ?? undefined}
-              onCancel={() => {
-                setEditorOpen(false);
-                setEditorItem(null);
-              }}
-              onSaved={handleSaved}
-            />
-          </div>
-        </div>
+        <QuestionEditor
+          question={editorItem ?? undefined}
+          onCancel={() => {
+            setEditorOpen(false);
+            setEditorItem(null);
+          }}
+          onSaved={handleSaved}
+        />
       )}
     </div>
   );

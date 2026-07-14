@@ -3,9 +3,16 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { useSaveQuestion } from "@/lib/hooks/admin-tests";
 import {
   useCreateBankQuestion,
@@ -334,7 +341,12 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const topicOptions = topics.data?.data ?? [];
 
   return (
-    <div className="space-y-4 rounded-lg border bg-card p-4">
+    <Dialog open onOpenChange={(o) => { if (!o) onCancel(); }}>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit soal" : "Soal baru"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -377,14 +389,13 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
 
           <div className="grid gap-2">
             <Label htmlFor="question-body">{t("tests_field_body")}</Label>
-            <textarea
+            <RichTextEditor
               id="question-body"
-              data-slot="textarea"
+              aria-label={t("tests_field_body")}
               value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={3}
+              onChange={setBody}
+              placeholder={t("tests_field_body")}
               disabled={savePending}
-              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
             />
           </div>
 
@@ -504,6 +515,8 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
           {savePending ? t("saving") : t("tests_save_question")}
         </Button>
       </div>
-    </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

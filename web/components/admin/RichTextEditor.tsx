@@ -22,6 +22,9 @@ interface RichTextEditorProps {
   onChange: (html: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  id?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
 }
 
 function isEffectivelyEmpty(html: string): boolean {
@@ -32,7 +35,7 @@ function isEffectivelyEmpty(html: string): boolean {
   return true;
 }
 
-export function RichTextEditor({ value, onChange, placeholder, disabled }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby }: RichTextEditorProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
@@ -210,6 +213,9 @@ export function RichTextEditor({ value, onChange, placeholder, disabled }: RichT
       <div className="relative">
         <div
           ref={ref}
+          id={id}
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledby}
           role="textbox"
           contentEditable={!disabled}
           suppressContentEditableWarning

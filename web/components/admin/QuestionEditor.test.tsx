@@ -74,8 +74,16 @@ function makeQuestionWithOptions(
   };
 }
 
+function setBodyValue(html: string) {
+  // Body field is a contentEditable div (role="textbox") with no `.value`.
+  // Drive it by setting innerHTML then firing `input` so the editor's onInput handler syncs state.
+  const body = screen.getByLabelText(/badan soal/i);
+  body.innerHTML = html;
+  fireEvent.input(body, { bubbles: true });
+}
+
 function fillRequiredFields() {
-  fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+  setBodyValue("Soal");
   fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 }
 
@@ -99,7 +107,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    expect(screen.getByLabelText(/badan soal/i)).toHaveValue("");
+    expect(screen.getByLabelText(/badan soal/i).textContent).toBe("");
     const radios = screen.getAllByRole("radio");
     expect(radios.length).toBe(2);
   });
@@ -110,7 +118,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    expect(screen.getByDisplayValue("Apa ibu kota Indonesia?")).toBeInTheDocument();
+    expect(screen.getByLabelText(/badan soal/i).textContent).toContain("Apa ibu kota Indonesia?");
     expect(screen.getByDisplayValue("Jakarta")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Bandung")).toBeInTheDocument();
 
@@ -174,9 +182,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.input(screen.getByLabelText(/badan soal/i), {
-      target: { value: "Soal baru" },
-    });
+    setBodyValue("Soal baru");
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
@@ -389,7 +395,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    setBodyValue("Soal");
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {

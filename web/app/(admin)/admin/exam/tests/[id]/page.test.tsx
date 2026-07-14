@@ -209,9 +209,9 @@ describe("TestDetailPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /soal baru/i }));
 
-    const bodyInputs = screen.getAllByLabelText(/badan soal/i);
-    expect(bodyInputs.length).toBeGreaterThan(0);
-    expect(bodyInputs[0]).toHaveValue("");
+    const body = screen.getByLabelText(/badan soal/i);
+    expect(body).toBeInTheDocument();
+    expect(body.textContent).toBe("");
   });
 
   it("detach button calls useDetachQuestion after confirm", async () => {
