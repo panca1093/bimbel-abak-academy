@@ -67,28 +67,45 @@ func (h *Handler) AdminGetExam(c echo.Context) error {
 	return c.JSON(http.StatusOK, detail)
 }
 
-// examPatchRequest is the PATCH body for AdminUpdateExam. Pointer fields distinguish
-// "absent — preserve" from an explicit value. Lifecycle/system-managed fields (status,
-// bundle_url, bundle_generated_at) are deliberately not accepted: status flips via
+// examPatchRequest is the PATCH body for AdminUpdateExam. Nullable[T] fields
+// distinguish "absent — preserve" from "present and null — clear" from "present
+// with a value" (a plain *T cannot: encoding/json leaves it nil for both absent
+// and explicit null). Lifecycle/system-managed fields (status, bundle_url,
+// bundle_generated_at) are deliberately not accepted: status flips via
 // POST /:id/publish, bundle fields only via the (future) bundle generation flow.
 // Mode is a plain string: absent (empty) preserves the stored value (FR-18).
 type examPatchRequest struct {
-	Title                string     `json:"title"`
-	ScheduledAt          *time.Time `json:"scheduled_at"`
-	TimerMode            string     `json:"timer_mode"`
-	DurationMinutes      *int       `json:"duration_minutes"`
-	ResultConfig         string     `json:"result_config"`
-	ResultReleaseAt      *time.Time `json:"result_release_at"`
-	CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
-	GraceWindowMinutes   *int       `json:"grace_window_minutes"`
-	MaxAttempts          *int       `json:"max_attempts"`
-	CertificateTemplate  string     `json:"certificate_template"`
-	IsFree               *bool      `json:"is_free"`
-	RequiresCheckin      *bool      `json:"requires_checkin"`
-	AllowLeaderboard     *bool      `json:"allow_leaderboard"`
-	CDNBundle            *bool      `json:"cdn_bundle"`
-	Randomize            *bool      `json:"randomize"`
-	Mode                 string     `json:"mode"`
+	Title                string              `json:"title"`
+	ScheduledAt          Nullable[time.Time] `json:"scheduled_at"`
+	TimerMode            string              `json:"timer_mode"`
+	DurationMinutes      Nullable[int]       `json:"duration_minutes"`
+	ResultConfig         string              `json:"result_config"`
+	ResultReleaseAt      Nullable[time.Time] `json:"result_release_at"`
+	CheckInWindowMinutes Nullable[int]       `json:"check_in_window_minutes"`
+	GraceWindowMinutes   Nullable[int]       `json:"grace_window_minutes"`
+	MaxAttempts          Nullable[int]       `json:"max_attempts"`
+	CertificateTemplate  string              `json:"certificate_template"`
+	IsFree               *bool               `json:"is_free"`
+	RequiresCheckin      *bool               `json:"requires_checkin"`
+	AllowLeaderboard     *bool               `json:"allow_leaderboard"`
+	CDNBundle            *bool               `json:"cdn_bundle"`
+	Randomize            *bool               `json:"randomize"`
+	Mode                 string              `json:"mode"`
+}
+
+// applyNullable overlays a Nullable[T] PATCH field onto a *T model field: absent
+// (Set false) preserves the existing value; present-and-null (Set true, Valid
+// false) clears it to nil; present-with-value sets it.
+func applyNullable[T any](n Nullable[T], dst **T) {
+	if !n.Set {
+		return
+	}
+	if !n.Valid {
+		*dst = nil
+		return
+	}
+	v := n.Value
+	*dst = &v
 }
 
 func (h *Handler) AdminUpdateExam(c echo.Context) error {
@@ -111,30 +128,18 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	if req.Title != "" {
 		overlay.Title = req.Title
 	}
-	if req.ScheduledAt != nil {
-		overlay.ScheduledAt = req.ScheduledAt
-	}
+	applyNullable(req.ScheduledAt, &overlay.ScheduledAt)
 	if req.TimerMode != "" {
 		overlay.TimerMode = req.TimerMode
 	}
-	if req.DurationMinutes != nil {
-		overlay.DurationMinutes = req.DurationMinutes
-	}
+	applyNullable(req.DurationMinutes, &overlay.DurationMinutes)
 	if req.ResultConfig != "" {
 		overlay.ResultConfig = req.ResultConfig
 	}
-	if req.ResultReleaseAt != nil {
-		overlay.ResultReleaseAt = req.ResultReleaseAt
-	}
-	if req.CheckInWindowMinutes != nil {
-		overlay.CheckInWindowMinutes = req.CheckInWindowMinutes
-	}
-	if req.GraceWindowMinutes != nil {
-		overlay.GraceWindowMinutes = req.GraceWindowMinutes
-	}
-	if req.MaxAttempts != nil {
-		overlay.MaxAttempts = req.MaxAttempts
-	}
+	applyNullable(req.ResultReleaseAt, &overlay.ResultReleaseAt)
+	applyNullable(req.CheckInWindowMinutes, &overlay.CheckInWindowMinutes)
+	applyNullable(req.GraceWindowMinutes, &overlay.GraceWindowMinutes)
+	applyNullable(req.MaxAttempts, &overlay.MaxAttempts)
 	if req.CertificateTemplate != "" {
 		overlay.CertificateTemplate = req.CertificateTemplate
 	}

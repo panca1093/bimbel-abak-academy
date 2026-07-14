@@ -73,7 +73,6 @@ describe("admin-bank-questions hooks", () => {
       await result.current.mutateAsync({
         format: "mcq",
         body: "Bank Q",
-        sort_order: 1,
         topic_id: "topic-1",
       });
     });
@@ -83,7 +82,6 @@ describe("admin-bank-questions hooks", () => {
       body: JSON.stringify({
         format: "mcq",
         body: "Bank Q",
-        sort_order: 1,
         topic_id: "topic-1",
       }),
     });
@@ -101,7 +99,6 @@ describe("admin-bank-questions hooks", () => {
       await result.current.mutateAsync({
         format: "mcq",
         body: "Updated Bank Q",
-        sort_order: 1,
       });
     });
 
@@ -110,7 +107,6 @@ describe("admin-bank-questions hooks", () => {
       body: JSON.stringify({
         format: "mcq",
         body: "Updated Bank Q",
-        sort_order: 1,
       }),
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: adminBankQuestionsKeys.lists() });

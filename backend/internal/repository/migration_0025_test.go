@@ -304,4 +304,30 @@ func TestMigration0025_QuestionBank(t *testing.T) {
 	require.True(t, hasTestID, "question.test_id must be restored by down")
 	require.True(t, hasSortOrder, "question.sort_order must be restored by down")
 	require.False(t, hasTopicID, "question.topic_id must be dropped by down")
+
+	// uq_question_order must be restored — and must tolerate the bank-only
+	// question's NULL test_id (Postgres treats NULLs as distinct in a UNIQUE
+	// constraint), so this insert must succeed even though a NULL-test_id row
+	// (the bank-only question) already exists.
+	_, err = pool.Exec(ctx,
+		`INSERT INTO question (format, body, point_correct, point_wrong) VALUES ('mcq', 'Another bank-only', 4, 0)`,
+	)
+	require.NoError(t, err, "a second bank-only (NULL test_id) question must not violate uq_question_order")
+
+	var uniqueConstraintExists bool
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname = 'uq_question_order')`,
+	).Scan(&uniqueConstraintExists))
+	require.True(t, uniqueConstraintExists, "uq_question_order must be restored by down")
+
+	// FK's ON DELETE CASCADE must be restored: deleting a test cascades to its
+	// (backfilled) questions, matching the pre-0025 contract.
+	var deleteRule string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT rc.delete_rule
+		FROM information_schema.referential_constraints rc
+		JOIN information_schema.table_constraints tc ON tc.constraint_name = rc.constraint_name
+		WHERE tc.table_name = 'question' AND tc.constraint_type = 'FOREIGN KEY'`,
+	).Scan(&deleteRule))
+	require.Equal(t, "CASCADE", deleteRule, "question.test_id FK must restore ON DELETE CASCADE")
 }

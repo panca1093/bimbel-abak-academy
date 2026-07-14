@@ -181,7 +181,6 @@ function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionIn
 function buildInput(
   format: QuestionFormat,
   body: string,
-  sortOrder: string,
   difficulty: string,
   explanation: string,
   imageUrl: string,
@@ -189,8 +188,7 @@ function buildInput(
   options: AdminQuestionOptionInput[],
   pointCorrect: string,
   pointWrong: string,
-  topicId: string,
-  isTestScoped: boolean
+  topicId: string
 ): AdminQuestionInput {
   const base: AdminQuestionInput = {
     format,
@@ -198,7 +196,6 @@ function buildInput(
     point_correct: Number(pointCorrect) || 1,
     point_wrong: Number(pointWrong) || 0,
   };
-  if (isTestScoped) base.sort_order = Number(sortOrder) || 0;
   if (topicId) base.topic_id = topicId;
   if (difficulty) base.difficulty = difficulty;
   if (explanation.trim()) base.explanation = explanation.trim();
@@ -253,7 +250,6 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const isTestScoped = Boolean(testId);
   const [format, setFormat] = useState<QuestionFormat>(question?.question.format ?? "mcq");
   const [body, setBody] = useState(question?.question.body ?? "");
-  const [sortOrder, setSortOrder] = useState(String(question?.question.sort_order ?? 1));
   const [difficulty, setDifficulty] = useState<string>(question?.question.difficulty ?? "");
   const [explanation, setExplanation] = useState(question?.question.explanation ?? "");
   const [imageUrl, setImageUrl] = useState(question?.question.image_url ?? "");
@@ -278,7 +274,6 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     if (!question) {
       setFormat("mcq");
       setBody("");
-      setSortOrder("1");
       setDifficulty("");
       setExplanation("");
       setImageUrl("");
@@ -307,7 +302,6 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     const input = buildInput(
       format,
       body,
-      sortOrder,
       difficulty,
       explanation,
       imageUrl,
@@ -315,8 +309,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       options,
       pointCorrect,
       pointWrong,
-      topicId,
-      isTestScoped
+      topicId
     );
     try {
       if (isTestScoped) {
@@ -381,20 +374,6 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
               </select>
             </div>
           </div>
-
-          {isTestScoped && (
-            <div className="grid gap-2">
-              <Label htmlFor="question-sort-order">{t("tests_field_sort_order")}</Label>
-              <Input
-                id="question-sort-order"
-                type="number"
-                min={1}
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-                disabled={savePending}
-              />
-            </div>
-          )}
 
           <div className="grid gap-2">
             <Label htmlFor="question-body">{t("tests_field_body")}</Label>

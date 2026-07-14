@@ -518,35 +518,39 @@ WHERE 1=1`
 
 	items := make([]model.BankQuestionListItem, 0)
 	for rows.Next() {
-		var item model.BankQuestionListItem
+		q := model.Question{}
+		var attachedCount int
 		var correctAnswer, explanation, difficulty, imageURL, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
-			&item.ID, &item.Format, &item.Body,
+			&q.ID, &q.Format, &q.Body,
 			&correctAnswer, &explanation, &difficulty, &imageURL,
-			&topicID, &topic, &item.PointCorrect, &item.PointWrong, &item.AttachedCount,
+			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount,
 		); err != nil {
 			return nil, "", err
 		}
 		if correctAnswer != nil {
-			item.CorrectAnswer = correctAnswer
+			q.CorrectAnswer = correctAnswer
 		}
 		if explanation != nil {
-			item.Explanation = explanation
+			q.Explanation = explanation
 		}
 		if difficulty != nil {
-			item.Difficulty = difficulty
+			q.Difficulty = difficulty
 		}
 		if imageURL != nil {
-			item.ImageURL = imageURL
+			q.ImageURL = imageURL
 		}
 		if topicID != nil {
-			item.TopicID = topicID
+			q.TopicID = topicID
 		}
 		if topic != nil {
-			item.Topic = topic
+			q.Topic = topic
 		}
-		items = append(items, item)
+		items = append(items, model.BankQuestionListItem{
+			Question:      q,
+			AttachedCount: attachedCount,
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, "", err
@@ -555,8 +559,20 @@ WHERE 1=1`
 	var nextCursor string
 	if len(items) > filter.Limit {
 		// Cursor is the last *returned* row; the next page starts after it.
-		nextCursor = items[filter.Limit-1].ID.String()
+		nextCursor = items[filter.Limit-1].Question.ID.String()
 		items = items[:filter.Limit]
+	}
+
+	questionIDs := make([]uuid.UUID, len(items))
+	for i, item := range items {
+		questionIDs[i] = item.Question.ID
+	}
+	opts, err := r.queryOptionsForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, "", err
+	}
+	for i := range items {
+		items[i].Options = opts[items[i].Question.ID]
 	}
 
 	return items, nextCursor, nil
@@ -588,6 +604,43 @@ func (r *Repository) GetMaxSortOrderForTestTx(ctx context.Context, tx pgx.Tx, te
 		testID,
 	).Scan(&maxOrder)
 	return maxOrder, err
+}
+
+// FindQuestionsAttachedToSiblingTests returns the subset of questionIDs that are
+// already attached to some OTHER test sharing an exam with testID. A reusable
+// question attached to two tests inside the same exam would render twice in a
+// session, but exam_session_answer keys answers only by question_id (its
+// PRIMARY KEY is (session_id, question_id)) — a second occurrence overwrites the
+// first. This is used to block that cross-test-in-same-exam collision at attach
+// time (testID's own current attachments don't count as siblings).
+func (r *Repository) FindQuestionsAttachedToSiblingTests(ctx context.Context, testID uuid.UUID, questionIDs []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT DISTINCT tq.question_id
+		FROM test_question tq
+		JOIN exam_test sibling ON sibling.test_id = tq.test_id
+		JOIN exam_test target ON target.exam_id = sibling.exam_id
+		WHERE target.test_id = $1
+		  AND tq.test_id != $1
+		  AND tq.question_id = ANY($2)`,
+		testID, questionIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var colliding []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		colliding = append(colliding, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return colliding, nil
 }
 
 // AttachQuestionsToTestTx attaches a batch of bank questions to a test, appending

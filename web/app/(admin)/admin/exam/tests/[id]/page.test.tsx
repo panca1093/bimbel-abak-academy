@@ -180,6 +180,26 @@ describe("TestDetailPage", () => {
     });
   });
 
+  it("sends explicit null (not an omitted key) for cleared audio/section fields", async () => {
+    renderWithClient(<TestDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/judul/i)).toHaveValue("Tryout UTBK Saintek");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          audio_url: null,
+          audio_play_limit: null,
+          section_type: null,
+        })
+      );
+    });
+  });
+
   it("New question button opens an inline QuestionEditor", async () => {
     renderWithClient(<TestDetailPage />);
 

@@ -709,6 +709,26 @@ func seedBankQuestionDirect(t *testing.T, ctx context.Context, repo *repository.
 	return id
 }
 
+// seedExamWithTestsDirect creates an exam and attaches the given tests to it via
+// exam_test, in the order given.
+func seedExamWithTestsDirect(t *testing.T, ctx context.Context, repo *repository.Repository, testIDs ...uuid.UUID) uuid.UUID {
+	t.Helper()
+	var examID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ($1, 'draft') RETURNING id`,
+		"Exam "+uniqueSuffix(),
+	).Scan(&examID)
+	require.NoError(t, err)
+	for i, tid := range testIDs {
+		_, err := repo.Pool().Exec(ctx,
+			`INSERT INTO exam_test (exam_id, test_id, sort_order) VALUES ($1, $2, $3)`,
+			examID, tid, i+1,
+		)
+		require.NoError(t, err)
+	}
+	return examID
+}
+
 func attachQuestionDirect(t *testing.T, ctx context.Context, repo *repository.Repository, testID, questionID uuid.UUID, sortOrder int) {
 	t.Helper()
 	_, err := repo.Pool().Exec(ctx,
@@ -779,6 +799,34 @@ func TestCreateBankQuestion_creates_no_attachment(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, out.Question.ID)
 	assert.Equal(t, "essay", out.Question.Format)
 	assert.Equal(t, 0, countQuestionAttachments(t, ctx, repo, out.Question.ID))
+}
+
+func TestListBankQuestions_populates_nested_question_and_options(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	// multi_answer (not mcq) so this doesn't collide with the unscoped
+	// Format:"mcq" assertion in TestListBankQuestions_filters_and_counts_used_in.
+	body := "bank list shape " + uniqueSuffix()
+	q := model.Question{Format: "multi_answer", Body: body, PointCorrect: 1, PointWrong: 0}
+	opts := []model.QuestionOption{
+		{Key: "a", Text: "yes", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "no", IsCorrect: false, SortOrder: 2},
+	}
+	created, err := svc.CreateBankQuestion(ctx, q, opts)
+	require.NoError(t, err)
+
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	// Nested {question, options, attached_count} shape (not flattened/embedded) —
+	// the admin bank page destructures item.question and reads item.options.
+	assert.Equal(t, created.Question.ID, items[0].Question.ID)
+	assert.Equal(t, body, items[0].Question.Body)
+	require.Len(t, items[0].Options, 2)
+	assert.Equal(t, "a", items[0].Options[0].Key)
+	assert.Equal(t, "b", items[0].Options[1].Key)
 }
 
 func TestDeleteQuestion_rejects_when_attached(t *testing.T) {
@@ -859,7 +907,7 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	require.NoError(t, err)
 	ids := map[uuid.UUID]bool{}
 	for _, it := range all {
-		ids[it.ID] = true
+		ids[it.Question.ID] = true
 	}
 	assert.True(t, ids[mcqID] && ids[essayID] && ids[shortID], "expected all three bank questions")
 
@@ -867,7 +915,7 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	items, nextCursor, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Format: "mcq", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, mcqID, items[0].ID)
+	assert.Equal(t, mcqID, items[0].Question.ID)
 	assert.Equal(t, 2, items[0].AttachedCount)
 	assert.Empty(t, nextCursor)
 
@@ -875,7 +923,7 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	items, nextCursor, err = svc.ListBankQuestions(ctx, repository.QuestionFilter{TopicID: topicB.String(), Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, essayID, items[0].ID)
+	assert.Equal(t, essayID, items[0].Question.ID)
 	assert.Equal(t, 0, items[0].AttachedCount)
 	assert.Empty(t, nextCursor)
 
@@ -883,7 +931,7 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	items, nextCursor, err = svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: "photosynthesis", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, essayID, items[0].ID)
+	assert.Equal(t, essayID, items[0].Question.ID)
 	assert.Empty(t, nextCursor)
 
 	// Cursor pagination: limit 2 on the unique-token batch should give first two rows and a cursor.
@@ -891,14 +939,14 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, items, 2)
 	assert.NotEmpty(t, nextCursor)
-	page1IDs := map[uuid.UUID]bool{items[0].ID: true, items[1].ID: true}
+	page1IDs := map[uuid.UUID]bool{items[0].Question.ID: true, items[1].Question.ID: true}
 
 	// Follow cursor should return the remaining row.
 	items, nextCursor, err = svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: uniqueToken, Limit: 2, Cursor: nextCursor})
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Empty(t, nextCursor)
-	assert.False(t, page1IDs[items[0].ID], "cursor should advance to a new row")
+	assert.False(t, page1IDs[items[0].Question.ID], "cursor should advance to a new row")
 }
 
 // --- FR-21..FR-25: test ↔ question attach / detach / reorder ---
@@ -1026,6 +1074,73 @@ func TestReorderTestQuestions_rejects_mismatched_set(t *testing.T) {
 	err := svc.ReorderTestQuestions(ctx, testID, []uuid.UUID{q1, q3})
 	assert.ErrorIs(t, err, ErrValidation)
 	assert.Contains(t, err.Error(), "must match the current attached set")
+}
+
+func TestReorderTestQuestions_rejects_duplicate_id_masquerading_as_full_set(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "Reorder "+uniqueSuffix(), "math", "algebra")
+	q1 := seedBankQuestionDirect(t, ctx, repo, "short", "m1 "+uniqueSuffix())
+	q2 := seedBankQuestionDirect(t, ctx, repo, "short", "m2 "+uniqueSuffix())
+	attachQuestionDirect(t, ctx, repo, testID, q1, 0)
+	attachQuestionDirect(t, ctx, repo, testID, q2, 1)
+
+	// Same length as the attached set, but q1 repeated and q2 missing entirely.
+	err := svc.ReorderTestQuestions(ctx, testID, []uuid.UUID{q1, q1})
+	assert.ErrorIs(t, err, ErrValidation)
+	assert.Contains(t, err.Error(), "must match the current attached set")
+}
+
+func TestAttachQuestions_rejects_question_already_on_sibling_test_in_same_exam(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	test1 := seedTestDirect(t, ctx, repo, "T1 "+uniqueSuffix(), "math", "algebra")
+	test2 := seedTestDirect(t, ctx, repo, "T2 "+uniqueSuffix(), "math", "algebra")
+	seedExamWithTestsDirect(t, ctx, repo, test1, test2)
+
+	qID := seedBankQuestionDirect(t, ctx, repo, "short", "shared "+uniqueSuffix())
+	attachQuestionDirect(t, ctx, repo, test1, qID, 1)
+
+	err := svc.AttachQuestions(ctx, test2, []uuid.UUID{qID})
+	assert.ErrorIs(t, err, ErrValidation)
+	assert.Contains(t, err.Error(), "already attached to another test in the same exam")
+
+	// Guard is a no-op: question remains attached only to test1.
+	assert.Equal(t, 1, countQuestionAttachments(t, ctx, repo, qID))
+}
+
+func TestAttachQuestions_allows_reattaching_to_its_own_test(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	testID := seedTestDirect(t, ctx, repo, "T1 "+uniqueSuffix(), "math", "algebra")
+	seedExamWithTestsDirect(t, ctx, repo, testID)
+	qID := seedBankQuestionDirect(t, ctx, repo, "short", "self "+uniqueSuffix())
+	attachQuestionDirect(t, ctx, repo, testID, qID, 1)
+
+	// Idempotent re-attach to the SAME test must not be blocked by the sibling guard.
+	err := svc.AttachQuestions(ctx, testID, []uuid.UUID{qID})
+	require.NoError(t, err)
+}
+
+func TestAttachQuestions_allows_question_shared_across_different_exams(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	test1 := seedTestDirect(t, ctx, repo, "T1 "+uniqueSuffix(), "math", "algebra")
+	test2 := seedTestDirect(t, ctx, repo, "T2 "+uniqueSuffix(), "math", "algebra")
+	seedExamWithTestsDirect(t, ctx, repo, test1)
+	seedExamWithTestsDirect(t, ctx, repo, test2)
+
+	qID := seedBankQuestionDirect(t, ctx, repo, "short", "crossexam "+uniqueSuffix())
+	attachQuestionDirect(t, ctx, repo, test1, qID, 1)
+
+	// Same question reused across tests in DIFFERENT exams is fine — only
+	// sibling tests inside the SAME exam collide.
+	err := svc.AttachQuestions(ctx, test2, []uuid.UUID{qID})
+	require.NoError(t, err)
 }
 
 func TestCreateQuestionForTest_creates_bank_question_and_join(t *testing.T) {

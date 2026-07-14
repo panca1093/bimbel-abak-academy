@@ -171,9 +171,9 @@ func TestCreateBankQuestion_roundtrips_topic_id(t *testing.T) {
 	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{TopicID: topicID.String()})
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, out.Question.ID, items[0].ID)
-	require.NotNil(t, items[0].Topic)
-	assert.Contains(t, *items[0].Topic, "Roundtrip")
+	assert.Equal(t, out.Question.ID, items[0].Question.ID)
+	require.NotNil(t, items[0].Question.Topic)
+	assert.Contains(t, *items[0].Question.Topic, "Roundtrip")
 }
 
 // seedBankQuestionWithTopicDirect inserts a bank question with a non-null topic_id.

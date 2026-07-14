@@ -4,14 +4,42 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestQuestionImportResultRow_marshalsSnakeCase(t *testing.T) {
+	qid := uuid.New()
+	row := QuestionImportResultRow{RowNumber: 2, Status: "error", QuestionID: &qid, Error: "bad format"}
+
+	data, err := json.Marshal(row)
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, float64(2), decoded["row_number"])
+	assert.Equal(t, "error", decoded["status"])
+	assert.Equal(t, qid.String(), decoded["question_id"])
+	assert.Equal(t, "bad format", decoded["error"])
+
+	// omitempty fields absent (not null) when zero-valued.
+	inserted := QuestionImportResultRow{RowNumber: 1, Status: "inserted"}
+	data, err = json.Marshal(inserted)
+	require.NoError(t, err)
+	decoded = map[string]any{}
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	_, hasQuestionID := decoded["question_id"]
+	_, hasError := decoded["error"]
+	assert.False(t, hasQuestionID)
+	assert.False(t, hasError)
+}
 
 func TestParseQuestionImportCSV_acceptsFlexibleOptions(t *testing.T) {
 	csv := []byte(`format,body,subject,topic,difficulty,point_correct,point_wrong,correct_answer,option_a,option_b,option_c
@@ -138,10 +166,10 @@ func TestProcessQuestionImportRows_mixedRowsWithTopicResolution(t *testing.T) {
 	require.NoError(t, err)
 	var found int
 	for _, q := range bank {
-		if result.Rows[0].QuestionID != nil && q.ID == *result.Rows[0].QuestionID {
+		if result.Rows[0].QuestionID != nil && q.Question.ID == *result.Rows[0].QuestionID {
 			found++
 		}
-		if result.Rows[1].QuestionID != nil && q.ID == *result.Rows[1].QuestionID {
+		if result.Rows[1].QuestionID != nil && q.Question.ID == *result.Rows[1].QuestionID {
 			found++
 		}
 	}

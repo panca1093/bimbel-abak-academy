@@ -177,7 +177,6 @@ describe("QuestionEditor", () => {
     fireEvent.input(screen.getByLabelText(/badan soal/i), {
       target: { value: "Soal baru" },
     });
-    fireEvent.input(screen.getByLabelText(/urutan/i), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
@@ -188,13 +187,19 @@ describe("QuestionEditor", () => {
           input: expect.objectContaining({
             format: "mcq",
             body: "Soal baru",
-            sort_order: 2,
             topic_id: "topic-1",
             options: expect.any(Array),
           }),
         })
       );
     });
+  });
+
+  it("does not render a sort-order input — ordering is managed by the dedicated reorder endpoint", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+    expect(screen.queryByLabelText(/urutan/i)).not.toBeInTheDocument();
   });
 
   it("mcq submit with default 1-correct option passes validation", async () => {

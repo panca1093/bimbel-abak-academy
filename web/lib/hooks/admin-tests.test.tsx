@@ -253,13 +253,13 @@ describe("admin-tests hooks", () => {
 
     await act(async () => {
       await result.current.mutateAsync({
-        input: { format: "mcq", body: "New Q", sort_order: 1 },
+        input: { format: "mcq", body: "New Q" },
       });
     });
 
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/tests/t1/questions", {
       method: "POST",
-      body: JSON.stringify({ format: "mcq", body: "New Q", sort_order: 1 }),
+      body: JSON.stringify({ format: "mcq", body: "New Q" }),
     });
     expect(spy).toHaveBeenCalledWith({
       queryKey: adminTestsKeys.questions("t1"),
@@ -289,13 +289,13 @@ describe("admin-tests hooks", () => {
     await act(async () => {
       await result.current.mutateAsync({
         question: "q1",
-        input: { format: "mcq", body: "Edited Q", sort_order: 1 },
+        input: { format: "mcq", body: "Edited Q" },
       });
     });
 
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/questions/q1", {
       method: "PATCH",
-      body: JSON.stringify({ format: "mcq", body: "Edited Q", sort_order: 1 }),
+      body: JSON.stringify({ format: "mcq", body: "Edited Q" }),
     });
     expect(spy).toHaveBeenCalledWith({
       queryKey: adminTestsKeys.questions("t1"),

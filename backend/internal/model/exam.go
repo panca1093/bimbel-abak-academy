@@ -178,10 +178,13 @@ type QuestionWithOptions struct {
 }
 
 // BankQuestionListItem is one row of GET /admin/questions — a bank question with
-// its topic name and the count of tests it is currently attached to (Used-in).
+// its inline options, topic name, and the count of tests it is currently attached
+// to (Used-in). Nested (not embedded) to match the {question, options, ...} shape
+// the admin bank page and QuestionWithOptions both expect.
 type BankQuestionListItem struct {
-	Question      `json:",inline"`
-	AttachedCount int `json:"attached_count"`
+	Question      Question         `json:"question"`
+	Options       []QuestionOption `json:"options"`
+	AttachedCount int              `json:"attached_count"`
 }
 
 // ExamListItem is the read shape returned by GET /admin/exams — an Exam row joined

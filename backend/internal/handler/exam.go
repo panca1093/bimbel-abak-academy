@@ -97,14 +97,17 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
+	// Nullable[T] fields distinguish "absent — preserve" from "present and
+	// null — clear" (a plain *T cannot: encoding/json leaves it nil either way),
+	// so clearing audio/section settings via PATCH actually clears them.
 	var req struct {
-		Title           string  `json:"title"`
-		Subject         string  `json:"subject"`
-		Topic           string  `json:"topic"`
-		DurationMinutes int     `json:"duration_minutes"`
-		AudioURL        *string `json:"audio_url,omitempty"`
-		AudioPlayLimit  *int    `json:"audio_play_limit,omitempty"`
-		SectionType     *string `json:"section_type,omitempty"`
+		Title           string           `json:"title"`
+		Subject         string           `json:"subject"`
+		Topic           string           `json:"topic"`
+		DurationMinutes int              `json:"duration_minutes"`
+		AudioURL        Nullable[string] `json:"audio_url"`
+		AudioPlayLimit  Nullable[int]    `json:"audio_play_limit"`
+		SectionType     Nullable[string] `json:"section_type"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -123,15 +126,9 @@ func (h *Handler) AdminUpdateTest(c echo.Context) error {
 	if req.DurationMinutes > 0 {
 		t.DurationMinutes = req.DurationMinutes
 	}
-	if req.AudioURL != nil {
-		t.AudioURL = req.AudioURL
-	}
-	if req.AudioPlayLimit != nil {
-		t.AudioPlayLimit = req.AudioPlayLimit
-	}
-	if req.SectionType != nil {
-		t.SectionType = req.SectionType
-	}
+	applyNullable(req.AudioURL, &t.AudioURL)
+	applyNullable(req.AudioPlayLimit, &t.AudioPlayLimit)
+	applyNullable(req.SectionType, &t.SectionType)
 
 	out, err := h.svc.UpdateTest(c.Request().Context(), id, t)
 	if err != nil {

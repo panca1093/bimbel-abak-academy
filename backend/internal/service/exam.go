@@ -306,6 +306,14 @@ func (s *Service) AttachQuestions(ctx context.Context, testID uuid.UUID, questio
 		return ErrQuestionNotFound
 	}
 
+	colliding, err := s.storeRepo.FindQuestionsAttachedToSiblingTests(ctx, testID, questionIDs)
+	if err != nil {
+		return err
+	}
+	if len(colliding) > 0 {
+		return fmt.Errorf("%w: question(s) already attached to another test in the same exam: %v", ErrValidation, colliding)
+	}
+
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return err
@@ -374,10 +382,12 @@ func sameUUIDSet(a, b []uuid.UUID) bool {
 	for _, v := range a {
 		m[v] = true
 	}
+	seen := make(map[uuid.UUID]bool, len(b))
 	for _, v := range b {
-		if !m[v] {
+		if !m[v] || seen[v] {
 			return false
 		}
+		seen[v] = true
 	}
 	return true
 }

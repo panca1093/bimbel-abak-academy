@@ -757,7 +757,8 @@ func TestExam_AdminListBankQuestions_returns_rows_and_cursor(t *testing.T) {
 	data := out["data"].([]any)
 	assert.Len(t, data, 1)
 	row := data[0].(map[string]any)
-	assert.Equal(t, mcqID, row["id"])
+	question := row["question"].(map[string]any)
+	assert.Equal(t, mcqID, question["id"])
 	assert.Equal(t, float64(1), row["attached_count"])
 
 	// Filter by topic_id.
@@ -772,14 +773,15 @@ func TestExam_AdminListBankQuestions_returns_rows_and_cursor(t *testing.T) {
 	data = out["data"].([]any)
 	assert.Len(t, data, 1)
 	row = data[0].(map[string]any)
-	assert.Equal(t, essayID, row["id"])
+	question = row["question"].(map[string]any)
+	assert.Equal(t, essayID, question["id"])
 
 	// Cursor pagination with limit 1.
 	resp, out = doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?search="+url.QueryEscape(uniqueToken)+"&limit=1", nil, token)
 	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
 	data = out["data"].([]any)
 	require.Len(t, data, 1)
-	page1ID := data[0].(map[string]any)["id"].(string)
+	page1ID := data[0].(map[string]any)["question"].(map[string]any)["id"].(string)
 	assert.NotEmpty(t, out["next_cursor"])
 	cursor := out["next_cursor"].(string)
 
@@ -787,7 +789,7 @@ func TestExam_AdminListBankQuestions_returns_rows_and_cursor(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
 	data = out["data"].([]any)
 	require.Len(t, data, 1)
-	page2ID := data[0].(map[string]any)["id"].(string)
+	page2ID := data[0].(map[string]any)["question"].(map[string]any)["id"].(string)
 	assert.NotEqual(t, page1ID, page2ID)
 	// Both seeded questions appear across the two pages.
 	assert.True(t, (page1ID == mcqID || page2ID == mcqID) && (page1ID == essayID || page2ID == essayID))

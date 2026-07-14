@@ -206,9 +206,12 @@ export default function TestDetailPage() {
       topic: form.topic.trim(),
       duration_minutes: Number(form.duration),
     };
-    if (form.audioUrl.trim()) payload.audio_url = form.audioUrl.trim();
-    if (form.audioPlayLimit !== "") payload.audio_play_limit = Number(form.audioPlayLimit);
-    if (form.sectionType) payload.section_type = form.sectionType;
+    // Explicit null (not an omitted key) when cleared, so the backend can tell
+    // "clear this field" apart from "field not sent" — the form is synced from
+    // the existing test on load, so an empty value here means the user cleared it.
+    payload.audio_url = form.audioUrl.trim() || null;
+    payload.audio_play_limit = form.audioPlayLimit !== "" ? Number(form.audioPlayLimit) : null;
+    payload.section_type = form.sectionType || null;
     try {
       await update.mutateAsync(payload);
       toast.success(t("tests_update_success"));

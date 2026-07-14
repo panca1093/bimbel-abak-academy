@@ -32,16 +32,16 @@ type QuestionImportRow struct {
 
 // QuestionImportResult is the per-row report for a question import.
 type QuestionImportResult struct {
-	Inserted int
-	Rows     []QuestionImportResultRow
+	Inserted int                       `json:"inserted"`
+	Rows     []QuestionImportResultRow `json:"rows"`
 }
 
 // QuestionImportResultRow reports the outcome of one CSV row.
 type QuestionImportResultRow struct {
-	RowNumber  int
-	Status     string
-	QuestionID *uuid.UUID
-	Error      string
+	RowNumber  int        `json:"row_number"`
+	Status     string     `json:"status"`
+	QuestionID *uuid.UUID `json:"question_id,omitempty"`
+	Error      string     `json:"error,omitempty"`
 }
 
 // ParseQuestionImportCSV reads a question CSV. Required headers (case-insensitive):
