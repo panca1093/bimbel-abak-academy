@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSaveQuestion } from "@/lib/hooks/admin-tests";
+import {
+  useCreateBankQuestion,
+  useUpdateBankQuestion,
+} from "@/lib/hooks/admin-bank-questions";
+import { useTopics } from "@/lib/hooks/admin-topics";
 import { useTranslation } from "@/lib/i18n";
 import type {
   AdminQuestionInput,
@@ -16,7 +21,7 @@ import type {
 } from "@/lib/types";
 
 interface QuestionEditorProps {
-  testId: string;
+  testId?: string;
   question?: QuestionWithOptions;
   onCancel: () => void;
   onSaved?: () => void;
@@ -184,7 +189,8 @@ function buildInput(
   correctAnswer: string,
   options: AdminQuestionOptionInput[],
   pointCorrect: string,
-  pointWrong: string
+  pointWrong: string,
+  topicId: string
 ): AdminQuestionInput {
   const base: AdminQuestionInput = {
     format,
@@ -193,6 +199,7 @@ function buildInput(
     point_correct: Number(pointCorrect) || 1,
     point_wrong: Number(pointWrong) || 0,
   };
+  if (topicId) base.topic_id = topicId;
   if (difficulty) base.difficulty = difficulty;
   if (explanation.trim()) base.explanation = explanation.trim();
   if (imageUrl.trim()) base.image_url = imageUrl.trim();
@@ -215,8 +222,12 @@ function validate(
   format: QuestionFormat,
   body: string,
   correctAnswer: string,
-  options: AdminQuestionOptionInput[]
+  options: AdminQuestionOptionInput[],
+  topicId: string
 ): { ok: true } | { ok: false; key: string } {
+  if (!topicId) {
+    return { ok: false, key: "tests_validation_topic_required" };
+  }
   if (!body.trim()) {
     return { ok: false, key: "tests_validation_body_required" };
   }
@@ -239,6 +250,7 @@ function validate(
 export function QuestionEditor({ testId, question, onCancel, onSaved }: QuestionEditorProps) {
   const { t } = useTranslation();
   const isEdit = Boolean(question);
+  const isTestScoped = Boolean(testId);
   const [format, setFormat] = useState<QuestionFormat>(question?.question.format ?? "mcq");
   const [body, setBody] = useState(question?.question.body ?? "");
   const [sortOrder, setSortOrder] = useState(String(question?.question.sort_order ?? 1));
@@ -249,6 +261,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const [pointCorrect, setPointCorrect] = useState(String(question?.question.point_correct ?? 1));
   const [pointWrong, setPointWrong] = useState(String(question?.question.point_wrong ?? 0));
   const [pointCorrectTouched, setPointCorrectTouched] = useState(isEdit);
+  const [topicId, setTopicId] = useState(question?.question.topic_id ?? "");
   const [options, setOptions] = useState<AdminQuestionOptionInput[]>(
     question ? buildOptionsFromQuestion(question) : [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
@@ -256,7 +269,11 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     ]
   );
   const [errorKey, setErrorKey] = useState<string | null>(null);
-  const save = useSaveQuestion(testId);
+
+  const topics = useTopics();
+  const createBankQuestion = useCreateBankQuestion();
+  const updateBankQuestion = useUpdateBankQuestion(question?.question.id ?? "");
+  const testSave = useSaveQuestion(testId ?? "");
 
   useEffect(() => {
     if (!question) {
@@ -270,6 +287,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setPointCorrect("1");
       setPointWrong("0");
       setPointCorrectTouched(false);
+      setTopicId("");
       setOptions([
         { key: "a", text: "", is_correct: true, sort_order: 1 },
         { key: "b", text: "", is_correct: false, sort_order: 2 },
@@ -286,7 +304,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   }
 
   async function handleSave() {
-    const result = validate(format, body, correctAnswer, options);
+    const result = validate(format, body, correctAnswer, options, topicId);
     if (!result.ok) {
       setErrorKey(result.key);
       return;
@@ -302,10 +320,17 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       correctAnswer,
       options,
       pointCorrect,
-      pointWrong
+      pointWrong,
+      topicId
     );
     try {
-      await save.mutateAsync({ question: question?.question.id, input });
+      if (isTestScoped) {
+        await testSave.mutateAsync({ question: question?.question.id, input });
+      } else if (isEdit) {
+        await updateBankQuestion.mutateAsync(input);
+      } else {
+        await createBankQuestion.mutateAsync(input);
+      }
       toast.success(t("tests_save_success"));
       onSaved?.();
     } catch (e) {
@@ -316,148 +341,177 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const showOptions = format === "mcq" || format === "multi_answer";
   const showCorrectAnswer = format === "short" || format === "fill_blank";
   const errorMessage = errorKey ? t(errorKey as Parameters<typeof t>[0]) : null;
+  const savePending = testSave.isPending || createBankQuestion.isPending || updateBankQuestion.isPending;
+
+  const topicOptions = topics.data?.data ?? [];
 
   return (
     <div className="space-y-4 rounded-lg border bg-card p-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="question-format">{t("format")}</Label>
-          <select
-            id="question-format"
-            data-slot="select"
-            value={format}
-            onChange={(e) => setFormat(e.target.value as QuestionFormat)}
-            disabled={save.isPending}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {ALL_FORMATS.map((f) => (
-              <option key={f} value={f}>
-                {t(FORMAT_LABELS[f])}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="question-sort-order">{t("tests_field_sort_order")}</Label>
-          <Input
-            id="question-sort-order"
-            type="number"
-            min={1}
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-            disabled={save.isPending}
-          />
-        </div>
-      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="question-format">{t("format")}</Label>
+              <select
+                id="question-format"
+                data-slot="select"
+                value={format}
+                onChange={(e) => setFormat(e.target.value as QuestionFormat)}
+                disabled={savePending}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+              >
+                {ALL_FORMATS.map((f) => (
+                  <option key={f} value={f}>
+                    {t(FORMAT_LABELS[f])}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="question-topic">{t("topic")}</Label>
+              <select
+                id="question-topic"
+                data-slot="select"
+                value={topicId}
+                onChange={(e) => setTopicId(e.target.value)}
+                disabled={savePending || topics.isLoading}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <option value="">{t("select_topic")}</option>
+                {topicOptions.map((topic) => (
+                  <option key={topic.id} value={topic.id}>
+                    {topic.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-      <div className="grid gap-2">
-        <Label htmlFor="question-body">{t("tests_field_body")}</Label>
-        <textarea
-          id="question-body"
-          data-slot="textarea"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={3}
-          disabled={save.isPending}
-          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
-        />
-      </div>
+          {isTestScoped && (
+            <div className="grid gap-2">
+              <Label htmlFor="question-sort-order">{t("tests_field_sort_order")}</Label>
+              <Input
+                id="question-sort-order"
+                type="number"
+                min={1}
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                disabled={savePending}
+              />
+            </div>
+          )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="grid gap-2">
-          <Label htmlFor="question-difficulty">{t("difficulty")}</Label>
-          <select
-            id="question-difficulty"
-            value={difficulty || "none"}
-            onChange={(e) => handleDifficultyChange(e.target.value)}
-            disabled={save.isPending}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
-          >
-            <option value="none">—</option>
-            <option value="easy">{t("tests_field_difficulty_easy")}</option>
-            <option value="medium">{t("tests_field_difficulty_medium")}</option>
-            <option value="hard">{t("tests_field_difficulty_hard")}</option>
-          </select>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="question-image-url">{t("tests_field_image_url")}</Label>
-          <Input
-            id="question-image-url"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="https://..."
-            disabled={save.isPending}
-          />
-        </div>
-      </div>
-
-      <div className="grid gap-2">
-        <Label>{t("tests_points_panel_title")}</Label>
-        <div className="grid grid-cols-2 gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="question-point-correct">{t("tests_field_point_correct")}</Label>
-            <Input
-              id="question-point-correct"
-              type="number"
-              min={1}
-              step={1}
-              value={pointCorrect}
-              onChange={(e) => {
-                setPointCorrect(e.target.value);
-                setPointCorrectTouched(true);
-              }}
-              disabled={save.isPending}
+            <Label htmlFor="question-body">{t("tests_field_body")}</Label>
+            <textarea
+              id="question-body"
+              data-slot="textarea"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={3}
+              disabled={savePending}
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
             />
           </div>
+
           <div className="grid gap-2">
-            <Label htmlFor="question-point-wrong">{t("tests_field_point_wrong")}</Label>
+            <Label htmlFor="question-image-url">{t("tests_field_image_url")}</Label>
             <Input
-              id="question-point-wrong"
-              type="number"
-              min={0}
-              step={1}
-              value={pointWrong}
-              onChange={(e) => setPointWrong(e.target.value)}
-              disabled={save.isPending}
+              id="question-image-url"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://..."
+              disabled={savePending}
+            />
+          </div>
+
+          {showOptions && (
+            <div className="grid gap-2">
+              <Label>{t("tests_field_option_text")}</Label>
+              <OptionEditor
+                format={format as "mcq" | "multi_answer"}
+                options={options}
+                onChange={setOptions}
+                disabled={savePending}
+              />
+            </div>
+          )}
+
+          {showCorrectAnswer && (
+            <div className="grid gap-2">
+              <Label htmlFor="question-correct-answer">{t("tests_field_correct_answer")}</Label>
+              <Input
+                id="question-correct-answer"
+                value={correctAnswer}
+                onChange={(e) => setCorrectAnswer(e.target.value)}
+                disabled={savePending}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div className="grid gap-2">
+            <Label htmlFor="question-difficulty">{t("difficulty")}</Label>
+            <select
+              id="question-difficulty"
+              value={difficulty || "none"}
+              onChange={(e) => handleDifficultyChange(e.target.value)}
+              disabled={savePending}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+            >
+              <option value="none">—</option>
+              <option value="easy">{t("tests_field_difficulty_easy")}</option>
+              <option value="medium">{t("tests_field_difficulty_medium")}</option>
+              <option value="hard">{t("tests_field_difficulty_hard")}</option>
+            </select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>{t("tests_points_panel_title")}</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="question-point-correct">{t("tests_field_point_correct")}</Label>
+                <Input
+                  id="question-point-correct"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={pointCorrect}
+                  onChange={(e) => {
+                    setPointCorrect(e.target.value);
+                    setPointCorrectTouched(true);
+                  }}
+                  disabled={savePending}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="question-point-wrong">{t("tests_field_point_wrong")}</Label>
+                <Input
+                  id="question-point-wrong"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={pointWrong}
+                  onChange={(e) => setPointWrong(e.target.value)}
+                  disabled={savePending}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="question-explanation">{t("tests_field_explanation")}</Label>
+            <textarea
+              id="question-explanation"
+              value={explanation}
+              onChange={(e) => setExplanation(e.target.value)}
+              rows={2}
+              disabled={savePending}
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
             />
           </div>
         </div>
-      </div>
-
-      {showOptions && (
-        <div className="grid gap-2">
-          <Label>{t("tests_field_option_text")}</Label>
-          <OptionEditor
-            format={format as "mcq" | "multi_answer"}
-            options={options}
-            onChange={setOptions}
-            disabled={save.isPending}
-          />
-        </div>
-      )}
-
-      {showCorrectAnswer && (
-        <div className="grid gap-2">
-          <Label htmlFor="question-correct-answer">{t("tests_field_correct_answer")}</Label>
-          <Input
-            id="question-correct-answer"
-            value={correctAnswer}
-            onChange={(e) => setCorrectAnswer(e.target.value)}
-            disabled={save.isPending}
-          />
-        </div>
-      )}
-
-      <div className="grid gap-2">
-        <Label htmlFor="question-explanation">{t("tests_field_explanation")}</Label>
-        <textarea
-          id="question-explanation"
-          value={explanation}
-          onChange={(e) => setExplanation(e.target.value)}
-          rows={2}
-          disabled={save.isPending}
-          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
-        />
       </div>
 
       {errorMessage && (
@@ -471,12 +525,12 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
           type="button"
           variant="outline"
           onClick={onCancel}
-          disabled={save.isPending}
+          disabled={savePending}
         >
           {t("cancel")}
         </Button>
-        <Button type="button" onClick={handleSave} disabled={save.isPending}>
-          {save.isPending ? t("saving") : t("tests_save_question")}
+        <Button type="button" onClick={handleSave} disabled={savePending}>
+          {savePending ? t("saving") : t("tests_save_question")}
         </Button>
       </div>
     </div>

@@ -47,6 +47,7 @@ export const DICT = {
     change_password: "Ubah kata sandi",
     select_school: "Pilih sekolah",
     select_grade: "Pilih kelas",
+    select_topic: "Pilih topik",
     edit_disabled_hint: "Ketuk Ubah profil untuk mengubah data",
     current_password: "Kata sandi saat ini",
     new_password: "Kata sandi baru",
@@ -733,6 +734,7 @@ export const DICT = {
     tests_validation_multi_answer_one_correct: "Pilihan ganda kompleks butuh minimal satu opsi benar",
     tests_validation_correct_answer_required: "Jawaban benar wajib diisi",
     tests_validation_body_required: "Badan soal wajib diisi",
+    tests_validation_topic_required: "Topik wajib dipilih",
     tests_questions_empty: "Belum ada soal. Tambahkan soal pertama untuk memulai.",
     tests_question_count: "Jumlah soal",
 
@@ -927,6 +929,7 @@ export const DICT = {
     change_password: "Change password",
     select_school: "Select school",
     select_grade: "Select grade",
+    select_topic: "Select topic",
     edit_disabled_hint: "Tap Edit profile to change your data",
     current_password: "Current password",
     new_password: "New password",
@@ -1613,6 +1616,7 @@ export const DICT = {
     tests_validation_multi_answer_one_correct: "Multiple answer requires at least one correct option",
     tests_validation_correct_answer_required: "Correct answer is required",
     tests_validation_body_required: "Question body is required",
+    tests_validation_topic_required: "Topic is required",
     tests_questions_empty: "No questions yet. Add the first one to get started.",
     tests_question_count: "Questions",
 

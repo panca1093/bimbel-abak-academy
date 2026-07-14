@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TestDetailPage from "./page";
 import { useParams } from "next/navigation";
-import type { TestDetail, QuestionWithOptions, Test } from "@/lib/types";
+import type { TestDetail, QuestionWithOptions, Test, ExamTopic } from "@/lib/types";
 
 vi.mock("next/navigation", () => ({
   useParams: vi.fn(),
@@ -27,11 +28,22 @@ let questionsState: {
 let saveState = { mutateAsync: mockMutateAsync, isPending: false };
 let deleteState = { mutateAsync: mockMutateAsync, isPending: false };
 
+const mockTopics: ExamTopic[] = [{ id: "topic-1", name: "Aljabar", subject: "Matematika" }];
+
 vi.mock("@/lib/hooks/admin-tests", () => ({
   useTestDetail: () => testDetailState,
   useTestQuestions: () => questionsState,
   useSaveQuestion: () => saveState,
   useDeleteQuestion: () => deleteState,
+}));
+
+vi.mock("@/lib/hooks/admin-topics", () => ({
+  useTopics: () => ({ data: { data: mockTopics }, isLoading: false }),
+}));
+
+vi.mock("@/lib/hooks/admin-bank-questions", () => ({
+  useCreateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateBankQuestion: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock("sonner", () => ({
@@ -40,6 +52,11 @@ vi.mock("sonner", () => ({
     error: vi.fn(),
   },
 }));
+
+function renderWithClient(ui: React.ReactNode) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
 
 const sampleTest: Test = {
   id: "test-1",
@@ -102,7 +119,7 @@ describe("TestDetailPage", () => {
   });
 
   it("renders the test metadata header", async () => {
-    render(<TestDetailPage />);
+    renderWithClient(<TestDetailPage />);
 
     await waitFor(() => {
       // title is the i18n page title
@@ -115,7 +132,7 @@ describe("TestDetailPage", () => {
   });
 
   it("renders the question list from useTestQuestions", async () => {
-    render(<TestDetailPage />);
+    renderWithClient(<TestDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Apa ibu kota Indonesia?")).toBeInTheDocument();
@@ -124,7 +141,7 @@ describe("TestDetailPage", () => {
   });
 
   it("Add question button opens an inline editor in create mode", async () => {
-    render(<TestDetailPage />);
+    renderWithClient(<TestDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Apa ibu kota Indonesia?")).toBeInTheDocument();
@@ -140,7 +157,7 @@ describe("TestDetailPage", () => {
   });
 
   it("clicking a question's row expands its QuestionEditor", async () => {
-    render(<TestDetailPage />);
+    renderWithClient(<TestDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Apa ibu kota Indonesia?")).toBeInTheDocument();
@@ -168,7 +185,7 @@ describe("TestDetailPage", () => {
     vi.stubGlobal("confirm", () => true);
     mockMutateAsync.mockResolvedValueOnce(undefined);
 
-    render(<TestDetailPage />);
+    renderWithClient(<TestDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Apa ibu kota Indonesia?")).toBeInTheDocument();

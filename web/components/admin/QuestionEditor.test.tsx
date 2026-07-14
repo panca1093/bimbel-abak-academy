@@ -2,13 +2,33 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionEditor } from "./QuestionEditor";
-import type { QuestionWithOptions, QuestionFormat, Question, QuestionOption } from "@/lib/types";
+import type { QuestionWithOptions, QuestionFormat, Question, QuestionOption, ExamTopic } from "@/lib/types";
 
-const mockMutateAsync = vi.fn();
-let saveState = { mutateAsync: mockMutateAsync, isPending: false };
+const mockTestSaveAsync = vi.fn();
+let testSaveState = { mutateAsync: mockTestSaveAsync, isPending: false };
+
+const mockCreateBankAsync = vi.fn();
+let createBankState = { mutateAsync: mockCreateBankAsync, isPending: false };
+
+const mockUpdateBankAsync = vi.fn();
+let updateBankState = { mutateAsync: mockUpdateBankAsync, isPending: false };
+
+const mockTopics: ExamTopic[] = [
+  { id: "topic-1", name: "Aljabar", subject: "Matematika" },
+  { id: "topic-2", name: "Fisika Dasar", subject: "Fisika" },
+];
 
 vi.mock("@/lib/hooks/admin-tests", () => ({
-  useSaveQuestion: () => saveState,
+  useSaveQuestion: () => testSaveState,
+}));
+
+vi.mock("@/lib/hooks/admin-bank-questions", () => ({
+  useCreateBankQuestion: () => createBankState,
+  useUpdateBankQuestion: () => updateBankState,
+}));
+
+vi.mock("@/lib/hooks/admin-topics", () => ({
+  useTopics: () => ({ data: { data: mockTopics }, isLoading: false }),
 }));
 
 function renderWithClient(ui: React.ReactNode) {
@@ -24,8 +44,8 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     sort_order: 1,
     point_correct: 1,
     point_wrong: 0,
-    topic_id: null,
-    topic: null,
+    topic_id: "topic-1",
+    topic: "Aljabar",
     ...overrides,
   };
 }
@@ -54,11 +74,24 @@ function makeQuestionWithOptions(
   };
 }
 
+function fillRequiredFields() {
+  fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+  fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+}
+
 describe("QuestionEditor", () => {
   beforeEach(() => {
-    mockMutateAsync.mockReset();
-    mockMutateAsync.mockResolvedValue({ question: makeQuestion(), options: [] });
-    saveState = { mutateAsync: mockMutateAsync, isPending: false };
+    mockTestSaveAsync.mockReset();
+    mockTestSaveAsync.mockResolvedValue({ question: makeQuestion(), options: [] });
+    testSaveState = { mutateAsync: mockTestSaveAsync, isPending: false };
+
+    mockCreateBankAsync.mockReset();
+    mockCreateBankAsync.mockResolvedValue({ question: makeQuestion(), options: [] });
+    createBankState = { mutateAsync: mockCreateBankAsync, isPending: false };
+
+    mockUpdateBankAsync.mockReset();
+    mockUpdateBankAsync.mockResolvedValue({ question: makeQuestion(), options: [] });
+    updateBankState = { mutateAsync: mockUpdateBankAsync, isPending: false };
   });
 
   it("renders create mode with format defaulting to mcq", () => {
@@ -67,7 +100,6 @@ describe("QuestionEditor", () => {
     );
 
     expect(screen.getByLabelText(/badan soal/i)).toHaveValue("");
-    // mcq default → 2 option rows with radio buttons
     const radios = screen.getAllByRole("radio");
     expect(radios.length).toBe(2);
   });
@@ -82,7 +114,6 @@ describe("QuestionEditor", () => {
     expect(screen.getByDisplayValue("Jakarta")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Bandung")).toBeInTheDocument();
 
-    // Option a is the correct one; its radio should be checked.
     const radios = screen.getAllByRole("radio");
     const checked = radios.filter((r) => (r as HTMLInputElement).checked);
     expect(checked.length).toBe(1);
@@ -93,10 +124,8 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    // default mcq → has radios
     expect(screen.getAllByRole("radio").length).toBeGreaterThan(0);
 
-    // Change format to essay
     const formatSelect = screen.getByLabelText(/format/i);
     fireEvent.change(formatSelect, { target: { value: "essay" } });
 
@@ -149,16 +178,18 @@ describe("QuestionEditor", () => {
       target: { value: "Soal baru" },
     });
     fireEvent.input(screen.getByLabelText(/urutan/i), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith(
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           input: expect.objectContaining({
             format: "mcq",
             body: "Soal baru",
             sort_order: 2,
+            topic_id: "topic-1",
             options: expect.any(Array),
           }),
         })
@@ -171,12 +202,12 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    fillRequiredFields();
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalled();
+      expect(mockTestSaveAsync).toHaveBeenCalled();
     });
   });
 
@@ -185,16 +216,15 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    fillRequiredFields();
 
-    // Switch the correct option from a → b via the radio
     const radios = screen.getAllByRole("radio");
     fireEvent.change(radios[1], { target: { checked: true } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalled();
+      expect(mockTestSaveAsync).toHaveBeenCalled();
     });
   });
 
@@ -203,10 +233,9 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    fillRequiredFields();
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_answer" } });
 
-    // Default state: option a is correct. Click it to toggle off → 0 correct.
     const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[0]);
 
@@ -217,7 +246,7 @@ describe("QuestionEditor", () => {
         screen.getByText(/minimal satu opsi benar/i)
       ).toBeInTheDocument();
     });
-    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
   });
 
   it("multi_answer validation: 1 correct allowed", async () => {
@@ -225,17 +254,16 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    fillRequiredFields();
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "multi_answer" } });
 
-    // Tick a second checkbox (option a is already correct from defaults)
     const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[1]);
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalled();
+      expect(mockTestSaveAsync).toHaveBeenCalled();
     });
   });
 
@@ -244,7 +272,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    fillRequiredFields();
     fireEvent.change(screen.getByLabelText(/format/i), { target: { value: "short" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
@@ -254,7 +282,7 @@ describe("QuestionEditor", () => {
         screen.getByText(/jawaban benar wajib diisi/i)
       ).toBeInTheDocument();
     });
-    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
   });
 
   it("empty body blocks submit with validation error", async () => {
@@ -262,6 +290,7 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
@@ -269,7 +298,7 @@ describe("QuestionEditor", () => {
         screen.getByText(/badan soal wajib diisi/i)
       ).toBeInTheDocument();
     });
-    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
   });
 
   it("edit mode includes question id in save payload", async () => {
@@ -281,7 +310,7 @@ describe("QuestionEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith(
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
         expect.objectContaining({ question: "q1" })
       );
     });
@@ -345,14 +374,14 @@ describe("QuestionEditor", () => {
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
     );
 
-    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    fillRequiredFields();
     fireEvent.input(screen.getByLabelText(/poin benar/i), { target: { value: "4" } });
     fireEvent.input(screen.getByLabelText(/poin salah/i), { target: { value: "2" } });
 
     fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
 
     await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith(
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           input: expect.objectContaining({ point_correct: 4, point_wrong: 2 }),
         })
@@ -368,5 +397,108 @@ describe("QuestionEditor", () => {
 
     expect(screen.getByLabelText(/poin benar/i)).toHaveValue(7);
     expect(screen.getByLabelText(/poin salah/i)).toHaveValue(3);
+  });
+
+  // ── Topic select (FR-34..FR-36) ─────────────────────────────────────────
+
+  it("renders topic select populated from useTopics", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    const topicSelect = screen.getByLabelText(/topik/i);
+    expect(topicSelect).toBeInTheDocument();
+    expect(within(topicSelect).getByText("Aljabar")).toBeInTheDocument();
+    expect(within(topicSelect).getByText("Fisika Dasar")).toBeInTheDocument();
+  });
+
+  it("topic is required and blocks submit when empty", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.input(screen.getByLabelText(/badan soal/i), { target: { value: "Soal" } });
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/topik wajib dipilih/i)).toBeInTheDocument();
+    });
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
+  });
+
+  it("bank standalone create uses useCreateBankQuestion", async () => {
+    renderWithClient(
+      <QuestionEditor onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockCreateBankAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          format: "mcq",
+          body: "Soal",
+          topic_id: "topic-1",
+          options: expect.any(Array),
+        })
+      );
+    });
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
+    expect(mockUpdateBankAsync).not.toHaveBeenCalled();
+  });
+
+  it("bank standalone edit uses useUpdateBankQuestion", async () => {
+    const qwo = makeQuestionWithOptions();
+    renderWithClient(
+      <QuestionEditor question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockUpdateBankAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          format: "mcq",
+          body: "Apa ibu kota Indonesia?",
+          topic_id: "topic-1",
+        })
+      );
+    });
+    expect(mockTestSaveAsync).not.toHaveBeenCalled();
+    expect(mockCreateBankAsync).not.toHaveBeenCalled();
+  });
+
+  it("bank standalone create includes sort_order in payload", async () => {
+    renderWithClient(
+      <QuestionEditor onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockCreateBankAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sort_order: expect.any(Number) })
+      );
+    });
+  });
+
+  it("test scoped new question hits create-and-attach via useSaveQuestion", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          question: undefined,
+          input: expect.objectContaining({ topic_id: "topic-1" }),
+        })
+      );
+    });
   });
 });
