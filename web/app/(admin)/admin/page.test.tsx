@@ -62,7 +62,7 @@ let revenueState: {
 };
 
 let schoolsState: {
-  data: { id: string; name: string; code: string }[] | null;
+  data: { id: string; name: string; code: string; student_count?: number }[] | null;
   isLoading: boolean;
 } = {
   data: null,
@@ -101,7 +101,10 @@ describe("AdminIndexPage", () => {
     };
     revenueState = { data: { total: 15_000_000 }, isLoading: false };
     schoolsState = {
-      data: [{ id: "s1", name: "SMA N 1 Jakarta", code: "SMA01" }],
+      data: [
+        { id: "s1", name: "SMA N 1 Jakarta", code: "SMA01", student_count: 40 },
+        { id: "s2", name: "SMA N 2 Jakarta", code: "SMA02", student_count: 25 },
+      ],
       isLoading: false,
     };
   });
@@ -139,11 +142,12 @@ describe("AdminIndexPage", () => {
     expect(getByText("Rp15.000.000")).toBeInTheDocument();
   });
 
-  it("renders school count for sekolah and siswa stat cards", () => {
+  it("renders school count and a genuine sum of per-school student counts", () => {
     authStore = { token: "t", user: { role: "super_admin" } };
-    const { getAllByText } = render(<AdminIndexPage />);
-    // "1" appears twice: Total Siswa and Jumlah Sekolah both use school count
-    expect(getAllByText("1").length).toBeGreaterThanOrEqual(2);
+    const { getByText } = render(<AdminIndexPage />);
+    // 2 schools, but 65 students (40 + 25) — the two stats must NOT collapse to the same number.
+    expect(getByText("2")).toBeInTheDocument();
+    expect(getByText("65")).toBeInTheDocument();
   });
 
   it("renders 'Belum tersedia' on Sesi Ujian Aktif", () => {
