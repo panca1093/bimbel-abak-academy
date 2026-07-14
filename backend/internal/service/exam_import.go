@@ -226,6 +226,7 @@ func (s *Service) ProcessQuestionImportRows(ctx context.Context, rows []Question
 		}
 		q.TopicID = topicID
 
+		q.Body = sanitizeQuestionBody(q.Body)
 		if err := validateQuestion(q, row.Options); err != nil {
 			res.Status = "error"
 			res.Error = err.Error()

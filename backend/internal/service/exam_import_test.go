@@ -217,3 +217,49 @@ func TestImportQuestionsFromCSV_endToEnd(t *testing.T) {
 		}
 	})
 }
+
+func TestProcessQuestionImportRows_sanitizesScriptPayloadInBody(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	suffix := uniqueSuffix()
+
+	mathTopic := model.ExamTopic{Name: "Arithmetic " + suffix, Subject: "Math " + suffix}
+	require.NoError(t, repo.CreateTopic(ctx, &mathTopic))
+	t.Cleanup(func() { _ = repo.DeleteTopic(ctx, mathTopic.ID) })
+
+	csvRows := []QuestionImportRow{
+		{
+			Format:       "mcq",
+			Body:         `<script>alert(1)</script>What is 2+2?`,
+			Subject:      mathTopic.Subject,
+			Topic:        mathTopic.Name,
+			PointCorrect: 2,
+			PointWrong:   0,
+			CorrectAnswer: strPtr("a"),
+			Options: []model.QuestionOption{
+				{Key: "a", Text: "4", IsCorrect: true, SortOrder: 1},
+				{Key: "b", Text: "5", IsCorrect: false, SortOrder: 2},
+			},
+		},
+	}
+
+	result, err := svc.ProcessQuestionImportRows(ctx, csvRows)
+	require.NoError(t, err)
+	require.Len(t, result.Rows, 1)
+	require.Equal(t, "inserted", result.Rows[0].Status)
+	require.NotNil(t, result.Rows[0].QuestionID)
+
+	// Sanity: the on-disk body has no <script> surviving the sanitization
+	// applied at the CSV write path. Mirrors the interactive create path
+	// (TestSanitizeQuestionBody_stripsScriptTag) so both go through the
+	// same policy.
+	var stored string
+	require.NoError(t, repo.Pool().QueryRow(ctx,
+		`SELECT body FROM question WHERE id = $1`, *result.Rows[0].QuestionID,
+	).Scan(&stored))
+	assert.False(t, strings.Contains(stored, "<script>"),
+		"stored body must not contain <script>, got %q", stored)
+	assert.Contains(t, stored, "What is 2+2?")
+
+	t.Cleanup(func() { _ = repo.DeleteQuestion(ctx, *result.Rows[0].QuestionID) })
+}

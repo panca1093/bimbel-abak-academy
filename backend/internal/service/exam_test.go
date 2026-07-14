@@ -1394,3 +1394,60 @@ func TestGetExamCard_ReturnsPdfBytes(t *testing.T) {
 		t.Errorf("filename %q does not match kartu-peserta-<8-char-token>.pdf", filename)
 	}
 }
+
+// --- Rich-text question body sanitization (FR-1..FR-7) ---
+
+func TestSanitizeQuestionBody_stripsScriptTag(t *testing.T) {
+	got := sanitizeQuestionBody(`<script>alert(1)</script>Hello`)
+	if strings.Contains(got, "<script>") {
+		t.Errorf("sanitized body must not contain <script>, got %q", got)
+	}
+	if !strings.Contains(got, "Hello") {
+		t.Errorf("sanitized body should preserve plain text, got %q", got)
+	}
+}
+
+func TestSanitizeQuestionBody_stripsOnErrorAttr(t *testing.T) {
+	got := sanitizeQuestionBody(`<img src=x onerror="alert(1)">`)
+	if strings.Contains(strings.ToLower(got), "onerror") {
+		t.Errorf("sanitized body must not contain onerror attribute, got %q", got)
+	}
+	if !strings.Contains(got, "<img") {
+		t.Errorf("sanitized body should keep a safe <img> tag, got %q", got)
+	}
+	if !strings.Contains(got, "src=\"x\"") {
+		t.Errorf("sanitized body should keep src=\"x\", got %q", got)
+	}
+}
+
+func TestSanitizeQuestionBody_stripsPositionFromStyle(t *testing.T) {
+	got := sanitizeQuestionBody(`<img src="a" style="position:fixed;top:0">`)
+	lower := strings.ToLower(got)
+	if strings.Contains(lower, "position") {
+		t.Errorf("sanitized style must not contain 'position', got %q", got)
+	}
+}
+
+func TestSanitizeQuestionBody_preservesAllowlistedTags(t *testing.T) {
+	in := `<b>bold</b> <i>italic</i> <u>under</u> <sup>2</sup> <sub>i</sub>`
+	got := sanitizeQuestionBody(in)
+	if got != in {
+		t.Errorf("allowlisted tags must round-trip unchanged\n in: %q\nout: %q", in, got)
+	}
+}
+
+func TestSanitizeQuestionBody_plainTextRoundTrip(t *testing.T) {
+	in := "what is 2 + 2?"
+	got := sanitizeQuestionBody(in)
+	if got != in {
+		t.Errorf("plain text body must round-trip byte-for-byte\n in: %q\nout: %q", in, got)
+	}
+}
+
+func TestSanitizeQuestionBody_preservesListTags(t *testing.T) {
+	in := `<ul><li>one</li><li>two</li></ul>`
+	got := sanitizeQuestionBody(in)
+	if got != in {
+		t.Errorf("list tags must round-trip unchanged\n in: %q\nout: %q", in, got)
+	}
+}

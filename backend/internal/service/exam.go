@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/microcosm-cc/bluemonday"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -50,6 +52,52 @@ var validSectionTypes = map[string]bool{
 // sectionedModes are the exam modes that run attached Tests as sequential sections
 // (FR-19 publish-gate trigger). 'standard' is excluded.
 func isSectionedMode(mode string) bool { return mode == "utbk" || mode == "ielts" }
+
+// questionBodyPolicy is the single allowlist used by sanitizeQuestionBody. It is
+// built once at package init and used on every write path. See sanitizeQuestionBody
+// for the rationale behind each element/attribute.
+var questionBodyPolicy = func() *bluemonday.Policy {
+	p := bluemonday.NewPolicy()
+	p.AllowElements("b", "i", "u", "ul", "ol", "li", "sup", "sub")
+	p.AllowAttrs("src", "alt").OnElements("img")
+	p.AllowElements("img")
+	// Restricted style: only a safe subset is allowed, and "position" is
+	// explicitly rejected by handler (covers "position:fixed" and any
+	// other value). url() in style is rejected wholesale — images carry
+	// their URL via the src attribute, not in style.
+	p.AllowStyles("color", "background-color", "text-align", "font-weight", "font-style", "text-decoration").
+		MatchingHandler(func(s string) bool { return !strings.Contains(s, "url(") }).
+		OnElements("img")
+	return p
+}()
+
+// sanitizeQuestionBody strips disallowed HTML from a question body at the
+// service trust boundary. The same call is invoked at every write path
+// (CreateBankQuestion, SaveQuestion, CreateQuestionForTest,
+// ProcessQuestionImportRows) so the persisted value is the sanitized one.
+//
+// Allowlist: b, i, u, ul, ol, li, sup, sub, img (with src/alt and a restricted
+// style attribute). On* handlers, <script>, <iframe>, javascript: URLs, and
+// any non-allowlisted tag are stripped. "position" in style is rejected via
+// the regex below; url() in style is rejected via the policy's value handler.
+func sanitizeQuestionBody(body string) string {
+	if body == "" {
+		return body
+	}
+	// Reject "position" declarations regardless of value (fixed/absolute/...).
+	// bluemonday processes the value handler first; this regexp is a
+	// belt-and-suspenders guard for any value that doesn't trigger a
+	// direct string check (e.g. "POSITION:fixed" via casing).
+	positionDecl := regexp.MustCompile(`(?i)position\s*:`)
+	if positionDecl.MatchString(body) {
+		body = positionDecl.ReplaceAllString(body, "")
+	}
+	cleaned := questionBodyPolicy.Sanitize(body)
+	// Collapse runs of ";" left behind by stripping a declaration.
+	cleaned = regexp.MustCompile(`;\s*;`).ReplaceAllString(cleaned, ";")
+	cleaned = strings.TrimSpace(cleaned)
+	return cleaned
+}
 
 // validateQuestion enforces the format-validation matrix from spec.md §4.
 // All error returns wrap ErrValidation with a sub-message so callers can
@@ -226,6 +274,7 @@ func (s *Service) GetTestDetail(ctx context.Context, id uuid.UUID) (model.TestDe
 
 // SaveQuestion routes create vs update by q.ID == uuid.Nil.
 func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	q.Body = sanitizeQuestionBody(q.Body)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
@@ -260,6 +309,7 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 // given test (FR-25). This preserves the existing POST /admin/tests/:id/questions
 // behavior after migration 0025 moved attachment to test_question.
 func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	q.Body = sanitizeQuestionBody(q.Body)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
@@ -394,6 +444,7 @@ func sameUUIDSet(a, b []uuid.UUID) bool {
 
 // CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
 func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	q.Body = sanitizeQuestionBody(q.Body)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
