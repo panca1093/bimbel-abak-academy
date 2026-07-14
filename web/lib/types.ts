@@ -1,4 +1,4 @@
-export type ProductType = "book" | "course" | "package" | "exam";
+export type ProductType = "book" | "course" | "exam";
 
 export type ProductStatus = "draft" | "published" | "hidden" | "archived";
 

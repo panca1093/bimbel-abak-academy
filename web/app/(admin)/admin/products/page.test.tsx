@@ -46,7 +46,7 @@ vi.mock("sonner", () => ({
 const sampleProducts: Product[] = [
   { id: "p1", type: "book", name: "Buku Matematika", price: 75000, stock: 12, status: "published" },
   { id: "p2", type: "course", name: "Kursus Fisika", price: 150000, status: "draft" },
-  { id: "p3", type: "package", name: "Paket UTBK", price: 500000, status: "hidden" },
+  { id: "p3", type: "exam", name: "Paket UTBK", price: 500000, status: "hidden" },
 ];
 
 describe("ProductsPage", () => {

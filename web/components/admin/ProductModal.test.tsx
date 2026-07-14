@@ -58,23 +58,6 @@ describe("ProductModal", () => {
     expect(screen.getByText("Matematika Lanjut")).toBeInTheDocument();
   });
 
-  it("shows course checkboxes when type is package in create mode", () => {
-    render(
-      <ProductModal
-        open={true}
-        onOpenChange={mockOnOpenChange}
-        onSubmit={mockOnSubmit}
-        isPending={false}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "package" } });
-    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket Lengkap" } });
-    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "500000" } });
-
-    expect(screen.getByText("Fisika Dasar")).toBeInTheDocument();
-  });
-
   it("hides course checkboxes when type is book in create mode", () => {
     render(
       <ProductModal

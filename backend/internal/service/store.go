@@ -40,7 +40,7 @@ func (s *Service) ListProducts(ctx context.Context, filter repository.ProductFil
 	case RoleSuperAdmin:
 		// no filter restrictions
 	case RoleAdminStore:
-		// no filter restrictions — manages book, course, package
+		// no filter restrictions — manages book, course, exam
 	default: // student, admin_exam, or ""
 		filter.VisibleOnly = true
 		filter.Status = "published"
@@ -592,8 +592,6 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 			cat = "Book"
 		case "course":
 			cat = "Course"
-		case "package":
-			cat = "Package"
 		}
 		req.Items = append(req.Items, ItemDetail{
 			ID:       item.ProductID.String(),
@@ -1191,7 +1189,7 @@ func checkTypeRBAC(role, productType string) error {
 		// FR-STORE-ADM-03: admin_store edits price/visibility/promo eligibility on
 		// exam-type products too (it cannot touch exam content — tests/questions —
 		// which stays under /admin/exams, gated separately by RoleAdminExam).
-		if productType == "book" || productType == "course" || productType == "package" || productType == "exam" {
+		if productType == "book" || productType == "course" || productType == "exam" {
 			return nil
 		}
 		return ErrForbidden

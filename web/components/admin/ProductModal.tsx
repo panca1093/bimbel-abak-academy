@@ -24,13 +24,12 @@ interface ProductModalProps {
   isPending: boolean;
 }
 
-const PRODUCT_TYPES: ProductType[] = ["book", "course", "package", "exam"];
+const PRODUCT_TYPES: ProductType[] = ["book", "course", "exam"];
 const PRODUCT_STATUSES: ProductStatus[] = ["draft", "published", "hidden", "archived"];
 
 const TYPE_LABELS: Record<ProductType, string> = {
   book: "Buku",
   course: "Kursus",
-  package: "Paket",
   exam: "Ujian",
 };
 
@@ -81,7 +80,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
 
   const showStock = type === "book";
   const effectiveType = isEdit ? product?.type : type;
-  const showCourses = effectiveType === "course" || effectiveType === "package";
+  const showCourses = effectiveType === "course";
   const showExams = effectiveType === "exam";
   const canSubmit =
     name.trim() !== "" &&

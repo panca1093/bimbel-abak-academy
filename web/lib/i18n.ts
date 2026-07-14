@@ -176,6 +176,8 @@ export const DICT = {
     features: "Fitur",
     payment: "Pembayaran",
     notification: "Notifikasi",
+    notifications_page_title: "Notifikasi",
+    notifications_page_description: "Pantau notifikasi pembelian dan kelola pengumuman.",
     notification_title: "Judul",
     notification_message: "Pesan",
     notification_type: "Tipe",
@@ -286,6 +288,8 @@ export const DICT = {
     cart_empty_desc: "Yuk jelajahi katalog dan tambahkan buku atau kursus favoritmu.",
     cart_view_catalog: "Lihat Katalog",
     orders_title: "Pesanan",
+    admin_orders_page_title: "Pesanan",
+    admin_orders_page_description: "Konfirmasi, kirim, dan kelola retur pesanan.",
     billing_subtitle: "Pesanan, invoice, dan status pengiriman Anda.",
     orders_empty: "Belum ada pesanan.",
     orders_empty_desc: "Pesanan Anda akan muncul di sini setelah checkout.",
@@ -351,7 +355,8 @@ export const DICT = {
     action_reconcile: "Rekonsiliasi",
 
     // Admin — products
-    product_type_package: "Paket",
+    products_page_title: "Produk & Katalog",
+    products_page_description: "Kelola buku, kursus, dan paket produk.",
     product_type_exam: "Ujian",
     products: "Produk",
     products_create: "Buat produk",
@@ -379,6 +384,8 @@ export const DICT = {
     filter_refunded: "Refund",
 
     // Admin — courses
+    courses_page_title: "Manajemen Kursus",
+    courses_page_description: "Buat dan kelola konten video kursus.",
     courses: "Kursus",
     courses_create: "Buat kursus",
     courses_create_desc: "Tambahkan kursus baru ke katalog.",
@@ -396,6 +403,8 @@ export const DICT = {
     course_instructor_placeholder: "Nama pengajar",
 
     // Admin — promos
+    promos_page_title: "Promo & Diskon",
+    promos_page_description: "Kelola kode promo dan diskon aktif.",
     promo_create: "Buat kode promo",
     promo_created: "Kode promo dibuat.",
     promo_deleted: "Kode promo dihapus.",
@@ -404,6 +413,8 @@ export const DICT = {
     empty_promos: "Belum ada kode promo.",
 
     // Admin — revenue
+    revenue_page_title: "Pendapatan",
+    revenue_page_description: "Ringkasan pendapatan dan tren penjualan.",
     revenue_load_failed: "Gagal memuat revenue",
     revenue_total: "Total pendapatan",
     revenue_avg_order: "Rata-rata nilai pesanan",
@@ -768,8 +779,6 @@ export const DICT = {
     exam_packages_create: "Buat Paket",
     exam_packages_col_title: "Judul",
     exam_packages_col_scheduled: "Dijadwalkan",
-    exam_packages_col_status: "Status",
-    exam_packages_col_price: "Harga",
     exam_packages_empty: "Belum ada paket",
     exam_packages_create_success: "Paket dibuat",
     exam_packages_update_success: "Paket diperbarui",
@@ -821,11 +830,6 @@ export const DICT = {
     admin_exam_detail_tests_save: "Simpan",
     admin_exam_detail_tests_remove: "Hapus",
     admin_exam_detail_tests_add: "Tambah",
-    admin_exam_detail_price_label: "Harga",
-    admin_exam_detail_price_save: "Simpan Harga",
-    admin_exam_detail_publish: "Publish",
-    admin_exam_detail_publish_confirm:
-      "Publish paket ini? Tindakan ini tidak bisa dibatalkan.",
     exam_packages_modal_mode: "Mode Ujian",
 	    exam_packages_modal_mode_standard: "Standar",
 	    exam_packages_modal_mode_utbk: "UTBK",
@@ -1099,6 +1103,8 @@ export const DICT = {
     features: "Features",
     payment: "Payment",
     notification: "Notification",
+    notifications_page_title: "Notifications",
+    notifications_page_description: "Monitor purchase notifications and manage announcements.",
     notification_title: "Title",
     notification_message: "Message",
     notification_type: "Type",
@@ -1209,6 +1215,8 @@ export const DICT = {
     cart_empty_desc: "Browse the catalog and add your favorite books or courses.",
     cart_view_catalog: "View Catalog",
     orders_title: "Orders",
+    admin_orders_page_title: "Orders",
+    admin_orders_page_description: "Confirm, ship, and manage order returns.",
     billing_subtitle: "Your orders, invoices and shipping status.",
     orders_empty: "No orders yet.",
     orders_empty_desc: "Your orders will appear here after checkout.",
@@ -1274,7 +1282,8 @@ export const DICT = {
     action_reconcile: "Reconcile",
 
     // Admin — products
-    product_type_package: "Package",
+    products_page_title: "Product & Catalog",
+    products_page_description: "Manage books, courses, and product packages.",
     product_type_exam: "Exam",
     products: "Products",
     products_create: "Create product",
@@ -1302,6 +1311,8 @@ export const DICT = {
     filter_refunded: "Refunded",
 
     // Admin — courses
+    courses_page_title: "Course Management",
+    courses_page_description: "Create and manage video course content.",
     courses: "Courses",
     courses_create: "Create course",
     courses_create_desc: "Add a new course to the catalog.",
@@ -1319,6 +1330,8 @@ export const DICT = {
     course_instructor_placeholder: "Instructor name",
 
     // Admin — promos
+    promos_page_title: "Promos & Discounts",
+    promos_page_description: "Manage promo codes and active discounts.",
     promo_create: "Create promo code",
     promo_created: "Promo code created.",
     promo_deleted: "Promo code deleted.",
@@ -1327,6 +1340,8 @@ export const DICT = {
     empty_promos: "No promo codes yet.",
 
     // Admin — revenue
+    revenue_page_title: "Revenue",
+    revenue_page_description: "Revenue overview and sales trends.",
     revenue_load_failed: "Failed to load revenue",
     revenue_total: "Total revenue",
     revenue_avg_order: "Average order value",
@@ -1691,8 +1706,6 @@ export const DICT = {
     exam_packages_create: "Create Package",
     exam_packages_col_title: "Title",
     exam_packages_col_scheduled: "Scheduled",
-    exam_packages_col_status: "Status",
-    exam_packages_col_price: "Price",
     exam_packages_empty: "No packages yet",
     exam_packages_create_success: "Package created",
     exam_packages_update_success: "Package updated",
@@ -1744,11 +1757,6 @@ export const DICT = {
     admin_exam_detail_tests_save: "Save",
     admin_exam_detail_tests_remove: "Remove",
     admin_exam_detail_tests_add: "Add",
-    admin_exam_detail_price_label: "Price",
-    admin_exam_detail_price_save: "Save Price",
-    admin_exam_detail_publish: "Publish",
-    admin_exam_detail_publish_confirm:
-      "Publish this package? This action cannot be undone.",
     exam_packages_modal_mode: "Exam Mode",
 	    exam_packages_modal_mode_standard: "Standard",
 	    exam_packages_modal_mode_utbk: "UTBK",

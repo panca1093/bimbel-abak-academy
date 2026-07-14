@@ -17,7 +17,7 @@ const TABS: { value: TabValue; labelKey: string }[] = [
   { value: "all", labelKey: "catalog_tab_all" },
   { value: "book", labelKey: "catalog_tab_book" },
   { value: "course", labelKey: "catalog_tab_course" },
-  { value: "package", labelKey: "catalog_tab_competition" },
+  { value: "exam", labelKey: "catalog_tab_competition" },
 ];
 
 function CatalogGrid({ products, tab }: { products: ReturnType<typeof useProducts>["data"]; tab: TabValue }) {
