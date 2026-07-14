@@ -542,8 +542,11 @@ export const DICT = {
     school_classes_title: "Manajemen Kelas",
     school_students_title: "Manajemen Siswa",
     school_reports_title: "Laporan Sekolah",
+    school_reports_subtitle: "Lihat hasil dan laporan ujian per sekolah.",
     exam_packages_title: "Manajemen Paket",
+    exam_packages_page_description: "Kelola paket ujian dan jadwalnya.",
     exam_monitor_title: "Monitor Sesi Ujian",
+    exam_monitor_subtitle: "Pantau sesi ujian yang sedang berlangsung secara langsung.",
 
     /* System — shared */
     sys_loading: "Memuat…",
@@ -1469,8 +1472,11 @@ export const DICT = {
     school_classes_title: "Class Management",
     school_students_title: "Student Management",
     school_reports_title: "School Reports",
+    school_reports_subtitle: "View exam results and reports by school.",
     exam_packages_title: "Package Management",
+    exam_packages_page_description: "Manage exam packages and their schedules.",
     exam_monitor_title: "Exam Session Monitor",
+    exam_monitor_subtitle: "Monitor exam sessions currently in progress in real time.",
 
     /* System — shared */
     sys_loading: "Loading…",

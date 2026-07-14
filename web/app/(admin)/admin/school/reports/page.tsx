@@ -139,6 +139,7 @@ export default function SchoolReportsPage() {
         <AdminPageHeader
           icon={FileText}
           title={t("school_reports_title")}
+          description={t("school_reports_subtitle")}
           actions={
             <Button
               size="sm"
@@ -179,6 +180,7 @@ export default function SchoolReportsPage() {
         <AdminPageHeader
           icon={FileText}
           title={t("school_reports_title")}
+          description={t("school_reports_subtitle")}
           actions={
             <Button
               size="sm"
@@ -223,6 +225,7 @@ export default function SchoolReportsPage() {
         <AdminPageHeader
           icon={FileText}
           title={t("school_reports_title")}
+          description={t("school_reports_subtitle")}
           actions={
             <Button
               size="sm"
@@ -266,6 +269,7 @@ export default function SchoolReportsPage() {
       <AdminPageHeader
         icon={FileText}
         title={t("school_reports_title")}
+        description={t("school_reports_subtitle")}
         actions={
           <Button
             size="sm"

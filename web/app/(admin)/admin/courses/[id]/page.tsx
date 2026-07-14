@@ -98,6 +98,11 @@ export default function CourseBuilderPage() {
       <AdminPageHeader
         icon={BookOpen}
         title={course?.title ?? t("courses_edit")}
+        description={
+          course
+            ? [course.level, course.subject, course.instructor_name].filter(Boolean).join(" · ")
+            : undefined
+        }
       />
 
       <form onSubmit={handleSaveMetadata} className="md-card-outlined">

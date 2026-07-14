@@ -37,6 +37,7 @@ export default function ExamPackagesPage() {
       <AdminPageHeader
         icon={Package}
         title={t("exam_packages_page_title")}
+        description={t("exam_packages_page_description")}
         actions={
           <Button onClick={() => setShowCreate(true)}>
             {t("exam_packages_create")}
