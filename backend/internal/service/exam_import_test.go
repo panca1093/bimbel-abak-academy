@@ -130,8 +130,11 @@ func TestProcessQuestionImportRows_mixedRowsWithTopicResolution(t *testing.T) {
 		}
 	})
 
-	// Valid rows should have been persisted despite the bad rows.
-	bank, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Limit: 10})
+	// Valid rows should have been persisted despite the bad rows. Scope by this
+	// test's own topic — an unscoped list can push these rows past a fixed
+	// Limit once other tests in the shared DB have inserted enough bank
+	// questions, especially under -shuffle=on.
+	bank, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{TopicID: mathTopic.ID.String(), Limit: 10})
 	require.NoError(t, err)
 	var found int
 	for _, q := range bank {
