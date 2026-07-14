@@ -722,9 +722,11 @@ export const DICT = {
 
     // Admin — exam tests (Slice 1)
     tests_page_title: "Penyusun Tes",
+    tests_page_description: "Buat dan kelola tes untuk bank soal.",
     tests_empty: "Belum ada tes. Buat tes pertama Anda.",
     tests_new: "Tes baru",
     tests_edit: "Sunting tes",
+    tests_detail_section_heading: "Detail tes",
     tests_field_title: "Judul",
     tests_field_subject: "Mata pelajaran",
     tests_field_topic: "Topik",
@@ -1652,9 +1654,11 @@ export const DICT = {
 
     // Admin — exam tests (Slice 1)
     tests_page_title: "Test authoring",
+    tests_page_description: "Create and manage tests for the question bank.",
     tests_empty: "No tests yet. Create your first test.",
     tests_new: "New test",
     tests_edit: "Edit test",
+    tests_detail_section_heading: "Test details",
     tests_field_title: "Title",
     tests_field_subject: "Subject",
     tests_field_topic: "Topic",

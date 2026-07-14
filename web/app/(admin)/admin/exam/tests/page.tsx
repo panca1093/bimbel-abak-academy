@@ -79,6 +79,7 @@ export default function TestsPage() {
       <AdminPageHeader
         icon={ClipboardList}
         title={t("tests_page_title")}
+        description={t("tests_page_description")}
         actions={<Button onClick={openCreate}>{t("tests_new")}</Button>}
       />
 
