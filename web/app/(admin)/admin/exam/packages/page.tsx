@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Package } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
@@ -40,6 +40,7 @@ function formatScheduled(iso?: string | null): string {
 
 export default function ExamPackagesPage() {
   const { t } = useTranslation();
+  const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<ExamListItem | null>(null);
 
@@ -95,17 +96,10 @@ export default function ExamPackagesPage() {
               {items.map((exam) => (
                 <tr
                   key={exam.id}
-                  className="border-t transition-colors hover:bg-muted/40"
+                  className="cursor-pointer border-t transition-colors hover:bg-muted/40"
+                  onClick={() => router.push(`/admin/exam/packages/${exam.id}`)}
                 >
-                  <td className="px-4 py-3 font-medium">
-                    <Link
-                      href={`/admin/exam/packages/${exam.id}`}
-                      className="hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {exam.title}
-                    </Link>
-                  </td>
+                  <td className="px-4 py-3 font-medium">{exam.title}</td>
                   <td className="px-4 py-3">{formatScheduled(exam.scheduled_at)}</td>
                   <td className="px-4 py-3">
                     <Badge className={statusBadgeClass(exam.product_status)}>

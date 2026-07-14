@@ -4,6 +4,12 @@ import { toast } from "sonner";
 import TestsPage from "./page";
 import type { Test } from "@/lib/types";
 
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
+
 const mockMutateAsync = vi.fn();
 
 let testsState = {
@@ -64,6 +70,7 @@ describe("TestsPage", () => {
     mockMutateAsync.mockReset();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
+    push.mockReset();
   });
 
   it("renders the tests table with subject, topic, duration", async () => {
@@ -79,6 +86,29 @@ describe("TestsPage", () => {
     expect(screen.getByText("90")).toBeInTheDocument();
     expect(screen.getByText("Reading")).toBeInTheDocument();
     expect(screen.getByText("60")).toBeInTheDocument();
+  });
+
+  it("navigates to the test detail page when a row is clicked", async () => {
+    render(<TestsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Tryout UTBK Saintek"));
+    expect(push).toHaveBeenCalledWith("/admin/exam/tests/t1");
+  });
+
+  it("does not navigate when clicking the edit or delete action buttons", async () => {
+    render(<TestsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument();
+    });
+
+    const row = screen.getByText("Tryout UTBK Saintek").closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: /^edit$/i }));
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("shows skeleton rows while loading", () => {

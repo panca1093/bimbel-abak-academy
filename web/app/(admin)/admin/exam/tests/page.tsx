@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ClipboardList } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -18,6 +19,7 @@ import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/typ
 
 export default function TestsPage() {
   const { t } = useTranslation();
+  const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTest, setEditingTest] = useState<Test | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -111,14 +113,15 @@ export default function TestsPage() {
               {tests.map((test) => (
                 <tr
                   key={test.id}
-                  className="border-t transition-colors hover:bg-muted/40"
+                  className="cursor-pointer border-t transition-colors hover:bg-muted/40"
+                  onClick={() => router.push(`/admin/exam/tests/${test.id}`)}
                 >
                   <td className="px-4 py-3 font-medium">{test.title}</td>
                   <td className="px-4 py-3">{test.subject}</td>
                   <td className="px-4 py-3">{test.topic}</td>
                   <td className="px-4 py-3">{test.duration_minutes}</td>
                   <td className="px-4 py-3">{test.question_count ?? 0}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       <Button size="sm" variant="outline" onClick={() => openEdit(test)}>
                         {t("action_edit")}
