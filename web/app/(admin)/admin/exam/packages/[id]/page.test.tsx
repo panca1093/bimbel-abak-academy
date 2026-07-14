@@ -381,6 +381,49 @@ describe("ExamPackageDetailPage — grading tab", () => {
     });
     expect(screen.getByText("Siti Aminah")).toBeInTheDocument();
   });
+
+  it("renders essay body as stripped plain text in grading list (Task 8 audit)", async () => {
+    sessionEssaysState = {
+      data: {
+        data: [
+          {
+            question_id: "q-rich-essay",
+            body: "<b>Tanya</b> <i>essay</i> <script>x</script>tentang sejarah",
+            answer: "Jawaban",
+            point_correct: 10,
+            score: null,
+            grader_comment: null,
+            graded_at: null,
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackageDetailPage />);
+    openGradingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    fireEvent.click(
+      within(screen.getByText("Budi Santoso").closest("tr") as HTMLElement).getByRole("button", {
+        name: /lihat detail/i,
+      }),
+    );
+
+    // The essay body now renders as stripped plain text — no <b>/<script> elements
+    // survive in the grading list (list/row context per Task 8 spec).
+    await waitFor(() => {
+      expect(screen.getByText("Tanya essay tentang sejarah")).toBeInTheDocument();
+    });
+    const bodyDiv = screen.getByText("Tanya essay tentang sejarah").closest("li");
+    expect(bodyDiv).not.toBeNull();
+    expect(bodyDiv?.querySelector("b")).toBeNull();
+    expect(bodyDiv?.querySelector("script")).toBeNull();
+  });
 });
 
 describe("ExamPackageDetailPage — leaderboard tab", () => {

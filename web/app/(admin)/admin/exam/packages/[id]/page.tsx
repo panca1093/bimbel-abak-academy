@@ -34,6 +34,7 @@ import {
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
+import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { ExamLeaderboardEntry, GradingEssayItem } from "@/lib/types";
 
 type Tab =
@@ -955,7 +956,9 @@ function GradingEssayCard({
 }) {
   return (
     <li className="space-y-3 rounded-md border p-4">
-      <div className="text-sm font-medium">{essay.body}</div>
+      <div className="text-sm font-medium">
+        {stripHtmlToPlainText(essay.body)}
+      </div>
       <div className="space-y-1">
         <div className="text-label text-muted-foreground">
           {t("grading_essay_answer_label")}
