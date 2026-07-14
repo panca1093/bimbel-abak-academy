@@ -28,6 +28,7 @@ import {
   useAttachQuestions,
 } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
+import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { QuestionWithOptions, QuestionFormat } from "@/lib/types";
 
 const FORMAT_BADGE: Record<
@@ -117,7 +118,7 @@ function QuestionRow({
     <div data-question-row className="flex items-center gap-3 rounded-lg border bg-card p-3">
       <span className="w-6 text-xs text-muted-foreground">#{index + 1}</span>
       <Badge variant="outline">{t(FORMAT_BADGE[question.question.format])}</Badge>
-      <span className="flex-1 truncate text-sm">{question.question.body}</span>
+      <span className="flex-1 truncate text-sm">{stripHtmlToPlainText(question.question.body)}</span>
       <div className="flex items-center gap-1">
         <Button
           type="button"

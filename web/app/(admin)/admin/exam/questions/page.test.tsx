@@ -310,4 +310,44 @@ describe("QuestionBankPage", () => {
     });
   });
 
+  it("strips HTML tags from question body in the bank list row", async () => {
+    bankState = {
+      data: {
+        data: [
+          {
+            question: {
+              id: "q3",
+              format: "mcq",
+              body: "<b>bold</b> text",
+              difficulty: "easy",
+              point_correct: 1,
+              point_wrong: 0,
+              sort_order: 1,
+              topic_id: "topic-1",
+              topic: "Arithmetic",
+            },
+            options: [],
+            attached_count: 0,
+          },
+        ],
+        next_cursor: "",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    };
+
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("bold text")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("<b>bold</b> text")).not.toBeInTheDocument();
+    const bodyCell = screen.getByText("bold text").closest("td");
+    expect(bodyCell?.innerHTML).not.toContain("<b>");
+    expect(bodyCell?.textContent).toBe("bold text");
+  });
+
 });

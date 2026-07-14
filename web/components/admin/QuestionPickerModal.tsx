@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { useBankQuestions } from "@/lib/hooks/admin-bank-questions";
 import { useTopics } from "@/lib/hooks/admin-topics";
 import { useTranslation } from "@/lib/i18n";
+import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { QuestionFormat, QuestionWithOptions } from "@/lib/types";
 
 const FORMAT_LABELS: Record<QuestionFormat, string> = {
@@ -180,7 +181,7 @@ export function QuestionPickerModal({
                       <Badge variant="outline">{t(FORMAT_LABELS[row.question.format] as Parameters<typeof t>[0])}</Badge>
                       <span className="text-muted-foreground">{row.question.topic || "—"}</span>
                     </div>
-                    <p className="mt-1 truncate text-sm">{row.question.body}</p>
+                    <p className="mt-1 truncate text-sm">{stripHtmlToPlainText(row.question.body)}</p>
                   </div>
                   {isAttached && (
                     <Badge variant="secondary">{t("tests_picker_attached_badge")}</Badge>

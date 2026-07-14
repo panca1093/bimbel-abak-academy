@@ -17,6 +17,7 @@ import { useTopics } from "@/lib/hooks/admin-topics";
 import { QuestionImportModal } from "@/components/admin/QuestionImportModal";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
 
 const ALL_FORMATS: Array<QuestionFormat | "all"> = [
@@ -236,7 +237,7 @@ export default function QuestionBankPage() {
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                       {question.id.slice(0, 8)}
                     </td>
-                    <td className="px-4 py-3 max-w-xs truncate">{question.body}</td>
+                    <td className="px-4 py-3 max-w-xs truncate">{stripHtmlToPlainText(question.body)}</td>
                     <td className="px-4 py-3">{item.attached_count}</td>
                     <td className="px-4 py-3">{question.topic || "—"}</td>
                     <td className="px-4 py-3">

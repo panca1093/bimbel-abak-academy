@@ -276,4 +276,45 @@ describe("TestDetailPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({ question_ids: ["bq1"] });
     });
   });
+
+  it("strips HTML tags from question body in the QuestionRow", async () => {
+    const richQuestions: QuestionWithOptions[] = [
+      {
+        question: {
+          id: "qr1",
+          format: "mcq",
+          body: "<b>bold</b> text",
+          sort_order: 1,
+          point_correct: 1,
+          point_wrong: 0,
+        },
+        options: [],
+      },
+    ];
+    testDetailState = {
+      data: {
+        test: sampleTest,
+        questions: richQuestions,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    questionsState = {
+      data: { data: richQuestions },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    renderWithClient(<TestDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("bold text")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("<b>bold</b> text")).not.toBeInTheDocument();
+    const row = screen.getByText("bold text").closest("[data-question-row]") as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(row.innerHTML).not.toContain("<b>");
+  });
 });
