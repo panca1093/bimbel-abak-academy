@@ -176,6 +176,77 @@ func TestAdminResult_Export_MissingExamID_400(t *testing.T) {
 	}
 }
 
+func TestAdminResult_List_AdminSchool_DifferentSchoolID_403(t *testing.T) {
+	env := newAdminSystemEnv(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/results?exam_id="+uuid.NewString()+"&school_id=s2", nil)
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	setAdminSchoolClaims(c, "u1", "s1")
+
+	err := env.h.AdminListResults(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403 for admin_school passing different school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "forbidden" {
+		t.Errorf("code: want forbidden, got %v", resp["code"])
+	}
+	if resp["message"] != "cannot widen school scope" {
+		t.Errorf("message: want 'cannot widen school scope', got %v", resp["message"])
+	}
+}
+
+func TestAdminResult_Detail_AdminSchool_DifferentSchoolID_403(t *testing.T) {
+	env := newAdminSystemEnv(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/results/"+uuid.NewString()+"?school_id=s2", nil)
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	c.SetParamNames("session_id")
+	c.SetParamValues(uuid.NewString())
+	setAdminSchoolClaims(c, "u1", "s1")
+
+	err := env.h.AdminGetResultDetail(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403 for admin_school passing different school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "forbidden" {
+		t.Errorf("code: want forbidden, got %v", resp["code"])
+	}
+}
+
+func TestAdminResult_Export_AdminSchool_DifferentSchoolID_403(t *testing.T) {
+	env := newAdminSystemEnv(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/results/export?exam_id="+uuid.NewString()+"&school_id=s2", nil)
+	rec := httptest.NewRecorder()
+	c := env.e.NewContext(req, rec)
+	setAdminSchoolClaims(c, "u1", "s1")
+
+	err := env.h.AdminExportResults(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403 for admin_school passing different school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "forbidden" {
+		t.Errorf("code: want forbidden, got %v", resp["code"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Route-level test (no DB, exercises middleware)
 // ---------------------------------------------------------------------------
@@ -237,11 +308,13 @@ var (
 )
 
 type adminResultsDBTestEnv struct {
-	pool   *pgxpool.Pool
-	e      *echo.Echo
-	svc    *service.Service
-	signer *infra.JWTSigner
-	mr     *miniredis.Miniredis
+	pool        *pgxpool.Pool
+	pgContainer *tcpostgres.PostgresContainer
+	rdb         *redis.Client
+	e           *echo.Echo
+	svc         *service.Service
+	signer      *infra.JWTSigner
+	mr          *miniredis.Miniredis
 }
 
 func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
@@ -306,11 +379,13 @@ func newAdminResultsDBEnv(t *testing.T) *adminResultsDBTestEnv {
 		adminResults.GET("/:session_id", h.AdminGetResultDetail)
 
 		adminResultsDBEnv = &adminResultsDBTestEnv{
-			pool:   pool,
-			e:      e,
-			svc:    svc,
-			signer: signer,
-			mr:     mr,
+			pool:        pool,
+			pgContainer: pgContainer,
+			rdb:         rdb,
+			e:           e,
+			svc:         svc,
+			signer:      signer,
+			mr:          mr,
 		}
 	})
 	if adminResultsDBEnv == nil {
@@ -481,6 +556,20 @@ func mintAdminToken(t *testing.T, env *adminResultsDBTestEnv, userID, schoolID s
 	return tokenString
 }
 
+func mintSuperAdminToken(t *testing.T, env *adminResultsDBTestEnv, userID string) string {
+	t.Helper()
+	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
+	t.Cleanup(func() { rdb.Close() })
+	tokenString, jti, err := env.signer.SignAccess(userID, "super_admin", nil, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := rdb.Set(context.Background(), "session:access:"+jti, userID, 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
+	return tokenString
+}
+
 // ---------------------------------------------------------------------------
 // Integration tests
 // ---------------------------------------------------------------------------
@@ -564,6 +653,58 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 		if !found {
 			t.Errorf("CSV missing student: %s", name)
 		}
+	}
+}
+
+func TestAdminResult_List_SuperAdmin_NonexistentSchool_404(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	superToken := mintSuperAdminToken(t, env, "super1")
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String()+"&school_id="+uuid.NewString(), superToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for nonexistent school, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "not_found" {
+		t.Errorf("code: want not_found, got %v", resp["code"])
+	}
+}
+
+func TestAdminResult_List_SuperAdmin_ValidSchool_200(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	schoolID := seedSchool(t, env.pool)
+	examID := seedExamWithMCQ(t, env.pool)
+	superToken := mintSuperAdminToken(t, env, "super2")
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String()+"&school_id="+schoolID, superToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["data"] == nil {
+		t.Error("want non-nil data array")
+	}
+}
+
+func TestAdminResult_List_SuperAdmin_NoSchoolID_400(t *testing.T) {
+	env := newAdminResultsDBEnv(t)
+
+	examID := seedExamWithMCQ(t, env.pool)
+	superToken := mintSuperAdminToken(t, env, "super3")
+
+	rec := getRequest(t, env.e, "/api/v1/admin/results?exam_id="+examID.String(), superToken)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for super_admin without school_id, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "invalid_request" {
+		t.Errorf("code: want invalid_request, got %v", resp["code"])
 	}
 }
 

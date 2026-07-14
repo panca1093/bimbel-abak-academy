@@ -47,7 +47,7 @@ func (r *Repository) ListSchoolsAdmin(ctx context.Context, limit int, cursor str
 	}
 	defer rows.Close()
 
-	var schools []SchoolAdminRow
+	schools := []SchoolAdminRow{}
 	nextCursor := ""
 
 	for rows.Next() {

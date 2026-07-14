@@ -214,7 +214,7 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	}
 	defer rows.Close()
 
-	var tests []model.Test
+	tests := []model.Test{}
 	for rows.Next() {
 		t := model.Test{}
 		if err := scanTestWithCount(rows, &t); err != nil {
@@ -849,7 +849,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	}
 	defer rows.Close()
 
-	var items []model.ExamListItem
+	items := []model.ExamListItem{}
 	for rows.Next() {
 		var item model.ExamListItem
 		if err := scanExamListItem(rows, &item); err != nil {
@@ -1692,7 +1692,7 @@ func (r *Repository) ListExamLeaderboard(ctx context.Context, examID uuid.UUID, 
 	}
 	defer rows.Close()
 
-	var entries []model.ExamLeaderboardEntry
+	entries := []model.ExamLeaderboardEntry{}
 	for rows.Next() {
 		var e model.ExamLeaderboardEntry
 		if err := rows.Scan(&e.SessionID, &e.StudentID, &e.StudentName, &e.Score, &e.Rank); err != nil {

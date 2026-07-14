@@ -66,7 +66,7 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 	}
 	defer rows.Close()
 
-	var results []model.AdminResultRow
+	results := []model.AdminResultRow{}
 	for rows.Next() {
 		var row model.AdminResultRow
 		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.NIS, &row.Score, &row.SubmittedAt); err != nil {

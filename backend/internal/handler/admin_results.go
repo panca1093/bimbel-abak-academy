@@ -11,9 +11,12 @@ import (
 // AdminListResults returns cursor-paginated school-scoped exam results.
 func (h *Handler) AdminListResults(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	examIDStr := c.QueryParam("exam_id")
@@ -38,7 +41,7 @@ func (h *Handler) AdminListResults(c echo.Context) error {
 		}
 	}
 
-	results, nextCursor, err := h.svc.ListSchoolResults(c.Request().Context(), examID, *schoolID, q, cursor, limit)
+	results, nextCursor, err := h.svc.ListSchoolResults(c.Request().Context(), examID, schoolID, q, cursor, limit)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -52,9 +55,12 @@ func (h *Handler) AdminListResults(c echo.Context) error {
 // AdminGetResultDetail returns the full detail of a single school-scoped session result.
 func (h *Handler) AdminGetResultDetail(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	sessionID, err := uuid.Parse(c.Param("session_id"))
@@ -62,7 +68,7 @@ func (h *Handler) AdminGetResultDetail(c echo.Context) error {
 		return badRequest(c, "invalid session_id")
 	}
 
-	detail, err := h.svc.GetSchoolResultDetail(c.Request().Context(), sessionID, *schoolID)
+	detail, err := h.svc.GetSchoolResultDetail(c.Request().Context(), sessionID, schoolID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -73,9 +79,12 @@ func (h *Handler) AdminGetResultDetail(c echo.Context) error {
 // AdminExportResults returns a CSV file of school-scoped exam results.
 func (h *Handler) AdminExportResults(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID := claims.SchoolID
-	if schoolID == nil {
-		return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+	schoolID, err := h.resolveSchoolScope(c, claims)
+	if scopeHandled(err) {
+		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	examIDStr := c.QueryParam("exam_id")
@@ -87,7 +96,7 @@ func (h *Handler) AdminExportResults(c echo.Context) error {
 		return badRequest(c, "invalid exam_id")
 	}
 
-	csvBytes, err := h.svc.ExportSchoolResultsCSV(c.Request().Context(), examID, *schoolID)
+	csvBytes, err := h.svc.ExportSchoolResultsCSV(c.Request().Context(), examID, schoolID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

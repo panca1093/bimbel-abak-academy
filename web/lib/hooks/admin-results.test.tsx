@@ -98,6 +98,42 @@ describe("admin-results hooks", () => {
     );
   });
 
+  it("useAdminResults passes school_id when schoolId is provided", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(
+      () =>
+        useAdminResults({
+          examId: "exam-1",
+          schoolId: "school-1",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        "/admin/results?exam_id=exam-1&school_id=school-1",
+      ),
+    );
+  });
+
+  it("useAdminResults omits school_id when not provided", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], next_cursor: undefined });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(
+      () => useAdminResults({ examId: "exam-1" }),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        "/admin/results?exam_id=exam-1",
+      ),
+    );
+  });
+
   it("useAdminResultDetail fetches GET /admin/results/:session_id", async () => {
     const detail: AdminResultDetail = {
       session_id: "s1",
@@ -127,6 +163,22 @@ describe("admin-results hooks", () => {
 
     expect(result.current.isFetching).toBe(false);
     expect(mockAuthFetch).not.toHaveBeenCalled();
+  });
+
+  it("useAdminResultDetail threads school_id when schoolId is provided", async () => {
+    mockAuthFetch.mockResolvedValueOnce({} as AdminResultDetail);
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(
+      () => useAdminResultDetail("s1", "school-1"),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      "/admin/results/s1?school_id=school-1",
+    );
   });
 });
 
@@ -170,6 +222,36 @@ describe("exportAdminResults", () => {
     });
 
     await expect(exportAdminResults("exam-1")).resolves.toBeUndefined();
+  });
+
+  it("exportAdminResults passes school_id param when provided", async () => {
+    const mockBlob = new Blob(["name,score\n"], { type: "text/csv" });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      blob: () => Promise.resolve(mockBlob),
+    });
+
+    await exportAdminResults("exam-1", "school-1");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/admin/results/export?exam_id=exam-1&school_id=school-1",
+      expect.anything(),
+    );
+  });
+
+  it("exportAdminResults omits school_id when not provided", async () => {
+    const mockBlob = new Blob(["name,score\n"], { type: "text/csv" });
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      blob: () => Promise.resolve(mockBlob),
+    });
+
+    await exportAdminResults("exam-1");
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://localhost:8080/api/v1/admin/results/export?exam_id=exam-1",
+      expect.anything(),
+    );
   });
 });
 

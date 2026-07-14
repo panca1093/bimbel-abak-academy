@@ -262,9 +262,9 @@ export default function ExamPackageDetailPage() {
   useEffect(() => {
     if (!lb.data) return;
     if (!lbCursor) {
-      setLbEntries(lb.data.data);
+      setLbEntries(lb.data.data ?? []);
     } else {
-      setLbEntries((prev) => [...prev, ...lb.data.data]);
+      setLbEntries((prev) => [...prev, ...(lb.data.data ?? [])]);
     }
   }, [lb.data]);
 

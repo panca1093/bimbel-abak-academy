@@ -67,7 +67,7 @@ func (r *Repository) ListPromoCodes(ctx context.Context) ([]model.PromoCode, err
 	}
 	defer rows.Close()
 
-	var promos []model.PromoCode
+	promos := []model.PromoCode{}
 	for rows.Next() {
 		p := model.PromoCode{}
 		err := rows.Scan(

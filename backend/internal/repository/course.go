@@ -49,7 +49,7 @@ func (r *Repository) ListCourses(ctx context.Context, limit int, cursor string) 
 	}
 	defer rows.Close()
 
-	var courses []model.Course
+	courses := []model.Course{}
 	for rows.Next() {
 		var c model.Course
 		err := rows.Scan(&c.ID, &c.Title, &c.Level, &c.Subject, &c.InstructorName, &c.CreatedAt, &c.UpdatedAt)
@@ -119,7 +119,7 @@ func (r *Repository) GetCoursesByProductID(ctx context.Context, productID uuid.U
 	}
 	defer rows.Close()
 
-	var courses []model.Course
+	courses := []model.Course{}
 	for rows.Next() {
 		var c model.Course
 		err := rows.Scan(&c.ID, &c.Title, &c.Level, &c.Subject, &c.InstructorName, &c.CreatedAt, &c.UpdatedAt)
@@ -190,7 +190,7 @@ func (r *Repository) ListSections(ctx context.Context, courseID uuid.UUID) ([]mo
 	}
 	defer rows.Close()
 
-	var sections []model.Section
+	sections := []model.Section{}
 	for rows.Next() {
 		s := model.Section{}
 		var lessonBytes []byte
@@ -267,9 +267,9 @@ func (r *Repository) CreateLesson(ctx context.Context, l model.Lesson) (model.Le
 func (r *Repository) UpdateLesson(ctx context.Context, id uuid.UUID, l model.Lesson) (model.Lesson, error) {
 	result := model.Lesson{}
 	err := r.pool.QueryRow(ctx,
-		`UPDATE lesson SET title = $1, video_url = $2, duration_seconds = $3, position = $4 WHERE id = $5
+		`UPDATE lesson SET title = $1, video_url = $2, duration_seconds = $3 WHERE id = $4
 		RETURNING id, section_id, title, video_url, duration_seconds, position, created_at`,
-		l.Title, l.VideoURL, l.DurationSeconds, l.Position, id,
+		l.Title, l.VideoURL, l.DurationSeconds, id,
 	).Scan(&result.ID, &result.SectionID, &result.Title, &result.VideoURL, &result.DurationSeconds, &result.Position, &result.CreatedAt)
 	return result, err
 }
@@ -388,7 +388,7 @@ func (r *Repository) ListActiveSessionsByStudent(ctx context.Context, studentID 
 	}
 	defer rows.Close()
 
-	var sessions []model.CourseSession
+	sessions := []model.CourseSession{}
 	for rows.Next() {
 		var s model.CourseSession
 		var lessonBytes []byte

@@ -83,12 +83,35 @@ func (s *Service) UpdateCourse(ctx context.Context, id, title, level, subject, i
 		return model.Course{}, err
 	}
 
+	// Fetch existing to preserve fields not sent by partial PATCH.
+	existing, err := s.storeRepo.GetCourseByID(ctx, courseID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Course{}, ErrCourseNotFound
+		}
+		return model.Course{}, err
+	}
+
 	c := model.Course{
 		Title:          title,
 		Level:          level,
 		Subject:        subject,
 		InstructorName: instructorName,
 	}
+	// Preserve existing values for any field not supplied (zero-value).
+	if c.Title == "" {
+		c.Title = existing.Title
+	}
+	if c.Level == "" {
+		c.Level = existing.Level
+	}
+	if c.Subject == "" {
+		c.Subject = existing.Subject
+	}
+	if c.InstructorName == "" {
+		c.InstructorName = existing.InstructorName
+	}
+
 	return s.storeRepo.UpdateCourse(ctx, courseID, c)
 }
 

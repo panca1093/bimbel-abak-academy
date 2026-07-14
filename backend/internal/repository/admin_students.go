@@ -70,7 +70,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 	}
 	defer rows.Close()
 
-	var students []StudentRow
+	students := []StudentRow{}
 	nextCursor := ""
 
 	for rows.Next() {

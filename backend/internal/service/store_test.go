@@ -335,6 +335,28 @@ func (s *shimService) ValidatePromo(ctx context.Context, code string, subtotal f
 	return PromoValidation{Code: code, Discount: discount, Total: subtotal - discount}, nil
 }
 
+func (s *shimService) UpdateProduct(ctx context.Context, id string, p model.Product, role string) (model.Product, error) {
+	existing, err := s.fake.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+	// Preserve non-editable fields from existing record (Bug C fix)
+	p.Type = existing.Type
+	p.WeightGrams = existing.WeightGrams
+	p.ImageURL = existing.ImageURL
+	if err := s.fake.UpdateProduct(ctx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	p.ID = id
+	return p, nil
+}
+
 func (s *shimService) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
 	return s.logistics.GetRates(ctx, req)
 }
@@ -1165,6 +1187,10 @@ func (s *shimUpdateProductWithCourses) UpdateProductWithCourses(ctx context.Cont
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
+	// Preserve non-editable fields from existing record (Bug C fix)
+	p.Type = existing.Type
+	p.WeightGrams = existing.WeightGrams
+	p.ImageURL = existing.ImageURL
 
 	var ids []uuid.UUID
 	for _, cid := range courseIDs {
@@ -1235,6 +1261,10 @@ func (s *shimUpdateProductWithCoursesAtomic) UpdateProductWithCourses(ctx contex
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
+	// Preserve non-editable fields from existing record (Bug C fix)
+	p.Type = existing.Type
+	p.WeightGrams = existing.WeightGrams
+	p.ImageURL = existing.ImageURL
 
 	var ids []uuid.UUID
 	for _, cid := range courseIDs {
@@ -1377,3 +1407,6 @@ func TestPurchaseNotifyEnabled_EnabledByMissingKey(t *testing.T) {
 		t.Error("want true for missing key")
 	}
 }
+
+// Bug C regression: see integration/TestUpdateProduct_PreservesTypeWeightImage_RealService
+// (real service + real Postgres; the shim-based test here was tautological).

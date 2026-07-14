@@ -11,22 +11,24 @@ import type {
 
 export const adminStudentsKeys = {
   all: ["admin", "students"] as const,
-  list: (status?: string, q?: string, cursor?: string, limit?: number) =>
-    [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20] as const,
+  list: (status?: string, q?: string, cursor?: string, limit?: number, schoolId?: string) =>
+    [...adminStudentsKeys.all, "list", status ?? "all", q ?? "", cursor ?? "initial", limit ?? 20, schoolId ?? ""] as const,
 };
 
 export function useAdminStudents(
-  opts?: { status?: string; q?: string; cursor?: string; limit?: number }
+  opts?: { status?: string; q?: string; cursor?: string; limit?: number; schoolId?: string; enabled?: boolean }
 ) {
-  const { status, q, cursor, limit } = opts ?? {};
+  const { status, q, cursor, limit, schoolId, enabled } = opts ?? {};
   return useQuery({
-    queryKey: adminStudentsKeys.list(status, q, cursor, limit),
+    queryKey: adminStudentsKeys.list(status, q, cursor, limit, schoolId),
+    enabled: enabled ?? true,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (status) params.set("status", status);
       if (q) params.set("q", q);
       if (cursor) params.set("cursor", cursor);
       if (limit) params.set("limit", String(limit));
+      if (schoolId) params.set("school_id", schoolId);
       const query = params.toString();
       const path = query ? `/admin/students?${query}` : "/admin/students";
       return authFetch<{ data: AdminStudent[]; next_cursor?: string }>(path);
@@ -34,11 +36,18 @@ export function useAdminStudents(
   });
 }
 
+// scopeQuery returns the ?school_id= suffix for super_admin acting on a chosen
+// school, or "" for admin_school (whose scope rides on the JWT).
+function scopeQuery(schoolId?: string): string {
+  if (!schoolId) return "";
+  return `?school_id=${encodeURIComponent(schoolId)}`;
+}
+
 export function useRegisterStudent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: StudentRegistrationInput) =>
-      authFetch<StudentRegistrationResult>("/admin/students", {
+    mutationFn: ({ input, schoolId }: { input: StudentRegistrationInput; schoolId?: string }) =>
+      authFetch<StudentRegistrationResult>(`/admin/students${scopeQuery(schoolId)}`, {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -51,11 +60,14 @@ export function useRegisterStudent() {
 export function useChangeStudentStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      authFetch<{ message: string }>(`/admin/students/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      }),
+    mutationFn: ({ id, status, schoolId }: { id: string; status: string; schoolId?: string }) =>
+      authFetch<{ message: string }>(
+        `/admin/students/${encodeURIComponent(id)}${scopeQuery(schoolId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status }),
+        }
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminStudentsKeys.all });
     },
@@ -65,8 +77,10 @@ export function useChangeStudentStatus() {
 export function useReissueStudentCredentials() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      authFetch<StudentCredentials>(`/admin/students/${encodeURIComponent(id)}/credentials`),
+    mutationFn: ({ id, schoolId }: { id: string; schoolId?: string }) =>
+      authFetch<StudentCredentials>(
+        `/admin/students/${encodeURIComponent(id)}/credentials${scopeQuery(schoolId)}`
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminStudentsKeys.all });
     },

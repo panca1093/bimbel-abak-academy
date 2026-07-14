@@ -77,7 +77,7 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 		filter.Limit = 20
 	}
 
-	var products []model.Product
+	products := []model.Product{}
 	query := `SELECT id, type, name, description, price, stock, status, weight_grams, image_url, created_at, updated_at
 	FROM product WHERE 1=1`
 	args := []interface{}{}
