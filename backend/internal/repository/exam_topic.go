@@ -97,6 +97,23 @@ func (r *Repository) DeleteTopic(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+// GetTopicByNameAndSubject returns a topic by its unique (subject, name) pair.
+// Used by CSV import to resolve free-text subject/topic columns to exam_topic IDs.
+func (r *Repository) GetTopicByNameAndSubject(ctx context.Context, name, subject string) (*model.ExamTopic, error) {
+	var t model.ExamTopic
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, subject, created_at FROM exam_topic WHERE name = $1 AND subject = $2`,
+		name, subject,
+	).Scan(&t.ID, &t.Name, &t.Subject, &t.CreatedAt)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
 // CountQuestionsByTopic returns the number of questions referencing a topic.
 func (r *Repository) CountQuestionsByTopic(ctx context.Context, topicID uuid.UUID) (int, error) {
 	var count int

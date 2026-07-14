@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -393,6 +394,36 @@ func (h *Handler) AdminListBankQuestions(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"data":        items,
 		"next_cursor": nextCursor,
+	})
+}
+
+// AdminImportQuestions imports questions from a multipart CSV (FR-45/46).
+// Expected form field: "file". Returns a per-row report with inserted count.
+func (h *Handler) AdminImportQuestions(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return badRequest(c, "file required")
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, APIError{Code: "internal", Message: "cannot open uploaded file"})
+	}
+	defer src.Close()
+
+	data, err := io.ReadAll(src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, APIError{Code: "internal", Message: "cannot read uploaded file"})
+	}
+
+	result, err := h.svc.ImportQuestionsFromCSV(c.Request().Context(), data)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"inserted": result.Inserted,
+		"rows":     result.Rows,
 	})
 }
 
