@@ -1202,18 +1202,18 @@ func TestCreateQuestionForTest_creates_bank_question_and_join(t *testing.T) {
 // suppress unused: uuid is imported to avoid unused-import lint if tests get trimmed later
 var _ = uuid.Nil
 
-// --- FR-18/19: CreateExam default mode + PublishExam gate (integration) ---
+// --- FR-18/19: CreateExam default mode + PublishProduct's sectioned gate (integration) ---
 // These exercise the service against the real Postgres fixture (testcontainers),
 // matching the existing school_test.go pattern. They verify the CreateExam
-// defaulting and the PublishExam wiring (that it actually loads attached Tests
-// and delegates to validatePublishSections).
+// defaulting and that PublishProduct, for an exam-type product, loads every
+// attached exam's Tests and delegates to validatePublishSections.
 
 func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
 	title := "Default Mode Exam " + uniqueSuffix()
-	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: title, Mode: ""})
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: title, Mode: ""})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
@@ -1222,7 +1222,7 @@ func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
 	}
 
 	// explicit mode must round-trip unchanged.
-	exam2, _, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK Exam " + uniqueSuffix(), Mode: "utbk"})
+	exam2, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK Exam " + uniqueSuffix(), Mode: "utbk"})
 	if err != nil {
 		t.Fatalf("CreateExam utbk: %v", err)
 	}
@@ -1231,33 +1231,41 @@ func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
 	}
 }
 
-func TestPublishExam_Integration_RejectsSectionedExamWithNoTests(t *testing.T) {
+func TestPublishProduct_Integration_RejectsSectionedExamWithNoTests(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
-	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK No-Tests " + uniqueSuffix(), Mode: "utbk"})
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK No-Tests " + uniqueSuffix(), Mode: "utbk"})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
-	err = svc.PublishExam(ctx, exam.ID)
+	product, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: exam.Title, Price: 0, Status: "draft"}, []string{exam.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams: %v", err)
+	}
+	err = svc.PublishProduct(ctx, product.ID, RoleAdminStore)
 	if !errors.Is(err, ErrValidation) {
-		t.Errorf("PublishExam on utbk exam with 0 tests should return ErrValidation, got %v", err)
+		t.Errorf("PublishProduct on a product attaching a utbk exam with 0 tests should return ErrValidation, got %v", err)
 	}
 }
 
-func TestPublishExam_Integration_StandardSkipsGate(t *testing.T) {
+func TestPublishProduct_Integration_StandardExamSkipsSectionGate(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
 	// Standard exam with no tests must NOT be rejected by the section gate — it
-	// proceeds to PublishProduct (which may then fail for other product reasons,
-	// but not with the sectioned-mode ErrValidation). We assert only that the
-	// error is not the sectioned-zero-tests validation.
-	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: "Standard No-Tests " + uniqueSuffix(), Mode: "standard"})
+	// proceeds to the underlying product publish (which may then fail for other
+	// product reasons, but not with the sectioned-mode ErrValidation). We assert
+	// only that the error is not the sectioned-zero-tests validation.
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Standard No-Tests " + uniqueSuffix(), Mode: "standard"})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
-	err = svc.PublishExam(ctx, exam.ID)
+	product, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: exam.Title, Price: 0, Status: "draft"}, []string{exam.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams: %v", err)
+	}
+	err = svc.PublishProduct(ctx, product.ID, RoleAdminStore)
 	if err != nil && strings.Contains(err.Error(), "sectioned exam") {
 		t.Errorf("standard exam must not hit the sectioned gate, got %v", err)
 	}

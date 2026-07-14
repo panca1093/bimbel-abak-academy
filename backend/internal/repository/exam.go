@@ -750,7 +750,7 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.BundleURL, &e.BundleGeneratedAt,
 		&e.CheckInWindowMinutes, &e.GraceWindowMinutes, &e.MaxAttempts,
 		&e.TimerMode, &e.DurationMinutes, &e.Randomize,
-		&e.ResultConfig, &e.ResultReleaseAt, &e.Status, &e.ProductID, &e.CreatedAt,
+		&e.ResultConfig, &e.ResultReleaseAt, &e.Status, &e.CreatedAt,
 		&e.CertificateTemplate, &e.Mode,
 	)
 	if err != nil {
@@ -759,96 +759,41 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 	return nil
 }
 
-func scanExamListItem(row interface{ Scan(dest ...any) error }, out *model.ExamListItem) error {
-	var productPrice *int64
-	var productStatus *string
-	err := row.Scan(
-		&out.ID, &out.Title, &out.IsFree, &out.ScheduledAt,
-		&out.RequiresCheckin, &out.AllowLeaderboard, &out.CDNBundle,
-		&out.BundleURL, &out.BundleGeneratedAt,
-		&out.CheckInWindowMinutes, &out.GraceWindowMinutes, &out.MaxAttempts,
-		&out.TimerMode, &out.DurationMinutes, &out.Randomize,
-		&out.ResultConfig, &out.ResultReleaseAt, &out.Status, &out.ProductID, &out.CreatedAt,
-		&out.CertificateTemplate, &out.Mode,
-		&productPrice, &productStatus,
+// scanExamListItem scans an Exam plus the trailing has_published_product column
+// added by ListExams's query.
+func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.ExamListItem) error {
+	return row.Scan(
+		&item.ID, &item.Title, &item.IsFree, &item.ScheduledAt,
+		&item.RequiresCheckin, &item.AllowLeaderboard, &item.CDNBundle,
+		&item.BundleURL, &item.BundleGeneratedAt,
+		&item.CheckInWindowMinutes, &item.GraceWindowMinutes, &item.MaxAttempts,
+		&item.TimerMode, &item.DurationMinutes, &item.Randomize,
+		&item.ResultConfig, &item.ResultReleaseAt, &item.Status, &item.CreatedAt,
+		&item.CertificateTemplate, &item.Mode,
+		&item.HasPublishedProduct,
 	)
-	if err != nil {
-		return err
-	}
-	if productPrice != nil {
-		out.ProductPrice = *productPrice
-	}
-	if productStatus != nil {
-		out.ProductStatus = *productStatus
-	}
-	return nil
 }
 
-// CreateProductAndExamTx opens a transaction, inserts the linked product (type=exam,
-// status=draft, price=0), inserts the exam, and commits. Both rows are returned.
-func (r *Repository) CreateProductAndExamTx(ctx context.Context, e *model.Exam) (model.Exam, model.Product, error) {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return model.Exam{}, model.Product{}, err
-	}
-	defer tx.Rollback(ctx)
-
-	p := model.Product{
-		Type:   "exam",
-		Name:   e.Title,
-		Status: "draft",
-		Price:  0,
-	}
-	err = tx.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL,
-	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
-	if err != nil {
-		return model.Exam{}, model.Product{}, err
-	}
-
-	productID, err := uuid.Parse(p.ID)
-	if err != nil {
-		return model.Exam{}, model.Product{}, err
-	}
-	if err := createExam(ctx, tx, e, &productID); err != nil {
-		return model.Exam{}, model.Product{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return model.Exam{}, model.Product{}, err
-	}
-	return *e, p, nil
-}
-
-// CreateExamTx inserts an exam row inside an existing transaction; caller supplies
-// productID and is responsible for committing/rolling back.
-func (r *Repository) CreateExamTx(ctx context.Context, tx pgx.Tx, e *model.Exam) error {
-	productID := e.ProductID
-	if productID == nil {
-		return errors.New("CreateExamTx requires exam.ProductID to be set")
-	}
-	return createExam(ctx, tx, e, productID)
-}
-
-func createExam(ctx context.Context, tx pgx.Tx, e *model.Exam, productID *uuid.UUID) error {
+// CreateExam inserts a standalone exam row — no product is created or linked here.
+// Selling an exam is a separate step: attach it to a Product via product_exam (see
+// CreateProductWithExams/ReplaceProductExams), mirroring how course-type products attach
+// existing Courses.
+func (r *Repository) CreateExam(ctx context.Context, e *model.Exam) error {
 	// mode is NOT NULL DEFAULT 'standard'; COALESCE empty caller value to the default
 	// so existing callers that don't set Mode keep working. RETURNING mode stamps the
 	// resolved value back into the struct.
-	return tx.QueryRow(ctx,
+	return r.pool.QueryRow(ctx,
 		`INSERT INTO exam (title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id, certificate_template, mode)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-			COALESCE(NULLIF($20, ''), 'standard'))
+			status, certificate_template, mode)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+			COALESCE(NULLIF($19, ''), 'standard'))
 		RETURNING id, created_at, mode`,
 		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt, e.CheckInWindowMinutes, e.GraceWindowMinutes,
 		e.MaxAttempts, e.TimerMode, e.DurationMinutes, e.Randomize, e.ResultConfig, e.ResultReleaseAt,
-		e.Status, productID, e.CertificateTemplate, e.Mode,
+		e.Status, e.CertificateTemplate, e.Mode,
 	).Scan(&e.ID, &e.CreatedAt, &e.Mode)
 }
 
@@ -858,7 +803,7 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id, created_at, certificate_template, mode
+			status, created_at, certificate_template, mode
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -872,6 +817,39 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 	return out, nil
 }
 
+// GetExamsByProductID returns all exams linked to a product via product_exam,
+// mirroring GetCoursesByProductID.
+func (r *Repository) GetExamsByProductID(ctx context.Context, productID uuid.UUID) ([]model.Exam, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
+			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
+			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
+			e.status, e.created_at, e.certificate_template, e.mode
+		FROM exam e
+		JOIN product_exam pe ON pe.exam_id = e.id
+		WHERE pe.product_id = $1
+		ORDER BY e.title`,
+		productID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	exams := []model.Exam{}
+	for rows.Next() {
+		var e model.Exam
+		if err := scanExam(rows, &e); err != nil {
+			return nil, err
+		}
+		exams = append(exams, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return exams, nil
+}
+
 func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.ExamListItem, string, error) {
 	if filter.Limit == 0 {
 		filter.Limit = 20
@@ -880,9 +858,13 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	query := `SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-		e.status, e.product_id, e.created_at, e.certificate_template, e.mode, p.price, p.status
+		e.status, e.created_at, e.certificate_template, e.mode,
+		EXISTS (
+			SELECT 1 FROM product_exam pe
+			JOIN product p ON p.id = pe.product_id
+			WHERE pe.exam_id = e.id AND p.status = 'published'
+		) AS has_published_product
 	FROM exam e
-	LEFT JOIN product p ON p.id = e.product_id
 	WHERE 1=1`
 	args := []interface{}{}
 	argIdx := 1
@@ -929,7 +911,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-			e.status, e.product_id, e.created_at, e.certificate_template, e.mode
+			e.status, e.created_at, e.certificate_template, e.mode
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -939,22 +921,6 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 			return nil, ErrNotFound
 		}
 		return nil, err
-	}
-
-	var productPrice *int64
-	var productStatus *string
-	err = r.pool.QueryRow(ctx,
-		`SELECT p.price, p.status FROM product p WHERE p.id = $1`,
-		detail.ProductID,
-	).Scan(&productPrice, &productStatus)
-	if err != nil && !isNotFound(err) {
-		return nil, err
-	}
-	if productPrice != nil {
-		detail.ProductPrice = *productPrice
-	}
-	if productStatus != nil {
-		detail.ProductStatus = *productStatus
 	}
 
 	rows, err := r.pool.Query(ctx,
@@ -1044,34 +1010,6 @@ func (r *Repository) ReplaceExamTestsTx(ctx context.Context, tx pgx.Tx, examID u
 		}
 	}
 	return nil
-}
-
-func (r *Repository) UpdateProductPriceTx(ctx context.Context, tx pgx.Tx, productID uuid.UUID, price int64) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE product SET price = $1, updated_at = now() WHERE id = $2`,
-		price, productID,
-	)
-	return err
-}
-
-func (r *Repository) GetExamByProductID(ctx context.Context, productID uuid.UUID) (*model.Exam, error) {
-	out := &model.Exam{}
-	err := scanExam(r.pool.QueryRow(ctx,
-		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
-			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
-			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, product_id, created_at, certificate_template, mode
-		FROM exam
-		WHERE product_id = $1`,
-		productID,
-	), out)
-	if err != nil {
-		if isNotFound(err) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	return out, nil
 }
 
 // CreateExamRegistration inserts a row using ON CONFLICT DO NOTHING — outbox

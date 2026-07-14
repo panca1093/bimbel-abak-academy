@@ -205,7 +205,6 @@ func TestExamStruct(t *testing.T) {
 	jsonTag(t, v, "ResultConfig", "result_config")
 	jsonTag(t, v, "ResultReleaseAt", "result_release_at")
 	jsonTag(t, v, "Status", "status")
-	jsonTag(t, v, "ProductID", "product_id")
 	jsonTag(t, v, "CreatedAt", "created_at")
 	jsonTag(t, v, "CertificateTemplate", "certificate_template")
 
@@ -234,11 +233,6 @@ func TestExamStruct(t *testing.T) {
 	fieldKind(t, v, "BundleURL", reflect.Ptr)
 	if mustField(t, v, "BundleURL").Type.Elem().Kind() != reflect.String {
 		t.Errorf("Exam.BundleURL pointer base type should be string")
-	}
-
-	fieldKind(t, v, "ProductID", reflect.Ptr)
-	if mustField(t, v, "ProductID").Type != reflect.TypeOf((*uuid.UUID)(nil)) {
-		t.Errorf("Exam.ProductID should be *uuid.UUID, got %s", mustField(t, v, "ProductID").Type)
 	}
 
 	fieldType(t, v, "CreatedAt", reflect.TypeOf(time.Time{}))

@@ -243,7 +243,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminTopics.PATCH("/:id", h.AdminUpdateTopic)
 	adminTopics.DELETE("/:id", h.AdminDeleteTopic)
 
-	// Admin exam package routes (Exam + linked Product)
+	// Admin exam package routes. Selling an exam (price/status/publish) goes through
+	// the generic /admin/products flow (exam_ids attach), not a route here — mirrors
+	// how course-type products work.
 	adminExams := admin.Group("/exams")
 	adminExams.Use(handler.RBACMiddleware("products(exam):write"))
 	adminExams.GET("", h.AdminListExams)
@@ -251,8 +253,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExams.GET("/:id", h.AdminGetExam)
 	adminExams.PATCH("/:id", h.AdminUpdateExam)
 	adminExams.PUT("/:id/tests", h.AdminReplaceExamTests)
-	adminExams.PATCH("/:id/price", h.AdminUpdateExamPrice)
-	adminExams.POST("/:id/publish", h.AdminPublishExam)
 	adminExams.GET("/:id/grading", h.AdminListGradingSessions)
 	adminExams.GET("/:id/leaderboard", h.AdminGetExamLeaderboard)
 	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)

@@ -35,20 +35,18 @@ var _ interface {
 // Compile-time check: *Repository must implement all exam repository methods added
 // by Task 2 of Slice 2.
 var _ interface {
-	CreateProductAndExamTx(context.Context, *model.Exam) (model.Exam, model.Product, error)
-	CreateExamTx(context.Context, pgx.Tx, *model.Exam) error
+	CreateExam(context.Context, *model.Exam) error
 	GetExamByID(context.Context, uuid.UUID) (*model.Exam, error)
 	ListExams(context.Context, ExamFilter) ([]model.ExamListItem, string, error)
 	GetExamDetail(context.Context, uuid.UUID) (*model.ExamDetail, error)
 	UpdateExam(context.Context, uuid.UUID, *model.Exam) error
 	ReplaceExamTestsTx(context.Context, pgx.Tx, uuid.UUID, []model.ExamTest) error
-	UpdateProductPriceTx(context.Context, pgx.Tx, uuid.UUID, int64) error
 } = (*Repository)(nil)
 
 // Compile-time check: *Repository must implement all registration repository
 // methods added by Task 2 of Slice 3.
 var _ interface {
-	GetExamByProductID(context.Context, uuid.UUID) (*model.Exam, error)
+	GetExamsByProductID(context.Context, uuid.UUID) ([]model.Exam, error)
 	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 	GetExamRegistrationsByStudent(context.Context, uuid.UUID) ([]model.RegistrationListItem, error)
@@ -299,8 +297,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 22 {
-		t.Fatalf("scanExam passed %d destinations, want 22", got)
+	if got := len(rec.dests); got != 21 {
+		t.Fatalf("scanExam passed %d destinations, want 21", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -324,14 +322,11 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[17].(*string); !ok {
 		t.Errorf("dest[17] = %T, want *string (status, scalar)", rec.dests[17])
 	}
-	if _, ok := rec.dests[18].(**uuid.UUID); !ok {
-		t.Errorf("dest[18] = %T, want **uuid.UUID (product_id, nullable pointer field)", rec.dests[18])
+	if _, ok := rec.dests[18].(*time.Time); !ok {
+		t.Errorf("dest[18] = %T, want *time.Time (created_at)", rec.dests[18])
 	}
-	if _, ok := rec.dests[19].(*time.Time); !ok {
-		t.Errorf("dest[19] = %T, want *time.Time (created_at)", rec.dests[19])
-	}
-	if _, ok := rec.dests[21].(*string); !ok {
-		t.Errorf("dest[21] = %T, want *string (mode)", rec.dests[21])
+	if _, ok := rec.dests[20].(*string); !ok {
+		t.Errorf("dest[20] = %T, want *string (mode)", rec.dests[20])
 	}
 }
 

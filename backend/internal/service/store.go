@@ -25,6 +25,7 @@ var (
 	ErrOrderNotFound     = errors.New("order not found")
 	ErrInvalidSignature  = errors.New("invalid signature")
 	ErrCourseLinkRequired = errors.New("course product requires at least one linked course")
+	ErrExamLinkRequired   = errors.New("exam product requires at least one linked exam")
 )
 
 type PromoValidation struct {
@@ -67,6 +68,17 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 			if err == nil {
 				for _, c := range courses {
 					p.CourseIDs = append(p.CourseIDs, c.ID.String())
+				}
+			}
+		}
+	}
+	if p.Type == "exam" {
+		pID, err := parseUUID(p.ID)
+		if err == nil {
+			exams, err := s.storeRepo.GetExamsByProductID(ctx, pID)
+			if err == nil {
+				for _, e := range exams {
+					p.ExamIDs = append(p.ExamIDs, e.ID.String())
 				}
 			}
 		}
@@ -116,6 +128,92 @@ func (s *Service) CreateProductWithCourses(ctx context.Context, p model.Product,
 		return model.Product{}, err
 	}
 
+	return p, nil
+}
+
+func (s *Service) CreateProductWithExams(ctx context.Context, p model.Product, examIDs []string, role string) (model.Product, error) {
+	if err := checkTypeRBAC(role, p.Type); err != nil {
+		return model.Product{}, err
+	}
+
+	if p.Type == "exam" && len(examIDs) < 1 {
+		return model.Product{}, ErrExamLinkRequired
+	}
+
+	var ids []uuid.UUID
+	for _, eid := range examIDs {
+		parsed, err := parseUUID(eid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Product{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.CreateProductWithExams(ctx, tx, &p, ids); err != nil {
+		return model.Product{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.Product{}, err
+	}
+
+	return p, nil
+}
+
+func (s *Service) UpdateProductWithExams(ctx context.Context, id string, p model.Product, examIDs []string, role string) (model.Product, error) {
+	existing, err := s.storeRepo.GetProductByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.Product{}, ErrProductNotFound
+		}
+		return model.Product{}, err
+	}
+	if err := checkTypeRBAC(role, existing.Type); err != nil {
+		return model.Product{}, err
+	}
+	p.Type = existing.Type
+	p.WeightGrams = existing.WeightGrams
+	p.ImageURL = existing.ImageURL
+
+	var ids []uuid.UUID
+	for _, eid := range examIDs {
+		parsed, err := parseUUID(eid)
+		if err != nil {
+			return model.Product{}, err
+		}
+		ids = append(ids, parsed)
+	}
+
+	pID, err := parseUUID(id)
+	if err != nil {
+		return model.Product{}, err
+	}
+
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.Product{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	if err := s.storeRepo.UpdateProductTx(ctx, tx, id, &p); err != nil {
+		return model.Product{}, err
+	}
+	if err := s.storeRepo.ReplaceProductExams(ctx, tx, pID, ids); err != nil {
+		return model.Product{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.Product{}, err
+	}
+
+	p.ID = id
+	p.ExamIDs = examIDs
 	return p, nil
 }
 
@@ -203,6 +301,31 @@ func (s *Service) PublishProduct(ctx context.Context, id string, role string) er
 	}
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return err
+	}
+	// FR-19: an exam-type product can bundle more than one exam (product_exam
+	// M:N); every attached sectioned exam (mode utbk|ielts) must pass its
+	// section gate before the product can publish.
+	if existing.Type == "exam" {
+		pID, err := parseUUID(id)
+		if err != nil {
+			return err
+		}
+		exams, err := s.storeRepo.GetExamsByProductID(ctx, pID)
+		if err != nil {
+			return err
+		}
+		for _, exam := range exams {
+			if !isSectionedMode(exam.Mode) {
+				continue
+			}
+			detail, err := s.storeRepo.GetExamDetail(ctx, exam.ID)
+			if err != nil {
+				return err
+			}
+			if err := validatePublishSections(exam, detail.Tests); err != nil {
+				return err
+			}
+		}
 	}
 	return s.storeRepo.PublishProduct(ctx, id)
 }
@@ -1065,7 +1188,10 @@ func checkTypeRBAC(role, productType string) error {
 	case RoleSuperAdmin:
 		return nil
 	case RoleAdminStore:
-		if productType == "book" || productType == "course" || productType == "package" {
+		// FR-STORE-ADM-03: admin_store edits price/visibility/promo eligibility on
+		// exam-type products too (it cannot touch exam content — tests/questions —
+		// which stays under /admin/exams, gated separately by RoleAdminExam).
+		if productType == "book" || productType == "course" || productType == "package" || productType == "exam" {
 			return nil
 		}
 		return ErrForbidden

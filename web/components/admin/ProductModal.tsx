@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAdminCourses } from "@/lib/hooks/admin-courses";
+import { useExams } from "@/lib/hooks/admin-exams";
 import type { Product, ProductType, ProductStatus, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 
 interface ProductModalProps {
@@ -23,7 +24,7 @@ interface ProductModalProps {
   isPending: boolean;
 }
 
-const PRODUCT_TYPES: ProductType[] = ["book", "course", "package"];
+const PRODUCT_TYPES: ProductType[] = ["book", "course", "package", "exam"];
 const PRODUCT_STATUSES: ProductStatus[] = ["draft", "published", "hidden", "archived"];
 
 const TYPE_LABELS: Record<ProductType, string> = {
@@ -49,7 +50,10 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [status, setStatus] = useState<ProductStatus>("draft");
   const [description, setDescription] = useState("");
   const [courseIds, setCourseIds] = useState<string[]>([]);
+  const [examIds, setExamIds] = useState<string[]>([]);
   const { data: courses } = useAdminCourses();
+  const { data: examsResp } = useExams();
+  const exams = examsResp?.data ?? [];
 
   useEffect(() => {
     if (open) {
@@ -61,6 +65,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setStatus(product.status ?? "draft");
         setDescription(product.description ?? "");
         setCourseIds(product.course_ids ?? []);
+        setExamIds(product.exam_ids ?? []);
       } else {
         setName("");
         setType("");
@@ -69,6 +74,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setStatus("draft");
         setDescription("");
         setCourseIds([]);
+        setExamIds([]);
       }
     }
   }, [open, product]);
@@ -76,7 +82,13 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const showStock = type === "book";
   const effectiveType = isEdit ? product?.type : type;
   const showCourses = effectiveType === "course" || effectiveType === "package";
-  const canSubmit = name.trim() !== "" && (isEdit || type !== "") && price !== "" && (!showCourses || courseIds.length > 0);
+  const showExams = effectiveType === "exam";
+  const canSubmit =
+    name.trim() !== "" &&
+    (isEdit || type !== "") &&
+    price !== "" &&
+    (!showCourses || courseIds.length > 0) &&
+    (!showExams || examIds.length > 0);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -94,6 +106,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         status,
         ...(showStock ? { stock: Number(stock) } : {}),
         ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
+        ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
       };
       onSubmit(input);
       return;
@@ -105,6 +118,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       type,
       ...(showStock ? { stock: Number(stock) } : {}),
       ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
+      ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
     };
     onSubmit(input);
   }
@@ -221,6 +235,36 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                             }
                           />
                           <span>{c.title}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
+            {showExams && (
+              <div className="grid gap-2">
+                <Label>Ujian terkait</Label>
+                <div className="max-h-40 overflow-y-auto rounded-md border border-input p-2">
+                  {exams.length === 0 ? (
+                    <p className="px-1 py-2 text-sm text-muted-foreground">Belum ada ujian.</p>
+                  ) : (
+                    exams.map((e) => {
+                      const checked = examIds.includes(e.id);
+                      return (
+                        <label key={e.id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={isPending}
+                            onChange={(ev) =>
+                              setExamIds((prev) =>
+                                ev.target.checked ? [...prev, e.id] : prev.filter((id) => id !== e.id)
+                              )
+                            }
+                          />
+                          <span>{e.title}</span>
                         </label>
                       );
                     })

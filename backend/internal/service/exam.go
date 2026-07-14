@@ -561,7 +561,11 @@ func validateExam(e model.Exam) error {
 	return nil
 }
 
-func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, model.Product, error) {
+// CreateExam creates a standalone exam — no product is created here. Selling the
+// exam is a separate step: attach it to a Product via the generic Product flow
+// (POST/PATCH /admin/products with exam_ids), mirroring how course-type products
+// attach existing Courses.
+func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, error) {
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"
 	}
@@ -575,13 +579,12 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, mod
 		m.Mode = "standard"
 	}
 	if err := validateExam(m); err != nil {
-		return model.Exam{}, model.Product{}, err
+		return model.Exam{}, err
 	}
-	exam, product, err := s.storeRepo.CreateProductAndExamTx(ctx, &m)
-	if err != nil {
-		return model.Exam{}, model.Product{}, err
+	if err := s.storeRepo.CreateExam(ctx, &m); err != nil {
+		return model.Exam{}, err
 	}
-	return exam, product, nil
+	return m, nil
 }
 
 func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (model.Exam, error) {
@@ -596,7 +599,6 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 		return model.Exam{}, err
 	}
 	m.ID = id
-	m.ProductID = existing.ProductID
 	m.CreatedAt = existing.CreatedAt
 	if err := s.storeRepo.UpdateExam(ctx, id, &m); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -642,67 +644,12 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testID
 	return tx.Commit(ctx)
 }
 
-func (s *Service) UpdateExamPrice(ctx context.Context, examID uuid.UUID, price int64) error {
-	exam, err := s.storeRepo.GetExamByID(ctx, examID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrExamNotFound
-		}
-		return err
-	}
-	if exam.ProductID == nil {
-		return fmt.Errorf("%w: exam has no linked product", ErrValidation)
-	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	if err := s.storeRepo.UpdateProductPriceTx(ctx, tx, *exam.ProductID, price); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
-}
-
-func (s *Service) PublishExam(ctx context.Context, examID uuid.UUID) error {
-	exam, err := s.storeRepo.GetExamByID(ctx, examID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrExamNotFound
-		}
-		return err
-	}
-	if exam.ProductID == nil {
-		return fmt.Errorf("%w: exam has no linked product", ErrValidation)
-	}
-	// FR-19: sectioned modes (utbk|ielts) require at least one attached Test,
-	// and ielts additionally requires every attached Test to have a non-null
-	// section_type. The gate is a pure function over the loaded ExamDetail so it
-	// is unit-testable without a DB.
-	if isSectionedMode(exam.Mode) {
-		detail, err := s.storeRepo.GetExamDetail(ctx, examID)
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				return ErrExamNotFound
-			}
-			return err
-		}
-		if err := validatePublishSections(*exam, detail.Tests); err != nil {
-			return err
-		}
-	}
-	return s.PublishProduct(ctx, exam.ProductID.String(), RoleAdminExam)
-}
-
 // validatePublishSections enforces FR-19: a sectioned exam (mode ∈ {utbk,ielts})
 // must have at least one attached Test, and an ielts exam must have a non-null
 // section_type on every attached Test (the offending section is named in the
 // error message). Standard/empty modes skip the gate entirely. The function is
-// pure over (exam, tests) so it can be unit-tested without a DB; PublishExam
-// loads the attached Tests via GetExamDetail and delegates here.
+// pure over (exam, tests) so it can be unit-tested without a DB; PublishProduct
+// runs this for every exam attached to an exam-type product before publishing.
 func validatePublishSections(exam model.Exam, tests []model.ExamTestEntry) error {
 	if !isSectionedMode(exam.Mode) {
 		return nil

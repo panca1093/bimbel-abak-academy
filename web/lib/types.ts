@@ -115,6 +115,7 @@ export interface Product {
   weight_grams?: number;
   image_url?: string;
   course_ids?: string[];
+  exam_ids?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -126,6 +127,7 @@ export interface AdminCreateProductInput {
   price: number;
   stock?: number;
   course_ids?: string[];
+  exam_ids?: string[];
 }
 
 export interface AdminUpdateProductInput {
@@ -135,6 +137,7 @@ export interface AdminUpdateProductInput {
   stock?: number;
   status?: ProductStatus;
   course_ids?: string[];
+  exam_ids?: string[];
 }
 
 export interface OrderItem {
@@ -577,14 +580,12 @@ export interface Exam {
   result_release_at?: string | null;
   certificate_template?: string;
   status?: string;
-  product_id?: string | null;
   mode?: string;
   created_at?: string;
 }
 
 export interface ExamListItem extends Exam {
-  product_price: number;
-  product_status: string;
+  has_published_product?: boolean;
 }
 
 export interface ExamTestEntry {

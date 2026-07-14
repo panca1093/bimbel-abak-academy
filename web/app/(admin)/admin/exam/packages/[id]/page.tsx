@@ -15,7 +15,6 @@ import {
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,21 +25,19 @@ import {
   useExamLeaderboard,
   useGradeEssay,
   useGradingSessions,
-  usePublishExam,
   useReplaceExamTests,
   useSessionEssays,
-  useUpdateExamPrice,
 } from "@/lib/hooks/admin-exams";
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
-import { formatRupiah } from "@/lib/format";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { ExamLeaderboardEntry, GradingEssayItem } from "@/lib/types";
 
+// Price/status/publish for an exam-type product live on the attached Product(s),
+// managed via /admin/products (mirrors Course) — not here.
 type Tab =
   | "overview"
   | "tests"
-  | "price"
   | "registrations"
   | "results"
   | "grading"
@@ -49,7 +46,6 @@ type Tab =
 const TAB_ORDER: Tab[] = [
   "overview",
   "tests",
-  "price",
   "registrations",
   "results",
   "grading",
@@ -73,21 +69,6 @@ function formatMode(mode?: string | null): string {
   return mode.toUpperCase();
 }
 
-function statusBadgeClass(status?: string): string {
-  switch (status) {
-    case "published":
-      return "bg-green-100 text-green-800 border-green-200";
-    case "draft":
-      return "bg-line-2 text-ink-700 border-line";
-    case "hidden":
-      return "bg-amber-100 text-amber-800 border-amber-200";
-    case "archived":
-      return "bg-red-100 text-red-800 border-red-200";
-    default:
-      return "bg-line-2 text-ink-700 border-line";
-  }
-}
-
 export default function ExamPackageDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
@@ -98,8 +79,6 @@ export default function ExamPackageDetailPage() {
 
   const { data, isLoading, isError, error, refetch } = useExam(id);
   const replaceTests = useReplaceExamTests(id);
-  const updatePrice = useUpdateExamPrice(id);
-  const publish = usePublishExam(id);
   const { data: availableResp, isLoading: availableLoading } = useAdminTests();
   const availableTests = availableResp?.data ?? [];
 
@@ -122,7 +101,6 @@ export default function ExamPackageDetailPage() {
 
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [pendingSections, setPendingSections] = useState<PendingSection[]>([]);
-  const [priceInput, setPriceInput] = useState("");
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [scoreInputs, setScoreInputs] = useState<
@@ -146,11 +124,6 @@ export default function ExamPackageDetailPage() {
   useEffect(() => {
     if (!data) return;
     setAttachedIds(data.tests.map((entry) => entry.test_id));
-  }, [data]);
-
-  useEffect(() => {
-    if (!data) return;
-    setPriceInput(String(data.product_price ?? 0));
   }, [data]);
 
   useEffect(() => {
@@ -214,21 +187,6 @@ export default function ExamPackageDetailPage() {
     }
   }
 
-  async function handleSavePrice() {
-    const next = Number(priceInput);
-    if (!Number.isFinite(next) || next < 0) {
-      toast.error(t("error_generic"));
-      return;
-    }
-    try {
-      await updatePrice.mutateAsync(next);
-      toast.success(t("changes_saved"));
-      refetch();
-    } catch (e) {
-      toast.error(errorMessage(e, t("error_generic")));
-    }
-  }
-
   async function handleSaveEssay(essay: GradingEssayItem) {
     const input = scoreInputs[essay.question_id];
     const scoreNum = Number(input?.score);
@@ -275,20 +233,9 @@ export default function ExamPackageDetailPage() {
     }
   }
 
-  async function handlePublish() {
-    if (!confirm(t("admin_exam_detail_publish_confirm"))) return;
-    try {
-      await publish.mutateAsync();
-      toast.success(t("changes_saved"));
-      refetch();
-    } catch (e) {
-      toast.error(errorMessage(e, t("error_generic")));
-    }
-  }
-
   const title = data?.title ?? t("exam_packages_page_title");
   const description = data
-    ? `${formatScheduled(data.scheduled_at)} · ${data.product_status ?? "draft"}`
+    ? `${formatScheduled(data.scheduled_at)} · ${data.status ?? "draft"}`
     : undefined;
 
   return (
@@ -419,15 +366,6 @@ export default function ExamPackageDetailPage() {
                   value={data.certificate_template ?? "—"}
                 />
                 <OverviewRow label="Status" value={data.status ?? "—"} />
-                <OverviewRow
-                  label="Product status"
-                  value={
-                    <Badge className={statusBadgeClass(data.product_status)}>
-                      {data.product_status ?? "draft"}
-                    </Badge>
-                  }
-                />
-                <OverviewRow label="Price" value={formatRupiah(data.product_price ?? 0)} />
               </dl>
             </div>
           )}
@@ -594,57 +532,6 @@ export default function ExamPackageDetailPage() {
                     ))}
                   </ul>
                 )}
-              </div>
-            </div>
-          )}
-
-          {tab === "price" && (
-            <div className="md-card-outlined space-y-6 p-6">
-              <div className="space-y-3">
-                <h2 className="text-title-large font-semibold">
-                  {t("admin_exam_detail_price_label")}
-                </h2>
-                <div className="flex items-end gap-3">
-                  <div className="grid flex-1 gap-2">
-                    <Label htmlFor="exam-price">
-                      {t("admin_exam_detail_price_label")}
-                    </Label>
-                    <Input
-                      id="exam-price"
-                      type="number"
-                      min={0}
-                      value={priceInput}
-                      onChange={(e) => setPriceInput(e.target.value)}
-                      disabled={updatePrice.isPending}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={handleSavePrice}
-                    disabled={updatePrice.isPending}
-                  >
-                    {updatePrice.isPending
-                      ? t("saving")
-                      : t("admin_exam_detail_price_save")}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="border-t pt-6">
-                <h2 className="text-title-large font-semibold">
-                  {t("admin_exam_detail_publish")}
-                </h2>
-                <p className="text-body-medium mt-1 text-muted-foreground">
-                  {data.product_status ?? "draft"}
-                </p>
-                <Button
-                  type="button"
-                  className="mt-3"
-                  onClick={handlePublish}
-                  disabled={publish.isPending || data.product_status === "published"}
-                >
-                  {t("admin_exam_detail_publish")}
-                </Button>
               </div>
             </div>
           )}

@@ -45,14 +45,11 @@ func (h *Handler) AdminCreateExam(c echo.Context) error {
 		req.ID = uuid.New()
 	}
 
-	exam, product, err := h.svc.CreateExam(c.Request().Context(), req)
+	exam, err := h.svc.CreateExam(c.Request().Context(), req)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusCreated, map[string]interface{}{
-		"exam":    exam,
-		"product": product,
-	})
+	return c.JSON(http.StatusCreated, exam)
 }
 
 func (h *Handler) AdminGetExam(c echo.Context) error {
@@ -206,36 +203,4 @@ func (h *Handler) AdminReplaceExamTests(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)
-}
-
-func (h *Handler) AdminUpdateExamPrice(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		return badRequest(c, "invalid id")
-	}
-	var req struct {
-		Price int64 `json:"price"`
-	}
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "invalid request body")
-	}
-	if err := h.svc.UpdateExamPrice(c.Request().Context(), id, req.Price); err != nil {
-		return mapServiceError(c, err)
-	}
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"price": req.Price,
-	})
-}
-
-func (h *Handler) AdminPublishExam(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		return badRequest(c, "invalid id")
-	}
-	if err := h.svc.PublishExam(c.Request().Context(), id); err != nil {
-		return mapServiceError(c, err)
-	}
-	return c.JSON(http.StatusOK, map[string]string{
-		"message": "exam published",
-	})
 }

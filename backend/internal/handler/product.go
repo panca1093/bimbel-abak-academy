@@ -79,6 +79,7 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		Price       int64    `json:"price"`
 		Stock       int      `json:"stock"`
 		CourseIDs   []string `json:"course_ids"`
+		ExamIDs     []string `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -104,9 +105,12 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 
 	var product model.Product
 	var err error
-	if req.Type == "course" || len(req.CourseIDs) > 0 {
+	switch {
+	case req.Type == "course" || len(req.CourseIDs) > 0:
 		product, err = h.svc.CreateProductWithCourses(c.Request().Context(), p, req.CourseIDs, role)
-	} else {
+	case req.Type == "exam" || len(req.ExamIDs) > 0:
+		product, err = h.svc.CreateProductWithExams(c.Request().Context(), p, req.ExamIDs, role)
+	default:
 		product, err = h.svc.CreateProduct(c.Request().Context(), p, role)
 	}
 	if err != nil {
@@ -135,12 +139,13 @@ func (h *Handler) AdminGetProduct(c echo.Context) error {
 func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	id := c.Param("id")
 	var req struct {
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		Price       int64    `json:"price"`
-		Stock       int      `json:"stock"`
-		Status      string   `json:"status"` // published ↔ hidden visibility flip only
-		CourseIDs   []string `json:"course_ids"`
+		Name        string           `json:"name"`
+		Description string           `json:"description"`
+		Price       int64            `json:"price"`
+		Stock       int              `json:"stock"`
+		Status      Nullable[string] `json:"status"` // published ↔ hidden visibility flip only; absent preserves existing
+		CourseIDs   []string         `json:"course_ids"`
+		ExamIDs     []string         `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -152,19 +157,31 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		role = claims.Role
 	}
 
+	status := req.Status.Value
+	if !req.Status.Set {
+		existing, err := h.svc.GetProduct(c.Request().Context(), id, role)
+		if err != nil {
+			return mapServiceError(c, err)
+		}
+		status = existing.Status
+	}
+
 	p := model.Product{
 		Name:        req.Name,
 		Description: req.Description,
 		Price:       req.Price,
 		Stock:       req.Stock,
-		Status:      req.Status,
+		Status:      status,
 	}
 
 	var product model.Product
 	var err error
-	if req.CourseIDs != nil {
+	switch {
+	case req.CourseIDs != nil:
 		product, err = h.svc.UpdateProductWithCourses(c.Request().Context(), id, p, req.CourseIDs, role)
-	} else {
+	case req.ExamIDs != nil:
+		product, err = h.svc.UpdateProductWithExams(c.Request().Context(), id, p, req.ExamIDs, role)
+	default:
 		product, err = h.svc.UpdateProduct(c.Request().Context(), id, p, role)
 	}
 	if err != nil {

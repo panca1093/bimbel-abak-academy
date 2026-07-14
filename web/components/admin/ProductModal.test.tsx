@@ -11,10 +11,20 @@ const sampleCourses = [
   { id: "c2", title: "Matematika Lanjut" },
 ];
 
+const sampleExams = [
+  { id: "e1", title: "UTBK 2026" },
+  { id: "e2", title: "Tryout SNBT" },
+];
+
 let coursesState: { data: typeof sampleCourses | undefined };
+let examsState: { data: { data: typeof sampleExams } | undefined };
 
 vi.mock("@/lib/hooks/admin-courses", () => ({
   useAdminCourses: () => coursesState,
+}));
+
+vi.mock("@/lib/hooks/admin-exams", () => ({
+  useExams: () => examsState,
 }));
 
 describe("ProductModal", () => {
@@ -22,6 +32,7 @@ describe("ProductModal", () => {
     mockOnSubmit.mockReset();
     mockOnOpenChange.mockReset();
     coursesState = { data: sampleCourses };
+    examsState = { data: { data: sampleExams } };
   });
 
   // --- create mode ---
@@ -250,5 +261,159 @@ describe("ProductModal", () => {
     fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "99999" } });
 
     expect(screen.getByText("Belum ada kursus.")).toBeInTheDocument();
+  });
+
+  // --- exam attach (mirrors course attach) ---
+
+  it("shows exam checkboxes when type is exam in create mode", () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket Ujian" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "100000" } });
+
+    expect(screen.getByText(/ujian terkait/i)).toBeInTheDocument();
+    expect(screen.getByText("UTBK 2026")).toBeInTheDocument();
+    expect(screen.getByText("Tryout SNBT")).toBeInTheDocument();
+    expect(screen.queryByText(/kursus terkait/i)).not.toBeInTheDocument();
+  });
+
+  it("requires at least one exam checked before submit is enabled for exam type", () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket Ujian" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "100000" } });
+
+    expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+
+    const utbkCheckbox = screen.getByText("UTBK 2026").closest("label")!.querySelector("input[type=checkbox]")!;
+    fireEvent.click(utbkCheckbox);
+
+    expect(screen.getByRole("button", { name: /^simpan$/i })).toBeEnabled();
+  });
+
+  it("includes exam_ids in create payload for exam type", async () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket Ujian" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "150000" } });
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+
+    const utbkCheckbox = screen.getByText("UTBK 2026").closest("label")!.querySelector("input[type=checkbox]")!;
+    fireEvent.click(utbkCheckbox);
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Paket Ujian",
+          price: 150000,
+          type: "exam",
+          exam_ids: ["e1"],
+        })
+      );
+    });
+  });
+
+  it("populates exam_ids from product in edit mode", () => {
+    const product: Product = {
+      id: "p1",
+      type: "exam",
+      name: "Paket UTBK",
+      price: 150000,
+      status: "published",
+      exam_ids: ["e1"],
+    };
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        product={product}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    const utbkCheckbox = screen.getByText("UTBK 2026").closest("label")!.querySelector("input[type=checkbox]")!;
+    expect(utbkCheckbox).toBeChecked();
+
+    const tryoutCheckbox = screen.getByText("Tryout SNBT").closest("label")!.querySelector("input[type=checkbox]")!;
+    expect(tryoutCheckbox).not.toBeChecked();
+  });
+
+  it("includes exam_ids in update payload for exam type", async () => {
+    const product: Product = {
+      id: "p1",
+      type: "exam",
+      name: "Paket UTBK",
+      price: 150000,
+      status: "published",
+      exam_ids: ["e1", "e2"],
+    };
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        product={product}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Paket UTBK Updated" } });
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Paket UTBK Updated",
+          exam_ids: ["e1", "e2"],
+        })
+      );
+    });
+  });
+
+  it("shows empty state when no exams exist", () => {
+    examsState = { data: { data: [] } };
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "exam" } });
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Empty Exam" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "99999" } });
+
+    expect(screen.getByText("Belum ada ujian.")).toBeInTheDocument();
   });
 });

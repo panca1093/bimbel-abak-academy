@@ -15,8 +15,6 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
 const sampleExam: ExamListItem = {
   id: "exam-1",
   title: "UTS Matematika",
-  product_price: 0,
-  product_status: "draft",
   certificate_template: "modern",
   timer_mode: "overall",
   duration_minutes: 90,
@@ -88,7 +86,7 @@ describe("ExamModal", () => {
   });
 
   it("includes mode in create payload", async () => {
-    mockCreateExam.mockResolvedValue({ exam: { id: "exam-1" } });
+    mockCreateExam.mockResolvedValue({ id: "exam-1" });
 
     render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
 
@@ -285,7 +283,7 @@ describe("ExamModal", () => {
   });
 
   it("omits empty window and attempts from create payload", async () => {
-    mockCreateExam.mockResolvedValue({ exam: { id: "exam-1" } });
+    mockCreateExam.mockResolvedValue({ id: "exam-1" });
 
     render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
 

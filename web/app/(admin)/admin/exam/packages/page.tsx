@@ -6,28 +6,13 @@ import { Package } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useTranslation } from "@/lib/i18n";
-import { formatRupiah } from "@/lib/format";
 import type { ExamListItem } from "@/lib/types";
 
-function statusBadgeClass(status?: string): string {
-  switch (status) {
-    case "published":
-      return "bg-green-100 text-green-800 border-green-200";
-    case "draft":
-      return "bg-line-2 text-ink-700 border-line";
-    case "hidden":
-      return "bg-amber-100 text-amber-800 border-amber-200";
-    case "archived":
-      return "bg-red-100 text-red-800 border-red-200";
-    default:
-      return "bg-line-2 text-ink-700 border-line";
-  }
-}
-
+// Selling an exam (price/status/publish) is managed on the attached Product(s)
+// via /admin/products — mirrors Course, which shows no status/price columns here.
 function formatScheduled(iso?: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -84,12 +69,6 @@ export default function ExamPackagesPage() {
                 <th className="px-4 py-3 text-left font-medium">
                   {t("exam_packages_col_scheduled")}
                 </th>
-                <th className="px-4 py-3 text-left font-medium">
-                  {t("exam_packages_col_status")}
-                </th>
-                <th className="px-4 py-3 text-right font-medium">
-                  {t("exam_packages_col_price")}
-                </th>
               </tr>
             </thead>
             <tbody>
@@ -101,19 +80,11 @@ export default function ExamPackagesPage() {
                 >
                   <td className="px-4 py-3 font-medium">{exam.title}</td>
                   <td className="px-4 py-3">{formatScheduled(exam.scheduled_at)}</td>
-                  <td className="px-4 py-3">
-                    <Badge className={statusBadgeClass(exam.product_status)}>
-                      {exam.product_status ?? "draft"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {formatRupiah(exam.product_price)}
-                  </td>
                 </tr>
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={2} className="px-4 py-8 text-center text-muted-foreground">
                     {t("exam_packages_empty")}
                   </td>
                 </tr>

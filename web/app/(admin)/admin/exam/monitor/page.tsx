@@ -72,7 +72,7 @@ export default function ExamMonitorPage() {
 
   const publishedExams = useMemo(() => {
     return examList
-      .filter((e) => e.product_status === "published")
+      .filter((e) => e.has_published_product)
       .sort(
         (a, b) =>
           new Date(a.scheduled_at ?? 0).getTime() - new Date(b.scheduled_at ?? 0).getTime(),

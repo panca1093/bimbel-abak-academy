@@ -39,7 +39,7 @@ type outboxRepository interface {
 	GetCoursesByProductID(context.Context, uuid.UUID) ([]model.Course, error)
 	BeginTx(context.Context) (pgx.Tx, error)
 	GetExpiredPaymentOrders(context.Context, int) ([]uuid.UUID, error)
-	GetExamByProductID(context.Context, uuid.UUID) (*model.Exam, error)
+	GetExamsByProductID(context.Context, uuid.UUID) ([]model.Exam, error)
 	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 }
@@ -200,19 +200,25 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 				}
 			}
 		case "exam":
-			exam, err := w.repo.GetExamByProductID(ctx, item.ProductID)
+			exams, err := w.repo.GetExamsByProductID(ctx, item.ProductID)
 			if err != nil {
-				slog.Error("get exam by product id", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
+				slog.Error("get exams by product id", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
 				return
 			}
-			if err := w.repo.CreateExamRegistration(ctx, tx, model.ExamRegistration{
-				StudentID: order.StudentID,
-				ExamID:    exam.ID,
-				Token:     generateToken(),
-				Status:    "registered",
-			}); err != nil {
-				slog.Error("create exam registration", "order_id", payload.OrderID, "err", err)
-				return
+			if len(exams) == 0 {
+				slog.Warn("no exams linked to product, skipping", "order_id", payload.OrderID, "product_id", item.ProductID)
+				continue
+			}
+			for _, exam := range exams {
+				if err := w.repo.CreateExamRegistration(ctx, tx, model.ExamRegistration{
+					StudentID: order.StudentID,
+					ExamID:    exam.ID,
+					Token:     generateToken(),
+					Status:    "registered",
+				}); err != nil {
+					slog.Error("create exam registration", "order_id", payload.OrderID, "exam_id", exam.ID, "err", err)
+					return
+				}
 			}
 			if err := w.repo.StampOrderItemFulfilledAt(ctx, tx, payload.OrderID, item.ProductID); err != nil {
 				slog.Error("stamp order_item fulfilled_at", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)

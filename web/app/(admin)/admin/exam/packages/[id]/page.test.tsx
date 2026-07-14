@@ -23,8 +23,6 @@ vi.mock("sonner", () => ({
 }));
 
 const mockReplaceTests = vi.fn();
-const mockUpdatePrice = vi.fn();
-const mockPublish = vi.fn();
 const mockGradeEssay = vi.fn();
 
 let examState: {
@@ -91,8 +89,6 @@ let leaderboardState: {
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useExam: () => examState,
   useReplaceExamTests: () => ({ mutateAsync: mockReplaceTests, isPending: false }),
-  useUpdateExamPrice: () => ({ mutateAsync: mockUpdatePrice, isPending: false }),
-  usePublishExam: () => ({ mutateAsync: mockPublish, isPending: false }),
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useGradingSessions: () => gradingSessionsState,
@@ -120,8 +116,6 @@ const sampleExam: ExamDetail = {
   allow_leaderboard: false,
   randomize: false,
   status: "published",
-  product_price: 50000,
-  product_status: "published",
   tests: [],
 };
 

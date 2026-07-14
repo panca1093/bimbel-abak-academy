@@ -32,6 +32,10 @@ vi.mock("@/lib/hooks/admin-courses", () => ({
   useAdminCourses: () => ({ data: [], isLoading: false }),
 }));
 
+vi.mock("@/lib/hooks/admin-exams", () => ({
+  useExams: () => ({ data: { data: [] }, isLoading: false }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
