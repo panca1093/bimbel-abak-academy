@@ -9,15 +9,11 @@ import (
 )
 
 type midtransWebhookBody struct {
-	SignatureKey string `json:"signature_key"`
+	SignatureKey  string `json:"signature_key"`
+	TransactionID string `json:"transaction_id"`
 }
 
 func (h *Handler) HandlePaymentWebhook(c echo.Context) error {
-	key := c.Request().Header.Get("Idempotency-Key")
-	if key == "" {
-		return badRequest(c, "Idempotency-Key header is required")
-	}
-
 	payload, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		return badRequest(c, "invalid request body")
@@ -27,8 +23,11 @@ func (h *Handler) HandlePaymentWebhook(c echo.Context) error {
 	if err := json.Unmarshal(payload, &body); err != nil {
 		return badRequest(c, "invalid request body")
 	}
+	if body.TransactionID == "" {
+		return badRequest(c, "transaction_id is required")
+	}
 
-	err = h.svc.HandlePaymentWebhook(c.Request().Context(), payload, body.SignatureKey, key)
+	err = h.svc.HandlePaymentWebhook(c.Request().Context(), payload, body.SignatureKey, body.TransactionID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
