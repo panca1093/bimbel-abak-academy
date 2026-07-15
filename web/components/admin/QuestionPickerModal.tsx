@@ -155,7 +155,7 @@ export function QuestionPickerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[720px]">
+      <DialogContent className="max-w-[720px]">
         <DialogHeader>
           <DialogTitle>{t("tests_picker_title")}</DialogTitle>
           <DialogDescription>{t("tests_picker_search")}</DialogDescription>
