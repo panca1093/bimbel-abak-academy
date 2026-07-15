@@ -201,7 +201,7 @@ export function QuestionPickerModal({
             </select>
           </div>
 
-          <div className="max-h-[320px] overflow-y-auto rounded-md border border-input">
+          <div className="max-h-[320px] overflow-y-auto overflow-x-hidden rounded-md border border-input">
             {bank.isLoading && (
               <div className="p-4 text-center text-muted-foreground">{t("sys_loading")}</div>
             )}
@@ -217,7 +217,7 @@ export function QuestionPickerModal({
                   key={row.question.id}
                   disabled={isAttached}
                   onClick={() => toggle(row.question.id)}
-                  className={`flex w-full items-center gap-3 border-b px-3 py-2 text-left transition-colors last:border-b-0 ${
+                  className={`flex w-full items-center gap-3 overflow-hidden border-b px-3 py-2 text-left transition-colors last:border-b-0 ${
                     isAttached
                       ? "cursor-default opacity-50"
                       : isSelected
@@ -226,19 +226,19 @@ export function QuestionPickerModal({
                   }`}
                 >
                   <SelectionBox selected={isSelected} />
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-ink-900">
                       {stripHtmlToPlainText(row.question.body)}
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                      <span className="max-w-[140px] truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
                         {row.question.id}
                       </span>
                       <Badge variant="outline">
                         {t(FORMAT_LABELS[row.question.format] as Parameters<typeof t>[0])}
                       </Badge>
                       {row.question.topic && (
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        <span className="max-w-[160px] truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                           {row.question.topic}
                         </span>
                       )}
