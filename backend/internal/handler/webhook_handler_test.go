@@ -21,7 +21,7 @@ func (m *mockPaymentClient) VerifySignature(payload []byte, signature string) bo
 	return false
 }
 
-func TestPaymentWebhook_MissingIdempotencyKey_ReturnsBadRequest(t *testing.T) {
+func TestPaymentWebhook_MissingTransactionID_ReturnsBadRequest(t *testing.T) {
 	// Setup
 	mr, err := miniredis.Run()
 	if err != nil {
@@ -40,7 +40,6 @@ func TestPaymentWebhook_MissingIdempotencyKey_ReturnsBadRequest(t *testing.T) {
 		bytes.NewBufferString(`{"payment_ref": "pay_123"}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Signature", "some-sig")
 
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)

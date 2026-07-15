@@ -35,13 +35,15 @@ func checkoutWithKey(t *testing.T, env *testEnv, orderID, token, idempKey string
 }
 
 // sendWebhookToURL builds and POSTs a Midtrans notification to the given base URL.
+// Midtrans retries a notification with the same transaction_id and no custom
+// header — pass the same transactionID twice to simulate a duplicate delivery.
 // Pass signature="" to omit signature_key from the JSON body.
-func sendWebhookToURL(t *testing.T, baseURL, orderID, idempKey, signature, grossAmount string) *http.Response {
+func sendWebhookToURL(t *testing.T, baseURL, orderID, transactionID, signature, grossAmount string) *http.Response {
 	t.Helper()
 	body := map[string]string{
 		"transaction_status": "settlement",
 		"order_id":           orderID,
-		"transaction_id":     fmt.Sprintf("tx-%d", time.Now().UnixNano()),
+		"transaction_id":     transactionID,
 		"gross_amount":       grossAmount,
 		"status_code":        "200",
 	}
@@ -57,7 +59,6 @@ func sendWebhookToURL(t *testing.T, baseURL, orderID, idempKey, signature, gross
 		bytes.NewReader(payload))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Idempotency-Key", idempKey)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	return resp
@@ -251,8 +252,8 @@ func TestCheckout(t *testing.T) {
 		// A validly-signed webhook settles the order. strictPaymentClient verifies
 		// a non-empty signature — an unsigned webhook can no longer settle anything.
 		strict := webhookServer(t, env, strictPaymentClient{})
-		webhookKey := fmt.Sprintf("wh-%d", time.Now().UnixNano())
-		whResp := sendWebhookToURL(t, strict.URL, orderID, webhookKey, "any-sig", fmt.Sprintf("%.2f", float64(25000)))
+		transactionID := fmt.Sprintf("wh-%d", time.Now().UnixNano())
+		whResp := sendWebhookToURL(t, strict.URL, orderID, transactionID, "any-sig", fmt.Sprintf("%.2f", float64(25000)))
 		whBody := decodeBody(t, whResp)
 		require.Equal(t, http.StatusOK, whResp.StatusCode, "webhook failed: %v", whBody)
 
@@ -305,13 +306,15 @@ func TestCheckout(t *testing.T) {
 		require.Equal(t, http.StatusOK, coResp.StatusCode, "checkout failed: %v", decodeBody(t, coResp))
 
 		strict := webhookServer(t, env, strictPaymentClient{})
-		webhookKey := fmt.Sprintf("dedup-%d", time.Now().UnixNano())
+		// Midtrans retries reuse the same transaction_id — that's what makes
+		// this a "duplicate delivery" rather than two independent events.
+		transactionID := fmt.Sprintf("dedup-%d", time.Now().UnixNano())
 
-		wh1 := sendWebhookToURL(t, strict.URL, orderID, webhookKey, "sig1", fmt.Sprintf("%.2f", float64(20000)))
+		wh1 := sendWebhookToURL(t, strict.URL, orderID, transactionID, "sig1", fmt.Sprintf("%.2f", float64(20000)))
 		wh1Body := decodeBody(t, wh1)
 		require.Equal(t, http.StatusOK, wh1.StatusCode, "first delivery: %v", wh1Body)
 
-		wh2 := sendWebhookToURL(t, strict.URL, orderID, webhookKey, "sig2", fmt.Sprintf("%.2f", float64(20000)))
+		wh2 := sendWebhookToURL(t, strict.URL, orderID, transactionID, "sig2", fmt.Sprintf("%.2f", float64(20000)))
 		wh2Body := decodeBody(t, wh2)
 		require.Equal(t, http.StatusOK, wh2.StatusCode, "second delivery: %v", wh2Body)
 
