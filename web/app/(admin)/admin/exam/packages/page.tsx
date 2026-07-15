@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Package } from "lucide-react";
+import { Layers } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useTranslation } from "@/lib/i18n";
 import type { ExamListItem } from "@/lib/types";
@@ -35,7 +36,7 @@ export default function ExamPackagesPage() {
   return (
     <div className="space-y-6 fade-in">
       <AdminPageHeader
-        icon={Package}
+        icon={Layers}
         title={t("exam_packages_page_title")}
         description={t("exam_packages_page_description")}
         actions={
@@ -60,39 +61,47 @@ export default function ExamPackagesPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">
-                  {t("exam_packages_col_title")}
-                </th>
-                <th className="px-4 py-3 text-left font-medium">
-                  {t("exam_packages_col_scheduled")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((exam) => (
-                <tr
-                  key={exam.id}
-                  className="cursor-pointer border-t transition-colors hover:bg-muted/40"
-                  onClick={() => router.push(`/admin/exam/packages/${exam.id}`)}
-                >
-                  <td className="px-4 py-3 font-medium">{exam.title}</td>
-                  <td className="px-4 py-3">{formatScheduled(exam.scheduled_at)}</td>
-                </tr>
-              ))}
-              {items.length === 0 && (
-                <tr>
-                  <td colSpan={2} className="px-4 py-8 text-center text-muted-foreground">
-                    {t("exam_packages_empty")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        items.length === 0 ? (
+          <div className="md-card-outlined px-4 py-8 text-center text-muted-foreground">
+            {t("exam_packages_empty")}
+          </div>
+        ) : (
+          <div className="md-card-outlined divide-y">
+            {items.map((exam) => (
+              <div
+                key={exam.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/admin/exam/packages/${exam.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/admin/exam/packages/${exam.id}`);
+                  }
+                }}
+                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold text-ink-900">{exam.title}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>{formatScheduled(exam.scheduled_at)}</span>
+                    {exam.duration_minutes ? (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{exam.duration_minutes} min</span>
+                      </>
+                    ) : null}
+                    {exam.is_free ? (
+                      <Badge variant="secondary" className="ml-1">
+                        {t("exam_packages_modal_is_free")}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
 
       <ExamModal

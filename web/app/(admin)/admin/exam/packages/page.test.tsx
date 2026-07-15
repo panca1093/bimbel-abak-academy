@@ -94,7 +94,7 @@ describe("ExamPackagesPage", () => {
       expect(screen.getByText("UAS IPA")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /buat paket/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /buat ujian/i })).toBeInTheDocument();
   });
 
   it("shows skeleton rows while loading", () => {
@@ -137,7 +137,7 @@ describe("ExamPackagesPage", () => {
     render(<ExamPackagesPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/belum ada paket/i)).toBeInTheDocument();
+      expect(screen.getByText(/belum ada ujian/i)).toBeInTheDocument();
     });
   });
 });

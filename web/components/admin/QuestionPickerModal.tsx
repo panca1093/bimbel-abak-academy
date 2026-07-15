@@ -44,34 +44,6 @@ interface QuestionPickerModalProps {
   onAttach: (questionIds: string[]) => Promise<void>;
 }
 
-function FilterChip({
-  active,
-  disabled,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={active}
-      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-        active
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-input bg-background text-ink-900 hover:bg-muted/40"
-      } disabled:opacity-50`}
-    >
-      {children}
-    </button>
-  );
-}
-
 function SelectionBox({ selected }: { selected: boolean }) {
   return (
     <span
@@ -161,7 +133,7 @@ export function QuestionPickerModal({
           <DialogDescription>{t("tests_picker_search")}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 py-1">
+        <div className="min-w-0 space-y-3 py-1">
           <div className="flex h-9 items-center gap-2 rounded-lg border border-input bg-surface-2 px-3 focus-within:ring-2 focus-within:ring-ring/40">
             <Search className="size-4 text-muted-foreground" />
             <Input
@@ -172,25 +144,26 @@ export function QuestionPickerModal({
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <FilterChip active={format === "all"} onClick={() => setFormat("all")}>
-              {t("tab_all")}
-            </FilterChip>
-            {ALL_FORMATS.map((f) => (
-              <FilterChip
-                key={f}
-                active={format === f}
-                onClick={() => setFormat(f)}
-              >
-                {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
-              </FilterChip>
-            ))}
+          <div className="flex items-center gap-2">
+            <select
+              data-slot="select"
+              value={format}
+              onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
+              className="h-7 shrink-0 rounded-full border border-input bg-background px-3 text-xs"
+            >
+              <option value="all">{t("tab_all")}</option>
+              {ALL_FORMATS.map((f) => (
+                <option key={f} value={f}>
+                  {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
+                </option>
+              ))}
+            </select>
             <select
               data-slot="select"
               value={topicId}
               onChange={(e) => setTopicId(e.target.value)}
               disabled={topics.isLoading}
-              className="ml-auto h-7 rounded-full border border-input bg-background px-3 text-xs"
+              className="h-7 shrink-0 rounded-full border border-input bg-background px-3 text-xs"
             >
               <option value="all">{t("tests_picker_topic_all")}</option>
               {topicOptions.map((topic) => (

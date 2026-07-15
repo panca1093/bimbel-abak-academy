@@ -209,7 +209,7 @@ describe("ExamPackageDetailPage — overview tab", () => {
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Edit Paket")).toBeInTheDocument();
+      expect(screen.getByText("Edit Ujian")).toBeInTheDocument();
     });
   });
 });

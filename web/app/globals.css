@@ -64,6 +64,20 @@ body {
   font-size: 15px;
 }
 
+/* Tailwind v4 dropped the default gray border/divide color (bare `border`,
+   `border-t`, `divide-y`, etc. now default to currentColor) — restore the
+   soft --border token so unscoped border utilities don't render as
+   near-black text-color lines. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
+}
+
 /* page entrance — matches design-app-abak/source/styles.css .fade-in */
 .fade-in {
   animation: fadeIn 0.28s ease;
