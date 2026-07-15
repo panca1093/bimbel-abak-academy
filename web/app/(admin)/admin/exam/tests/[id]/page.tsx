@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ArrowDown,
   ArrowLeft,
-  ArrowUp,
+  ChevronDown,
+  ChevronUp,
   Library,
   List,
   Plus,
-  Unlink,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QuestionEditor } from "@/components/admin/QuestionEditor";
@@ -29,7 +29,9 @@ import {
 } from "@/lib/hooks/admin-tests";
 import { useTopics } from "@/lib/hooks/admin-topics";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
+import { FORMAT_TONE, DIFFICULTY_TONE } from "@/lib/question-tone";
 import type { QuestionWithOptions, QuestionFormat } from "@/lib/types";
 
 const FORMAT_BADGE: Record<
@@ -45,6 +47,12 @@ const FORMAT_BADGE: Record<
   short: "tests_format_short",
   fill_blank: "tests_format_fill_blank",
   essay: "tests_format_essay",
+};
+
+const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard"> = {
+  easy: "diff_easy",
+  medium: "diff_medium",
+  hard: "diff_hard",
 };
 
 const SECTION_TYPES: Array<{ value: string; labelKey: string }> = [
@@ -114,46 +122,66 @@ function QuestionRow({
   const { t } = useTranslation();
   const isFirst = index === 0;
   const isLast = index === total - 1;
+  const q = question.question;
+  const difficultyKey = q.difficulty ? DIFFICULTY_LABELS[q.difficulty] : undefined;
 
   return (
     <div
       data-question-row
-      className={`flex items-center gap-3 p-3 ${index < total - 1 ? "border-b" : ""}`}
+      className={`flex items-start gap-3 p-3 ${index < total - 1 ? "border-b" : ""}`}
     >
-      <span className="w-6 text-xs text-muted-foreground">#{index + 1}</span>
-      <Badge variant="outline">{t(FORMAT_BADGE[question.question.format])}</Badge>
-      <span className="flex-1 truncate text-sm">{stripHtmlToPlainText(question.question.body)}</span>
-      <div className="flex items-center gap-1">
-        <Button
+      <div className="flex flex-col items-center gap-0.5 pt-0.5 text-muted-foreground">
+        <button
           type="button"
-          size="icon-xs"
-          variant="ghost"
-          onClick={() => onReorder(question.question.id, "up")}
+          onClick={() => onReorder(q.id, "up")}
           disabled={isFirst}
           aria-label={t("tests_reorder_up")}
+          className="hover:text-ink-900 disabled:opacity-30"
         >
-          <ArrowUp className="size-3" />
-        </Button>
-        <Button
+          <ChevronUp className="size-4" />
+        </button>
+        <span className="text-sm font-semibold text-ink-900">{index + 1}</span>
+        <button
           type="button"
-          size="icon-xs"
-          variant="ghost"
-          onClick={() => onReorder(question.question.id, "down")}
+          onClick={() => onReorder(q.id, "down")}
           disabled={isLast}
           aria-label={t("tests_reorder_down")}
+          className="hover:text-ink-900 disabled:opacity-30"
         >
-          <ArrowDown className="size-3" />
-        </Button>
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          onClick={() => onDetach(question.question.id)}
-          aria-label={t("tests_detach_question")}
-        >
-          <Unlink className="size-3" />
-        </Button>
+          <ChevronDown className="size-4" />
+        </button>
       </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-ink-900">{stripHtmlToPlainText(q.body)}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className={cn("border-transparent", FORMAT_TONE[q.format])}>
+            {t(FORMAT_BADGE[q.format])}
+          </Badge>
+          {q.topic && (
+            <Badge variant="outline" className="border-transparent bg-brand-50 text-brand-700">
+              {q.topic}
+            </Badge>
+          )}
+          {difficultyKey && (
+            <Badge
+              variant="outline"
+              className={cn("border-transparent", q.difficulty && DIFFICULTY_TONE[q.difficulty])}
+            >
+              {t(difficultyKey)}
+            </Badge>
+          )}
+        </div>
+      </div>
+      <Button
+        type="button"
+        size="icon-xs"
+        variant="ghost"
+        onClick={() => onDetach(q.id)}
+        aria-label={t("tests_detach_question")}
+        className="text-destructive hover:text-destructive"
+      >
+        <Trash2 className="size-3.5" />
+      </Button>
     </div>
   );
 }
@@ -247,7 +275,6 @@ export default function TestDetailPage() {
   }
 
   async function handleDetach(questionId: string) {
-    if (!confirm(t("tests_confirm_delete_question"))) return;
     try {
       await detach.mutateAsync(questionId);
       toast.success(t("tests_save_success"));
@@ -319,10 +346,8 @@ export default function TestDetailPage() {
           <form
             id="test-detail-form"
             onSubmit={handleSaveTest}
-            className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)] lg:sticky lg:top-6 lg:self-start"
+            className="space-y-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)] lg:sticky lg:top-6 lg:self-start"
           >
-            <h2 className="text-lg font-semibold">{t("tests_detail_section_heading")}</h2>
-
             <div className="grid gap-2">
               <Label htmlFor="test-title">{t("tests_field_title")}</Label>
               <Input
@@ -334,7 +359,7 @@ export default function TestDetailPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="test-subject">{t("tests_field_subject")}</Label>
                 <Input
@@ -369,17 +394,37 @@ export default function TestDetailPage() {
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="test-duration">{t("tests_field_duration")}</Label>
-              <Input
-                id="test-duration"
-                type="number"
-                min={1}
-                value={form.duration}
-                onChange={(e) => form.setDuration(e.target.value)}
-                placeholder="60"
-                disabled={update.isPending}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="test-duration">{t("tests_field_duration")}</Label>
+                <Input
+                  id="test-duration"
+                  type="number"
+                  min={1}
+                  value={form.duration}
+                  onChange={(e) => form.setDuration(e.target.value)}
+                  placeholder="60"
+                  disabled={update.isPending}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="test-audio-play-limit">{t("tests_field_audio_play_limit")}</Label>
+                <select
+                  id="test-audio-play-limit"
+                  value={form.audioPlayLimit}
+                  onChange={(e) => form.setAudioPlayLimit(e.target.value)}
+                  disabled={update.isPending}
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                >
+                  <option value="">{t("unlimited")}</option>
+                  {!["", "1", "2", "3"].includes(form.audioPlayLimit) && (
+                    <option value={form.audioPlayLimit}>{form.audioPlayLimit}×</option>
+                  )}
+                  <option value="1">1×</option>
+                  <option value="2">2×</option>
+                  <option value="3">3×</option>
+                </select>
+              </div>
             </div>
 
             <div className="grid gap-2">
@@ -409,35 +454,15 @@ export default function TestDetailPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
-                <Input
-                  id="test-audio-url"
-                  value={form.audioUrl}
-                  onChange={(e) => form.setAudioUrl(e.target.value)}
-                  placeholder="https://..."
-                  disabled={update.isPending}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="test-audio-play-limit">{t("tests_field_audio_play_limit")}</Label>
-                <select
-                  id="test-audio-play-limit"
-                  value={form.audioPlayLimit}
-                  onChange={(e) => form.setAudioPlayLimit(e.target.value)}
-                  disabled={update.isPending}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-                >
-                  <option value="">{t("unlimited")}</option>
-                  {!["", "1", "2", "3"].includes(form.audioPlayLimit) && (
-                    <option value={form.audioPlayLimit}>{form.audioPlayLimit}×</option>
-                  )}
-                  <option value="1">1×</option>
-                  <option value="2">2×</option>
-                  <option value="3">3×</option>
-                </select>
-              </div>
+            <div className="grid gap-2">
+              <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
+              <Input
+                id="test-audio-url"
+                value={form.audioUrl}
+                onChange={(e) => form.setAudioUrl(e.target.value)}
+                placeholder="https://..."
+                disabled={update.isPending}
+              />
             </div>
           </form>
 

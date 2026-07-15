@@ -229,8 +229,7 @@ describe("TestDetailPage", () => {
     expect(body.textContent).toBe("");
   });
 
-  it("detach button calls useDetachQuestion after confirm", async () => {
-    vi.stubGlobal("confirm", () => true);
+  it("detach button calls useDetachQuestion without a confirm prompt", async () => {
     mockMutateAsync.mockResolvedValueOnce(undefined);
 
     renderWithClient(<TestDetailPage />);
@@ -247,8 +246,6 @@ describe("TestDetailPage", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith("q1");
     });
-
-    vi.unstubAllGlobals();
   });
 
   it("reorder down persists the new full question_ids order", async () => {
