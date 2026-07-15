@@ -199,6 +199,17 @@ func linkProductCourse(t *testing.T, env *testEnv, productID, courseID string) {
 	require.NoError(t, err)
 }
 
+// linkProductExam links a product to an exam via product_exam join table.
+func linkProductExam(t *testing.T, env *testEnv, productID, examID string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := env.pool.Exec(ctx,
+		`INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`,
+		productID, examID,
+	)
+	require.NoError(t, err)
+}
+
 // seedPromo inserts a promo code and returns its ID.
 func seedPromo(t *testing.T, env *testEnv, code string, discountPercent float64) string {
 	t.Helper()

@@ -191,6 +191,60 @@ func TestWorkerFanout(t *testing.T) {
 		assert.Equal(t, 1, sessionCount, "ON CONFLICT DO NOTHING must prevent duplicate sessions")
 	})
 
+	t.Run("exam product: N linked exams produce N registrations, order completed, order_item stamped", func(t *testing.T) {
+		env := newTestEnv(t)
+		ctx := context.Background()
+
+		studentID := seedUser(t, env, "student", "active", false)
+		productID := seedProduct(t, env, "exam", "Exam Bundle", 75000)
+		examID := seedExam(t, env, "TKA Try Out", "hidden", nil)
+		linkProductExam(t, env, productID, examID)
+
+		orderID := seedPaidOrder(t, env, studentID, productID, "exam")
+		seedOutboxOrderPaid(t, env, orderID, productID, "exam")
+
+		repo := repository.New(env.pool)
+		w := worker.New(env.pool, env.rdb, repo, 50*time.Millisecond, 200*time.Millisecond, 5*time.Minute, nil, nil, nil, nil, time.Hour, "")
+		wCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		go w.Run(wCtx)
+
+		// Poll until the order reaches completed.
+		ok := pollUntil(t, 5*time.Second, func() bool {
+			var status string
+			_ = env.pool.QueryRow(ctx,
+				`SELECT status FROM orders WHERE id=$1`, orderID,
+			).Scan(&status)
+			return status == "completed"
+		})
+		cancel()
+		require.True(t, ok, "timed out waiting for order to reach completed — StampOrderItemFulfilledAt likely erroring and rolling back the tx")
+
+		// Registration must exist.
+		var regCount int
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM exam_registration WHERE student_id=$1 AND exam_id=$2`,
+			studentID, examID,
+		).Scan(&regCount))
+		assert.Equal(t, 1, regCount, "exam registration must survive the transaction")
+
+		// order_item.fulfilled_at must be stamped.
+		var fulfilledAt *time.Time
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT fulfilled_at FROM order_item WHERE order_id=$1 AND product_id=$2`,
+			orderID, productID,
+		).Scan(&fulfilledAt))
+		assert.NotNil(t, fulfilledAt, "order_item.fulfilled_at must be stamped")
+
+		// Outbox must be processed.
+		var processedCount int
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM outbox WHERE aggregate_id=$1 AND event_type='OrderPaid' AND processed_at IS NOT NULL`,
+			orderID,
+		).Scan(&processedCount))
+		assert.Equal(t, 1, processedCount)
+	})
+
 	t.Run("FR-INT-16 zero-linked course product: no session, order completed, outbox processed", func(t *testing.T) {
 		env := newTestEnv(t)
 		ctx := context.Background()

@@ -1027,7 +1027,7 @@ func (r *Repository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg 
 
 func (r *Repository) StampOrderItemFulfilledAt(ctx context.Context, tx pgx.Tx, orderID, productID uuid.UUID) error {
 	_, err := tx.Exec(ctx,
-		`UPDATE order_items SET fulfilled_at = now() WHERE order_id = $1 AND product_id = $2`,
+		`UPDATE order_item SET fulfilled_at = now() WHERE order_id = $1 AND product_id = $2`,
 		orderID, productID,
 	)
 	return err
