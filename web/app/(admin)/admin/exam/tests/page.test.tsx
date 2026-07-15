@@ -83,9 +83,9 @@ describe("TestsPage", () => {
 
     expect(screen.getByText("Matematika")).toBeInTheDocument();
     expect(screen.getByText("Aljabar")).toBeInTheDocument();
-    expect(screen.getByText("90")).toBeInTheDocument();
+    expect(screen.getByText(/90\s*min/)).toBeInTheDocument();
     expect(screen.getByText("Reading")).toBeInTheDocument();
-    expect(screen.getByText("60")).toBeInTheDocument();
+    expect(screen.getByText(/60\s*min/)).toBeInTheDocument();
   });
 
   it("navigates to the test detail page when a row is clicked", async () => {
@@ -106,7 +106,7 @@ describe("TestsPage", () => {
       expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument();
     });
 
-    const row = screen.getByText("Tryout UTBK Saintek").closest("tr")!;
+    const row = screen.getByText("Tryout UTBK Saintek").closest("[data-testid=test-row]") as HTMLElement;
     fireEvent.click(within(row).getByRole("button", { name: /^edit$/i }));
     expect(push).not.toHaveBeenCalled();
   });
@@ -195,9 +195,9 @@ describe("TestsPage", () => {
 
     await waitFor(() => expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument());
 
-    const row = screen.getByText("Tryout UTBK Saintek").closest("tr");
+    const row = screen.getByText("Tryout UTBK Saintek").closest("[data-testid=test-row]") as HTMLElement;
     expect(row).toBeTruthy();
-    const editButton = within(row!).getByRole("button", { name: /^edit$/i });
+    const editButton = within(row).getByRole("button", { name: /^edit$/i });
     fireEvent.click(editButton);
 
     expect(screen.getByRole("dialog", { name: /sunting tes/i })).toBeInTheDocument();
@@ -223,9 +223,9 @@ describe("TestsPage", () => {
 
     await waitFor(() => expect(screen.getByText("Tryout Bahasa Inggris")).toBeInTheDocument());
 
-    const row = screen.getByText("Tryout Bahasa Inggris").closest("tr");
+    const row = screen.getByText("Tryout Bahasa Inggris").closest("[data-testid=test-row]") as HTMLElement;
     expect(row).toBeTruthy();
-    const deleteButton = within(row!).getByRole("button", { name: /hapus/i });
+    const deleteButton = within(row).getByRole("button", { name: /hapus/i });
     fireEvent.click(deleteButton);
 
     await waitFor(() => {

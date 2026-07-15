@@ -85,7 +85,7 @@ describe("QuestionPickerModal", () => {
     expect(await screen.findByText("bold text")).toBeInTheDocument();
     expect(screen.queryByText("<b>bold</b> text")).not.toBeInTheDocument();
 
-    const row = screen.getByText("bold text").closest("label") as HTMLElement;
+    const row = screen.getByText("bold text").closest("button") as HTMLElement;
     expect(row).toBeTruthy();
     expect(row.innerHTML).not.toContain("<b>");
   });

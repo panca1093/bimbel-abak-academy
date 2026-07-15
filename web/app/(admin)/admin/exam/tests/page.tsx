@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Pencil, Trash2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TestModal } from "@/components/admin/TestModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import {
   useAdminTests,
   useCreateTest,
@@ -98,57 +99,71 @@ export default function TestsPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_field_title")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_field_subject")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_field_topic")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_field_duration")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_question_count")}</th>
-                <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tests.map((test) => (
-                <tr
-                  key={test.id}
-                  className="cursor-pointer border-t transition-colors hover:bg-muted/40"
-                  onClick={() => router.push(`/admin/exam/tests/${test.id}`)}
+        tests.length === 0 ? (
+          <div className="md-card-outlined px-4 py-8 text-center text-muted-foreground">
+            {t("tests_empty")}
+          </div>
+        ) : (
+          <div className="md-card-outlined divide-y">
+            {tests.map((test) => (
+              <div
+                key={test.id}
+                data-testid="test-row"
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push(`/admin/exam/tests/${test.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/admin/exam/tests/${test.id}`);
+                  }
+                }}
+                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-ink-900 truncate">{test.title}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>{test.subject}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{test.topic}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{test.duration_minutes} min</span>
+                    <Badge variant="secondary" className="ml-1">
+                      {test.question_count ?? 0} {t("tests_question_count")}
+                    </Badge>
+                  </div>
+                </div>
+                <div
+                  className="flex items-center gap-1"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <td className="px-4 py-3 font-medium">{test.title}</td>
-                  <td className="px-4 py-3">{test.subject}</td>
-                  <td className="px-4 py-3">{test.topic}</td>
-                  <td className="px-4 py-3">{test.duration_minutes}</td>
-                  <td className="px-4 py-3">{test.question_count ?? 0}</td>
-                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => openEdit(test)}>
-                        {t("action_edit")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDelete(test.id)}
-                        disabled={remove.isPending && deletingId === test.id}
-                      >
-                        {t("action_delete")}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {tests.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    {t("tests_empty")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => openEdit(test)}
+                    aria-label={t("action_edit")}
+                  >
+                    <Pencil className="mr-1 size-3.5" />
+                    {t("action_edit")}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDelete(test.id)}
+                    disabled={remove.isPending && deletingId === test.id}
+                    aria-label={t("action_delete")}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="mr-1 size-3.5" />
+                    {t("action_delete")}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       )}
 
       <TestModal

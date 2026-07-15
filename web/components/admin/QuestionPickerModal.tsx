@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,12 @@ const FORMAT_LABELS: Record<QuestionFormat, string> = {
   essay: "fmt_essay",
 };
 
+const DIFFICULTY_LABEL: Record<string, string> = {
+  easy: "diff_easy",
+  medium: "diff_medium",
+  hard: "diff_hard",
+};
+
 const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay"];
 
 interface QuestionPickerModalProps {
@@ -36,6 +42,49 @@ interface QuestionPickerModalProps {
   testId: string;
   attached: QuestionWithOptions[];
   onAttach: (questionIds: string[]) => Promise<void>;
+}
+
+function FilterChip({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-input bg-background text-ink-900 hover:bg-muted/40"
+      } disabled:opacity-50`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SelectionBox({ selected }: { selected: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex size-5 flex-shrink-0 items-center justify-center rounded-md border ${
+        selected
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-input bg-surface"
+      }`}
+    >
+      {selected && <Check className="size-3" />}
+    </span>
+  );
 }
 
 export function QuestionPickerModal({
@@ -106,42 +155,42 @@ export function QuestionPickerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("tests_picker_title")}</DialogTitle>
           <DialogDescription>{t("tests_picker_search")}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("tests_picker_search")}
-                className="pl-9"
-              />
-            </div>
-            <select
-              data-slot="select"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-            >
-              <option value="all">{t("tests_picker_format_all")}</option>
-              {ALL_FORMATS.map((f) => (
-                <option key={f} value={f}>
-                  {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
-                </option>
-              ))}
-            </select>
+        <div className="space-y-3 py-1">
+          <div className="flex h-9 items-center gap-2 rounded-lg border border-input bg-surface-2 px-3 focus-within:ring-2 focus-within:ring-ring/40">
+            <Search className="size-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("tests_picker_search")}
+              className="h-8 flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <FilterChip active={format === "all"} onClick={() => setFormat("all")}>
+              {t("tab_all")}
+            </FilterChip>
+            {ALL_FORMATS.map((f) => (
+              <FilterChip
+                key={f}
+                active={format === f}
+                onClick={() => setFormat(f)}
+              >
+                {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
+              </FilterChip>
+            ))}
             <select
               data-slot="select"
               value={topicId}
               onChange={(e) => setTopicId(e.target.value)}
               disabled={topics.isLoading}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+              className="ml-auto h-7 rounded-full border border-input bg-background px-3 text-xs"
             >
               <option value="all">{t("tests_picker_topic_all")}</option>
               {topicOptions.map((topic) => (
@@ -152,7 +201,7 @@ export function QuestionPickerModal({
             </select>
           </div>
 
-          <div className="max-h-[360px] overflow-y-auto rounded-md border border-input p-2">
+          <div className="max-h-[320px] overflow-y-auto rounded-md border border-input">
             {bank.isLoading && (
               <div className="p-4 text-center text-muted-foreground">{t("sys_loading")}</div>
             )}
@@ -163,30 +212,50 @@ export function QuestionPickerModal({
               const isAttached = attachedIds.has(row.question.id);
               const isSelected = selected.has(row.question.id);
               return (
-                <label
+                <button
+                  type="button"
                   key={row.question.id}
-                  className={`flex items-center gap-3 rounded-md px-2 py-1.5 ${
-                    isAttached ? "bg-muted/40" : "hover:bg-muted/20"
+                  disabled={isAttached}
+                  onClick={() => toggle(row.question.id)}
+                  className={`flex w-full items-center gap-3 border-b px-3 py-2 text-left transition-colors last:border-b-0 ${
+                    isAttached
+                      ? "cursor-default opacity-50"
+                      : isSelected
+                        ? "bg-green-50 hover:bg-green-50"
+                        : "hover:bg-muted/30"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    disabled={isAttached}
-                    onChange={() => toggle(row.question.id)}
-                    className="size-4"
-                  />
+                  <SelectionBox selected={isSelected} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Badge variant="outline">{t(FORMAT_LABELS[row.question.format] as Parameters<typeof t>[0])}</Badge>
-                      <span className="text-muted-foreground">{row.question.topic || "—"}</span>
+                    <p className="truncate text-sm text-ink-900">
+                      {stripHtmlToPlainText(row.question.body)}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                        {row.question.id}
+                      </span>
+                      <Badge variant="outline">
+                        {t(FORMAT_LABELS[row.question.format] as Parameters<typeof t>[0])}
+                      </Badge>
+                      {row.question.topic && (
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {row.question.topic}
+                        </span>
+                      )}
+                      {row.question.difficulty &&
+                        DIFFICULTY_LABEL[row.question.difficulty] && (
+                          <Badge variant="secondary">
+                            {t(DIFFICULTY_LABEL[row.question.difficulty] as Parameters<typeof t>[0])}
+                          </Badge>
+                        )}
                     </div>
-                    <p className="mt-1 truncate text-sm">{stripHtmlToPlainText(row.question.body)}</p>
                   </div>
                   {isAttached && (
-                    <Badge variant="secondary">{t("tests_picker_attached_badge")}</Badge>
+                    <span className="flex-shrink-0 text-[11px] text-muted-foreground">
+                      {t("tests_picker_attached_badge")}
+                    </span>
                   )}
-                </label>
+                </button>
               );
             })}
           </div>

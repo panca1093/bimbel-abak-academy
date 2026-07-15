@@ -1,20 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
-  ClipboardList,
   Library,
   Plus,
   Unlink,
 } from "lucide-react";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { Button } from "@/components/ui/button";
 import { QuestionEditor } from "@/components/admin/QuestionEditor";
 import { QuestionPickerModal } from "@/components/admin/QuestionPickerModal";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -160,6 +159,7 @@ function QuestionRow({
 
 export default function TestDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params?.id ?? "";
   const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
@@ -261,22 +261,36 @@ export default function TestDetailPage() {
 
   return (
     <div className="space-y-6 fade-in">
-      <AdminPageHeader
-        icon={ClipboardList}
-        title={t("tests_detail_page_title")}
-        description={
-          detail
-            ? `${detail.test.subject} · ${detail.test.topic} · ${detail.test.duration_minutes} min`
-            : undefined
-        }
-        actions={
-          !isLoading && !isError ? (
-            <Button type="submit" form="test-detail-form" disabled={!canSaveTest}>
-              {update.isPending ? t("saving") : t("save")}
-            </Button>
-          ) : undefined
-        }
-      />
+      <div>
+        <button
+          type="button"
+          data-testid="tests-back-link"
+          onClick={() => router.push("/admin/exam/tests")}
+          aria-label={t("tests_page_title")}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink-900"
+        >
+          <ArrowLeft className="size-4" />
+          {t("tests_page_title")}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-headline text-ink-900">
+            {detail ? detail.test.title : t("sys_loading")}
+          </h1>
+          {detail && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {detail.test.subject} · {detail.test.topic} · {detail.test.duration_minutes} min
+            </p>
+          )}
+        </div>
+        {!isLoading && !isError ? (
+          <Button type="submit" form="test-detail-form" disabled={!canSaveTest}>
+            {update.isPending ? t("saving") : t("save")}
+          </Button>
+        ) : null}
+      </div>
 
       {isLoading && (
         <div className="space-y-2">
@@ -298,7 +312,7 @@ export default function TestDetailPage() {
           <form
             id="test-detail-form"
             onSubmit={handleSaveTest}
-            className="space-y-4 rounded-lg border bg-card p-4 lg:sticky lg:top-6 lg:self-start"
+            className="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)] lg:sticky lg:top-6 lg:self-start"
           >
             <h2 className="text-lg font-semibold">{t("tests_detail_section_heading")}</h2>
 
@@ -456,7 +470,7 @@ export default function TestDetailPage() {
               />
             )}
 
-            <div className="rounded-lg border">
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)]">
               {questions.length === 0 ? (
                 <div className="space-y-3 p-8 text-center text-muted-foreground">
                   <p>{t("tests_questions_empty")}</p>
