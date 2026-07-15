@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Library,
+  List,
   Plus,
   Unlink,
 } from "lucide-react";
@@ -274,7 +275,7 @@ export default function TestDetailPage() {
         </button>
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-headline text-ink-900">
             {detail ? detail.test.title : t("sys_loading")}
@@ -286,7 +287,13 @@ export default function TestDetailPage() {
           )}
         </div>
         {!isLoading && !isError ? (
-          <Button type="submit" form="test-detail-form" disabled={!canSaveTest}>
+          <Button
+            type="submit"
+            form="test-detail-form"
+            size="lg"
+            disabled={!canSaveTest}
+            className="shadow-md shadow-primary/30"
+          >
             {update.isPending ? t("saving") : t("save")}
           </Button>
         ) : null}
@@ -437,9 +444,10 @@ export default function TestDetailPage() {
           {/* Right: questions panel */}
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold">
-                {t("tests_question_count")} · {questions.length}
-              </h2>
+              <h3 className="text-[15px] font-semibold text-ink-900">
+                {t("tests_questions_in_this_test")}{" "}
+                <span className="font-normal text-muted-foreground">· {questions.length}</span>
+              </h3>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -472,9 +480,10 @@ export default function TestDetailPage() {
 
             <div className="rounded-2xl bg-white shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)]">
               {questions.length === 0 ? (
-                <div className="space-y-3 p-8 text-center text-muted-foreground">
-                  <p>{t("tests_questions_empty")}</p>
-                  <div className="flex items-center justify-center gap-2">
+                <div className="px-4 py-10 text-center text-muted-foreground">
+                  <List className="mx-auto size-8" strokeWidth={1.4} />
+                  <p className="mt-3 text-sm">{t("tests_questions_empty")}</p>
+                  <div className="mt-5 flex items-center justify-center gap-2">
                     <Button
                       type="button"
                       variant="outline"
