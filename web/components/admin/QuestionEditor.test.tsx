@@ -127,6 +127,23 @@ describe("QuestionEditor", () => {
     expect(checked.length).toBe(1);
   });
 
+  it("edit mode does not crash when an optionless question has null options", () => {
+    // The bank list API returns options: null for fill_blank / short / essay
+    // (a nil Go slice). The editor must tolerate it, not read null.length.
+    const qwo = {
+      question: makeQuestion({ format: "fill_blank", correct_answer: "Jakarta" }),
+      options: null as unknown as QuestionOption[],
+    };
+    expect(() =>
+      renderWithClient(
+        <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+      )
+    ).not.toThrow();
+
+    expect(screen.getByLabelText(/jawaban benar/i)).toBeInTheDocument();
+    expect(screen.queryAllByRole("radio").length).toBe(0);
+  });
+
   it("switching format to essay hides option editor and correct_answer input", () => {
     renderWithClient(
       <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />

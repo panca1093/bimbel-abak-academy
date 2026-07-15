@@ -337,7 +337,13 @@ func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs [
 	}
 	defer rows.Close()
 
+	// Seed every requested id with a non-nil empty slice so optionless formats
+	// (short / fill_blank / essay) surface as [] not nil. A nil slice serializes
+	// to JSON null and crashes the admin editor's q.options.length read on edit.
 	out := make(map[uuid.UUID][]model.QuestionOption, len(questionIDs))
+	for _, id := range questionIDs {
+		out[id] = []model.QuestionOption{}
+	}
 	for rows.Next() {
 		o := model.QuestionOption{}
 		if err := scanQuestionOption(rows, &o); err != nil {

@@ -859,6 +859,24 @@ func TestListBankQuestions_populates_nested_question_and_options(t *testing.T) {
 	assert.Equal(t, "b", items[0].Options[1].Key)
 }
 
+// A fill_blank / short / essay question has no options. Its Options must
+// serialize as [] not null — a nil slice becomes JSON null and crashes the
+// admin question editor, which reads q.options.length when opening an edit.
+func TestListBankQuestions_optionlessFormat_returnsNonNilOptions(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	body := "fill blank no options " + uniqueSuffix()
+	seedBankQuestionDirect(t, ctx, repo, "fill_blank", body)
+
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	assert.NotNil(t, items[0].Options, "options must be a non-nil empty slice, not nil (serializes to null)")
+	assert.Len(t, items[0].Options, 0)
+}
+
 func TestDeleteQuestion_rejects_when_attached(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()

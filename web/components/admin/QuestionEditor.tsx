@@ -170,7 +170,8 @@ const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_bla
 
 
 function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionInput[] {
-  if (q.options.length === 0) {
+  // options is null (not []) for optionless formats coming from the bank API.
+  if (!q.options || q.options.length === 0) {
     return [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
       { key: "b", text: "", is_correct: false, sort_order: 2 },
