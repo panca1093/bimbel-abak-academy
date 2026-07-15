@@ -26,7 +26,7 @@ type mockRepository struct {
 	getCoursesByProductIDFn   func(context.Context, uuid.UUID) ([]model.Course, error)
 	beginTxFn                 func(context.Context) (pgx.Tx, error)
 	getExpiredPaymentOrdersFn func(context.Context, int) ([]uuid.UUID, error)
-	getExamByProductIDFn      func(context.Context, uuid.UUID) (*model.Exam, error)
+	getExamsByProductIDFn     func(context.Context, uuid.UUID) ([]model.Exam, error)
 	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
 	stampOrderItemFulfilledFn func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 }
@@ -63,11 +63,11 @@ func (m *mockRepository) GetExpiredPaymentOrders(ctx context.Context, limit int)
 	return m.getExpiredPaymentOrdersFn(ctx, limit)
 }
 
-func (m *mockRepository) GetExamByProductID(ctx context.Context, productID uuid.UUID) (*model.Exam, error) {
-	if m.getExamByProductIDFn == nil {
+func (m *mockRepository) GetExamsByProductID(ctx context.Context, productID uuid.UUID) ([]model.Exam, error) {
+	if m.getExamsByProductIDFn == nil {
 		return nil, nil
 	}
-	return m.getExamByProductIDFn(ctx, productID)
+	return m.getExamsByProductIDFn(ctx, productID)
 }
 
 func (m *mockRepository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
@@ -457,11 +457,11 @@ func TestOrderPaidHandler_ExamItem_ProvisionsRegistration(t *testing.T) {
 		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
 			return model.Order{ID: orderID, StudentID: studentID, Status: "paid"}, nil
 		},
-		getExamByProductIDFn: func(ctx context.Context, pid uuid.UUID) (*model.Exam, error) {
+		getExamsByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Exam, error) {
 			if pid != productID {
-				t.Errorf("GetExamByProductID called with %v, want %v", pid, productID)
+				t.Errorf("GetExamsByProductID called with %v, want %v", pid, productID)
 			}
-			return &model.Exam{ID: examID, Title: "Finals", ProductID: &productID}, nil
+			return []model.Exam{{ID: examID, Title: "Finals"}}, nil
 		},
 		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
 			capturedRegistration = reg
@@ -541,8 +541,8 @@ func TestOrderPaidHandler_ExamItem_IdempotentOnReplay(t *testing.T) {
 		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
 			return model.Order{ID: orderID, StudentID: studentID, Status: "paid"}, nil
 		},
-		getExamByProductIDFn: func(ctx context.Context, pid uuid.UUID) (*model.Exam, error) {
-			return &model.Exam{ID: examID, Title: "Finals", ProductID: &productID}, nil
+		getExamsByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Exam, error) {
+			return []model.Exam{{ID: examID, Title: "Finals"}}, nil
 		},
 		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
 			createCalls++

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RichContent } from "@/components/admin/RichContent";
 import type { ResultPembahasanItem } from "@/lib/types";
 
 function formatDate(iso: string): string {
@@ -238,7 +239,7 @@ function PembahasanItem({
   return (
     <details className="rounded-lg border border-line p-3">
       <summary className="cursor-pointer text-sm font-medium text-ink-800">
-        {index + 1}. {item.body}
+        {index + 1}. <RichContent html={item.body} />
       </summary>
       <div className="mt-3 space-y-2 text-sm">
         <p>

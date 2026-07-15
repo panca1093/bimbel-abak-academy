@@ -219,3 +219,49 @@ func (r *Repository) CreateProductWithCourses(ctx context.Context, tx pgx.Tx, p 
 	}
 	return nil
 }
+
+// ReplaceProductExams atomically replaces all product_exam links for a product,
+// mirroring ReplaceProductCourses.
+func (r *Repository) ReplaceProductExams(ctx context.Context, tx pgx.Tx, productID uuid.UUID, examIDs []uuid.UUID) error {
+	_, err := tx.Exec(ctx, `DELETE FROM product_exam WHERE product_id = $1`, productID)
+	if err != nil {
+		return err
+	}
+	for _, examID := range examIDs {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+			productID, examID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CreateProductWithExams inserts a product and its product_exam links in one transaction,
+// mirroring CreateProductWithCourses.
+func (r *Repository) CreateProductWithExams(ctx context.Context, tx pgx.Tx, p *model.Product, examIDs []uuid.UUID) error {
+	err := tx.QueryRow(ctx,
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, created_at, updated_at`,
+		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL,
+	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return err
+	}
+
+	for _, examID := range examIDs {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO product_exam (product_id, exam_id)
+			VALUES ($1, $2)
+			ON CONFLICT DO NOTHING`,
+			p.ID, examID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

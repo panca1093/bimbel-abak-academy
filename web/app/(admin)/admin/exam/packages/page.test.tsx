@@ -1,6 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import ExamPackagesPage from "./page";
+
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
 
 let uiStore = { lang: "id" as "id" | "en" };
 
@@ -51,6 +57,28 @@ const sampleExams = [
 ];
 
 describe("ExamPackagesPage", () => {
+  beforeEach(() => {
+    push.mockReset();
+  });
+
+  it("navigates to the exam detail page when a row is clicked", async () => {
+    examsState = {
+      data: { data: sampleExams },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackagesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("UTS Matematika"));
+    expect(push).toHaveBeenCalledWith("/admin/exam/packages/e1");
+  });
+
   it("renders the packages table with exam titles and the create button", async () => {
     examsState = {
       data: { data: sampleExams },
@@ -66,7 +94,7 @@ describe("ExamPackagesPage", () => {
       expect(screen.getByText("UAS IPA")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /buat paket/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /buat ujian/i })).toBeInTheDocument();
   });
 
   it("shows skeleton rows while loading", () => {
@@ -109,7 +137,7 @@ describe("ExamPackagesPage", () => {
     render(<ExamPackagesPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/belum ada paket/i)).toBeInTheDocument();
+      expect(screen.getByText(/belum ada ujian/i)).toBeInTheDocument();
     });
   });
 });

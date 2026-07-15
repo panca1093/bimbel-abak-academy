@@ -74,7 +74,7 @@ export const DICT = {
     revenue: "Pendapatan",
     notifications: "Notifikasi",
     tests: "Tes",
-    packages: "Paket",
+    packages: "Ujian",
     question_bank: "Bank Soal",
     session_monitor: "Monitor Sesi",
     students: "Siswa",
@@ -176,6 +176,8 @@ export const DICT = {
     features: "Fitur",
     payment: "Pembayaran",
     notification: "Notifikasi",
+    notifications_page_title: "Notifikasi",
+    notifications_page_description: "Pantau notifikasi pembelian dan kelola pengumuman.",
     notification_title: "Judul",
     notification_message: "Pesan",
     notification_type: "Tipe",
@@ -286,6 +288,8 @@ export const DICT = {
     cart_empty_desc: "Yuk jelajahi katalog dan tambahkan buku atau kursus favoritmu.",
     cart_view_catalog: "Lihat Katalog",
     orders_title: "Pesanan",
+    admin_orders_page_title: "Pesanan",
+    admin_orders_page_description: "Konfirmasi, kirim, dan kelola retur pesanan.",
     billing_subtitle: "Pesanan, invoice, dan status pengiriman Anda.",
     orders_empty: "Belum ada pesanan.",
     orders_empty_desc: "Pesanan Anda akan muncul di sini setelah checkout.",
@@ -351,7 +355,9 @@ export const DICT = {
     action_reconcile: "Rekonsiliasi",
 
     // Admin — products
-    product_type_package: "Paket",
+    products_page_title: "Produk & Katalog",
+    products_page_description: "Kelola buku, kursus, dan paket produk.",
+    product_type_exam: "Ujian",
     products: "Produk",
     products_create: "Buat produk",
     products_created: "Produk dibuat.",
@@ -378,6 +384,8 @@ export const DICT = {
     filter_refunded: "Refund",
 
     // Admin — courses
+    courses_page_title: "Manajemen Kursus",
+    courses_page_description: "Buat dan kelola konten video kursus.",
     courses: "Kursus",
     courses_create: "Buat kursus",
     courses_create_desc: "Tambahkan kursus baru ke katalog.",
@@ -395,6 +403,8 @@ export const DICT = {
     course_instructor_placeholder: "Nama pengajar",
 
     // Admin — promos
+    promos_page_title: "Promo & Diskon",
+    promos_page_description: "Kelola kode promo dan diskon aktif.",
     promo_create: "Buat kode promo",
     promo_created: "Kode promo dibuat.",
     promo_deleted: "Kode promo dihapus.",
@@ -403,6 +413,8 @@ export const DICT = {
     empty_promos: "Belum ada kode promo.",
 
     // Admin — revenue
+    revenue_page_title: "Pendapatan",
+    revenue_page_description: "Ringkasan pendapatan dan tren penjualan.",
     revenue_load_failed: "Gagal memuat revenue",
     revenue_total: "Total pendapatan",
     revenue_avg_order: "Rata-rata nilai pesanan",
@@ -530,8 +542,11 @@ export const DICT = {
     school_classes_title: "Manajemen Kelas",
     school_students_title: "Manajemen Siswa",
     school_reports_title: "Laporan Sekolah",
+    school_reports_subtitle: "Lihat hasil dan laporan ujian per sekolah.",
     exam_packages_title: "Manajemen Paket",
+    exam_packages_page_description: "Kelola paket ujian dan jadwalnya.",
     exam_monitor_title: "Monitor Sesi Ujian",
+    exam_monitor_subtitle: "Pantau sesi ujian yang sedang berlangsung secara langsung.",
 
     /* System — shared */
     sys_loading: "Memuat…",
@@ -707,9 +722,11 @@ export const DICT = {
 
     // Admin — exam tests (Slice 1)
     tests_page_title: "Penyusun Tes",
+    tests_page_description: "Buat dan kelola tes untuk bank soal.",
     tests_empty: "Belum ada tes. Buat tes pertama Anda.",
     tests_new: "Tes baru",
     tests_edit: "Sunting tes",
+    tests_detail_section_heading: "Detail tes",
     tests_field_title: "Judul",
     tests_field_subject: "Mata pelajaran",
     tests_field_topic: "Topik",
@@ -747,6 +764,7 @@ export const DICT = {
     tests_validation_body_required: "Badan soal wajib diisi",
     tests_validation_topic_required: "Topik wajib dipilih",
     tests_questions_empty: "Belum ada soal. Tambahkan soal pertama untuk memulai.",
+    tests_questions_in_this_test: "Soal dalam tes ini",
     tests_question_count: "Jumlah soal",
     tests_from_bank: "Dari bank",
     tests_new_question: "Soal baru",
@@ -763,17 +781,15 @@ export const DICT = {
     tests_picker_selected: "{n} dipilih",
 
     // Admin — exam packages (Slice 2)
-    exam_packages_page_title: "Paket Ujian",
-    exam_packages_create: "Buat Paket",
+    exam_packages_page_title: "Ujian",
+    exam_packages_create: "Buat Ujian",
     exam_packages_col_title: "Judul",
     exam_packages_col_scheduled: "Dijadwalkan",
-    exam_packages_col_status: "Status",
-    exam_packages_col_price: "Harga",
-    exam_packages_empty: "Belum ada paket",
-    exam_packages_create_success: "Paket dibuat",
-    exam_packages_update_success: "Paket diperbarui",
-    exam_packages_modal_create_title: "Buat Paket",
-    exam_packages_modal_edit_title: "Edit Paket",
+    exam_packages_empty: "Belum ada ujian",
+    exam_packages_create_success: "Ujian dibuat",
+    exam_packages_update_success: "Ujian diperbarui",
+    exam_packages_modal_create_title: "Buat Ujian",
+    exam_packages_modal_edit_title: "Edit Ujian",
     exam_packages_modal_title: "Judul",
     exam_packages_modal_title_placeholder: "Contoh: Ujian Akhir Matematika",
     exam_packages_modal_scheduled_at: "Dijadwalkan",
@@ -820,11 +836,6 @@ export const DICT = {
     admin_exam_detail_tests_save: "Simpan",
     admin_exam_detail_tests_remove: "Hapus",
     admin_exam_detail_tests_add: "Tambah",
-    admin_exam_detail_price_label: "Harga",
-    admin_exam_detail_price_save: "Simpan Harga",
-    admin_exam_detail_publish: "Publish",
-    admin_exam_detail_publish_confirm:
-      "Publish paket ini? Tindakan ini tidak bisa dibatalkan.",
     exam_packages_modal_mode: "Mode Ujian",
 	    exam_packages_modal_mode_standard: "Standar",
 	    exam_packages_modal_mode_utbk: "UTBK",
@@ -996,7 +1007,7 @@ export const DICT = {
     revenue: "Revenue",
     notifications: "Notifications",
     tests: "Tests",
-    packages: "Packages",
+    packages: "Exams",
     question_bank: "Question Bank",
     session_monitor: "Session Monitor",
     students: "Students",
@@ -1098,6 +1109,8 @@ export const DICT = {
     features: "Features",
     payment: "Payment",
     notification: "Notification",
+    notifications_page_title: "Notifications",
+    notifications_page_description: "Monitor purchase notifications and manage announcements.",
     notification_title: "Title",
     notification_message: "Message",
     notification_type: "Type",
@@ -1208,6 +1221,8 @@ export const DICT = {
     cart_empty_desc: "Browse the catalog and add your favorite books or courses.",
     cart_view_catalog: "View Catalog",
     orders_title: "Orders",
+    admin_orders_page_title: "Orders",
+    admin_orders_page_description: "Confirm, ship, and manage order returns.",
     billing_subtitle: "Your orders, invoices and shipping status.",
     orders_empty: "No orders yet.",
     orders_empty_desc: "Your orders will appear here after checkout.",
@@ -1273,7 +1288,9 @@ export const DICT = {
     action_reconcile: "Reconcile",
 
     // Admin — products
-    product_type_package: "Package",
+    products_page_title: "Product & Catalog",
+    products_page_description: "Manage books, courses, and product packages.",
+    product_type_exam: "Exam",
     products: "Products",
     products_create: "Create product",
     products_created: "Product created.",
@@ -1300,6 +1317,8 @@ export const DICT = {
     filter_refunded: "Refunded",
 
     // Admin — courses
+    courses_page_title: "Course Management",
+    courses_page_description: "Create and manage video course content.",
     courses: "Courses",
     courses_create: "Create course",
     courses_create_desc: "Add a new course to the catalog.",
@@ -1317,6 +1336,8 @@ export const DICT = {
     course_instructor_placeholder: "Instructor name",
 
     // Admin — promos
+    promos_page_title: "Promos & Discounts",
+    promos_page_description: "Manage promo codes and active discounts.",
     promo_create: "Create promo code",
     promo_created: "Promo code created.",
     promo_deleted: "Promo code deleted.",
@@ -1325,6 +1346,8 @@ export const DICT = {
     empty_promos: "No promo codes yet.",
 
     // Admin — revenue
+    revenue_page_title: "Revenue",
+    revenue_page_description: "Revenue overview and sales trends.",
     revenue_load_failed: "Failed to load revenue",
     revenue_total: "Total revenue",
     revenue_avg_order: "Average order value",
@@ -1452,8 +1475,11 @@ export const DICT = {
     school_classes_title: "Class Management",
     school_students_title: "Student Management",
     school_reports_title: "School Reports",
+    school_reports_subtitle: "View exam results and reports by school.",
     exam_packages_title: "Package Management",
+    exam_packages_page_description: "Manage exam packages and their schedules.",
     exam_monitor_title: "Exam Session Monitor",
+    exam_monitor_subtitle: "Monitor exam sessions currently in progress in real time.",
 
     /* System — shared */
     sys_loading: "Loading…",
@@ -1629,9 +1655,11 @@ export const DICT = {
 
     // Admin — exam tests (Slice 1)
     tests_page_title: "Test authoring",
+    tests_page_description: "Create and manage tests for the question bank.",
     tests_empty: "No tests yet. Create your first test.",
     tests_new: "New test",
     tests_edit: "Edit test",
+    tests_detail_section_heading: "Test details",
     tests_field_title: "Title",
     tests_field_subject: "Subject",
     tests_field_topic: "Topic",
@@ -1669,6 +1697,7 @@ export const DICT = {
     tests_validation_body_required: "Question body is required",
     tests_validation_topic_required: "Topic is required",
     tests_questions_empty: "No questions yet. Add the first one to get started.",
+    tests_questions_in_this_test: "Questions in this test",
     tests_question_count: "Questions",
     tests_from_bank: "From bank",
     tests_new_question: "New question",
@@ -1685,17 +1714,15 @@ export const DICT = {
     tests_picker_selected: "{n} selected",
 
     // Admin — exam packages (Slice 2)
-    exam_packages_page_title: "Exam Packages",
-    exam_packages_create: "Create Package",
+    exam_packages_page_title: "Exams",
+    exam_packages_create: "Create Exam",
     exam_packages_col_title: "Title",
     exam_packages_col_scheduled: "Scheduled",
-    exam_packages_col_status: "Status",
-    exam_packages_col_price: "Price",
-    exam_packages_empty: "No packages yet",
-    exam_packages_create_success: "Package created",
-    exam_packages_update_success: "Package updated",
-    exam_packages_modal_create_title: "Create Package",
-    exam_packages_modal_edit_title: "Edit Package",
+    exam_packages_empty: "No exams yet",
+    exam_packages_create_success: "Exam created",
+    exam_packages_update_success: "Exam updated",
+    exam_packages_modal_create_title: "Create Exam",
+    exam_packages_modal_edit_title: "Edit Exam",
     exam_packages_modal_title: "Title",
     exam_packages_modal_title_placeholder: "e.g. Final Math Exam",
     exam_packages_modal_scheduled_at: "Scheduled",
@@ -1742,11 +1769,6 @@ export const DICT = {
     admin_exam_detail_tests_save: "Save",
     admin_exam_detail_tests_remove: "Remove",
     admin_exam_detail_tests_add: "Add",
-    admin_exam_detail_price_label: "Price",
-    admin_exam_detail_price_save: "Save Price",
-    admin_exam_detail_publish: "Publish",
-    admin_exam_detail_publish_confirm:
-      "Publish this package? This action cannot be undone.",
     exam_packages_modal_mode: "Exam Mode",
 	    exam_packages_modal_mode_standard: "Standard",
 	    exam_packages_modal_mode_utbk: "UTBK",

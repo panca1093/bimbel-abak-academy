@@ -6,9 +6,11 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AnnouncementTable } from "@/components/admin/AnnouncementTable";
 import { AnnouncementComposer } from "@/components/admin/AnnouncementComposer";
 import { PurchaseNotificationFeed } from "@/components/admin/PurchaseNotificationFeed";
+import { useTranslation } from "@/lib/i18n";
 import type { Announcement } from "@/lib/hooks/admin-announcements";
 
 export default function NotificationsPage() {
+  const { t } = useTranslation();
   const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
 
@@ -31,8 +33,8 @@ export default function NotificationsPage() {
     <div className="space-y-6 fade-in">
       <AdminPageHeader
         icon={Bell}
-        title="Notifikasi"
-        description="Pantau notifikasi pembelian dan kelola pengumuman."
+        title={t("notifications_page_title")}
+        description={t("notifications_page_description")}
       />
 
       <section className="mx-auto max-w-6xl px-4 md:px-6">

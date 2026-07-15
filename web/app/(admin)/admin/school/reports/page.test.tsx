@@ -384,6 +384,53 @@ describe("SchoolReportsPage", () => {
     expect(screen.getByText("Pembahasan")).toBeInTheDocument();
   });
 
+  it("renders rich body in pembahasan drill-down via RichContent (Task 8 audit)", async () => {
+    detailState = {
+      data: {
+        ...scorePembahasanDetail,
+        pembahasan: [
+          {
+            question_id: "q-rich-school",
+            body: "Hitung \\(x^2\\) dan buat <b>tebal</b>",
+            format: "mcq",
+            your_answer: "4",
+            correct_answer: "4",
+            is_correct: true,
+            explanation: "Penjelasan polos \\(x^2\\). <b>tidak</b> dirich.",
+          },
+        ],
+      },
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<SchoolReportsPage />);
+
+    const selectTrigger = screen.getByRole("combobox");
+    fireEvent.click(selectTrigger);
+    const examOption = await screen.findByText("Tryout Matematika");
+    fireEvent.click(examOption);
+
+    await waitFor(() => {
+      expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
+    });
+    const row = screen.getByText("Siti Aisyah").closest("tr") || screen.getByText("Siti Aisyah");
+    fireEvent.click(row);
+
+    const richNode = await waitFor(() => {
+      const el = document.querySelector("[data-rich-content] .katex");
+      if (!el) throw new Error("not yet");
+      return el.closest("[data-rich-content]") as HTMLElement;
+    });
+    expect(richNode).not.toBeNull();
+    const b = richNode.querySelector("b");
+    expect(b).not.toBeNull();
+    expect(b?.textContent).toBe("tebal");
+    expect(richNode.textContent).not.toContain("\\(");
+  });
+
   // ── Test 5: No rendered DOM contains substring "rank" — grep test ──
   it("does not render the word 'rank' anywhere in the DOM", async () => {
     render(<SchoolReportsPage />);

@@ -33,6 +33,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import type { SessionQuestion } from "@/lib/types";
+import { RichContent } from "@/components/admin/RichContent";
 import { SectionAudioPlayer } from "./section-audio-player";
 
 function formatTime(seconds: number): string {
@@ -507,9 +508,9 @@ export default function SessionPage() {
           <div className="mb-2 text-xs uppercase tracking-wide text-ink-500">
             {t(("fmt_" + currentQ.format) as I18nKey)}
           </div>
-          <p className="mb-4 whitespace-pre-wrap text-base text-ink-900">
-            {currentQ.body}
-          </p>
+          <div className="mb-4 text-base text-ink-900">
+            <RichContent html={currentQ.body} />
+          </div>
 
           {renderAnswerInput(
             currentQ,

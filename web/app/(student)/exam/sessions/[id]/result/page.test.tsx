@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 
 import SessionResultPage from "./page";
 import type { SessionResult } from "@/lib/types";
@@ -384,5 +384,52 @@ describe("SessionResultPage", () => {
     expect(screen.getByText("8/10")).toBeInTheDocument();
     expect(screen.getByText("Pembahasan")).toBeInTheDocument();
     expect(screen.getByText(/Berapa 2\+2\?/)).toBeInTheDocument();
+  });
+
+  it("renders rich body in pembahasan via RichContent (LaTeX + bold HTML)", async () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_pembahasan",
+        score: 90,
+        correct_count: 9,
+        wrong_count: 0,
+        empty_count: 1,
+        rank: 1,
+        breakdown: [],
+        pembahasan: [
+          {
+            question_id: "q-rich",
+            body: "Hitung \\(x^2\\) dan buat <b>tebal</b>",
+            format: "mcq",
+            your_answer: "4",
+            correct_answer: "4",
+            is_correct: true,
+            explanation: "Penjelasan polos \\(x^2\\). <b>tidak</b> dirich.",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    const richNode = await waitFor(() => {
+      const el = document.querySelector("[data-rich-content] .katex");
+      if (!el) throw new Error("not yet");
+      return el.closest("[data-rich-content]") as HTMLElement;
+    });
+    expect(richNode).not.toBeNull();
+    const b = richNode.querySelector("b");
+    expect(b).not.toBeNull();
+    expect(b?.textContent).toBe("tebal");
+    // Literal LaTeX delimiters are replaced by KaTeX — not visible as text.
+    expect(richNode.textContent).not.toContain("\\(");
+    // Explanation remains plain text (no RichContent wrapper around it) — literal
+    // delimiters and tag text are visible.
+    expect(
+      screen.getByText(/Penjelasan polos.*tidak.*dirich/)
+    ).toBeInTheDocument();
   });
 });

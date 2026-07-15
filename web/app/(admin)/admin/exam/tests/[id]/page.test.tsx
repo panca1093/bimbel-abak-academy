@@ -5,8 +5,11 @@ import TestDetailPage from "./page";
 import { useParams } from "next/navigation";
 import type { TestDetail, QuestionWithOptions, Test, ExamTopic } from "@/lib/types";
 
+const push = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useParams: vi.fn(),
+  useRouter: () => ({ push }),
 }));
 
 const mockMutateAsync = vi.fn();
@@ -31,7 +34,10 @@ let reorderState = { mutateAsync: mockMutateAsync, isPending: false };
 let attachState = { mutateAsync: mockMutateAsync, isPending: false };
 let saveQuestionState = { mutateAsync: mockMutateAsync, isPending: false };
 
-const mockTopics: ExamTopic[] = [{ id: "topic-1", name: "Aljabar", subject: "Matematika" }];
+const mockTopics: ExamTopic[] = [
+  { id: "topic-1", name: "Aljabar", subject: "Matematika" },
+  { id: "topic-2", name: "Geometri", subject: "Matematika" },
+];
 const mockBankQuestions: { data: QuestionWithOptions[] } = {
   data: [
     {
@@ -139,17 +145,26 @@ describe("TestDetailPage", () => {
     saveQuestionState = { mutateAsync: mockMutateAsync, isPending: false };
     mockMutateAsync.mockReset();
     mockMutateAsync.mockResolvedValue(undefined);
+    push.mockReset();
   });
 
   it("renders the test metadata header", async () => {
     renderWithClient(<TestDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { level: 1, name: /detail tes/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1, name: /tryout utbk saintek/i })).toBeInTheDocument();
     });
-    expect(screen.getByText(/Matematika/)).toBeInTheDocument();
-    expect(screen.getByText(/Aljabar/)).toBeInTheDocument();
-    expect(screen.getByText(/90/)).toBeInTheDocument();
+    expect(screen.getByText("Matematika · Aljabar · 90 min")).toBeInTheDocument();
+  });
+
+  it("shows a back-link to the tests list", async () => {
+    renderWithClient(<TestDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1, name: /tryout utbk saintek/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId("tests-back-link"));
+    expect(push).toHaveBeenCalledWith("/admin/exam/tests");
   });
 
   it("renders two columns with test details form and questions panel", async () => {
@@ -170,7 +185,7 @@ describe("TestDetailPage", () => {
       expect(screen.getByLabelText(/judul/i)).toHaveValue("Tryout UTBK Saintek");
     });
 
-    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Geometri" } });
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "Geometri" } });
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
@@ -209,13 +224,12 @@ describe("TestDetailPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /soal baru/i }));
 
-    const bodyInputs = screen.getAllByLabelText(/badan soal/i);
-    expect(bodyInputs.length).toBeGreaterThan(0);
-    expect(bodyInputs[0]).toHaveValue("");
+    const body = screen.getByLabelText(/badan soal/i);
+    expect(body).toBeInTheDocument();
+    expect(body.textContent).toBe("");
   });
 
-  it("detach button calls useDetachQuestion after confirm", async () => {
-    vi.stubGlobal("confirm", () => true);
+  it("detach button calls useDetachQuestion without a confirm prompt", async () => {
     mockMutateAsync.mockResolvedValueOnce(undefined);
 
     renderWithClient(<TestDetailPage />);
@@ -232,8 +246,6 @@ describe("TestDetailPage", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith("q1");
     });
-
-    vi.unstubAllGlobals();
   });
 
   it("reorder down persists the new full question_ids order", async () => {
@@ -267,13 +279,55 @@ describe("TestDetailPage", () => {
       expect(screen.getByRole("dialog", { name: /pilih soal dari bank/i })).toBeInTheDocument();
     });
 
-    const row = screen.getByText("Bank question one").closest("label");
-    fireEvent.click(within(row as HTMLElement).getByRole("checkbox"));
+    const row = screen.getByText("Bank question one").closest("button");
+    expect(row).toBeTruthy();
+    fireEvent.click(row as HTMLElement);
 
     fireEvent.click(screen.getByRole("button", { name: /tambahkan 1 soal/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({ question_ids: ["bq1"] });
     });
+  });
+
+  it("strips HTML tags from question body in the QuestionRow", async () => {
+    const richQuestions: QuestionWithOptions[] = [
+      {
+        question: {
+          id: "qr1",
+          format: "mcq",
+          body: "<b>bold</b> text",
+          sort_order: 1,
+          point_correct: 1,
+          point_wrong: 0,
+        },
+        options: [],
+      },
+    ];
+    testDetailState = {
+      data: {
+        test: sampleTest,
+        questions: richQuestions,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    questionsState = {
+      data: { data: richQuestions },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    renderWithClient(<TestDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("bold text")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("<b>bold</b> text")).not.toBeInTheDocument();
+    const row = screen.getByText("bold text").closest("[data-question-row]") as HTMLElement;
+    expect(row).toBeTruthy();
+    expect(row.innerHTML).not.toContain("<b>");
   });
 });

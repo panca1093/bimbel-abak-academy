@@ -72,7 +72,7 @@ export function useCreateExam() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateExamPayload) =>
-      authFetch<{ exam: ExamDetail; product: { id: string } }>("/admin/exams", {
+      authFetch<ExamDetail>("/admin/exams", {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -106,41 +106,6 @@ export function useReplaceExamTests(id: string) {
         method: "PUT",
         body: JSON.stringify(testIds),
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
-      qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });
-    },
-  });
-}
-
-export function useUpdateExamPrice(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (price: number) =>
-      authFetch<{ price: number }>(
-        `/admin/exams/${encodeURIComponent(id)}/price`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ price }),
-        },
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
-      qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });
-    },
-  });
-}
-
-export function usePublishExam(id: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      authFetch<{ message: string }>(
-        `/admin/exams/${encodeURIComponent(id)}/publish`,
-        {
-          method: "POST",
-        },
-      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
       qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });

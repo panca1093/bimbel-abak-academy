@@ -408,10 +408,12 @@ func TestCreateProduct_TypeRBAC(t *testing.T) {
 	fake := newFakeStoreRepo()
 	svc := newShim(fake)
 
-	// admin_store creating exam type → ErrForbidden
+	// admin_store creating exam type → ok (FR-STORE-ADM-03: admin_store edits
+	// price/visibility/promo eligibility on exam-type products; it just can't
+	// touch exam content, which stays gated under RoleAdminExam / /admin/exams)
 	_, err := svc.CreateProduct(ctx, model.Product{Type: "exam", Name: "Exam 1"}, RoleAdminStore)
-	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("want ErrForbidden for admin_store creating exam, got %v", err)
+	if err != nil {
+		t.Errorf("admin_store creating exam should be allowed, got %v", err)
 	}
 
 	// admin_exam creating book type → ErrForbidden

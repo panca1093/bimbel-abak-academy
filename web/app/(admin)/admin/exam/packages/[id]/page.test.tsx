@@ -23,8 +23,6 @@ vi.mock("sonner", () => ({
 }));
 
 const mockReplaceTests = vi.fn();
-const mockUpdatePrice = vi.fn();
-const mockPublish = vi.fn();
 const mockGradeEssay = vi.fn();
 
 let examState: {
@@ -91,8 +89,6 @@ let leaderboardState: {
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useExam: () => examState,
   useReplaceExamTests: () => ({ mutateAsync: mockReplaceTests, isPending: false }),
-  useUpdateExamPrice: () => ({ mutateAsync: mockUpdatePrice, isPending: false }),
-  usePublishExam: () => ({ mutateAsync: mockPublish, isPending: false }),
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useGradingSessions: () => gradingSessionsState,
@@ -120,8 +116,6 @@ const sampleExam: ExamDetail = {
   allow_leaderboard: false,
   randomize: false,
   status: "published",
-  product_price: 50000,
-  product_status: "published",
   tests: [],
 };
 
@@ -215,7 +209,7 @@ describe("ExamPackageDetailPage — overview tab", () => {
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Edit Paket")).toBeInTheDocument();
+      expect(screen.getByText("Edit Ujian")).toBeInTheDocument();
     });
   });
 });
@@ -380,6 +374,49 @@ describe("ExamPackageDetailPage — grading tab", () => {
       expect(screen.queryByText("Budi Santoso")).not.toBeInTheDocument();
     });
     expect(screen.getByText("Siti Aminah")).toBeInTheDocument();
+  });
+
+  it("renders essay body as stripped plain text in grading list (Task 8 audit)", async () => {
+    sessionEssaysState = {
+      data: {
+        data: [
+          {
+            question_id: "q-rich-essay",
+            body: "<b>Tanya</b> <i>essay</i> <script>x</script>tentang sejarah",
+            answer: "Jawaban",
+            point_correct: 10,
+            score: null,
+            grader_comment: null,
+            graded_at: null,
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackageDetailPage />);
+    openGradingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+    fireEvent.click(
+      within(screen.getByText("Budi Santoso").closest("tr") as HTMLElement).getByRole("button", {
+        name: /lihat detail/i,
+      }),
+    );
+
+    // The essay body now renders as stripped plain text — no <b>/<script> elements
+    // survive in the grading list (list/row context per Task 8 spec).
+    await waitFor(() => {
+      expect(screen.getByText("Tanya essay tentang sejarah")).toBeInTheDocument();
+    });
+    const bodyDiv = screen.getByText("Tanya essay tentang sejarah").closest("li");
+    expect(bodyDiv).not.toBeNull();
+    expect(bodyDiv?.querySelector("b")).toBeNull();
+    expect(bodyDiv?.querySelector("script")).toBeNull();
   });
 });
 

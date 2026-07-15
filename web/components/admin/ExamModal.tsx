@@ -158,7 +158,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
             timerMode === "overall" && duration !== "" ? Number(duration) : null,
         };
         const result = await create.mutateAsync(payload);
-        if (result?.exam) onSaved?.(result.exam as ExamListItem);
+        onSaved?.(result as ExamListItem);
       }
       onClose();
     } catch {

@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "@/lib/i18n";
+import { RichContent } from "./RichContent";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
 
 const FORMAT_LABELS: Record<QuestionFormat, "fmt_mcq" | "fmt_multi_answer" | "fmt_short" | "fmt_fill_blank" | "fmt_essay"> = {
@@ -69,7 +70,7 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
           </div>
 
           <div className="rounded-lg border p-3 text-sm">
-            <p className="whitespace-pre-wrap">{question.body}</p>
+            <RichContent html={question.body} />
             {question.image_url && (
               <img
                 src={question.image_url}

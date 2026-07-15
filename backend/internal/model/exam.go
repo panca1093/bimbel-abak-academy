@@ -67,7 +67,8 @@ type QuestionOption struct {
 }
 
 // Exam is a scheduled test offering. It bundles one or more Tests via ExamTest and may
-// be sold via product (Exam.ProductID, unique when set).
+// be sold via product — M:N through product_exam (mirrors Course/product_course), so a
+// Product can attach more than one Exam and an Exam has no direct product reference.
 type Exam struct {
 	ID                   uuid.UUID  `json:"id"`
 	Title                string     `json:"title"`
@@ -87,7 +88,6 @@ type Exam struct {
 	ResultConfig         string     `json:"result_config"`
 	ResultReleaseAt      *time.Time `json:"result_release_at"`
 	Status               string     `json:"status"`
-	ProductID            *uuid.UUID `json:"product_id"`
 	CreatedAt            time.Time  `json:"created_at"`
 	CertificateTemplate  string     `json:"certificate_template"`
 	// Mode discriminates standard vs sectioned (utbk|ielts) exams. NOT NULL DEFAULT
@@ -187,12 +187,15 @@ type BankQuestionListItem struct {
 	AttachedCount int              `json:"attached_count"`
 }
 
-// ExamListItem is the read shape returned by GET /admin/exams — an Exam row joined
-// with product.price and product.status. Cursor pagination assembles a slice of these.
+// ExamListItem is the read shape returned by GET /admin/exams. Cursor pagination
+// assembles a slice of these. Price/status now live on the attached Product(s) — see
+// GET /admin/products?type=exam, since a single Exam can be attached to more than one.
+// HasPublishedProduct is a computed flag (true if any attached product is published)
+// used by admin surfaces (e.g. the session monitor) that only care about exams
+// currently on sale, without needing full product detail.
 type ExamListItem struct {
-	Exam          `json:",inline"`
-	ProductPrice  int64  `json:"product_price"`
-	ProductStatus string `json:"product_status"`
+	Exam                `json:",inline"`
+	HasPublishedProduct bool `json:"has_published_product"`
 }
 
 // ExamTestEntry is the read shape for an exam_test row plus the inline Test metadata
@@ -212,12 +215,10 @@ type ExamTestEntry struct {
 }
 
 // ExamDetail is the read shape returned by GET /admin/exams/:id — full Exam config
-// joined with product price/status and an ordered list of attached tests.
+// plus an ordered list of attached tests. Price/status live on the attached Product(s).
 type ExamDetail struct {
-	Exam          `json:",inline"`
-	ProductPrice  int64           `json:"product_price"`
-	ProductStatus string          `json:"product_status"`
-	Tests         []ExamTestEntry `json:"tests"`
+	Exam  `json:",inline"`
+	Tests []ExamTestEntry `json:"tests"`
 }
 
 // RegistrationListItem is the read shape returned by GET /api/v1/exam/registrations:

@@ -33,6 +33,7 @@ import {
 } from "@/lib/hooks/admin-results";
 import { useAdminSchools } from "@/lib/hooks/admin-schools";
 import { useAuthStore } from "@/stores/auth";
+import { RichContent } from "@/components/admin/RichContent";
 import type { AdminResultRow, AdminResultDetail, ProductType } from "@/lib/types";
 
 export default function SchoolReportsPage() {
@@ -138,6 +139,7 @@ export default function SchoolReportsPage() {
         <AdminPageHeader
           icon={FileText}
           title={t("school_reports_title")}
+          description={t("school_reports_subtitle")}
           actions={
             <Button
               size="sm"
@@ -178,6 +180,7 @@ export default function SchoolReportsPage() {
         <AdminPageHeader
           icon={FileText}
           title={t("school_reports_title")}
+          description={t("school_reports_subtitle")}
           actions={
             <Button
               size="sm"
@@ -222,6 +225,7 @@ export default function SchoolReportsPage() {
         <AdminPageHeader
           icon={FileText}
           title={t("school_reports_title")}
+          description={t("school_reports_subtitle")}
           actions={
             <Button
               size="sm"
@@ -265,6 +269,7 @@ export default function SchoolReportsPage() {
       <AdminPageHeader
         icon={FileText}
         title={t("school_reports_title")}
+        description={t("school_reports_subtitle")}
         actions={
           <Button
             size="sm"
@@ -573,7 +578,9 @@ function ResultDetailContent({
                 key={p.question_id}
                 className="rounded-md border border-line bg-surface-2 px-3 py-2 text-xs"
               >
-                <p className="font-medium text-ink-900">{p.body}</p>
+                <p className="font-medium text-ink-900">
+                  <RichContent html={p.body} />
+                </p>
                 <p className="mt-1 text-ink-600">
                   {t("result_your_answer")}: {p.your_answer ?? "—"}
                 </p>

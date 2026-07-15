@@ -72,7 +72,7 @@ export default function ExamMonitorPage() {
 
   const publishedExams = useMemo(() => {
     return examList
-      .filter((e) => e.product_status === "published")
+      .filter((e) => e.has_published_product)
       .sort(
         (a, b) =>
           new Date(a.scheduled_at ?? 0).getTime() - new Date(b.scheduled_at ?? 0).getTime(),
@@ -165,7 +165,7 @@ export default function ExamMonitorPage() {
   if (monitorLoading || examsLoading) {
     return (
       <div className="space-y-6 fade-in">
-        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} actions={picker} />
+        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
         <div className="flex gap-6">
           <div className="flex-1 space-y-2">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -185,7 +185,7 @@ export default function ExamMonitorPage() {
   if (!selectedExamId) {
     return (
       <div className="space-y-6 fade-in">
-        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} actions={picker} />
+        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <BarChart className="mb-4 size-12 text-[var(--md-sys-color-on-surface-variant)]" />
           <p className="text-body-medium text-[var(--md-sys-color-on-surface-variant)]">
@@ -201,7 +201,7 @@ export default function ExamMonitorPage() {
   if (monitorError) {
     return (
       <div className="space-y-6 fade-in">
-        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} actions={picker} />
+        <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
           <p className="flex items-center gap-2 font-medium">
             <AlertTriangle size={16} />
@@ -219,7 +219,7 @@ export default function ExamMonitorPage() {
 
   return (
     <div className="space-y-6 fade-in">
-      <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} actions={picker} />
+      <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} actions={picker} />
 
       <div className="flex gap-6">
         {/* Main table */}

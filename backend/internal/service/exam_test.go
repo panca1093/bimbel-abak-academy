@@ -386,6 +386,19 @@ func TestValidateQuestion_accepts_valid_points(t *testing.T) {
 	}
 }
 
+func TestValidateQuestion_rejects_body_empty_after_sanitization(t *testing.T) {
+	// Simulates what every write path does: sanitize, then validate. <br> has
+	// no allowlisted tag and no text content, so it sanitizes to "".
+	q := model.Question{Format: "essay", Body: sanitizeQuestionBody("<br>"), PointCorrect: 1}
+	err := validateQuestion(q, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("body that sanitizes to empty should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "body cannot be empty") {
+		t.Errorf("empty-body msg should mention 'body cannot be empty', got %q", err.Error())
+	}
+}
+
 func TestValidateExam_rejects_empty_title(t *testing.T) {
 	e := model.Exam{Title: "   "}
 	err := validateExam(e)
@@ -801,6 +814,23 @@ func TestCreateBankQuestion_creates_no_attachment(t *testing.T) {
 	assert.Equal(t, 0, countQuestionAttachments(t, ctx, repo, out.Question.ID))
 }
 
+func TestCreateBankQuestion_rejects_body_that_sanitizes_to_empty(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	// <br> is not in questionBodyPolicy's allowlist and carries no text
+	// content, so sanitizeQuestionBody reduces it to "" before validateQuestion
+	// runs — a blank question must not be persisted.
+	q := model.Question{Format: "essay", Body: "<br>", PointCorrect: 1, PointWrong: 0}
+	_, err := svc.CreateBankQuestion(ctx, q, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrValidation)
+
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: "<br>", Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, items)
+}
+
 func TestListBankQuestions_populates_nested_question_and_options(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
@@ -1172,18 +1202,18 @@ func TestCreateQuestionForTest_creates_bank_question_and_join(t *testing.T) {
 // suppress unused: uuid is imported to avoid unused-import lint if tests get trimmed later
 var _ = uuid.Nil
 
-// --- FR-18/19: CreateExam default mode + PublishExam gate (integration) ---
+// --- FR-18/19: CreateExam default mode + PublishProduct's sectioned gate (integration) ---
 // These exercise the service against the real Postgres fixture (testcontainers),
 // matching the existing school_test.go pattern. They verify the CreateExam
-// defaulting and the PublishExam wiring (that it actually loads attached Tests
-// and delegates to validatePublishSections).
+// defaulting and that PublishProduct, for an exam-type product, loads every
+// attached exam's Tests and delegates to validatePublishSections.
 
 func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
 	title := "Default Mode Exam " + uniqueSuffix()
-	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: title, Mode: ""})
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: title, Mode: ""})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
@@ -1192,7 +1222,7 @@ func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
 	}
 
 	// explicit mode must round-trip unchanged.
-	exam2, _, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK Exam " + uniqueSuffix(), Mode: "utbk"})
+	exam2, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK Exam " + uniqueSuffix(), Mode: "utbk"})
 	if err != nil {
 		t.Fatalf("CreateExam utbk: %v", err)
 	}
@@ -1201,33 +1231,41 @@ func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
 	}
 }
 
-func TestPublishExam_Integration_RejectsSectionedExamWithNoTests(t *testing.T) {
+func TestPublishProduct_Integration_RejectsSectionedExamWithNoTests(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
-	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK No-Tests " + uniqueSuffix(), Mode: "utbk"})
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "UTBK No-Tests " + uniqueSuffix(), Mode: "utbk"})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
-	err = svc.PublishExam(ctx, exam.ID)
+	product, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: exam.Title, Price: 0, Status: "draft"}, []string{exam.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams: %v", err)
+	}
+	err = svc.PublishProduct(ctx, product.ID, RoleAdminStore)
 	if !errors.Is(err, ErrValidation) {
-		t.Errorf("PublishExam on utbk exam with 0 tests should return ErrValidation, got %v", err)
+		t.Errorf("PublishProduct on a product attaching a utbk exam with 0 tests should return ErrValidation, got %v", err)
 	}
 }
 
-func TestPublishExam_Integration_StandardSkipsGate(t *testing.T) {
+func TestPublishProduct_Integration_StandardExamSkipsSectionGate(t *testing.T) {
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
 	// Standard exam with no tests must NOT be rejected by the section gate — it
-	// proceeds to PublishProduct (which may then fail for other product reasons,
-	// but not with the sectioned-mode ErrValidation). We assert only that the
-	// error is not the sectioned-zero-tests validation.
-	exam, _, err := svc.CreateExam(ctx, model.Exam{Title: "Standard No-Tests " + uniqueSuffix(), Mode: "standard"})
+	// proceeds to the underlying product publish (which may then fail for other
+	// product reasons, but not with the sectioned-mode ErrValidation). We assert
+	// only that the error is not the sectioned-zero-tests validation.
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Standard No-Tests " + uniqueSuffix(), Mode: "standard"})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
-	err = svc.PublishExam(ctx, exam.ID)
+	product, err := svc.CreateProductWithExams(ctx, model.Product{Type: "exam", Name: exam.Title, Price: 0, Status: "draft"}, []string{exam.ID.String()}, RoleAdminStore)
+	if err != nil {
+		t.Fatalf("CreateProductWithExams: %v", err)
+	}
+	err = svc.PublishProduct(ctx, product.ID, RoleAdminStore)
 	if err != nil && strings.Contains(err.Error(), "sectioned exam") {
 		t.Errorf("standard exam must not hit the sectioned gate, got %v", err)
 	}
@@ -1392,5 +1430,62 @@ func TestGetExamCard_ReturnsPdfBytes(t *testing.T) {
 	wantPattern := regexp.MustCompile(`^kartu-peserta-[A-Z0-9]{8}\.pdf$`)
 	if !wantPattern.MatchString(filename) {
 		t.Errorf("filename %q does not match kartu-peserta-<8-char-token>.pdf", filename)
+	}
+}
+
+// --- Rich-text question body sanitization (FR-1..FR-7) ---
+
+func TestSanitizeQuestionBody_stripsScriptTag(t *testing.T) {
+	got := sanitizeQuestionBody(`<script>alert(1)</script>Hello`)
+	if strings.Contains(got, "<script>") {
+		t.Errorf("sanitized body must not contain <script>, got %q", got)
+	}
+	if !strings.Contains(got, "Hello") {
+		t.Errorf("sanitized body should preserve plain text, got %q", got)
+	}
+}
+
+func TestSanitizeQuestionBody_stripsOnErrorAttr(t *testing.T) {
+	got := sanitizeQuestionBody(`<img src=x onerror="alert(1)">`)
+	if strings.Contains(strings.ToLower(got), "onerror") {
+		t.Errorf("sanitized body must not contain onerror attribute, got %q", got)
+	}
+	if !strings.Contains(got, "<img") {
+		t.Errorf("sanitized body should keep a safe <img> tag, got %q", got)
+	}
+	if !strings.Contains(got, "src=\"x\"") {
+		t.Errorf("sanitized body should keep src=\"x\", got %q", got)
+	}
+}
+
+func TestSanitizeQuestionBody_stripsPositionFromStyle(t *testing.T) {
+	got := sanitizeQuestionBody(`<img src="a" style="position:fixed;top:0">`)
+	lower := strings.ToLower(got)
+	if strings.Contains(lower, "position") {
+		t.Errorf("sanitized style must not contain 'position', got %q", got)
+	}
+}
+
+func TestSanitizeQuestionBody_preservesAllowlistedTags(t *testing.T) {
+	in := `<b>bold</b> <i>italic</i> <u>under</u> <sup>2</sup> <sub>i</sub>`
+	got := sanitizeQuestionBody(in)
+	if got != in {
+		t.Errorf("allowlisted tags must round-trip unchanged\n in: %q\nout: %q", in, got)
+	}
+}
+
+func TestSanitizeQuestionBody_plainTextRoundTrip(t *testing.T) {
+	in := "what is 2 + 2?"
+	got := sanitizeQuestionBody(in)
+	if got != in {
+		t.Errorf("plain text body must round-trip byte-for-byte\n in: %q\nout: %q", in, got)
+	}
+}
+
+func TestSanitizeQuestionBody_preservesListTags(t *testing.T) {
+	in := `<ul><li>one</li><li>two</li></ul>`
+	got := sanitizeQuestionBody(in)
+	if got != in {
+		t.Errorf("list tags must round-trip unchanged\n in: %q\nout: %q", in, got)
 	}
 }

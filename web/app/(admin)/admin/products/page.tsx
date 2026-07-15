@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
 import type { Product, ProductType, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 
-const FILTER_TYPES: (ProductType | "all")[] = ["all", "book", "course", "package"];
+const FILTER_TYPES: (ProductType | "all")[] = ["all", "book", "course", "exam"];
 
 function typeBadgeClass(type: ProductType): string {
   switch (type) {
@@ -27,8 +27,8 @@ function typeBadgeClass(type: ProductType): string {
       return "bg-amber-100 text-amber-800 border-amber-200";
     case "course":
       return "bg-green-100 text-green-800 border-green-200";
-    case "package":
-      return "bg-violet-100 text-violet-800 border-violet-200";
+    case "exam":
+      return "bg-blue-100 text-blue-800 border-blue-200";
   }
 }
 
@@ -137,8 +137,8 @@ export default function ProductsPage() {
         return t("product_type_book");
       case "course":
         return t("product_type_course");
-      case "package":
-        return t("product_type_package");
+      case "exam":
+        return t("product_type_exam");
     }
   };
 
@@ -146,8 +146,8 @@ export default function ProductsPage() {
     <div className="space-y-6 fade-in">
       <AdminPageHeader
         icon={Package}
-        title="Produk &amp; Katalog"
-        description="Kelola buku, kursus, dan paket produk."
+        title={t("products_page_title")}
+        description={t("products_page_description")}
         actions={<Button onClick={openCreate}>{t("products_create")}</Button>}
       />
 

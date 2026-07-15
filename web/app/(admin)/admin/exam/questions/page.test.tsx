@@ -278,22 +278,18 @@ describe("QuestionBankPage", () => {
     });
   });
 
-  it("highlights the selected format chip", async () => {
+  it("changes the format filter via dropdown", async () => {
     renderWithClient(<QuestionBankPage />);
 
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
-    const allChip = screen.getByRole("button", { name: /tab_all/i });
-    const mcqChip = screen.getByRole("button", { name: /fmt_mcq/i });
+    const [formatSelect] = screen.getAllByRole("combobox");
+    expect(formatSelect).toHaveValue("all");
 
-    expect(allChip.className).toContain("md-chip-primary");
-    expect(mcqChip.className).not.toContain("md-chip-primary");
-
-    fireEvent.click(mcqChip);
+    fireEvent.change(formatSelect, { target: { value: "mcq" } });
 
     await waitFor(() => {
-      expect(mcqChip.className).toContain("md-chip-primary");
-      expect(allChip.className).not.toContain("md-chip-primary");
+      expect(formatSelect).toHaveValue("mcq");
     });
   });
 
@@ -302,12 +298,52 @@ describe("QuestionBankPage", () => {
 
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
-    const select = screen.getByRole("combobox")!;
-    fireEvent.change(select, { target: { value: "topic-2" } });
+    const [, topicSelect] = screen.getAllByRole("combobox");
+    fireEvent.change(topicSelect, { target: { value: "topic-2" } });
 
     await waitFor(() => {
-      expect(select).toHaveValue("topic-2");
+      expect(topicSelect).toHaveValue("topic-2");
     });
+  });
+
+  it("strips HTML tags from question body in the bank list row", async () => {
+    bankState = {
+      data: {
+        data: [
+          {
+            question: {
+              id: "q3",
+              format: "mcq",
+              body: "<b>bold</b> text",
+              difficulty: "easy",
+              point_correct: 1,
+              point_wrong: 0,
+              sort_order: 1,
+              topic_id: "topic-1",
+              topic: "Arithmetic",
+            },
+            options: [],
+            attached_count: 0,
+          },
+        ],
+        next_cursor: "",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      isFetching: false,
+      refetch: vi.fn(),
+    };
+
+    renderWithClient(<QuestionBankPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("bold text")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("<b>bold</b> text")).not.toBeInTheDocument();
+    const bodyCell = screen.getByText("bold text").closest("td");
+    expect(bodyCell?.innerHTML).not.toContain("<b>");
+    expect(bodyCell?.textContent).toBe("bold text");
   });
 
 });

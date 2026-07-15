@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/microcosm-cc/bluemonday"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -51,12 +53,65 @@ var validSectionTypes = map[string]bool{
 // (FR-19 publish-gate trigger). 'standard' is excluded.
 func isSectionedMode(mode string) bool { return mode == "utbk" || mode == "ielts" }
 
+// questionBodyPolicy is the single allowlist used by sanitizeQuestionBody. It is
+// built once at package init and used on every write path. See sanitizeQuestionBody
+// for the rationale behind each element/attribute.
+var questionBodyPolicy = func() *bluemonday.Policy {
+	p := bluemonday.NewPolicy()
+	p.AllowElements("b", "i", "u", "ul", "ol", "li", "sup", "sub")
+	p.AllowAttrs("src", "alt").OnElements("img")
+	p.AllowElements("img")
+	// Restricted style: only a safe subset is allowed, and "position" is
+	// explicitly rejected by handler (covers "position:fixed" and any
+	// other value). url() in style is rejected wholesale — images carry
+	// their URL via the src attribute, not in style.
+	p.AllowStyles("color", "background-color", "text-align", "font-weight", "font-style", "text-decoration").
+		MatchingHandler(func(s string) bool { return !strings.Contains(s, "url(") }).
+		OnElements("img")
+	return p
+}()
+
+// sanitizeQuestionBody strips disallowed HTML from a question body at the
+// service trust boundary. The same call is invoked at every write path
+// (CreateBankQuestion, SaveQuestion, CreateQuestionForTest,
+// ProcessQuestionImportRows) so the persisted value is the sanitized one.
+//
+// Allowlist: b, i, u, ul, ol, li, sup, sub, img (with src/alt and a restricted
+// style attribute). On* handlers, <script>, <iframe>, javascript: URLs, and
+// any non-allowlisted tag are stripped. "position" in style is rejected via
+// the regex below; url() in style is rejected via the policy's value handler.
+func sanitizeQuestionBody(body string) string {
+	if body == "" {
+		return body
+	}
+	// Reject "position" declarations regardless of value (fixed/absolute/...).
+	// bluemonday processes the value handler first; this regexp is a
+	// belt-and-suspenders guard for any value that doesn't trigger a
+	// direct string check (e.g. "POSITION:fixed" via casing).
+	positionDecl := regexp.MustCompile(`(?i)position\s*:`)
+	if positionDecl.MatchString(body) {
+		body = positionDecl.ReplaceAllString(body, "")
+	}
+	cleaned := questionBodyPolicy.Sanitize(body)
+	// Collapse runs of ";" left behind by stripping a declaration.
+	cleaned = regexp.MustCompile(`;\s*;`).ReplaceAllString(cleaned, ";")
+	cleaned = strings.TrimSpace(cleaned)
+	return cleaned
+}
+
 // validateQuestion enforces the format-validation matrix from spec.md §4.
 // All error returns wrap ErrValidation with a sub-message so callers can
 // use errors.Is(err, ErrValidation) AND err.Error() carries the WHY.
 func validateQuestion(q model.Question, options []model.QuestionOption) error {
 	if !validQuestionFormats[q.Format] {
 		return fmt.Errorf("%w: unknown question format: %s", ErrValidation, q.Format)
+	}
+
+	// Callers sanitize q.Body via sanitizeQuestionBody before calling here, which
+	// strips non-allowlisted tags (e.g. <br>) with no text content down to "".
+	// Reject that post-sanitize emptiness so a blank question can't be saved.
+	if strings.TrimSpace(q.Body) == "" {
+		return fmt.Errorf("%w: body cannot be empty", ErrValidation)
 	}
 
 	seenKeys := map[string]bool{}
@@ -226,6 +281,7 @@ func (s *Service) GetTestDetail(ctx context.Context, id uuid.UUID) (model.TestDe
 
 // SaveQuestion routes create vs update by q.ID == uuid.Nil.
 func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	q.Body = sanitizeQuestionBody(q.Body)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
@@ -260,6 +316,7 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 // given test (FR-25). This preserves the existing POST /admin/tests/:id/questions
 // behavior after migration 0025 moved attachment to test_question.
 func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	q.Body = sanitizeQuestionBody(q.Body)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
@@ -394,6 +451,7 @@ func sameUUIDSet(a, b []uuid.UUID) bool {
 
 // CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
 func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+	q.Body = sanitizeQuestionBody(q.Body)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
@@ -503,7 +561,11 @@ func validateExam(e model.Exam) error {
 	return nil
 }
 
-func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, model.Product, error) {
+// CreateExam creates a standalone exam — no product is created here. Selling the
+// exam is a separate step: attach it to a Product via the generic Product flow
+// (POST/PATCH /admin/products with exam_ids), mirroring how course-type products
+// attach existing Courses.
+func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, error) {
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"
 	}
@@ -517,13 +579,12 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, mod
 		m.Mode = "standard"
 	}
 	if err := validateExam(m); err != nil {
-		return model.Exam{}, model.Product{}, err
+		return model.Exam{}, err
 	}
-	exam, product, err := s.storeRepo.CreateProductAndExamTx(ctx, &m)
-	if err != nil {
-		return model.Exam{}, model.Product{}, err
+	if err := s.storeRepo.CreateExam(ctx, &m); err != nil {
+		return model.Exam{}, err
 	}
-	return exam, product, nil
+	return m, nil
 }
 
 func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (model.Exam, error) {
@@ -538,7 +599,6 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 		return model.Exam{}, err
 	}
 	m.ID = id
-	m.ProductID = existing.ProductID
 	m.CreatedAt = existing.CreatedAt
 	if err := s.storeRepo.UpdateExam(ctx, id, &m); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -584,67 +644,12 @@ func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testID
 	return tx.Commit(ctx)
 }
 
-func (s *Service) UpdateExamPrice(ctx context.Context, examID uuid.UUID, price int64) error {
-	exam, err := s.storeRepo.GetExamByID(ctx, examID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrExamNotFound
-		}
-		return err
-	}
-	if exam.ProductID == nil {
-		return fmt.Errorf("%w: exam has no linked product", ErrValidation)
-	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	if err := s.storeRepo.UpdateProductPriceTx(ctx, tx, *exam.ProductID, price); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
-}
-
-func (s *Service) PublishExam(ctx context.Context, examID uuid.UUID) error {
-	exam, err := s.storeRepo.GetExamByID(ctx, examID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrExamNotFound
-		}
-		return err
-	}
-	if exam.ProductID == nil {
-		return fmt.Errorf("%w: exam has no linked product", ErrValidation)
-	}
-	// FR-19: sectioned modes (utbk|ielts) require at least one attached Test,
-	// and ielts additionally requires every attached Test to have a non-null
-	// section_type. The gate is a pure function over the loaded ExamDetail so it
-	// is unit-testable without a DB.
-	if isSectionedMode(exam.Mode) {
-		detail, err := s.storeRepo.GetExamDetail(ctx, examID)
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				return ErrExamNotFound
-			}
-			return err
-		}
-		if err := validatePublishSections(*exam, detail.Tests); err != nil {
-			return err
-		}
-	}
-	return s.PublishProduct(ctx, exam.ProductID.String(), RoleAdminExam)
-}
-
 // validatePublishSections enforces FR-19: a sectioned exam (mode ∈ {utbk,ielts})
 // must have at least one attached Test, and an ielts exam must have a non-null
 // section_type on every attached Test (the offending section is named in the
 // error message). Standard/empty modes skip the gate entirely. The function is
-// pure over (exam, tests) so it can be unit-tested without a DB; PublishExam
-// loads the attached Tests via GetExamDetail and delegates here.
+// pure over (exam, tests) so it can be unit-tested without a DB; PublishProduct
+// runs this for every exam attached to an exam-type product before publishing.
 func validatePublishSections(exam model.Exam, tests []model.ExamTestEntry) error {
 	if !isSectionedMode(exam.Mode) {
 		return nil

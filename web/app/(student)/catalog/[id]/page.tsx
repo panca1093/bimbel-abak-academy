@@ -3,7 +3,7 @@
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Book, ShoppingCart, PlayCircle, Trophy, Minus, Plus } from "lucide-react";
+import { ArrowLeft, Book, ShoppingCart, PlayCircle, ClipboardList, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useProduct } from "@/lib/hooks/products";
@@ -26,13 +26,13 @@ const TYPE_META: Record<
 > = {
   book: { labelKey: "product_type_book", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
   course: { labelKey: "product_type_course", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
-  package: { labelKey: "product_type_competition", tone: "text-violet", bg: "bg-violet-bg", Icon: Trophy },
+  exam: { labelKey: "product_type_exam", tone: "text-info", bg: "bg-info-bg", Icon: ClipboardList },
 };
 
 const COVER_GRADIENT: Record<ProductType, string> = {
   book: "linear-gradient(135deg, #fbf1e2 0%, #f6e6cf 100%)",
   course: "linear-gradient(135deg, #e5f5ec 0%, #d4eede 100%)",
-  package: "linear-gradient(135deg, #efe9fb 0%, #e0d4f7 100%)",
+  exam: "linear-gradient(135deg, #e7eefb 0%, #d3e2f8 100%)",
 };
 
 export default function ProductDetailPage({

@@ -153,8 +153,8 @@ export default function OrdersPage() {
     <div className="space-y-6 fade-in">
       <AdminPageHeader
         icon={Receipt}
-        title="Pesanan"
-        description="Konfirmasi, kirim, dan kelola retur pesanan."
+        title={t("admin_orders_page_title")}
+        description={t("admin_orders_page_description")}
       />
 
       <div className="flex flex-wrap gap-2">

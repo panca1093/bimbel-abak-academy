@@ -17,6 +17,8 @@ import { useTopics } from "@/lib/hooks/admin-topics";
 import { QuestionImportModal } from "@/components/admin/QuestionImportModal";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { stripHtmlToPlainText } from "@/lib/rich-text";
+import { FORMAT_TONE, DIFFICULTY_TONE } from "@/lib/question-tone";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
 
 const ALL_FORMATS: Array<QuestionFormat | "all"> = [
@@ -128,6 +130,7 @@ export default function QuestionBankPage() {
         icon={Library}
         title={t("question_bank_title")}
         description={t("question_bank_subtitle")}
+        actionsAlign="end"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => setTopicsOpen(true)}>
@@ -146,24 +149,18 @@ export default function QuestionBankPage() {
       />
 
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {ALL_FORMATS.map((f) => {
-            const active = format === f;
-            return (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFormat(f)}
-                className={cn(
-                  "admin-shell md-chip cursor-pointer border-none",
-                  active && "admin-shell md-chip-primary"
-                )}
-              >
-                {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
-              </button>
-            );
-          })}
-        </div>
+        <select
+          data-slot="select"
+          value={format}
+          onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
+          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+        >
+          {ALL_FORMATS.map((f) => (
+            <option key={f} value={f}>
+              {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
+            </option>
+          ))}
+        </select>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <select
@@ -236,19 +233,43 @@ export default function QuestionBankPage() {
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                       {question.id.slice(0, 8)}
                     </td>
-                    <td className="px-4 py-3 max-w-xs truncate">{question.body}</td>
+                    <td className="px-4 py-3 max-w-xs truncate">{stripHtmlToPlainText(question.body)}</td>
                     <td className="px-4 py-3">{item.attached_count}</td>
-                    <td className="px-4 py-3">{question.topic || "—"}</td>
                     <td className="px-4 py-3">
-                      <Badge variant="outline">
+                      {question.topic ? (
+                        <Badge variant="outline" className="border-transparent bg-brand-50 text-brand-700">
+                          {question.topic}
+                        </Badge>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge
+                        variant="outline"
+                        className={cn("border-transparent", FORMAT_TONE[question.format])}
+                      >
                         {t(FORMAT_LABELS[question.format] as Parameters<typeof t>[0])}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      {difficultyKey ? t(difficultyKey) : "—"}
+                      {difficultyKey ? (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "border-transparent",
+                            question.difficulty && DIFFICULTY_TONE[question.difficulty]
+                          )}
+                        >
+                          {t(difficultyKey)}
+                        </Badge>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      {question.point_correct}/{question.point_wrong}
+                      <span className="font-semibold text-info">+{question.point_correct}</span>
+                      <span className="text-muted-foreground"> / {question.point_wrong}</span>
                     </td>
                   </tr>
                 );
@@ -281,18 +302,14 @@ export default function QuestionBankPage() {
       />
 
       {editorOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">
-          <div className="w-full max-w-4xl rounded-lg bg-background p-4 shadow-lg">
-            <QuestionEditor
-              question={editorItem ?? undefined}
-              onCancel={() => {
-                setEditorOpen(false);
-                setEditorItem(null);
-              }}
-              onSaved={handleSaved}
-            />
-          </div>
-        </div>
+        <QuestionEditor
+          question={editorItem ?? undefined}
+          onCancel={() => {
+            setEditorOpen(false);
+            setEditorItem(null);
+          }}
+          onSaved={handleSaved}
+        />
       )}
     </div>
   );
