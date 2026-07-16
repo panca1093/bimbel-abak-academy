@@ -1173,53 +1173,6 @@ func TestGetProduct_CourseType_PopulatesCourseIDs(t *testing.T) {
 	}
 }
 
-// FR8: shimService UpdateProductWithCourses replaces course links atomically.
-type shimUpdateProductWithCourses struct {
-	fake *fakeStoreRepo
-}
-
-func (s *shimUpdateProductWithCourses) UpdateProductWithCourses(ctx context.Context, id string, p model.Product, courseIDs []string, role string) (model.Product, error) {
-	existing, err := s.fake.GetProductByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return model.Product{}, ErrProductNotFound
-		}
-		return model.Product{}, err
-	}
-	if err := checkTypeRBAC(role, existing.Type); err != nil {
-		return model.Product{}, err
-	}
-	// Preserve non-editable fields from existing record (Bug C fix)
-	p.Type = existing.Type
-	p.WeightGrams = existing.WeightGrams
-	p.ImageURL = existing.ImageURL
-
-	var ids []uuid.UUID
-	for _, cid := range courseIDs {
-		parsed, err := uuid.Parse(cid)
-		if err != nil {
-			return model.Product{}, err
-		}
-		ids = append(ids, parsed)
-	}
-
-	pID, err := uuid.Parse(id)
-	if err != nil {
-		return model.Product{}, err
-	}
-
-	if err := s.fake.UpdateProduct(ctx, id, &p); err != nil {
-		return model.Product{}, err
-	}
-	if err := s.fake.ReplaceProductCourses(ctx, pID, ids); err != nil {
-		return model.Product{}, err
-	}
-
-	p.ID = id
-	p.CourseIDs = courseIDs
-	return p, nil
-}
-
 // fakeStoreRepoWithError wraps fakeStoreRepo and injects an error on ReplaceProductCourses.
 // It also supports transactional rollback semantics for UpdateProduct: the update is staged
 // and only committed if commit() is called.
@@ -1339,44 +1292,6 @@ func TestUpdateProductWithCourses_Atomicity_RollbackOnCourseError(t *testing.T) 
 	}
 	if got.Name != originalTitle {
 		t.Errorf("atomicity violated: product title changed to %q despite ReplaceProductCourses error", got.Name)
-	}
-}
-
-func TestUpdateProductWithCourses_ReplacesLinks(t *testing.T) {
-	ctx := context.Background()
-	fake := newFakeStoreRepo()
-	svc := newShim(fake)
-	updSvc := &shimUpdateProductWithCourses{fake: fake}
-
-	course1, _ := fake.CreateCourse(ctx, model.Course{Title: "C1", Level: "b", Subject: "s", InstructorName: "I"})
-	course2, _ := fake.CreateCourse(ctx, model.Course{Title: "C2", Level: "b", Subject: "s", InstructorName: "I"})
-
-	product, err := svc.CreateProductWithCourses(ctx, model.Product{
-		Type: "course", Name: "Bundle", Price: 50000,
-	}, []string{course1.ID.String()}, RoleAdminStore)
-	if err != nil {
-		t.Fatalf("CreateProductWithCourses: %v", err)
-	}
-
-	// Replace with course2 only
-	updated, err := updSvc.UpdateProductWithCourses(ctx, product.ID, model.Product{
-		Type: "course", Name: "Bundle Updated",
-	}, []string{course2.ID.String()}, RoleAdminStore)
-	if err != nil {
-		t.Fatalf("UpdateProductWithCourses: %v", err)
-	}
-	if len(updated.CourseIDs) != 1 || updated.CourseIDs[0] != course2.ID.String() {
-		t.Errorf("want [%s], got %v", course2.ID.String(), updated.CourseIDs)
-	}
-
-	// Verify via GetCoursesByProductID
-	pID, _ := uuid.Parse(product.ID)
-	linked, err := fake.GetCoursesByProductID(ctx, pID)
-	if err != nil {
-		t.Fatalf("GetCoursesByProductID: %v", err)
-	}
-	if len(linked) != 1 || linked[0].ID != course2.ID {
-		t.Errorf("want [%s] linked, got %v", course2.ID.String(), linked)
 	}
 }
 

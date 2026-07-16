@@ -156,8 +156,13 @@ func TestAdminCreateProduct_AdminExam_Merchandise_Returns403(t *testing.T) {
 	env := newTestEnv(t)
 
 	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
-	tokenString, jti, _ := env.signer.SignAccess("admin_exam_user", service.RoleAdminExam, nil, []string{})
-	rdb.Set(context.Background(), "session:access:"+jti, "admin_exam_user", 15*time.Minute)
+	tokenString, jti, err := env.signer.SignAccess("admin_exam_user", service.RoleAdminExam, nil, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := rdb.Set(context.Background(), "session:access:"+jti, "admin_exam_user", 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
 
 	rec := postJSONWithToken(t, env.e, "/api/v1/admin/products", tokenString, mustJSON(t, map[string]any{
 		"type": "merchandise",
@@ -212,6 +217,55 @@ func TestAdminUpdateProduct_WeightGramsZero_PersistsAndPreservesOmittedImage(t *
 	}
 	if persisted.WeightGrams != 0 {
 		t.Errorf("persisted weight_grams: want 0, got %d", persisted.WeightGrams)
+	}
+}
+
+func TestAdminUpdateProduct_EmptyImageURL_ClearsAndPreservesWeight(t *testing.T) {
+	env := newAdminProductDBEnv(t)
+	token := mintProductToken(t, env, "store-clear-image", service.RoleAdminStore)
+
+	created := postJSONWithToken(t, env.e, "/api/v1/admin/products", token, mustJSON(t, map[string]any{
+		"type": "merchandise", "name": "Image Clear Tote", "price": 50000, "stock": 20,
+		"weight_grams": 350, "image_url": "avatars/store-clear-image/tote.png",
+	}))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create: want 201, got %d body=%s", created.Code, created.Body.String())
+	}
+	var product map[string]any
+	if err := json.Unmarshal(created.Body.Bytes(), &product); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	id := product["id"].(string)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/products/"+id, strings.NewReader(mustJSON(t, map[string]any{
+		"name": "Image Clear Tote", "price": 50000, "stock": 20, "image_url": "",
+	})))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	updated := httptest.NewRecorder()
+	env.e.ServeHTTP(updated, req)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("update: want 200, got %d body=%s", updated.Code, updated.Body.String())
+	}
+	if err := json.Unmarshal(updated.Body.Bytes(), &product); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if got := product["image_url"]; got != "" {
+		t.Errorf("image_url: want cleared value, got %v", got)
+	}
+	if got := product["weight_grams"]; got != float64(350) {
+		t.Errorf("weight_grams: want preserved value, got %v", got)
+	}
+
+	persisted, err := repository.New(env.pool).GetProductByID(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get persisted product: %v", err)
+	}
+	if persisted.ImageURL != "" {
+		t.Errorf("persisted image_url: want cleared value, got %q", persisted.ImageURL)
+	}
+	if persisted.WeightGrams != 350 {
+		t.Errorf("persisted weight_grams: want 350, got %d", persisted.WeightGrams)
 	}
 }
 

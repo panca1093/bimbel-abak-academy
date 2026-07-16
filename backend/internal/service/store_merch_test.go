@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -99,10 +98,14 @@ func TestAdminCompleteOrder_ProcessingMerchandise_RejectedUntilShipped(t *testin
 	require.NoError(t, repo.SetOrderStatus(ctx, tx, order.ID, "processing", ""))
 	require.NoError(t, tx.Commit(ctx))
 
-	err = svc.AdminCompleteOrder(ctx, order.ID.String())
-	if err == nil || !strings.Contains(err.Error(), "must be shipped before completing") {
-		t.Errorf("completing a processing merchandise order: want ship-before-complete error, got %v", err)
-	}
+	require.ErrorIs(t, svc.AdminCompleteOrder(ctx, order.ID.String()), ErrMustShipBeforeComplete)
+
+	require.NoError(t, svc.AdminShipOrder(ctx, order.ID.String(), "JNE-123"))
+	require.NoError(t, svc.AdminCompleteOrder(ctx, order.ID.String()))
+
+	completed, err := repo.GetOrderByID(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", completed.Status)
 }
 
 func seedMerchStudent(t *testing.T, repo *repository.Repository) string {
