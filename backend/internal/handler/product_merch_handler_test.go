@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -91,6 +93,7 @@ func newAdminProductDBEnv(t *testing.T) *adminProductDBTestEnv {
 		admin.Use(handler.JWTMiddleware(svc, signer))
 		adminProducts := admin.Group("/products")
 		adminProducts.POST("", h.AdminCreateProduct)
+		adminProducts.PATCH("/:id", h.AdminUpdateProduct)
 
 		adminProductDBEnv = &adminProductDBTestEnv{
 			pool:        pool,
@@ -163,6 +166,52 @@ func TestAdminCreateProduct_AdminExam_Merchandise_Returns403(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminUpdateProduct_WeightGramsZero_PersistsAndPreservesOmittedImage(t *testing.T) {
+	env := newAdminProductDBEnv(t)
+	token := mintProductToken(t, env, "store-weight-zero", service.RoleAdminStore)
+
+	created := postJSONWithToken(t, env.e, "/api/v1/admin/products", token, mustJSON(t, map[string]any{
+		"type": "merchandise", "name": "Zero Weight Tote", "price": 50000, "stock": 20,
+		"weight_grams": 350, "image_url": "avatars/store-weight-zero/tote.png",
+	}))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create: want 201, got %d body=%s", created.Code, created.Body.String())
+	}
+	var product map[string]any
+	if err := json.Unmarshal(created.Body.Bytes(), &product); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	id := product["id"].(string)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/products/"+id, strings.NewReader(mustJSON(t, map[string]any{
+		"name": "Zero Weight Tote", "price": 50000, "stock": 20, "weight_grams": 0,
+	})))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	updated := httptest.NewRecorder()
+	env.e.ServeHTTP(updated, req)
+	if updated.Code != http.StatusOK {
+		t.Fatalf("update: want 200, got %d body=%s", updated.Code, updated.Body.String())
+	}
+	if err := json.Unmarshal(updated.Body.Bytes(), &product); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if got := product["weight_grams"]; got != float64(0) {
+		t.Errorf("weight_grams: want 0, got %v", got)
+	}
+	if got := product["image_url"]; got != "avatars/store-weight-zero/tote.png" {
+		t.Errorf("image_url: want preserved value, got %v", got)
+	}
+
+	persisted, err := repository.New(env.pool).GetProductByID(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get persisted product: %v", err)
+	}
+	if persisted.WeightGrams != 0 {
+		t.Errorf("persisted weight_grams: want 0, got %d", persisted.WeightGrams)
 	}
 }
 

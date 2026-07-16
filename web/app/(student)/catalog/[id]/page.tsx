@@ -135,7 +135,7 @@ export default function ProductDetailPage({
             <p className="max-w-2xl text-sm leading-relaxed text-ink-600 md:text-[15px]">
               {product.description ?? t("product_no_description")}
             </p>
-            {product.type === "book" && (
+            {(product.type === "book" || product.type === "merchandise") && (
               <p className="text-xs text-ink-500">
                 {t("product_stock_label")}: {product.stock ?? 0} · {t("product_shipped_to_address")}
               </p>
@@ -148,7 +148,7 @@ export default function ProductDetailPage({
             <div className="font-serif text-3xl font-bold text-success">
               {formatRupiah(product.price)}
             </div>
-            {product.type === "book" && (
+            {(product.type === "book" || product.type === "merchandise") && (
               <div className="mt-1 text-xs text-ink-500">
                 {t("product_stock_label")}: {product.stock ?? 0}
               </div>

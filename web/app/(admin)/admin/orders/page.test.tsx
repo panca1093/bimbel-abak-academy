@@ -154,6 +154,42 @@ describe("OrdersPage", () => {
     });
   });
 
+  it("requires a merchandise order to ship before it can complete", async () => {
+    ordersState = {
+      data: [{
+        id: "o-merch",
+        student_id: "s-merch",
+        status: "processing",
+        subtotal: 75000,
+        discount: 0,
+        shipping_cost: 15000,
+        total: 90000,
+        items: [{ id: "i-merch", order_id: "o-merch", product_id: "p-merch", product_type: "merchandise", name: "Kaos Akademi", unit_price: 75000, qty: 1, jumlah: 75000 }],
+      }],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+
+    const { rerender } = render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText("Kaos Akademi")).toBeInTheDocument());
+
+    let row = screen.getByText("Kaos Akademi").closest("tr");
+    expect(within(row!).getByRole("button", { name: /kirim/i })).toBeInTheDocument();
+    expect(within(row!).queryByRole("button", { name: /selesai/i })).not.toBeInTheDocument();
+
+    ordersState = {
+      ...ordersState,
+      data: [{ ...ordersState.data![0], status: "shipped", tracking_number: "JNE-MERCH-1" }],
+    };
+    rerender(<OrdersPage />);
+
+    row = screen.getByText("Kaos Akademi").closest("tr");
+    expect(within(row!).queryByRole("button", { name: /kirim/i })).not.toBeInTheDocument();
+    expect(within(row!).getByRole("button", { name: /selesai/i })).toBeInTheDocument();
+  });
+
   it("refunds an order after confirmation", async () => {
     mockMutateAsync.mockResolvedValueOnce({ message: "order refunded" });
     vi.stubGlobal("confirm", () => true);

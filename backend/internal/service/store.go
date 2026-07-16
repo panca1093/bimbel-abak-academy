@@ -14,16 +14,16 @@ import (
 )
 
 var (
-	ErrForbidden         = errors.New("forbidden")
-	ErrProductNotFound   = errors.New("product not found")
-	ErrCourseNotFound    = errors.New("course not found")
-	ErrInvalidPromo      = errors.New("invalid or expired promo code")
-	ErrPromoMinOrder     = errors.New("order subtotal below promo minimum")
-	ErrOutOfStock        = errors.New("product out of stock")
-	ErrInsufficientStock = errors.New("insufficient stock")
-	ErrOrderNotEditable  = errors.New("order not editable")
-	ErrOrderNotFound     = errors.New("order not found")
-	ErrInvalidSignature  = errors.New("invalid signature")
+	ErrForbidden          = errors.New("forbidden")
+	ErrProductNotFound    = errors.New("product not found")
+	ErrCourseNotFound     = errors.New("course not found")
+	ErrInvalidPromo       = errors.New("invalid or expired promo code")
+	ErrPromoMinOrder      = errors.New("order subtotal below promo minimum")
+	ErrOutOfStock         = errors.New("product out of stock")
+	ErrInsufficientStock  = errors.New("insufficient stock")
+	ErrOrderNotEditable   = errors.New("order not editable")
+	ErrOrderNotFound      = errors.New("order not found")
+	ErrInvalidSignature   = errors.New("invalid signature")
 	ErrCourseLinkRequired = errors.New("course product requires at least one linked course")
 	ErrExamLinkRequired   = errors.New("exam product requires at least one linked exam")
 )
@@ -178,10 +178,10 @@ func (s *Service) UpdateProductWithExams(ctx context.Context, id string, p model
 		return model.Product{}, err
 	}
 	p.Type = existing.Type
-	if p.WeightGrams == 0 {
+	if !p.WeightGramsSet && p.WeightGrams == 0 {
 		p.WeightGrams = existing.WeightGrams
 	}
-	if p.ImageURL == "" {
+	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
 	}
 
@@ -232,12 +232,11 @@ func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p mod
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
-	// Type is not editable; weight/image preserve-on-omit (zero value = omitted).
 	p.Type = existing.Type
-	if p.WeightGrams == 0 {
+	if !p.WeightGramsSet && p.WeightGrams == 0 {
 		p.WeightGrams = existing.WeightGrams
 	}
-	if p.ImageURL == "" {
+	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
 	}
 
@@ -288,12 +287,11 @@ func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product,
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
-	// Type is not editable; weight/image preserve-on-omit (zero value = omitted).
 	p.Type = existing.Type
-	if p.WeightGrams == 0 {
+	if !p.WeightGramsSet && p.WeightGrams == 0 {
 		p.WeightGrams = existing.WeightGrams
 	}
-	if p.ImageURL == "" {
+	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
 	}
 	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {

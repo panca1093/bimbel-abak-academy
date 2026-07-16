@@ -37,8 +37,8 @@ function productSummary(order: Order): string {
   return names.join(", ") + suffix;
 }
 
-function hasBookItem(order: Order): boolean {
-  return (order.items ?? []).some((it) => it.product_type === "book");
+function hasPhysicalItem(order: Order): boolean {
+  return (order.items ?? []).some((it) => it.product_type === "book" || it.product_type === "merchandise");
 }
 
 function isShipped(order: Order): boolean {
@@ -88,7 +88,7 @@ export default function OrdersPage() {
   };
 
   function shippingBadge(order: Order) {
-    if (!hasBookItem(order)) return null;
+    if (!hasPhysicalItem(order)) return null;
     if (isShipped(order)) {
       return <Badge className="bg-green-100 text-green-800 border-green-200">{t("status_shipped")}</Badge>;
     }
@@ -211,7 +211,7 @@ export default function OrdersPage() {
                     <OrderStatusBadge status={order.status} />
                   </td>
                   <td className="px-4 py-3">
-                    {hasBookItem(order) ? shippingBadge(order) : <span className="text-xs text-muted-foreground">—</span>}
+                    {hasPhysicalItem(order) ? shippingBadge(order) : <span className="text-xs text-muted-foreground">—</span>}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -225,7 +225,7 @@ export default function OrdersPage() {
                           {t("action_confirm")}
                         </Button>
                       )}
-                      {actionAllowed(order.status, "ship") && hasBookItem(order) && (
+                      {actionAllowed(order.status, "ship") && hasPhysicalItem(order) && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -235,7 +235,7 @@ export default function OrdersPage() {
                           {t("action_ship")}
                         </Button>
                       )}
-                      {actionAllowed(order.status, "complete") && (order.status === "shipped" || !hasBookItem(order)) && (
+                      {actionAllowed(order.status, "complete") && (order.status === "shipped" || !hasPhysicalItem(order)) && (
                         <Button
                           size="sm"
                           variant="outline"
