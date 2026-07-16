@@ -341,7 +341,7 @@ func (s *Service) DeleteProduct(ctx context.Context, id string, role string) err
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return err
 	}
-	if existing.Type == "book" {
+	if isPhysicalType(existing.Type) {
 		return s.storeRepo.DeleteProduct(ctx, id)
 	}
 	return s.storeRepo.ArchiveProduct(ctx, id)
@@ -428,7 +428,7 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	if product == nil {
 		return ErrProductNotFound
 	}
-	if product.Type == "book" && product.Stock == 0 {
+	if isPhysicalType(product.Type) && product.Stock == 0 {
 		return ErrOutOfStock
 	}
 
@@ -590,6 +590,8 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 		switch item.ProductType {
 		case "book":
 			cat = "Book"
+		case "merchandise":
+			cat = "Merchandise"
 		case "course":
 			cat = "Course"
 		}
@@ -971,7 +973,7 @@ func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error 
 	case "processing":
 		// only completable if no physical items (digital-only orders stuck before worker fix)
 		for _, item := range order.Items {
-			if item.ProductType == "book" {
+			if isPhysicalType(item.ProductType) {
 				return errors.New("order has physical items — must be shipped before completing")
 			}
 		}
@@ -1180,6 +1182,10 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 	return nil
 }
 
+// isPhysicalType reports whether a product type is shipped physical inventory
+// (stock-guarded, ship-before-complete). book and merchandise both qualify.
+func isPhysicalType(t string) bool { return t == "book" || t == "merchandise" }
+
 // checkTypeRBAC returns ErrForbidden if role is not allowed to manage productType.
 func checkTypeRBAC(role, productType string) error {
 	switch role {
@@ -1189,7 +1195,7 @@ func checkTypeRBAC(role, productType string) error {
 		// FR-STORE-ADM-03: admin_store edits price/visibility/promo eligibility on
 		// exam-type products too (it cannot touch exam content — tests/questions —
 		// which stays under /admin/exams, gated separately by RoleAdminExam).
-		if productType == "book" || productType == "course" || productType == "exam" {
+		if isPhysicalType(productType) || productType == "course" || productType == "exam" {
 			return nil
 		}
 		return ErrForbidden
