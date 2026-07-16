@@ -68,9 +68,11 @@ export default function SessionPage() {
   const [remaining, setRemaining] = useState<number>(0);
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showViolationOverlay, setShowViolationOverlay] = useState(false);
   const autoSubmittedRef = useRef(false);
   const submittingRef = useRef(false);
   const autoAdvanceRef = useRef(false);
+  const violationCountRef = useRef(0);
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
@@ -263,11 +265,18 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId || session?.status !== "in_progress") return;
     const onFullscreen = () => {
-      if (!document.fullscreenElement)
+      if (!document.fullscreenElement) {
         logViolation.mutate("fullscreen_exit");
+        violationCountRef.current += 1;
+        setShowViolationOverlay(true);
+      }
     };
     const onVisibility = () => {
-      if (document.hidden) logViolation.mutate("tab_switch");
+      if (document.hidden) {
+        logViolation.mutate("tab_switch");
+        violationCountRef.current += 1;
+        setShowViolationOverlay(true);
+      }
     };
     const onCopy = () => logViolation.mutate("copy_attempt");
     document.addEventListener("fullscreenchange", onFullscreen);
@@ -290,6 +299,17 @@ export default function SessionPage() {
       /* non-critical */
     }
     setFullscreenGranted(true);
+  }, []);
+
+  const handleViolationReturn = useCallback(async () => {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      /* non-critical */
+    }
+    setShowViolationOverlay(false);
   }, []);
 
   const setAnswer = useCallback((questionId: string, value: string) => {
@@ -650,6 +670,33 @@ export default function SessionPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Violation warning overlay */}
+      {showViolationOverlay && (
+        <div
+          data-testid="violation-overlay"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        >
+          <Card className="mx-4 max-w-md p-6">
+            <h2 className="mb-4 text-lg font-bold text-ink-900">
+              {t("violation_warning")}
+            </h2>
+            <p className="mb-6 text-sm text-ink-600">
+              {t("violation_warning_body").replace(
+                "{n}",
+                String(violationCountRef.current),
+              )}
+            </p>
+            <Button
+              onClick={handleViolationReturn}
+              className="w-full"
+              data-testid="violation-return-button"
+            >
+              {t("return_to_exam")}
+            </Button>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
