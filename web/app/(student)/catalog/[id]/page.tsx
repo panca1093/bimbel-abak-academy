@@ -3,7 +3,7 @@
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Book, ShoppingCart, PlayCircle, ClipboardList, Minus, Plus } from "lucide-react";
+import { ArrowLeft, Book, ShoppingCart, PlayCircle, ClipboardList, Minus, Plus, Package } from "lucide-react";
 import { toast } from "sonner";
 
 import { useProduct } from "@/lib/hooks/products";
@@ -12,7 +12,7 @@ import { useCartStore } from "@/stores/cart";
 import { useAuthStore } from "@/stores/auth";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
-import { ApiError } from "@/lib/api";
+import { ApiError, fileUrl } from "@/lib/api";
 import type { ProductType } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
@@ -27,12 +27,14 @@ const TYPE_META: Record<
   book: { labelKey: "product_type_book", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
   course: { labelKey: "product_type_course", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
   exam: { labelKey: "product_type_exam", tone: "text-info", bg: "bg-info-bg", Icon: ClipboardList },
+  merchandise: { labelKey: "product_type_merchandise", tone: "text-warn", bg: "bg-warn-bg", Icon: Package },
 };
 
 const COVER_GRADIENT: Record<ProductType, string> = {
   book: "linear-gradient(135deg, #fbf1e2 0%, #f6e6cf 100%)",
   course: "linear-gradient(135deg, #e5f5ec 0%, #d4eede 100%)",
   exam: "linear-gradient(135deg, #e7eefb 0%, #d3e2f8 100%)",
+  merchandise: "linear-gradient(135deg, #efeafc 0%, #e2d8f8 100%)",
 };
 
 export default function ProductDetailPage({
@@ -67,6 +69,7 @@ export default function ProductDetailPage({
 
   const meta = TYPE_META[product.type];
   const { Icon } = meta;
+  const cover = fileUrl(product.image_url);
   const alreadyInCart = cart?.items?.some((i) => i.product_id === product.id) ?? false;
 
   const handleAdd = (thenRoute?: () => void) => {
@@ -110,12 +113,12 @@ export default function ProductDetailPage({
           <div
             className="flex h-64 items-center justify-center overflow-hidden rounded-lg border border-line md:h-72"
             style={
-              product.image_url
-                ? { backgroundImage: `url(${product.image_url})`, backgroundSize: "cover", backgroundPosition: "center" }
+              cover
+                ? { backgroundImage: `url(${cover})`, backgroundSize: "cover", backgroundPosition: "center" }
                 : { background: COVER_GRADIENT[product.type], border: 0 }
             }
           >
-            {!product.image_url && (
+            {!cover && (
               <Icon className="size-16 text-white/90 drop-shadow-sm" strokeWidth={1.5} />
             )}
           </div>
