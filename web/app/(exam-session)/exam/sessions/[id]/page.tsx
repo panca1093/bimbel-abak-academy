@@ -68,9 +68,11 @@ export default function SessionPage() {
   const [remaining, setRemaining] = useState<number>(0);
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showViolationOverlay, setShowViolationOverlay] = useState(false);
   const autoSubmittedRef = useRef(false);
   const submittingRef = useRef(false);
   const autoAdvanceRef = useRef(false);
+  const violationCountRef = useRef(0);
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const flaggedRef = useRef(flagged);
@@ -263,11 +265,18 @@ export default function SessionPage() {
   useEffect(() => {
     if (!sessionId || session?.status !== "in_progress") return;
     const onFullscreen = () => {
-      if (!document.fullscreenElement)
+      if (!document.fullscreenElement) {
         logViolation.mutate("fullscreen_exit");
+        violationCountRef.current += 1;
+        setShowViolationOverlay(true);
+      }
     };
     const onVisibility = () => {
-      if (document.hidden) logViolation.mutate("tab_switch");
+      if (document.hidden) {
+        logViolation.mutate("tab_switch");
+        violationCountRef.current += 1;
+        setShowViolationOverlay(true);
+      }
     };
     const onCopy = () => logViolation.mutate("copy_attempt");
     document.addEventListener("fullscreenchange", onFullscreen);
@@ -290,6 +299,17 @@ export default function SessionPage() {
       /* non-critical */
     }
     setFullscreenGranted(true);
+  }, []);
+
+  const handleViolationReturn = useCallback(async () => {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      /* non-critical */
+    }
+    setShowViolationOverlay(false);
   }, []);
 
   const setAnswer = useCallback((questionId: string, value: string) => {
@@ -401,59 +421,36 @@ export default function SessionPage() {
   const answeredCount = Object.keys(answers).length;
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
   const timerExpired = hasTimer && remaining <= 0;
+  // In sectioned mode (utbk/ielts), use the mode label for the top bar title
+  // to avoid duplicating the first section's title (which appears as the section label below).
+  // In standard mode, the first test's title is a reasonable stand-in for exam heading.
+  const examTitle = isSectioned
+    ? session?.mode === "utbk"
+      ? t("exam_packages_modal_mode_utbk")
+      : t("exam_packages_modal_mode_ielts")
+    : session.tests[0]?.title ?? "";
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-4">
-      {/* Section rail (sectioned mode only) */}
-      {isSectioned && (
-        <div
-          data-testid="section-rail"
-          className="mb-4 flex gap-2 overflow-x-auto"
-        >
-          {session.tests.map((test, i) => {
-            const isActive = test.id === session.active_test_id;
-            const isSubmitted = test.status === "submitted";
-            let railClass =
-              "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium";
-            if (isActive) {
-              railClass += " bg-brand-600 text-white";
-            } else if (isSubmitted) {
-              railClass += " bg-surface-2 text-ink-500";
-            } else {
-              railClass += " bg-surface-2 text-ink-400";
-            }
-            return (
-              <div
-                key={test.id}
-                data-testid={`section-rail-item-${i}`}
-                className={railClass}
-              >
-                <span>{test.title}</span>
-                <span>
-                  {isSubmitted ? "✓" : isActive ? "●" : "○"}
-                </span>
-              </div>
-            );
-          })}
+    <div data-testid="exam-overlay" className="fixed inset-0 z-40 flex flex-col bg-background">
+      {/* Top bar */}
+      <div
+        data-testid="exam-top-bar"
+        className="flex shrink-0 items-center gap-4 border-b border-line bg-surface-2 px-5 py-3"
+      >
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-ink-900">
+            {examTitle}
+          </div>
+          {isSectioned && (
+            <div className="truncate text-xs text-ink-500">
+              {activeTest?.title ?? ""}
+            </div>
+          )}
         </div>
-      )}
-
-      {/* Audio player (listening sections only) */}
-      {isSectioned && activeTest?.section_type === "listening" && activeTest.audio_url && (
-        <SectionAudioPlayer
-          audioUrl={activeTest.audio_url}
-          playLimit={activeTest.audio_play_limit}
-        />
-      )}
-
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-ink-600">
-          <BookOpen className="size-4" />
-          <span>
-            {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")}{" "}
-            {questionsToShow.length}
-          </span>
+        <div className="flex-1" />
+        <div className="whitespace-nowrap text-xs text-ink-500">
+          {answeredCount}/{questionsToShow.length}{" "}
+          {t("session_legend_answered").toLowerCase()}
         </div>
         {hasTimer && (
           <div
@@ -466,114 +463,193 @@ export default function SessionPage() {
             {formatTime(remaining)}
           </div>
         )}
-      </div>
-
-      {/* Question navigator grid */}
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {questionsToShow.map((q, i) => {
-          const hasAnswer = answers[q.id] != null;
-          const isFlagQ = flagged[q.id] ?? false;
-          const isCurrent = i === currentQIndex;
-
-          let cellClass = "flex size-8 items-center justify-center rounded-md text-xs font-medium transition-colors";
-          if (isCurrent) {
-            cellClass += " bg-brand-600 text-white";
-          } else if (hasAnswer && isFlagQ) {
-            cellClass += " border border-warning/30 bg-warning-bg text-warning";
-          } else if (hasAnswer) {
-            cellClass += " bg-brand-50 text-brand-700";
-          } else if (isFlagQ) {
-            cellClass += " border border-warning/30 text-warning";
-          } else {
-            cellClass += " bg-surface-2 text-ink-600 hover:bg-surface-3";
-          }
-
-          return (
-            <button
-              key={q.id}
-              type="button"
-              onClick={() => setCurrentQIndex(i)}
-              className={cellClass}
-              data-testid={`session-nav-${i}`}
-            >
-              {i + 1}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Question card */}
-      {currentQ && (
-        <Card className="mb-4 p-5">
-          <div className="mb-2 text-xs uppercase tracking-wide text-ink-500">
-            {t(("fmt_" + currentQ.format) as I18nKey)}
-          </div>
-          <div className="mb-4 text-base text-ink-900">
-            <RichContent html={currentQ.body} />
-          </div>
-
-          {renderAnswerInput(
-            currentQ,
-            answers[currentQ.id] ?? "",
-            (val) => setAnswer(currentQ.id, val),
-            timerExpired,
-          )}
-
-          {/* Flag toggle */}
-          <div className="mt-4 flex items-center gap-2">
-            <Button
-              type="button"
-              variant={isFlagged ? "default" : "outline"}
-              size="sm"
-              onClick={() => toggleFlag(currentQ.id)}
-            >
-              <Flag className="size-3.5" />
-              {isFlagged ? t("unflag") : t("flag")}
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* Navigation buttons */}
-      <div className="flex items-center justify-between">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={currentQIndex === 0}
-          onClick={() => setCurrentQIndex((i) => Math.max(0, i - 1))}
-        >
-          <ChevronLeft className="size-4" />
-        </Button>
-
-        {isSectioned ? (
-          <span className="text-sm font-medium text-ink-600">
-            {activeTest?.title ?? ""}
-          </span>
-        ) : (
+        {!isSectioned && (
           <Button
             type="button"
             variant="destructive"
+            size="sm"
             onClick={() => setShowConfirm(true)}
             disabled={timerExpired || submitting}
           >
             {t("submit")}
           </Button>
         )}
+      </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={currentQIndex >= questionsToShow.length - 1}
-          onClick={() =>
-            setCurrentQIndex((i) =>
-              Math.min(questionsToShow.length - 1, i + 1),
-            )
-          }
+      {/* Body: question pane (1fr) + nav rail (280px) */}
+      <div
+        data-testid="exam-body"
+        className="grid flex-1 grid-cols-[1fr_280px] overflow-hidden"
+      >
+        {/* Question pane */}
+        <div className="overflow-y-auto px-6 py-6">
+          <div className="mx-auto max-w-3xl">
+            {/* Section rail (sectioned mode only) */}
+            {isSectioned && (
+              <div
+                data-testid="section-rail"
+                className="mb-4 flex gap-2 overflow-x-auto"
+              >
+                {session.tests.map((test, i) => {
+                  const isActive = test.id === session.active_test_id;
+                  const isSubmitted = test.status === "submitted";
+                  let railClass =
+                    "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium";
+                  if (isActive) {
+                    railClass += " bg-brand-600 text-white";
+                  } else if (isSubmitted) {
+                    railClass += " bg-surface-2 text-ink-500";
+                  } else {
+                    railClass += " bg-surface-2 text-ink-400";
+                  }
+                  return (
+                    <div
+                      key={test.id}
+                      data-testid={`section-rail-item-${i}`}
+                      className={railClass}
+                    >
+                      <span>{test.title}</span>
+                      <span>
+                        {isSubmitted ? "✓" : isActive ? "●" : "○"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Audio player (listening sections only) */}
+            {isSectioned && activeTest?.section_type === "listening" && activeTest.audio_url && (
+              <SectionAudioPlayer
+                audioUrl={activeTest.audio_url}
+                playLimit={activeTest.audio_play_limit}
+              />
+            )}
+
+            {/* Question count + flag toggle */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-ink-600">
+                <BookOpen className="size-4" />
+                <span>
+                  {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")}{" "}
+                  {questionsToShow.length}
+                </span>
+              </div>
+              {currentQ && (
+                <Button
+                  type="button"
+                  variant={isFlagged ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => toggleFlag(currentQ.id)}
+                >
+                  <Flag className="size-3.5" />
+                  {isFlagged ? t("unflag") : t("flag")}
+                </Button>
+              )}
+            </div>
+
+            {/* Question card */}
+            {currentQ && (
+              <Card className="mb-4 p-5">
+                <div className="mb-2 text-xs uppercase tracking-wide text-ink-500">
+                  {t(("fmt_" + currentQ.format) as I18nKey)}
+                </div>
+                <div className="mb-4 text-base text-ink-900">
+                  <RichContent html={currentQ.body} />
+                </div>
+
+                {renderAnswerInput(
+                  currentQ,
+                  answers[currentQ.id] ?? "",
+                  (val) => setAnswer(currentQ.id, val),
+                  timerExpired,
+                )}
+              </Card>
+            )}
+
+            {/* Navigation buttons */}
+            <div className="flex items-center justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={currentQIndex === 0}
+                onClick={() => setCurrentQIndex((i) => Math.max(0, i - 1))}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={currentQIndex >= questionsToShow.length - 1}
+                onClick={() =>
+                  setCurrentQIndex((i) =>
+                    Math.min(questionsToShow.length - 1, i + 1),
+                  )
+                }
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Nav rail */}
+        <div
+          data-testid="exam-nav-rail"
+          className="overflow-y-auto border-l border-line bg-surface-2 p-5"
         >
-          <ChevronRight className="size-4" />
-        </Button>
+          <div className="grid grid-cols-5 gap-2">
+            {questionsToShow.map((q, i) => {
+              const hasAnswer = answers[q.id] != null;
+              const isFlagQ = flagged[q.id] ?? false;
+              const isCurrent = i === currentQIndex;
+
+              let cellClass = "flex size-8 items-center justify-center rounded-md text-xs font-medium transition-colors";
+              if (isCurrent) {
+                cellClass += " bg-brand-600 text-white";
+              } else if (hasAnswer && isFlagQ) {
+                cellClass += " border border-warning/30 bg-warning-bg text-warning";
+              } else if (hasAnswer) {
+                cellClass += " bg-brand-50 text-brand-700";
+              } else if (isFlagQ) {
+                cellClass += " border border-warning/30 text-warning";
+              } else {
+                cellClass += " bg-surface-2 text-ink-600 hover:bg-surface-3";
+              }
+
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => setCurrentQIndex(i)}
+                  className={cellClass}
+                  data-testid={`session-nav-${i}`}
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Legend */}
+          <div className="mt-5 flex flex-col gap-2">
+            <LegendItem
+              swatchClassName="bg-brand-600"
+              label={t("session_legend_answered")}
+            />
+            <LegendItem
+              swatchClassName="border border-line bg-surface"
+              label={t("session_legend_not_answered")}
+            />
+            <LegendItem
+              swatchClassName="border border-warning/30 bg-warning-bg"
+              label={t("session_legend_flagged")}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Submit confirmation dialog */}
@@ -599,6 +675,48 @@ export default function SessionPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Violation warning overlay */}
+      {showViolationOverlay && (
+        <div
+          data-testid="violation-overlay"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        >
+          <Card className="mx-4 max-w-md p-6">
+            <h2 className="mb-4 text-lg font-bold text-ink-900">
+              {t("violation_warning")}
+            </h2>
+            <p className="mb-6 text-sm text-ink-600">
+              {t("violation_warning_body").replace(
+                "{n}",
+                String(violationCountRef.current),
+              )}
+            </p>
+            <Button
+              onClick={handleViolationReturn}
+              className="w-full"
+              data-testid="violation-return-button"
+            >
+              {t("return_to_exam")}
+            </Button>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LegendItem({
+  swatchClassName,
+  label,
+}: {
+  swatchClassName: string;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-ink-500">
+      <span className={`size-4 rounded ${swatchClassName}`} />
+      {label}
     </div>
   );
 }

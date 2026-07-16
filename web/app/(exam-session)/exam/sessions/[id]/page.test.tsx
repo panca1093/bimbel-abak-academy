@@ -890,6 +890,97 @@ describe("SessionPage", () => {
     expect(audio).toHaveAttribute("src", "https://example.com/audio.mp3");
   });
 
+  // ── Two-column overlay restyle (Task 3) ─────────────────────────────────
+
+  it("renders a fixed full-viewport overlay wrapper for an in-progress session", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const overlay = screen.getByTestId("exam-overlay");
+    expect(overlay.className).toMatch(/\bfixed\b/);
+    expect(overlay.className).toMatch(/\binset-0\b/);
+  });
+
+  it("shows the top bar with title, answered count, timer, and submit button", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const topBar = screen.getByTestId("exam-top-bar");
+    // Title (falls back to the test's own title since no package title exists in SessionState)
+    expect(topBar).toHaveTextContent("Tes Matematika");
+    // Answered count
+    expect(topBar).toHaveTextContent("0/5");
+    // Timer
+    expect(topBar).toHaveTextContent("60:00");
+    // Submit button (standard mode)
+    expect(
+      screen.getByTestId("exam-top-bar").querySelector("button")
+    ).not.toBeNull();
+  });
+
+  it("shows distinct mode label and section label in top bar for sectioned mode", async () => {
+    sessionState = { ...sessionState, data: sectionedSession };
+    render(<SessionPage />);
+
+    const enterFullscreenBtn = screen.getByTestId("enter-fullscreen");
+    fireEvent.click(enterFullscreenBtn);
+
+    await waitFor(() => {
+      const topBar = screen.getByTestId("exam-top-bar");
+      // In UTBK mode, title should be "UTBK" (from i18n), not "TPS" (the first section's title)
+      expect(topBar).toHaveTextContent("UTBK");
+      // Section label should be "TPS" (the active section's title)
+      expect(topBar).toHaveTextContent("TPS");
+    });
+
+    const topBar = screen.getByTestId("exam-top-bar");
+    // Verify they're in separate elements (title in first child div, section label in nested div)
+    const titleDivs = topBar.querySelectorAll("div.min-w-0 > div");
+    expect(titleDivs[0]?.textContent).toBe("UTBK");
+    expect(titleDivs[1]?.textContent).toBe("TPS");
+  });
+
+  it("nav rail shows the three legend entries with correct labels", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const rail = screen.getByTestId("exam-nav-rail");
+    expect(rail).toHaveTextContent("Terjawab");
+    expect(rail).toHaveTextContent("Tidak terjawab");
+    expect(rail).toHaveTextContent("Ditandai");
+  });
+
+  it("nav rail question grid preserves answered/flagged/current status classes", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // Answer q0 (current), flag q1, leave q2 untouched
+    const radios = screen.getAllByRole("radio");
+    fireEvent.click(radios[1]);
+
+    const rail = screen.getByTestId("exam-nav-rail");
+    expect(rail.querySelector('[data-testid="session-nav-0"]')).not.toBeNull();
+
+    const cellCurrentAnswered = screen.getByTestId("session-nav-0");
+    // Current takes precedence over answered styling
+    expect(cellCurrentAnswered.className).toContain("bg-brand-600");
+    expect(cellCurrentAnswered.className).toContain("text-white");
+
+    // Navigate away — q0 is now answered but no longer current
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const cellAnsweredNotCurrent = screen.getByTestId("session-nav-0");
+    expect(cellAnsweredNotCurrent.className).toContain("bg-brand-50");
+    expect(cellAnsweredNotCurrent.className).toContain("text-brand-700");
+  });
+
+  it("keeps the two-column body grid (1fr question pane / 280px nav rail)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const body = screen.getByTestId("exam-body");
+    expect(body.className).toMatch(/grid-cols-\[1fr_280px\]/);
+  });
+
   it("renders writing section questions as essay (FR-25)", async () => {
     // Set writing as active section
     const writingActive = {
@@ -914,4 +1005,301 @@ describe("SessionPage", () => {
       .filter((tb) => tb.tagName === "TEXTAREA");
     expect(textareas.length).toBeGreaterThan(0);
   });
+
+  // ── Anti-cheat visible warning overlay (Task 4) ──────────────────────────────
+
+  it("shows violation warning overlay on fullscreen exit during in_progress (FR13)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // Simulate fullscreen exit
+    act(() => {
+      const event = new Event("fullscreenchange");
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(event);
+    });
+
+    // Overlay should be visible
+    await waitFor(() => {
+      expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Peringatan pelanggaran/)).toBeInTheDocument();
+  });
+
+  it("increments violation counter and shows count in overlay (FR13, FR18)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // First fullscreen exit
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+    });
+  });
+
+  it("increments violation counter on second fullscreen exit (FR18)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // First exit
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+    });
+
+    // Second exit (re-enable fullscreen and exit again)
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: document.documentElement,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    // Close the overlay first
+    act(() => {
+      fireEvent.click(screen.getByTestId("violation-return-button"));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+    });
+
+    // Now exit again
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows violation overlay on tab switch (visibility hidden) (FR14)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // Simulate tab switch (visibility hidden)
+    act(() => {
+      Object.defineProperty(document, "hidden", {
+        value: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Peringatan pelanggaran/)).toBeInTheDocument();
+  });
+
+  it("tab switch increments shared violation counter (FR14, FR18)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // First fullscreen exit
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Anda telah melanggar 1 kali/i)).toBeInTheDocument();
+    });
+
+    // Dismiss overlay
+    act(() => {
+      fireEvent.click(screen.getByTestId("violation-return-button"));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+    });
+
+    // Tab switch — should increment shared counter to 2
+    act(() => {
+      Object.defineProperty(document, "hidden", {
+        value: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Anda telah melanggar 2 kali/i)).toBeInTheDocument();
+    });
+  });
+
+  it("clicking return button requests fullscreen and closes overlay (FR15)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const requestFullscreenMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, "requestFullscreen", {
+      value: requestFullscreenMock,
+      configurable: true,
+    });
+
+    // Trigger violation
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+    });
+
+    // Click return button
+    const button = screen.getByTestId("violation-return-button");
+    fireEvent.click(button);
+
+    // Give the async callback time to execute
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Overlay should be closed
+    await waitFor(() => {
+      expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+    });
+
+    // requestFullscreen should have been called
+    expect(requestFullscreenMock).toHaveBeenCalled();
+  });
+
+  it("copy event does not show violation overlay (FR17)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // Trigger copy event
+    act(() => {
+      document.dispatchEvent(new Event("copy"));
+    });
+
+    // Overlay should NOT be visible
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+  });
+
+  it("timer continues running while violation overlay is shown (FR16)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // Verify timer is present and running (shows initial time)
+    expect(screen.getByText("60:00")).toBeInTheDocument();
+
+    // Trigger violation
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    // Wait for overlay to appear
+    await waitFor(() => {
+      expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+    });
+
+    // Verify timer element is still in the DOM while overlay is shown
+    // (i.e., the timer wasn't removed or paused by the overlay)
+    const topBar = screen.getByTestId("exam-top-bar");
+    expect(topBar).toBeInTheDocument();
+
+    // Timer text should still be present in the top bar (format: MM:SS)
+    const timerText = screen.getByText(/^\d{2}:\d{2}$/);
+    expect(timerText).toBeInTheDocument();
+
+    // Overlay should still be visible
+    expect(screen.getByTestId("violation-overlay")).toBeInTheDocument();
+  });
+
+  it("calls logViolation.mutate on fullscreen_exit (unchanged from existing behavior)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    logViolationMutate.mockClear();
+
+    // Trigger fullscreen exit
+    act(() => {
+      Object.defineProperty(document, "fullscreenElement", {
+        value: null,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+
+    await waitFor(() => {
+      expect(logViolationMutate).toHaveBeenCalledWith("fullscreen_exit");
+    });
+  });
+
+  it("calls logViolation.mutate on tab_switch (unchanged from existing behavior)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    logViolationMutate.mockClear();
+
+    // Trigger tab switch
+    act(() => {
+      Object.defineProperty(document, "hidden", {
+        value: true,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => {
+      expect(logViolationMutate).toHaveBeenCalledWith("tab_switch");
+    });
+  });
+
+  it("does not show overlay for non-in_progress sessions", async () => {
+    const submittedSess = { ...sampleSession, status: "submitted" as const };
+    sessionState = { ...sessionState, data: submittedSess };
+    render(<SessionPage />);
+
+    // Should redirect without showing fullscreen gate or overlay
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith(
+        "/exam/sessions/session-1/result",
+      );
+    });
+
+    // Ensure the violation overlay is not rendered
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
+  });
 });
+

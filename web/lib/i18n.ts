@@ -881,6 +881,11 @@ export const DICT = {
     time_remaining: "Sisa waktu",
     fullscreen_required: "Mode layar penuh diperlukan",
     violation_warning: "Peringatan pelanggaran",
+    session_legend_answered: "Terjawab",
+    session_legend_not_answered: "Tidak terjawab",
+    session_legend_flagged: "Ditandai",
+    violation_warning_body: "Anda telah melanggar {n} kali. Kembali ke mode layar penuh untuk melanjutkan ujian.",
+    return_to_exam: "Kembali ke ujian",
     submitted: "Terkumpul",
 
     // Exam result page (Slice 5)
@@ -1816,6 +1821,11 @@ export const DICT = {
     time_remaining: "Time remaining",
     fullscreen_required: "Fullscreen mode required",
     violation_warning: "Violation warning",
+    session_legend_answered: "Answered",
+    session_legend_not_answered: "Not answered",
+    session_legend_flagged: "Flagged",
+    violation_warning_body: "You have {n} violations. Return to fullscreen mode to continue your exam.",
+    return_to_exam: "Return to exam",
     submitted: "Submitted",
 
     // Exam result page (Slice 5)
