@@ -1,4 +1,4 @@
-export type ProductType = "book" | "course" | "exam";
+export type ProductType = "book" | "course" | "exam" | "merchandise";
 
 export type ProductStatus = "draft" | "published" | "hidden" | "archived";
 
@@ -126,6 +126,8 @@ export interface AdminCreateProductInput {
   description?: string;
   price: number;
   stock?: number;
+  weight_grams?: number;
+  image_url?: string;
   course_ids?: string[];
   exam_ids?: string[];
 }
@@ -136,6 +138,8 @@ export interface AdminUpdateProductInput {
   price?: number;
   stock?: number;
   status?: ProductStatus;
+  weight_grams?: number;
+  image_url?: string;
   course_ids?: string[];
   exam_ids?: string[];
 }
