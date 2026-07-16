@@ -890,6 +890,75 @@ describe("SessionPage", () => {
     expect(audio).toHaveAttribute("src", "https://example.com/audio.mp3");
   });
 
+  // ── Two-column overlay restyle (Task 3) ─────────────────────────────────
+
+  it("renders a fixed full-viewport overlay wrapper for an in-progress session", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const overlay = screen.getByTestId("exam-overlay");
+    expect(overlay.className).toMatch(/\bfixed\b/);
+    expect(overlay.className).toMatch(/\binset-0\b/);
+  });
+
+  it("shows the top bar with title, answered count, timer, and submit button", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const topBar = screen.getByTestId("exam-top-bar");
+    // Title (falls back to the test's own title since no package title exists in SessionState)
+    expect(topBar).toHaveTextContent("Tes Matematika");
+    // Answered count
+    expect(topBar).toHaveTextContent("0/5");
+    // Timer
+    expect(topBar).toHaveTextContent("60:00");
+    // Submit button (standard mode)
+    expect(
+      screen.getByTestId("exam-top-bar").querySelector("button")
+    ).not.toBeNull();
+  });
+
+  it("nav rail shows the three legend entries with correct labels", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const rail = screen.getByTestId("exam-nav-rail");
+    expect(rail).toHaveTextContent("Terjawab");
+    expect(rail).toHaveTextContent("Tidak terjawab");
+    expect(rail).toHaveTextContent("Ditandai");
+  });
+
+  it("nav rail question grid preserves answered/flagged/current status classes", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    // Answer q0 (current), flag q1, leave q2 untouched
+    const radios = screen.getAllByRole("radio");
+    fireEvent.click(radios[1]);
+
+    const rail = screen.getByTestId("exam-nav-rail");
+    expect(rail.querySelector('[data-testid="session-nav-0"]')).not.toBeNull();
+
+    const cellCurrentAnswered = screen.getByTestId("session-nav-0");
+    // Current takes precedence over answered styling
+    expect(cellCurrentAnswered.className).toContain("bg-brand-600");
+    expect(cellCurrentAnswered.className).toContain("text-white");
+
+    // Navigate away — q0 is now answered but no longer current
+    fireEvent.click(screen.getByTestId("session-nav-2"));
+    const cellAnsweredNotCurrent = screen.getByTestId("session-nav-0");
+    expect(cellAnsweredNotCurrent.className).toContain("bg-brand-50");
+    expect(cellAnsweredNotCurrent.className).toContain("text-brand-700");
+  });
+
+  it("keeps the two-column body grid (1fr question pane / 280px nav rail)", async () => {
+    render(<SessionPage />);
+    await enterFullscreen();
+
+    const body = screen.getByTestId("exam-body");
+    expect(body.className).toMatch(/grid-cols-\[1fr_280px\]/);
+  });
+
   it("renders writing section questions as essay (FR-25)", async () => {
     // Set writing as active section
     const writingActive = {

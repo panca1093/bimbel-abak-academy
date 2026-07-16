@@ -401,59 +401,31 @@ export default function SessionPage() {
   const answeredCount = Object.keys(answers).length;
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
   const timerExpired = hasTimer && remaining <= 0;
+  // No package/exam title in SessionState — the first test's title is the
+  // closest available stand-in for the top bar's exam heading.
+  const examTitle = session.tests[0]?.title ?? "";
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-4">
-      {/* Section rail (sectioned mode only) */}
-      {isSectioned && (
-        <div
-          data-testid="section-rail"
-          className="mb-4 flex gap-2 overflow-x-auto"
-        >
-          {session.tests.map((test, i) => {
-            const isActive = test.id === session.active_test_id;
-            const isSubmitted = test.status === "submitted";
-            let railClass =
-              "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium";
-            if (isActive) {
-              railClass += " bg-brand-600 text-white";
-            } else if (isSubmitted) {
-              railClass += " bg-surface-2 text-ink-500";
-            } else {
-              railClass += " bg-surface-2 text-ink-400";
-            }
-            return (
-              <div
-                key={test.id}
-                data-testid={`section-rail-item-${i}`}
-                className={railClass}
-              >
-                <span>{test.title}</span>
-                <span>
-                  {isSubmitted ? "✓" : isActive ? "●" : "○"}
-                </span>
-              </div>
-            );
-          })}
+    <div data-testid="exam-overlay" className="fixed inset-0 z-40 flex flex-col bg-background">
+      {/* Top bar */}
+      <div
+        data-testid="exam-top-bar"
+        className="flex shrink-0 items-center gap-4 border-b border-line bg-surface-2 px-5 py-3"
+      >
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-ink-900">
+            {examTitle}
+          </div>
+          {isSectioned && (
+            <div className="truncate text-xs text-ink-500">
+              {activeTest?.title ?? ""}
+            </div>
+          )}
         </div>
-      )}
-
-      {/* Audio player (listening sections only) */}
-      {isSectioned && activeTest?.section_type === "listening" && activeTest.audio_url && (
-        <SectionAudioPlayer
-          audioUrl={activeTest.audio_url}
-          playLimit={activeTest.audio_play_limit}
-        />
-      )}
-
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-ink-600">
-          <BookOpen className="size-4" />
-          <span>
-            {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")}{" "}
-            {questionsToShow.length}
-          </span>
+        <div className="flex-1" />
+        <div className="whitespace-nowrap text-xs text-ink-500">
+          {answeredCount}/{questionsToShow.length}{" "}
+          {t("session_legend_answered").toLowerCase()}
         </div>
         {hasTimer && (
           <div
@@ -466,114 +438,193 @@ export default function SessionPage() {
             {formatTime(remaining)}
           </div>
         )}
-      </div>
-
-      {/* Question navigator grid */}
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {questionsToShow.map((q, i) => {
-          const hasAnswer = answers[q.id] != null;
-          const isFlagQ = flagged[q.id] ?? false;
-          const isCurrent = i === currentQIndex;
-
-          let cellClass = "flex size-8 items-center justify-center rounded-md text-xs font-medium transition-colors";
-          if (isCurrent) {
-            cellClass += " bg-brand-600 text-white";
-          } else if (hasAnswer && isFlagQ) {
-            cellClass += " border border-warning/30 bg-warning-bg text-warning";
-          } else if (hasAnswer) {
-            cellClass += " bg-brand-50 text-brand-700";
-          } else if (isFlagQ) {
-            cellClass += " border border-warning/30 text-warning";
-          } else {
-            cellClass += " bg-surface-2 text-ink-600 hover:bg-surface-3";
-          }
-
-          return (
-            <button
-              key={q.id}
-              type="button"
-              onClick={() => setCurrentQIndex(i)}
-              className={cellClass}
-              data-testid={`session-nav-${i}`}
-            >
-              {i + 1}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Question card */}
-      {currentQ && (
-        <Card className="mb-4 p-5">
-          <div className="mb-2 text-xs uppercase tracking-wide text-ink-500">
-            {t(("fmt_" + currentQ.format) as I18nKey)}
-          </div>
-          <div className="mb-4 text-base text-ink-900">
-            <RichContent html={currentQ.body} />
-          </div>
-
-          {renderAnswerInput(
-            currentQ,
-            answers[currentQ.id] ?? "",
-            (val) => setAnswer(currentQ.id, val),
-            timerExpired,
-          )}
-
-          {/* Flag toggle */}
-          <div className="mt-4 flex items-center gap-2">
-            <Button
-              type="button"
-              variant={isFlagged ? "default" : "outline"}
-              size="sm"
-              onClick={() => toggleFlag(currentQ.id)}
-            >
-              <Flag className="size-3.5" />
-              {isFlagged ? t("unflag") : t("flag")}
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* Navigation buttons */}
-      <div className="flex items-center justify-between">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={currentQIndex === 0}
-          onClick={() => setCurrentQIndex((i) => Math.max(0, i - 1))}
-        >
-          <ChevronLeft className="size-4" />
-        </Button>
-
-        {isSectioned ? (
-          <span className="text-sm font-medium text-ink-600">
-            {activeTest?.title ?? ""}
-          </span>
-        ) : (
+        {!isSectioned && (
           <Button
             type="button"
             variant="destructive"
+            size="sm"
             onClick={() => setShowConfirm(true)}
             disabled={timerExpired || submitting}
           >
             {t("submit")}
           </Button>
         )}
+      </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={currentQIndex >= questionsToShow.length - 1}
-          onClick={() =>
-            setCurrentQIndex((i) =>
-              Math.min(questionsToShow.length - 1, i + 1),
-            )
-          }
+      {/* Body: question pane (1fr) + nav rail (280px) */}
+      <div
+        data-testid="exam-body"
+        className="grid flex-1 grid-cols-[1fr_280px] overflow-hidden"
+      >
+        {/* Question pane */}
+        <div className="overflow-y-auto px-6 py-6">
+          <div className="mx-auto max-w-3xl">
+            {/* Section rail (sectioned mode only) */}
+            {isSectioned && (
+              <div
+                data-testid="section-rail"
+                className="mb-4 flex gap-2 overflow-x-auto"
+              >
+                {session.tests.map((test, i) => {
+                  const isActive = test.id === session.active_test_id;
+                  const isSubmitted = test.status === "submitted";
+                  let railClass =
+                    "flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium";
+                  if (isActive) {
+                    railClass += " bg-brand-600 text-white";
+                  } else if (isSubmitted) {
+                    railClass += " bg-surface-2 text-ink-500";
+                  } else {
+                    railClass += " bg-surface-2 text-ink-400";
+                  }
+                  return (
+                    <div
+                      key={test.id}
+                      data-testid={`section-rail-item-${i}`}
+                      className={railClass}
+                    >
+                      <span>{test.title}</span>
+                      <span>
+                        {isSubmitted ? "✓" : isActive ? "●" : "○"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Audio player (listening sections only) */}
+            {isSectioned && activeTest?.section_type === "listening" && activeTest.audio_url && (
+              <SectionAudioPlayer
+                audioUrl={activeTest.audio_url}
+                playLimit={activeTest.audio_play_limit}
+              />
+            )}
+
+            {/* Question count + flag toggle */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-ink-600">
+                <BookOpen className="size-4" />
+                <span>
+                  {t("session_question")} {Math.min(currentQIndex + 1, questionsToShow.length)} {t("of")}{" "}
+                  {questionsToShow.length}
+                </span>
+              </div>
+              {currentQ && (
+                <Button
+                  type="button"
+                  variant={isFlagged ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => toggleFlag(currentQ.id)}
+                >
+                  <Flag className="size-3.5" />
+                  {isFlagged ? t("unflag") : t("flag")}
+                </Button>
+              )}
+            </div>
+
+            {/* Question card */}
+            {currentQ && (
+              <Card className="mb-4 p-5">
+                <div className="mb-2 text-xs uppercase tracking-wide text-ink-500">
+                  {t(("fmt_" + currentQ.format) as I18nKey)}
+                </div>
+                <div className="mb-4 text-base text-ink-900">
+                  <RichContent html={currentQ.body} />
+                </div>
+
+                {renderAnswerInput(
+                  currentQ,
+                  answers[currentQ.id] ?? "",
+                  (val) => setAnswer(currentQ.id, val),
+                  timerExpired,
+                )}
+              </Card>
+            )}
+
+            {/* Navigation buttons */}
+            <div className="flex items-center justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={currentQIndex === 0}
+                onClick={() => setCurrentQIndex((i) => Math.max(0, i - 1))}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={currentQIndex >= questionsToShow.length - 1}
+                onClick={() =>
+                  setCurrentQIndex((i) =>
+                    Math.min(questionsToShow.length - 1, i + 1),
+                  )
+                }
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Nav rail */}
+        <div
+          data-testid="exam-nav-rail"
+          className="overflow-y-auto border-l border-line bg-surface-2 p-5"
         >
-          <ChevronRight className="size-4" />
-        </Button>
+          <div className="grid grid-cols-5 gap-2">
+            {questionsToShow.map((q, i) => {
+              const hasAnswer = answers[q.id] != null;
+              const isFlagQ = flagged[q.id] ?? false;
+              const isCurrent = i === currentQIndex;
+
+              let cellClass = "flex size-8 items-center justify-center rounded-md text-xs font-medium transition-colors";
+              if (isCurrent) {
+                cellClass += " bg-brand-600 text-white";
+              } else if (hasAnswer && isFlagQ) {
+                cellClass += " border border-warning/30 bg-warning-bg text-warning";
+              } else if (hasAnswer) {
+                cellClass += " bg-brand-50 text-brand-700";
+              } else if (isFlagQ) {
+                cellClass += " border border-warning/30 text-warning";
+              } else {
+                cellClass += " bg-surface-2 text-ink-600 hover:bg-surface-3";
+              }
+
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => setCurrentQIndex(i)}
+                  className={cellClass}
+                  data-testid={`session-nav-${i}`}
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Legend */}
+          <div className="mt-5 flex flex-col gap-2">
+            <LegendItem
+              swatchClassName="bg-brand-600"
+              label={t("session_legend_answered")}
+            />
+            <LegendItem
+              swatchClassName="border border-line bg-surface"
+              label={t("session_legend_not_answered")}
+            />
+            <LegendItem
+              swatchClassName="border border-warning/30 bg-warning-bg"
+              label={t("session_legend_flagged")}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Submit confirmation dialog */}
@@ -599,6 +650,21 @@ export default function SessionPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function LegendItem({
+  swatchClassName,
+  label,
+}: {
+  swatchClassName: string;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-ink-500">
+      <span className={`size-4 rounded ${swatchClassName}`} />
+      {label}
     </div>
   );
 }
