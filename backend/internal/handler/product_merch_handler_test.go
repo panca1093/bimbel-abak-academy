@@ -1,0 +1,176 @@
+package handler_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"sync"
+	"testing"
+	"time"
+
+	"akademi-bimbel/config"
+	"akademi-bimbel/internal/handler"
+	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+)
+
+var (
+	adminProductDBOnce sync.Once
+	adminProductDBEnv  *adminProductDBTestEnv
+)
+
+type adminProductDBTestEnv struct {
+	pool        *pgxpool.Pool
+	pgContainer *tcpostgres.PostgresContainer
+	rdb         *redis.Client
+	e           *echo.Echo
+	signer      *infra.JWTSigner
+	mr          *miniredis.Miniredis
+}
+
+func newAdminProductDBEnv(t *testing.T) *adminProductDBTestEnv {
+	t.Helper()
+	adminProductDBOnce.Do(func() {
+		ctx := context.Background()
+
+		pgContainer, err := tcpostgres.Run(ctx,
+			"postgres:16-alpine",
+			tcpostgres.WithDatabase("akademi_product_test"),
+			tcpostgres.WithUsername("test"),
+			tcpostgres.WithPassword("test"),
+			tcpostgres.BasicWaitStrategies(),
+		)
+		if err != nil {
+			t.Fatalf("start postgres container: %v", err)
+		}
+		dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+		if err != nil {
+			t.Fatalf("connection string: %v", err)
+		}
+		if err := infra.RunMigrations(ctx, dsn); err != nil {
+			t.Fatalf("run migrations: %v", err)
+		}
+		pool, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Fatalf("new pool: %v", err)
+		}
+		store := repository.New(pool)
+
+		mr, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("miniredis: %v", err)
+		}
+		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+		cfg := &config.Config{
+			JWTSecret:       "test-secret",
+			AccessTokenTTL:  15 * time.Minute,
+			RefreshTokenTTL: 168 * time.Hour,
+			OTPTTL:          5 * time.Minute,
+		}
+		signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
+		svc := service.NewWithStore(
+			store, store, rdb, signer,
+			&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
+			&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
+			nil, cfg,
+		)
+		e := echo.New()
+		e.HideBanner = true
+		h := handler.New(svc)
+
+		v1 := e.Group("/api/v1")
+		admin := v1.Group("/admin")
+		admin.Use(handler.JWTMiddleware(svc, signer))
+		adminProducts := admin.Group("/products")
+		adminProducts.POST("", h.AdminCreateProduct)
+
+		adminProductDBEnv = &adminProductDBTestEnv{
+			pool:        pool,
+			pgContainer: pgContainer,
+			rdb:         rdb,
+			e:           e,
+			signer:      signer,
+			mr:          mr,
+		}
+	})
+	if adminProductDBEnv == nil {
+		t.Fatal("admin product test env failed to initialize")
+	}
+	return adminProductDBEnv
+}
+
+func mintProductToken(t *testing.T, env *adminProductDBTestEnv, userID, role string) string {
+	t.Helper()
+	tokenString, jti, err := env.signer.SignAccess(userID, role, nil, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := env.rdb.Set(context.Background(), "session:access:"+jti, userID, 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
+	return tokenString
+}
+
+// FR9: create merchandise carrying weight_grams + image_url; both round-trip.
+func TestAdminCreateProduct_AdminStore_Merchandise_RoundTripsWeightAndImage(t *testing.T) {
+	env := newAdminProductDBEnv(t)
+	token := mintProductToken(t, env, "store1", service.RoleAdminStore)
+
+	rec := postJSONWithToken(t, env.e, "/api/v1/admin/products", token, mustJSON(t, map[string]any{
+		"type":         "merchandise",
+		"name":         "Academy Tote",
+		"price":        50000,
+		"stock":        20,
+		"weight_grams": 350,
+		"image_url":    "avatars/store1/tote.png",
+	}))
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := resp["weight_grams"]; got != float64(350) {
+		t.Errorf("weight_grams: want 350, got %v", got)
+	}
+	if got := resp["image_url"]; got != "avatars/store1/tote.png" {
+		t.Errorf("image_url: want avatars/store1/tote.png, got %v", got)
+	}
+}
+
+// FR8: admin_exam is forbidden from creating merchandise.
+func TestAdminCreateProduct_AdminExam_Merchandise_Returns403(t *testing.T) {
+	env := newTestEnv(t)
+
+	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
+	tokenString, jti, _ := env.signer.SignAccess("admin_exam_user", service.RoleAdminExam, nil, []string{})
+	rdb.Set(context.Background(), "session:access:"+jti, "admin_exam_user", 15*time.Minute)
+
+	rec := postJSONWithToken(t, env.e, "/api/v1/admin/products", tokenString, mustJSON(t, map[string]any{
+		"type": "merchandise",
+		"name": "Academy Tote",
+	}))
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(b)
+}

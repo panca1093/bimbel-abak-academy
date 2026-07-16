@@ -42,5 +42,20 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	if adminProductDBEnv != nil {
+		if adminProductDBEnv.pool != nil {
+			adminProductDBEnv.pool.Close()
+		}
+		if adminProductDBEnv.rdb != nil {
+			adminProductDBEnv.rdb.Close()
+		}
+		if adminProductDBEnv.mr != nil {
+			adminProductDBEnv.mr.Close()
+		}
+		if adminProductDBEnv.pgContainer != nil {
+			_ = adminProductDBEnv.pgContainer.Terminate(ctx)
+		}
+	}
+
 	os.Exit(code)
 }

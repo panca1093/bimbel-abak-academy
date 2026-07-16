@@ -78,6 +78,8 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		Description string   `json:"description"`
 		Price       int64    `json:"price"`
 		Stock       int      `json:"stock"`
+		WeightGrams int      `json:"weight_grams"`
+		ImageURL    string   `json:"image_url"`
 		CourseIDs   []string `json:"course_ids"`
 		ExamIDs     []string `json:"exam_ids"`
 	}
@@ -100,6 +102,8 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 		Description: req.Description,
 		Price:       req.Price,
 		Stock:       req.Stock,
+		WeightGrams: req.WeightGrams,
+		ImageURL:    req.ImageURL,
 		Status:      "draft",
 	}
 
@@ -143,6 +147,8 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		Description string           `json:"description"`
 		Price       int64            `json:"price"`
 		Stock       int              `json:"stock"`
+		WeightGrams int              `json:"weight_grams"`
+		ImageURL    string           `json:"image_url"`
 		Status      Nullable[string] `json:"status"` // published ↔ hidden visibility flip only; absent preserves existing
 		CourseIDs   []string         `json:"course_ids"`
 		ExamIDs     []string         `json:"exam_ids"`
@@ -171,6 +177,8 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		Description: req.Description,
 		Price:       req.Price,
 		Stock:       req.Stock,
+		WeightGrams: req.WeightGrams,
+		ImageURL:    req.ImageURL,
 		Status:      status,
 	}
 
