@@ -58,6 +58,17 @@ func TestAddItem_Merchandise_OutOfStock(t *testing.T) {
 	}
 }
 
+func TestDeleteProduct_MerchandiseHardDeletes(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := newRealDBService(t)
+
+	productID := seedMerchProduct(t, repo, 10)
+	require.NoError(t, svc.DeleteProduct(ctx, productID, RoleAdminStore))
+
+	_, err := repo.GetProductByID(ctx, productID)
+	require.ErrorIs(t, err, repository.ErrNotFound)
+}
+
 // Gate (b) / site c: a processing order containing merchandise cannot be completed
 // until it has been shipped.
 func TestAdminCompleteOrder_ProcessingMerchandise_RejectedUntilShipped(t *testing.T) {
