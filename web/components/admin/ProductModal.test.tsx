@@ -19,6 +19,8 @@ const sampleExams = [
 let coursesState: { data: typeof sampleCourses | undefined };
 let examsState: { data: { data: typeof sampleExams } | undefined };
 
+const mockPresign = vi.fn();
+
 vi.mock("@/lib/hooks/admin-courses", () => ({
   useAdminCourses: () => coursesState,
 }));
@@ -27,12 +29,19 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useExams: () => examsState,
 }));
 
+vi.mock("@/lib/hooks/students", () => ({
+  usePresignUpload: () => ({ mutateAsync: mockPresign }),
+}));
+
 describe("ProductModal", () => {
   beforeEach(() => {
     mockOnSubmit.mockReset();
     mockOnOpenChange.mockReset();
     coursesState = { data: sampleCourses };
     examsState = { data: { data: sampleExams } };
+    mockPresign.mockReset();
+    mockPresign.mockResolvedValue({ url: "https://upload.example", method: "PUT", key: "avatars/u/img.png" });
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
   });
 
   // --- create mode ---
@@ -398,5 +407,112 @@ describe("ProductModal", () => {
     fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "99999" } });
 
     expect(screen.getByText("Belum ada ujian.")).toBeInTheDocument();
+  });
+
+  // --- merchandise (physical) ---
+
+  it("offers merchandise and shows stock, weight, and image fields when selected", () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    expect(screen.getByRole("option", { name: "Merchandise" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "merchandise" } });
+
+    expect(screen.getByLabelText(/stok/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/berat/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/gambar/i)).toBeInTheDocument();
+  });
+
+  it("uploads image and includes merchandise fields in create payload", async () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "merchandise" } });
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Kaos Logo" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "75000" } });
+    fireEvent.input(screen.getByLabelText(/stok/i), { target: { value: "20" } });
+    fireEvent.input(screen.getByLabelText(/berat/i), { target: { value: "250" } });
+
+    const file = new File(["x"], "img.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText(/gambar/i), { target: { files: [file] } });
+
+    await waitFor(() => expect(mockPresign).toHaveBeenCalled());
+    const preview = (await screen.findByAltText(/pratinjau/i)) as HTMLImageElement;
+    expect(preview.src).toContain("avatars/u/img.png");
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Kaos Logo",
+          price: 75000,
+          type: "merchandise",
+          stock: 20,
+          weight_grams: 250,
+          image_url: "avatars/u/img.png",
+        })
+      );
+    });
+  });
+
+  it("renders existing image preview and preserves untouched image_url on edit", async () => {
+    const product: Product = {
+      id: "p1",
+      type: "book",
+      name: "Buku IPA",
+      price: 75000,
+      stock: 10,
+      status: "published",
+      image_url: "avatars/u/old.png",
+    };
+
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        product={product}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    const preview = screen.getByAltText(/pratinjau/i) as HTMLImageElement;
+    expect(preview.src).toContain("avatars/u/old.png");
+
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Buku IPA v2" } });
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Buku IPA v2", image_url: "avatars/u/old.png" })
+      );
+    });
+  });
+
+  it("renders at the wider dialog width", () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    expect(screen.getByRole("dialog").className).toContain("max-w-2xl");
   });
 });

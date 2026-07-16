@@ -19,12 +19,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
 import type { Product, ProductType, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 
-const FILTER_TYPES: (ProductType | "all")[] = ["all", "book", "course", "exam"];
+const FILTER_TYPES: (ProductType | "all")[] = ["all", "book", "course", "exam", "merchandise"];
 
 function typeBadgeClass(type: ProductType): string {
   switch (type) {
     case "book":
       return "bg-amber-100 text-amber-800 border-amber-200";
+    case "merchandise":
+      return "bg-orange-100 text-orange-800 border-orange-200";
     case "course":
       return "bg-green-100 text-green-800 border-green-200";
     case "exam":
@@ -135,6 +137,8 @@ export default function ProductsPage() {
         return t("tab_all");
       case "book":
         return t("product_type_book");
+      case "merchandise":
+        return t("product_type_merchandise");
       case "course":
         return t("product_type_course");
       case "exam":
@@ -201,7 +205,7 @@ export default function ProductsPage() {
                     <Badge className={typeBadgeClass(product.type)}>{filterLabel(product.type)}</Badge>
                   </td>
                   <td className="px-4 py-3">{formatRupiah(product.price)}</td>
-                  <td className="px-4 py-3">{product.type === "book" ? (product.stock ?? "-") : "-"}</td>
+                  <td className="px-4 py-3">{product.type === "book" || product.type === "merchandise" ? (product.stock ?? "-") : "-"}</td>
                   <td className="px-4 py-3">
                     <Badge className={statusBadgeClass(product.status)}>{product.status ?? "draft"}</Badge>
                   </td>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAdminCourses } from "@/lib/hooks/admin-courses";
 import { useExams } from "@/lib/hooks/admin-exams";
+import { usePresignUpload } from "@/lib/hooks/students";
+import { fileUrl } from "@/lib/api";
 import type { Product, ProductType, ProductStatus, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 
 interface ProductModalProps {
@@ -24,13 +26,14 @@ interface ProductModalProps {
   isPending: boolean;
 }
 
-const PRODUCT_TYPES: ProductType[] = ["book", "course", "exam"];
+const PRODUCT_TYPES: ProductType[] = ["book", "course", "exam", "merchandise"];
 const PRODUCT_STATUSES: ProductStatus[] = ["draft", "published", "hidden", "archived"];
 
 const TYPE_LABELS: Record<ProductType, string> = {
   book: "Buku",
   course: "Kursus",
   exam: "Ujian",
+  merchandise: "Merchandise",
 };
 
 const STATUS_LABELS: Record<ProductStatus, string> = {
@@ -46,12 +49,17 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [type, setType] = useState<ProductType | "">("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [weight, setWeight] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageUploading, setImageUploading] = useState(false);
   const [status, setStatus] = useState<ProductStatus>("draft");
   const [description, setDescription] = useState("");
   const [courseIds, setCourseIds] = useState<string[]>([]);
   const [examIds, setExamIds] = useState<string[]>([]);
   const { data: courses } = useAdminCourses();
   const { data: examsResp } = useExams();
+  const presign = usePresignUpload();
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const exams = examsResp?.data ?? [];
 
   useEffect(() => {
@@ -61,6 +69,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setType(product.type ?? "");
         setPrice(String(product.price ?? ""));
         setStock(product.stock != null ? String(product.stock) : "");
+        setWeight(product.weight_grams != null ? String(product.weight_grams) : "");
+        setImageUrl(product.image_url ?? "");
         setStatus(product.status ?? "draft");
         setDescription(product.description ?? "");
         setCourseIds(product.course_ids ?? []);
@@ -70,6 +80,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setType("");
         setPrice("");
         setStock("");
+        setWeight("");
+        setImageUrl("");
         setStatus("draft");
         setDescription("");
         setCourseIds([]);
@@ -78,7 +90,28 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     }
   }, [open, product]);
 
-  const showStock = type === "book";
+  const showStock = type === "book" || type === "merchandise";
+
+  async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageUploading(true);
+    try {
+      const presigned = await presign.mutateAsync({ filename: file.name, content_type: file.type });
+      const res = await fetch(presigned.url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      setImageUrl(presigned.key);
+    } catch {
+      // upload failed; leave existing image untouched
+    } finally {
+      setImageUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  }
   const effectiveType = isEdit ? product?.type : type;
   const showCourses = effectiveType === "course";
   const showExams = effectiveType === "exam";
@@ -104,6 +137,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         ...base,
         status,
         ...(showStock ? { stock: Number(stock) } : {}),
+        ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
+        ...(showStock && imageUrl !== "" ? { image_url: imageUrl } : {}),
         ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
         ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
       };
@@ -116,6 +151,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       ...base,
       type,
       ...(showStock ? { stock: Number(stock) } : {}),
+      ...(showStock && weight !== "" ? { weight_grams: Number(weight) } : {}),
+      ...(showStock && imageUrl !== "" ? { image_url: imageUrl } : {}),
       ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
       ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
     };
@@ -124,7 +161,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit produk" : "Buat produk"}</DialogTitle>
@@ -198,17 +235,55 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
             )}
 
             {showStock && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="product-stock">Stok</Label>
+                  <Input
+                    id="product-stock"
+                    type="number"
+                    min={0}
+                    value={stock}
+                    onChange={(e) => setStock(e.target.value)}
+                    placeholder="0"
+                    disabled={isPending}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="product-weight">Berat (gram)</Label>
+                  <Input
+                    id="product-weight"
+                    type="number"
+                    min={0}
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                    placeholder="0"
+                    disabled={isPending}
+                  />
+                </div>
+              </div>
+            )}
+
+            {showStock && (
               <div className="grid gap-2">
-                <Label htmlFor="product-stock">Stok</Label>
-                <Input
-                  id="product-stock"
-                  type="number"
-                  min={0}
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
-                  placeholder="0"
-                  disabled={isPending}
-                />
+                <Label htmlFor="product-image">Gambar produk</Label>
+                <div className="flex items-center gap-3">
+                  {imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={fileUrl(imageUrl)}
+                      alt="Pratinjau gambar"
+                      className="h-16 w-16 rounded-md border border-input object-cover"
+                    />
+                  )}
+                  <Input
+                    id="product-image"
+                    type="file"
+                    accept="image/*"
+                    ref={imageInputRef}
+                    onChange={handleImageSelect}
+                    disabled={isPending || imageUploading}
+                  />
+                </div>
               </div>
             )}
 
