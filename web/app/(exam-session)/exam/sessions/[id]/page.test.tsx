@@ -918,6 +918,28 @@ describe("SessionPage", () => {
     ).not.toBeNull();
   });
 
+  it("shows distinct mode label and section label in top bar for sectioned mode", async () => {
+    sessionState = { ...sessionState, data: sectionedSession };
+    render(<SessionPage />);
+
+    const enterFullscreenBtn = screen.getByTestId("enter-fullscreen");
+    fireEvent.click(enterFullscreenBtn);
+
+    await waitFor(() => {
+      const topBar = screen.getByTestId("exam-top-bar");
+      // In UTBK mode, title should be "UTBK" (from i18n), not "TPS" (the first section's title)
+      expect(topBar).toHaveTextContent("UTBK");
+      // Section label should be "TPS" (the active section's title)
+      expect(topBar).toHaveTextContent("TPS");
+    });
+
+    const topBar = screen.getByTestId("exam-top-bar");
+    // Verify they're in separate elements (title in first child div, section label in nested div)
+    const titleDivs = topBar.querySelectorAll("div.min-w-0 > div");
+    expect(titleDivs[0]?.textContent).toBe("UTBK");
+    expect(titleDivs[1]?.textContent).toBe("TPS");
+  });
+
   it("nav rail shows the three legend entries with correct labels", async () => {
     render(<SessionPage />);
     await enterFullscreen();
@@ -1275,6 +1297,9 @@ describe("SessionPage", () => {
         "/exam/sessions/session-1/result",
       );
     });
+
+    // Ensure the violation overlay is not rendered
+    expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
   });
 });
 

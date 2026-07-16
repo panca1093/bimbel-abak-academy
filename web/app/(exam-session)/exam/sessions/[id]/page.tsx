@@ -421,9 +421,14 @@ export default function SessionPage() {
   const answeredCount = Object.keys(answers).length;
   const isFlagged = currentQ ? flagged[currentQ.id] ?? false : false;
   const timerExpired = hasTimer && remaining <= 0;
-  // No package/exam title in SessionState — the first test's title is the
-  // closest available stand-in for the top bar's exam heading.
-  const examTitle = session.tests[0]?.title ?? "";
+  // In sectioned mode (utbk/ielts), use the mode label for the top bar title
+  // to avoid duplicating the first section's title (which appears as the section label below).
+  // In standard mode, the first test's title is a reasonable stand-in for exam heading.
+  const examTitle = isSectioned
+    ? session?.mode === "utbk"
+      ? t("exam_packages_modal_mode_utbk")
+      : t("exam_packages_modal_mode_ielts")
+    : session.tests[0]?.title ?? "";
 
   return (
     <div data-testid="exam-overlay" className="fixed inset-0 z-40 flex flex-col bg-background">

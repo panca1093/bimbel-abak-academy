@@ -68,7 +68,10 @@ describe("ExamSessionLayout", () => {
       expect(screen.getByTestId("child-content")).toBeInTheDocument();
     });
 
-    // Ensure no navigation elements are present
-    expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
+    // Ensure no navigation sidebar or navigation-like elements are present
+    // AppShell renders a sidebar with navigation links like "Beranda", "Kompetisi", etc.
+    expect(screen.queryByText("Beranda")).not.toBeInTheDocument();
+    expect(screen.queryByText("Kompetisi")).not.toBeInTheDocument();
+    expect(screen.queryByText("Kursus Saya")).not.toBeInTheDocument();
   });
 });
