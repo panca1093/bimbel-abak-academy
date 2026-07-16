@@ -84,6 +84,61 @@ func TestUpdateProduct_PreservesTypeWeightImage_RealService(t *testing.T) {
 	assert.Equal(t, "http://example.com/cover.jpg", image)
 }
 
+// FR9: an update carrying a NEW weight_grams + image_url must persist both
+// (not re-write the stored values), then a later update that omits them must
+// preserve the last-persisted values.
+func TestUpdateProduct_PersistsNewWeightImage_ThenPreservesOnOmit_RealService(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	created, err := env.svc.CreateProduct(ctx, model.Product{
+		Type:        "merchandise",
+		Name:        "Academy Tee",
+		WeightGrams: 200,
+		ImageURL:    "http://example.com/old.jpg",
+		Price:       50000,
+		Stock:       10,
+		Status:      "published",
+	}, service.RoleAdminStore)
+	require.NoError(t, err)
+
+	// Update with NEW weight + image — both must persist.
+	updated, err := env.svc.UpdateProduct(ctx, created.ID, model.Product{
+		Name:        "Academy Tee",
+		WeightGrams: 350,
+		ImageURL:    "http://example.com/new.jpg",
+		Price:       50000,
+		Stock:       10,
+		Status:      "published",
+	}, service.RoleAdminStore)
+	require.NoError(t, err)
+	assert.Equal(t, 350, updated.WeightGrams, "new weight_grams must persist")
+	assert.Equal(t, "http://example.com/new.jpg", updated.ImageURL, "new image_url must persist")
+
+	var weight int
+	var image string
+	require.NoError(t, env.pool.QueryRow(ctx,
+		`SELECT weight_grams, image_url FROM product WHERE id = $1`,
+		created.ID).Scan(&weight, &image))
+	assert.Equal(t, 350, weight, "persisted weight_grams must be the new value")
+	assert.Equal(t, "http://example.com/new.jpg", image, "persisted image_url must be the new value")
+
+	// Second update omits both (zero/empty) — the last-persisted values survive.
+	_, err = env.svc.UpdateProduct(ctx, created.ID, model.Product{
+		Name:   "Academy Tee v2",
+		Price:  50000,
+		Stock:  10,
+		Status: "published",
+	}, service.RoleAdminStore)
+	require.NoError(t, err)
+
+	require.NoError(t, env.pool.QueryRow(ctx,
+		`SELECT weight_grams, image_url FROM product WHERE id = $1`,
+		created.ID).Scan(&weight, &image))
+	assert.Equal(t, 350, weight, "omitted weight_grams must preserve the last-persisted value")
+	assert.Equal(t, "http://example.com/new.jpg", image, "omitted image_url must preserve the last-persisted value")
+}
+
 // Finding 7 / Bug D: Repository.UpdateLesson must preserve position when only
 // title/video/duration are supplied (the SQL SET clause omits position).
 func TestUpdateLesson_PreservesPosition_RealRepo(t *testing.T) {

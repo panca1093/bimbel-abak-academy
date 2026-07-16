@@ -178,8 +178,12 @@ func (s *Service) UpdateProductWithExams(ctx context.Context, id string, p model
 		return model.Product{}, err
 	}
 	p.Type = existing.Type
-	p.WeightGrams = existing.WeightGrams
-	p.ImageURL = existing.ImageURL
+	if p.WeightGrams == 0 {
+		p.WeightGrams = existing.WeightGrams
+	}
+	if p.ImageURL == "" {
+		p.ImageURL = existing.ImageURL
+	}
 
 	var ids []uuid.UUID
 	for _, eid := range examIDs {
@@ -228,10 +232,14 @@ func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p mod
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
-	// Preserve non-editable fields from existing record (Bug C fix)
+	// Type is not editable; weight/image preserve-on-omit (zero value = omitted).
 	p.Type = existing.Type
-	p.WeightGrams = existing.WeightGrams
-	p.ImageURL = existing.ImageURL
+	if p.WeightGrams == 0 {
+		p.WeightGrams = existing.WeightGrams
+	}
+	if p.ImageURL == "" {
+		p.ImageURL = existing.ImageURL
+	}
 
 	var ids []uuid.UUID
 	for _, cid := range courseIDs {
@@ -280,10 +288,14 @@ func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product,
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
-	// Preserve non-editable fields from existing record (Bug C fix)
+	// Type is not editable; weight/image preserve-on-omit (zero value = omitted).
 	p.Type = existing.Type
-	p.WeightGrams = existing.WeightGrams
-	p.ImageURL = existing.ImageURL
+	if p.WeightGrams == 0 {
+		p.WeightGrams = existing.WeightGrams
+	}
+	if p.ImageURL == "" {
+		p.ImageURL = existing.ImageURL
+	}
 	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {
 		return model.Product{}, err
 	}
