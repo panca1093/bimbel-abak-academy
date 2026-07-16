@@ -36,6 +36,10 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useExams: () => ({ data: { data: [] }, isLoading: false }),
 }));
 
+vi.mock("@/lib/hooks/students", () => ({
+  usePresignUpload: () => ({ mutateAsync: vi.fn() }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),

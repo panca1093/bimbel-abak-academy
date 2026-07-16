@@ -14,18 +14,19 @@ import (
 )
 
 var (
-	ErrForbidden         = errors.New("forbidden")
-	ErrProductNotFound   = errors.New("product not found")
-	ErrCourseNotFound    = errors.New("course not found")
-	ErrInvalidPromo      = errors.New("invalid or expired promo code")
-	ErrPromoMinOrder     = errors.New("order subtotal below promo minimum")
-	ErrOutOfStock        = errors.New("product out of stock")
-	ErrInsufficientStock = errors.New("insufficient stock")
-	ErrOrderNotEditable  = errors.New("order not editable")
-	ErrOrderNotFound     = errors.New("order not found")
-	ErrInvalidSignature  = errors.New("invalid signature")
-	ErrCourseLinkRequired = errors.New("course product requires at least one linked course")
-	ErrExamLinkRequired   = errors.New("exam product requires at least one linked exam")
+	ErrForbidden              = errors.New("forbidden")
+	ErrProductNotFound        = errors.New("product not found")
+	ErrCourseNotFound         = errors.New("course not found")
+	ErrInvalidPromo           = errors.New("invalid or expired promo code")
+	ErrPromoMinOrder          = errors.New("order subtotal below promo minimum")
+	ErrOutOfStock             = errors.New("product out of stock")
+	ErrInsufficientStock      = errors.New("insufficient stock")
+	ErrOrderNotEditable       = errors.New("order not editable")
+	ErrOrderNotFound          = errors.New("order not found")
+	ErrMustShipBeforeComplete = errors.New("order has physical items — must be shipped before completing")
+	ErrInvalidSignature       = errors.New("invalid signature")
+	ErrCourseLinkRequired     = errors.New("course product requires at least one linked course")
+	ErrExamLinkRequired       = errors.New("exam product requires at least one linked exam")
 )
 
 type PromoValidation struct {
@@ -178,8 +179,12 @@ func (s *Service) UpdateProductWithExams(ctx context.Context, id string, p model
 		return model.Product{}, err
 	}
 	p.Type = existing.Type
-	p.WeightGrams = existing.WeightGrams
-	p.ImageURL = existing.ImageURL
+	if !p.WeightGramsSet && p.WeightGrams == 0 {
+		p.WeightGrams = existing.WeightGrams
+	}
+	if !p.ImageURLSet && p.ImageURL == "" {
+		p.ImageURL = existing.ImageURL
+	}
 
 	var ids []uuid.UUID
 	for _, eid := range examIDs {
@@ -228,10 +233,13 @@ func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p mod
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
-	// Preserve non-editable fields from existing record (Bug C fix)
 	p.Type = existing.Type
-	p.WeightGrams = existing.WeightGrams
-	p.ImageURL = existing.ImageURL
+	if !p.WeightGramsSet && p.WeightGrams == 0 {
+		p.WeightGrams = existing.WeightGrams
+	}
+	if !p.ImageURLSet && p.ImageURL == "" {
+		p.ImageURL = existing.ImageURL
+	}
 
 	var ids []uuid.UUID
 	for _, cid := range courseIDs {
@@ -280,10 +288,13 @@ func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product,
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return model.Product{}, err
 	}
-	// Preserve non-editable fields from existing record (Bug C fix)
 	p.Type = existing.Type
-	p.WeightGrams = existing.WeightGrams
-	p.ImageURL = existing.ImageURL
+	if !p.WeightGramsSet && p.WeightGrams == 0 {
+		p.WeightGrams = existing.WeightGrams
+	}
+	if !p.ImageURLSet && p.ImageURL == "" {
+		p.ImageURL = existing.ImageURL
+	}
 	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {
 		return model.Product{}, err
 	}
@@ -341,7 +352,7 @@ func (s *Service) DeleteProduct(ctx context.Context, id string, role string) err
 	if err := checkTypeRBAC(role, existing.Type); err != nil {
 		return err
 	}
-	if existing.Type == "book" {
+	if isPhysicalType(existing.Type) {
 		return s.storeRepo.DeleteProduct(ctx, id)
 	}
 	return s.storeRepo.ArchiveProduct(ctx, id)
@@ -428,7 +439,7 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	if product == nil {
 		return ErrProductNotFound
 	}
-	if product.Type == "book" && product.Stock == 0 {
+	if isPhysicalType(product.Type) && product.Stock == 0 {
 		return ErrOutOfStock
 	}
 
@@ -590,6 +601,10 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 		switch item.ProductType {
 		case "book":
 			cat = "Book"
+		case "merchandise":
+			cat = "Merchandise"
+		case "medal":
+			cat = "Medal"
 		case "course":
 			cat = "Course"
 		}
@@ -971,8 +986,8 @@ func (s *Service) AdminCompleteOrder(ctx context.Context, orderID string) error 
 	case "processing":
 		// only completable if no physical items (digital-only orders stuck before worker fix)
 		for _, item := range order.Items {
-			if item.ProductType == "book" {
-				return errors.New("order has physical items — must be shipped before completing")
+			if isPhysicalType(item.ProductType) {
+				return ErrMustShipBeforeComplete
 			}
 		}
 	default:
@@ -1180,6 +1195,10 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 	return nil
 }
 
+// isPhysicalType reports whether a product type is shipped physical inventory
+// (stock-guarded, ship-before-complete). Book, merchandise, and medal qualify.
+func isPhysicalType(t string) bool { return t == "book" || t == "merchandise" || t == "medal" }
+
 // checkTypeRBAC returns ErrForbidden if role is not allowed to manage productType.
 func checkTypeRBAC(role, productType string) error {
 	switch role {
@@ -1189,7 +1208,7 @@ func checkTypeRBAC(role, productType string) error {
 		// FR-STORE-ADM-03: admin_store edits price/visibility/promo eligibility on
 		// exam-type products too (it cannot touch exam content — tests/questions —
 		// which stays under /admin/exams, gated separately by RoleAdminExam).
-		if productType == "book" || productType == "course" || productType == "exam" {
+		if isPhysicalType(productType) || productType == "course" || productType == "exam" {
 			return nil
 		}
 		return ErrForbidden

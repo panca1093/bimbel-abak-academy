@@ -396,9 +396,12 @@ func (r *Repository) CheckoutOrder(ctx context.Context, tx pgx.Tx, orderID uuid.
 		return err
 	}
 
-	// Only enforce stock for books; course and exam products have no inventory constraint.
+	// Only enforce stock for physical inventory (book, merchandise, medal); course and exam
+	// products have no inventory constraint. Physical-type classification is a
+	// pre-existing chokepoint widened in place (logic normally lives in the service
+	// layer, but inlined here to avoid a repo→service import).
 	for _, item := range items {
-		if item.ProductType != "book" {
+		if item.ProductType != "book" && item.ProductType != "merchandise" && item.ProductType != "medal" {
 			continue
 		}
 		var currentStock int

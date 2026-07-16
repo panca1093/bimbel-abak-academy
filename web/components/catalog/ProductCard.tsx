@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Book, PlayCircle, ClipboardList } from "lucide-react";
+import { Award, Book, PlayCircle, ClipboardList, Package } from "lucide-react";
 import type { Product, ProductType } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
+import { fileUrl } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -12,12 +13,16 @@ const TYPE_META: Record<
   book: { label: "Buku", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
   course: { label: "Kursus", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
   exam: { label: "Ujian", tone: "text-info", bg: "bg-info-bg", Icon: ClipboardList },
+  merchandise: { label: "Merchandise", tone: "text-warn", bg: "bg-warn-bg", Icon: Package },
+  medal: { label: "Medali", tone: "text-warn", bg: "bg-warn-bg", Icon: Award },
 };
 
 const COVER_GRADIENT: Record<ProductType, string> = {
   book: "linear-gradient(135deg, #fbf1e2 0%, #f6e6cf 100%)",
   course: "linear-gradient(135deg, #e5f5ec 0%, #d4eede 100%)",
   exam: "linear-gradient(135deg, #e7eefb 0%, #d3e2f8 100%)",
+  merchandise: "linear-gradient(135deg, #efeafc 0%, #e2d8f8 100%)",
+  medal: "linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%)",
 };
 
 export interface ProductCardProps {
@@ -28,6 +33,7 @@ export interface ProductCardProps {
 export function ProductCard({ product, className }: ProductCardProps) {
   const meta = TYPE_META[product.type];
   const { Icon } = meta;
+  const cover = fileUrl(product.image_url);
 
   return (
     <Link
@@ -39,9 +45,9 @@ export function ProductCard({ product, className }: ProductCardProps) {
     >
       <div
         className="relative flex h-32 items-center justify-center"
-        style={product.image_url ? { backgroundImage: `url(${product.image_url})`, backgroundSize: "cover", backgroundPosition: "center" } : { background: COVER_GRADIENT[product.type] }}
+        style={cover ? { backgroundImage: `url(${cover})`, backgroundSize: "cover", backgroundPosition: "center" } : { background: COVER_GRADIENT[product.type] }}
       >
-        {!product.image_url && (
+        {!cover && (
           <Icon className="size-10 text-white/90 drop-shadow-sm" strokeWidth={1.5} />
         )}
         <div className="absolute left-3 top-3">
