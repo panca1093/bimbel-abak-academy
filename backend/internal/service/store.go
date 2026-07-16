@@ -602,6 +602,8 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 			cat = "Book"
 		case "merchandise":
 			cat = "Merchandise"
+		case "medal":
+			cat = "Medal"
 		case "course":
 			cat = "Course"
 		}
@@ -1193,8 +1195,8 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 }
 
 // isPhysicalType reports whether a product type is shipped physical inventory
-// (stock-guarded, ship-before-complete). book and merchandise both qualify.
-func isPhysicalType(t string) bool { return t == "book" || t == "merchandise" }
+// (stock-guarded, ship-before-complete). Book, merchandise, and medal qualify.
+func isPhysicalType(t string) bool { return t == "book" || t == "merchandise" || t == "medal" }
 
 // checkTypeRBAC returns ErrForbidden if role is not allowed to manage productType.
 func checkTypeRBAC(role, productType string) error {

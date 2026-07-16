@@ -430,6 +430,16 @@ describe("ProductModal", () => {
     expect(screen.getByLabelText(/gambar/i)).toBeInTheDocument();
   });
 
+  it("offers medal and shows stock, weight, and image fields when selected", () => {
+    render(<ProductModal open={true} onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} isPending={false} />);
+
+    expect(screen.getByRole("option", { name: "Medali" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "medal" } });
+    expect(screen.getByLabelText(/stok/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/berat/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/gambar/i)).toBeInTheDocument();
+  });
+
   it("uploads image and includes merchandise fields in create payload", async () => {
     render(
       <ProductModal

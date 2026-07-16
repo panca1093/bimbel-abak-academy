@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Book, PlayCircle, ClipboardList, Package } from "lucide-react";
+import { Award, Book, PlayCircle, ClipboardList, Package } from "lucide-react";
 import type { Product, ProductType } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
 import { fileUrl } from "@/lib/api";
@@ -14,6 +14,7 @@ const TYPE_META: Record<
   course: { label: "Kursus", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
   exam: { label: "Ujian", tone: "text-info", bg: "bg-info-bg", Icon: ClipboardList },
   merchandise: { label: "Merchandise", tone: "text-warn", bg: "bg-warn-bg", Icon: Package },
+  medal: { label: "Medali", tone: "text-warn", bg: "bg-warn-bg", Icon: Award },
 };
 
 const COVER_GRADIENT: Record<ProductType, string> = {
@@ -21,6 +22,7 @@ const COVER_GRADIENT: Record<ProductType, string> = {
   course: "linear-gradient(135deg, #e5f5ec 0%, #d4eede 100%)",
   exam: "linear-gradient(135deg, #e7eefb 0%, #d3e2f8 100%)",
   merchandise: "linear-gradient(135deg, #efeafc 0%, #e2d8f8 100%)",
+  medal: "linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%)",
 };
 
 export interface ProductCardProps {

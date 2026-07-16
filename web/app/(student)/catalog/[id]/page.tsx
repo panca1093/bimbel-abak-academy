@@ -3,7 +3,7 @@
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Book, ShoppingCart, PlayCircle, ClipboardList, Minus, Plus, Package } from "lucide-react";
+import { ArrowLeft, Award, Book, ShoppingCart, PlayCircle, ClipboardList, Minus, Plus, Package } from "lucide-react";
 import { toast } from "sonner";
 
 import { useProduct } from "@/lib/hooks/products";
@@ -28,6 +28,7 @@ const TYPE_META: Record<
   course: { labelKey: "product_type_course", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
   exam: { labelKey: "product_type_exam", tone: "text-info", bg: "bg-info-bg", Icon: ClipboardList },
   merchandise: { labelKey: "product_type_merchandise", tone: "text-warn", bg: "bg-warn-bg", Icon: Package },
+  medal: { labelKey: "product_type_medal", tone: "text-warn", bg: "bg-warn-bg", Icon: Award },
 };
 
 const COVER_GRADIENT: Record<ProductType, string> = {
@@ -35,6 +36,7 @@ const COVER_GRADIENT: Record<ProductType, string> = {
   course: "linear-gradient(135deg, #e5f5ec 0%, #d4eede 100%)",
   exam: "linear-gradient(135deg, #e7eefb 0%, #d3e2f8 100%)",
   merchandise: "linear-gradient(135deg, #efeafc 0%, #e2d8f8 100%)",
+  medal: "linear-gradient(135deg, #fff3cd 0%, #ffe69c 100%)",
 };
 
 export default function ProductDetailPage({
@@ -135,7 +137,7 @@ export default function ProductDetailPage({
             <p className="max-w-2xl text-sm leading-relaxed text-ink-600 md:text-[15px]">
               {product.description ?? t("product_no_description")}
             </p>
-            {(product.type === "book" || product.type === "merchandise") && (
+            {(product.type === "book" || product.type === "merchandise" || product.type === "medal") && (
               <p className="text-xs text-ink-500">
                 {t("product_stock_label")}: {product.stock ?? 0} · {t("product_shipped_to_address")}
               </p>
@@ -148,7 +150,7 @@ export default function ProductDetailPage({
             <div className="font-serif text-3xl font-bold text-success">
               {formatRupiah(product.price)}
             </div>
-            {(product.type === "book" || product.type === "merchandise") && (
+            {(product.type === "book" || product.type === "merchandise" || product.type === "medal") && (
               <div className="mt-1 text-xs text-ink-500">
                 {t("product_stock_label")}: {product.stock ?? 0}
               </div>

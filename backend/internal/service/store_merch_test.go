@@ -26,6 +26,12 @@ func TestCheckTypeRBAC_Merchandise(t *testing.T) {
 	}
 }
 
+func TestMedalIsPhysicalAndStoreManaged(t *testing.T) {
+	require.True(t, isPhysicalType("medal"))
+	require.NoError(t, checkTypeRBAC(RoleAdminStore, "medal"))
+	require.ErrorIs(t, checkTypeRBAC(RoleAdminExam, "medal"), ErrForbidden)
+}
+
 // FR4.e / site e: the Midtrans category switch labels merchandise items.
 func TestBuildPaymentRequest_MerchandiseCategory(t *testing.T) {
 	order := model.Order{
@@ -39,6 +45,12 @@ func TestBuildPaymentRequest_MerchandiseCategory(t *testing.T) {
 	if req.Items[0].Category != "Merchandise" {
 		t.Errorf("merchandise item category = %q, want %q", req.Items[0].Category, "Merchandise")
 	}
+}
+
+func TestBuildPaymentRequest_MedalCategory(t *testing.T) {
+	order := model.Order{Total: 100, Items: []model.OrderItem{{ProductID: uuid.New(), ProductType: "medal", Name: "Gold Medal", UnitPrice: 100, Qty: 1}}}
+	req := buildPaymentRequest("order-1", order, CustomerInfo{})
+	require.Equal(t, "Medal", req.Items[0].Category)
 }
 
 // FR6 / site b: a merchandise product with stock 0 is stock-guarded on AddItem.

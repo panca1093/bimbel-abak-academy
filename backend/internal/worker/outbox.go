@@ -224,9 +224,9 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 				slog.Error("stamp order_item fulfilled_at", "order_id", payload.OrderID, "product_id", item.ProductID, "err", err)
 				return
 			}
-		case "book", "merchandise":
+		case "book", "merchandise", "medal":
 			// Physical-type classification widened in place (pre-existing chokepoint);
-			// merchandise ships like a book, so it must gate auto-completion.
+			// Merchandise and medals ship like books, so they must gate auto-completion.
 			hasPhysicalItem = true
 		default:
 			slog.Warn("unknown product type in order", "product_type", item.ProductType, "product_id", item.ProductID)

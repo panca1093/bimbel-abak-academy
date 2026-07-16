@@ -190,6 +190,19 @@ describe("OrdersPage", () => {
     expect(within(row!).getByRole("button", { name: /selesai/i })).toBeInTheDocument();
   });
 
+  it("requires a medal order to ship before it can complete", async () => {
+    ordersState = {
+      data: [{ id: "o-medal", student_id: "s-medal", status: "processing", subtotal: 75000, discount: 0, shipping_cost: 15000, total: 90000,
+        items: [{ id: "i-medal", order_id: "o-medal", product_id: "p-medal", product_type: "medal", name: "Medali Emas", unit_price: 75000, qty: 1, jumlah: 75000 }] }],
+      isLoading: false, isError: false, error: null, refetch: vi.fn(),
+    };
+    render(<OrdersPage />);
+    await waitFor(() => expect(screen.getByText("Medali Emas")).toBeInTheDocument());
+    const row = screen.getByText("Medali Emas").closest("tr");
+    expect(within(row!).getByRole("button", { name: /kirim/i })).toBeInTheDocument();
+    expect(within(row!).queryByRole("button", { name: /selesai/i })).not.toBeInTheDocument();
+  });
+
   it("refunds an order after confirmation", async () => {
     mockMutateAsync.mockResolvedValueOnce({ message: "order refunded" });
     vi.stubGlobal("confirm", () => true);

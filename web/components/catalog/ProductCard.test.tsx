@@ -36,11 +36,11 @@ describe("ProductCard", () => {
 
     rerender(
       <ProductCard
-        product={{ id: "merch-fallback", type: "merchandise", name: "Sticker", price: 10000 }}
+        product={{ id: "medal-fallback", type: "medal", name: "Medali", price: 10000 }}
       />,
     );
 
-    cover = screen.getByText("Sticker").closest("a")?.firstElementChild as HTMLElement;
+    cover = screen.getAllByText("Medali")[0].closest("a")?.firstElementChild as HTMLElement;
     expect(cover.style.background).toContain("linear-gradient");
   });
 });

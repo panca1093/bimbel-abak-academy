@@ -26,7 +26,7 @@ interface ProductModalProps {
   isPending: boolean;
 }
 
-const PRODUCT_TYPES: ProductType[] = ["book", "course", "exam", "merchandise"];
+const PRODUCT_TYPES: ProductType[] = ["book", "course", "exam", "merchandise", "medal"];
 const PRODUCT_STATUSES: ProductStatus[] = ["draft", "published", "hidden", "archived"];
 
 const TYPE_LABELS: Record<ProductType, string> = {
@@ -34,6 +34,7 @@ const TYPE_LABELS: Record<ProductType, string> = {
   course: "Kursus",
   exam: "Ujian",
   merchandise: "Merchandise",
+  medal: "Medali",
 };
 
 const STATUS_LABELS: Record<ProductStatus, string> = {
@@ -90,7 +91,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     }
   }, [open, product]);
 
-  const showStock = type === "book" || type === "merchandise";
+  const showStock = type === "book" || type === "merchandise" || type === "medal";
 
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

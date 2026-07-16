@@ -38,7 +38,7 @@ function productSummary(order: Order): string {
 }
 
 function hasPhysicalItem(order: Order): boolean {
-  return (order.items ?? []).some((it) => it.product_type === "book" || it.product_type === "merchandise");
+  return (order.items ?? []).some((it) => it.product_type === "book" || it.product_type === "merchandise" || it.product_type === "medal");
 }
 
 function isShipped(order: Order): boolean {

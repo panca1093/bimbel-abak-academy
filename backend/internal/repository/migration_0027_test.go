@@ -27,6 +27,10 @@ func TestMigration0027_MerchandiseProductType(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO product (type, name, price) VALUES ('merchandise', 'Academy Tee', 100) RETURNING id`,
 	).Scan(&merchID))
+	var medalID uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO product (type, name, price) VALUES ('medal', 'Gold Medal', 100) RETURNING id`,
+	).Scan(&medalID))
 
 	// Control: an unknown type still violates the widened CHECK.
 	_, err = pool.Exec(ctx,
@@ -43,10 +47,18 @@ func TestMigration0027_MerchandiseProductType(t *testing.T) {
 		`SELECT type FROM product WHERE id = $1`, merchID,
 	).Scan(&typeAfterDown))
 	require.Equal(t, "book", typeAfterDown, "down must convert merchandise rows to book, not drop them")
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT type FROM product WHERE id = $1`, medalID,
+	).Scan(&typeAfterDown))
+	require.Equal(t, "book", typeAfterDown, "down must convert medal rows to book, not drop them")
 
 	// After down, the narrow CHECK is back: merchandise is rejected again.
 	_, err = pool.Exec(ctx,
 		`INSERT INTO product (type, name, price) VALUES ('merchandise', 'Post-down Tee', 100)`,
 	)
 	require.Error(t, err, "narrow CHECK must be restored after down")
+	_, err = pool.Exec(ctx,
+		`INSERT INTO product (type, name, price) VALUES ('medal', 'Post-down Medal', 100)`,
+	)
+	require.Error(t, err, "narrow CHECK must reject medals after down")
 }

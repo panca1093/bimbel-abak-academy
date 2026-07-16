@@ -10,9 +10,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/hooks/products", () => ({
   useProduct: () => ({
     data: {
-      id: "merch-1",
-      type: "merchandise",
-      name: "Kaos Akademi",
+      id: "medal-1",
+      type: "medal",
+      name: "Medali Akademi",
       price: 75000,
       stock: 12,
       status: "published",
@@ -39,11 +39,11 @@ vi.mock("@/stores/auth", () => ({
 }));
 
 describe("ProductDetailPage", () => {
-  it("shows stock and delivery information for merchandise", async () => {
+  it("shows stock and delivery information for medals", async () => {
     await act(async () => {
       render(
         <Suspense fallback={null}>
-          <ProductDetailPage params={Promise.resolve({ id: "merch-1" })} />
+          <ProductDetailPage params={Promise.resolve({ id: "medal-1" })} />
         </Suspense>,
       );
     });

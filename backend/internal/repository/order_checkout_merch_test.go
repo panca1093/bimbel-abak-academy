@@ -37,17 +37,39 @@ func TestCheckoutOrder_MerchandiseStockEnforcedAndDecremented(t *testing.T) {
 	require.Equal(t, 1, merchStock(t, pool, prodID2), "stock must be unchanged after an insufficient-stock checkout")
 }
 
+func TestCheckoutOrder_MedalStockEnforcedAndDecremented(t *testing.T) {
+	ctx := context.Background()
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+
+	prodID := seedPhysicalProductRow(t, pool, "medal", 5)
+	orderID := seedPhysicalOrderRow(t, pool, prodID, "medal", 2)
+	tx, err := repo.BeginTx(ctx)
+	require.NoError(t, err)
+	require.NoError(t, repo.CheckoutOrder(ctx, tx, orderID))
+	require.NoError(t, tx.Commit(ctx))
+	require.Equal(t, 3, merchStock(t, pool, prodID))
+}
+
 func seedMerchProductRow(t *testing.T, pool *pgxpool.Pool, stock int) uuid.UUID {
+	return seedPhysicalProductRow(t, pool, "merchandise", stock)
+}
+
+func seedPhysicalProductRow(t *testing.T, pool *pgxpool.Pool, productType string, stock int) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
 	require.NoError(t, pool.QueryRow(context.Background(),
-		`INSERT INTO product (type, name, price, stock, status) VALUES ('merchandise', 'Academy Tee', 100, $1, 'published') RETURNING id`,
-		stock,
+		`INSERT INTO product (type, name, price, stock, status) VALUES ($1, 'Academy Tee', 100, $2, 'published') RETURNING id`,
+		productType, stock,
 	).Scan(&id))
 	return id
 }
 
 func seedMerchOrderRow(t *testing.T, pool *pgxpool.Pool, productID uuid.UUID, qty int) uuid.UUID {
+	return seedPhysicalOrderRow(t, pool, productID, "merchandise", qty)
+}
+
+func seedPhysicalOrderRow(t *testing.T, pool *pgxpool.Pool, productID uuid.UUID, productType string, qty int) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
 	studentID := insertGradingUser(t, pool, "student", "Merch Buyer")
@@ -58,8 +80,8 @@ func seedMerchOrderRow(t *testing.T, pool *pgxpool.Pool, productID uuid.UUID, qt
 	).Scan(&orderID))
 	_, err := pool.Exec(ctx,
 		`INSERT INTO order_item (id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, created_at)
-		 VALUES ($1, $2, $3, 'merchandise', 'Academy Tee', 100, $4, $5, 0, now())`,
-		uuid.New(), orderID, productID, qty, float64(100*qty),
+		 VALUES ($1, $2, $3, $4, 'Academy Tee', 100, $5, $6, 0, now())`,
+		uuid.New(), orderID, productID, productType, qty, float64(100*qty),
 	)
 	require.NoError(t, err)
 	return orderID
