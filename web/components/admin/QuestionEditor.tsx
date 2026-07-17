@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
 import { useSaveQuestion } from "@/lib/hooks/admin-tests";
 import {
   useCreateBankQuestion,
@@ -531,10 +532,10 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
 
           <div className="grid gap-2">
             <Label htmlFor="question-audio-url">{t("tests_field_audio_url")}</Label>
-            <Input
+            <AudioUploadInput
               id="question-audio-url"
               value={audioUrl}
-              onChange={(e) => setAudioUrl(e.target.value)}
+              onChange={setAudioUrl}
               placeholder="https://..."
               disabled={savePending}
             />
