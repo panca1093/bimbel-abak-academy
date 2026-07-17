@@ -177,22 +177,25 @@ type TestDetail struct {
 	Questions []QuestionWithOptions `json:"questions"`
 }
 
-// QuestionWithOptions is a composite read shape: a Question plus its inline option list.
+// QuestionWithOptions is a composite read shape: a Question plus its inline option list and blanks.
 // SortOrder carries the per-test order from test_question for authoring/ session reads.
 // Options are empty for non-option formats (short / fill_blank / essay).
+// Blanks are empty for non-multi_blank formats, never nil (consistent with options).
 type QuestionWithOptions struct {
 	Question  Question         `json:"question"`
 	Options   []QuestionOption `json:"options"`
+	Blanks    []QuestionBlank  `json:"blanks"`
 	SortOrder int              `json:"sort_order"`
 }
 
 // BankQuestionListItem is one row of GET /admin/questions — a bank question with
-// its inline options, topic name, and the count of tests it is currently attached
-// to (Used-in). Nested (not embedded) to match the {question, options, ...} shape
+// its inline options, blanks, topic name, and the count of tests it is currently attached
+// to (Used-in). Nested (not embedded) to match the {question, options, blanks, ...} shape
 // the admin bank page and QuestionWithOptions both expect.
 type BankQuestionListItem struct {
 	Question      Question         `json:"question"`
 	Options       []QuestionOption `json:"options"`
+	Blanks        []QuestionBlank  `json:"blanks"`
 	AttachedCount int              `json:"attached_count"`
 }
 

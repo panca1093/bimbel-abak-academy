@@ -384,11 +384,11 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 	defer tx.Rollback(ctx)
 
 	if q.ID == uuid.Nil {
-		if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+		if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
 			return model.QuestionWithOptions{}, err
 		}
 	} else {
-		if err := s.storeRepo.UpdateQuestionTx(ctx, tx, &q, options); err != nil {
+		if err := s.storeRepo.UpdateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return model.QuestionWithOptions{}, ErrQuestionNotFound
 			}
@@ -400,7 +400,7 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options}, nil
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 // CreateQuestionForTest creates a bank question and atomically attaches it to the
@@ -419,7 +419,7 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 	if err := s.storeRepo.AttachQuestionToTestTx(ctx, tx, testID, q.ID); err != nil {
@@ -430,7 +430,7 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options}, nil
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 // AttachQuestions appends bank questions to a test. Already-attached questions are
@@ -555,7 +555,7 @@ func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, opti
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -563,7 +563,7 @@ func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, opti
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options}, nil
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {

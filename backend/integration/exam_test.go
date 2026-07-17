@@ -1542,3 +1542,167 @@ func TestExam_Result_Rank_MultipleSessionsWithTies(t *testing.T) {
 	assert.Equal(t, float64(1), outC["score"])
 	assert.Equal(t, float64(2), outC["rank"], "tied with session B, shares the same rank")
 }
+
+// TestExam_MultiBlankQuestion_persist_and_read tests that multi_blank questions with blanks
+// are created via HTTP, persisted correctly, and read back with all blanks intact.
+func TestExam_MultiBlankQuestion_persist_and_read(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	// Create a multi_blank question with 2 blanks via bank question endpoint
+	body := map[string]any{
+		"format": "multi_blank",
+		"body":   "Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.",
+		"blanks": []map[string]any{
+			{"index": 1, "correct_answer": "Jakarta"},
+			{"index": 2, "correct_answer": "1945"},
+		},
+		"point_correct": 2,
+		"point_wrong":   0,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+
+	// Extract the question ID from response
+	questionData := out["question"].(map[string]any)
+	questionID := questionData["id"].(string)
+	assert.NotEmpty(t, questionID)
+
+	// Verify blanks are in the response
+	blanksData := out["blanks"].([]any)
+	require.Len(t, blanksData, 2, "should have 2 blanks")
+
+	blank1 := blanksData[0].(map[string]any)
+	assert.Equal(t, float64(1), blank1["index"])
+	assert.Equal(t, "Jakarta", blank1["correct_answer"])
+
+	blank2 := blanksData[1].(map[string]any)
+	assert.Equal(t, float64(2), blank2["index"])
+	assert.Equal(t, "1945", blank2["correct_answer"])
+
+	// Create a test and attach the question to it
+	testBody := map[string]any{
+		"title":            "Integration Test",
+		"subject":          "geography",
+		"topic":            "basic",
+		"duration_minutes": 30,
+	}
+	testResp, testOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests", testBody, token)
+	require.Equal(t, http.StatusCreated, testResp.StatusCode)
+	testID := testOut["id"].(string)
+
+	// Attach the question to the test
+	attachBody := map[string]any{
+		"question_id": questionID,
+	}
+	attachResp, _ := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions/attach", attachBody, token)
+	require.Equal(t, http.StatusNoContent, attachResp.StatusCode)
+
+	// Read the test detail and verify blanks are returned
+	detailResp, detailOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests/"+testID, nil, token)
+	require.Equal(t, http.StatusOK, detailResp.StatusCode)
+
+	questionsData := detailOut["questions"].([]any)
+	require.Len(t, questionsData, 1)
+
+	questionDetail := questionsData[0].(map[string]any)
+	detailedQuestion := questionDetail["question"].(map[string]any)
+	assert.Equal(t, "multi_blank", detailedQuestion["format"])
+
+	// Verify blanks in detail read
+	returnedBlanks := questionDetail["blanks"].([]any)
+	require.Len(t, returnedBlanks, 2, "blanks should be returned in test detail")
+
+	rb1 := returnedBlanks[0].(map[string]any)
+	assert.Equal(t, float64(1), rb1["index"])
+	assert.Equal(t, "Jakarta", rb1["correct_answer"])
+
+	rb2 := returnedBlanks[1].(map[string]any)
+	assert.Equal(t, float64(2), rb2["index"])
+	assert.Equal(t, "1945", rb2["correct_answer"])
+}
+
+// TestExam_MultiBlankQuestion_non_multi_blank_has_empty_blanks tests that non-multi_blank
+// questions return an empty blanks slice, not nil.
+func TestExam_MultiBlankQuestion_non_multi_blank_has_empty_blanks(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	testID := seedTest(t, env, "Test", "math", "algebra", 30)
+
+	// Create a regular MCQ question
+	body := map[string]any{
+		"format": "mcq",
+		"body":   "What is 2+2?",
+		"options": []map[string]any{
+			{"key": "a", "text": "3", "is_correct": false, "sort_order": 0},
+			{"key": "b", "text": "4", "is_correct": true, "sort_order": 1},
+		},
+		"point_correct": 1,
+		"point_wrong":   0,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Verify blanks is an empty array, not nil
+	blanks := out["blanks"]
+	require.NotNil(t, blanks, "blanks should not be nil")
+	blanksArray := blanks.([]any)
+	assert.Len(t, blanksArray, 0, "non-multi_blank should have empty blanks array")
+}
+
+// TestExam_MultiBlankQuestion_update_reduces_blanks tests that updating a multi_blank
+// question to have fewer blanks removes stale rows.
+func TestExam_MultiBlankQuestion_update_reduces_blanks(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	// Create a multi_blank question with 3 blanks
+	body := map[string]any{
+		"format": "multi_blank",
+		"body":   "A {{1}} B {{2}} C {{3}}",
+		"blanks": []map[string]any{
+			{"index": 1, "correct_answer": "one"},
+			{"index": 2, "correct_answer": "two"},
+			{"index": 3, "correct_answer": "three"},
+		},
+		"point_correct": 3,
+		"point_wrong":   0,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	questionID := out["question"].(map[string]any)["id"].(string)
+
+	// Verify initial 3 blanks
+	initialBlanks := out["blanks"].([]any)
+	require.Len(t, initialBlanks, 3)
+
+	// Update the question to have only 2 blanks
+	updateBody := map[string]any{
+		"format": "multi_blank",
+		"body":   "A {{1}} B {{2}}",
+		"blanks": []map[string]any{
+			{"index": 1, "correct_answer": "uno"},
+			{"index": 2, "correct_answer": "dos"},
+		},
+		"point_correct": 2,
+		"point_wrong":   0,
+	}
+	updateResp, updateOut := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+questionID, updateBody, token)
+	require.Equal(t, http.StatusOK, updateResp.StatusCode)
+
+	// Verify updated blanks - should have exactly 2
+	updatedBlanks := updateOut["blanks"].([]any)
+	require.Len(t, updatedBlanks, 2, "should have reduced to 2 blanks after update")
+
+	// Verify the values are the new ones
+	blank1 := updatedBlanks[0].(map[string]any)
+	assert.Equal(t, "uno", blank1["correct_answer"])
+
+	blank2 := updatedBlanks[1].(map[string]any)
+	assert.Equal(t, "dos", blank2["correct_answer"])
+}

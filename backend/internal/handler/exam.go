@@ -178,7 +178,7 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions(), nil)
+	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions(), req.toBlanks())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -287,7 +287,7 @@ func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	q.ID = qID
-	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), nil)
+	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -435,7 +435,7 @@ func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions(), nil)
+	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions(), req.toBlanks())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -449,9 +449,11 @@ type questionRequest struct {
 	Difficulty    *string         `json:"difficulty,omitempty"`
 	Explanation   *string         `json:"explanation,omitempty"`
 	ImageURL      *string         `json:"image_url,omitempty"`
+	AudioURL      *string         `json:"audio_url,omitempty"`
 	CorrectAnswer *string         `json:"correct_answer,omitempty"`
 	TopicID       *string         `json:"topic_id,omitempty"`
 	Options       []optionRequest `json:"options,omitempty"`
+	Blanks        []blankRequest  `json:"blanks,omitempty"`
 	PointCorrect  *float64        `json:"point_correct,omitempty"`
 	PointWrong    *float64        `json:"point_wrong,omitempty"`
 }
@@ -462,6 +464,11 @@ type optionRequest struct {
 	ImageURL  *string `json:"image_url,omitempty"`
 	IsCorrect bool    `json:"is_correct"`
 	SortOrder int     `json:"sort_order"`
+}
+
+type blankRequest struct {
+	Index         int    `json:"index"`
+	CorrectAnswer string `json:"correct_answer"`
 }
 
 func (r questionRequest) toQuestion() (model.Question, error) {
@@ -498,6 +505,7 @@ func (r questionRequest) toQuestion() (model.Question, error) {
 		Explanation:   r.Explanation,
 		Difficulty:    r.Difficulty,
 		ImageURL:      r.ImageURL,
+		AudioURL:      r.AudioURL,
 		TopicID:       topicID,
 		PointCorrect:  pointCorrect,
 		PointWrong:    pointWrong,
@@ -513,6 +521,17 @@ func (r questionRequest) toOptions() []model.QuestionOption {
 			ImageURL:  o.ImageURL,
 			IsCorrect: o.IsCorrect,
 			SortOrder: o.SortOrder,
+		})
+	}
+	return out
+}
+
+func (r questionRequest) toBlanks() []model.QuestionBlank {
+	out := make([]model.QuestionBlank, 0, len(r.Blanks))
+	for _, b := range r.Blanks {
+		out = append(out, model.QuestionBlank{
+			Index:         b.Index,
+			CorrectAnswer: b.CorrectAnswer,
 		})
 	}
 	return out

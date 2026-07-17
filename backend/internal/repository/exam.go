@@ -318,8 +318,14 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		return nil, err
 	}
 
+	blanks, err := r.queryBlanksForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	for i := range questions {
 		questions[i].Options = opts[questions[i].Question.ID]
+		questions[i].Blanks = blanks[questions[i].Question.ID]
 	}
 	return questions, nil
 }
@@ -357,12 +363,44 @@ func (r *Repository) queryOptionsForQuestions(ctx context.Context, questionIDs [
 	return out, nil
 }
 
-func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption) error {
+func (r *Repository) queryBlanksForQuestions(ctx context.Context, questionIDs []uuid.UUID) (map[uuid.UUID][]model.QuestionBlank, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT question_id, blank_index, correct_answer
+		FROM question_blank
+		WHERE question_id = ANY($1)
+		ORDER BY question_id, blank_index`,
+		questionIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Seed every requested id with a non-nil empty slice so non-multi_blank formats
+	// surface as [] not nil, consistent with options.
+	out := make(map[uuid.UUID][]model.QuestionBlank, len(questionIDs))
+	for _, id := range questionIDs {
+		out[id] = []model.QuestionBlank{}
+	}
+	for rows.Next() {
+		b := model.QuestionBlank{}
+		if err := rows.Scan(&b.QuestionID, &b.Index, &b.CorrectAnswer); err != nil {
+			return nil, err
+		}
+		out[b.QuestionID] = append(out[b.QuestionID], b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO question (format, body, correct_answer, explanation, difficulty, image_url, topic_id, point_correct, point_wrong)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO question (format, body, correct_answer, explanation, difficulty, image_url, audio_url, topic_id, point_correct, point_wrong)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id`,
-		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.TopicID, q.PointCorrect, q.PointWrong,
+		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.AudioURL, q.TopicID, q.PointCorrect, q.PointWrong,
 	).Scan(&q.ID)
 	if err != nil {
 		return err
@@ -371,16 +409,21 @@ func (r *Repository) CreateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	if err := insertQuestionOptions(ctx, tx, q.ID, options); err != nil {
 		return err
 	}
+
+	if err := insertQuestionBlanks(ctx, tx, q.ID, blanks); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption) error {
+func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
 	var updatedID uuid.UUID
 	err := tx.QueryRow(ctx,
 		`UPDATE question
-		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, topic_id = $7, point_correct = $8, point_wrong = $9
-		WHERE id = $10 RETURNING id`,
-		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.TopicID, q.PointCorrect, q.PointWrong, q.ID,
+		SET format = $1, body = $2, correct_answer = $3, explanation = $4, difficulty = $5, image_url = $6, audio_url = $7, topic_id = $8, point_correct = $9, point_wrong = $10
+		WHERE id = $11 RETURNING id`,
+		q.Format, q.Body, q.CorrectAnswer, q.Explanation, q.Difficulty, q.ImageURL, q.AudioURL, q.TopicID, q.PointCorrect, q.PointWrong, q.ID,
 	).Scan(&updatedID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -399,6 +442,18 @@ func (r *Repository) UpdateQuestionTx(ctx context.Context, tx pgx.Tx, q *model.Q
 	if err := insertQuestionOptions(ctx, tx, q.ID, options); err != nil {
 		return err
 	}
+
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM question_blank WHERE question_id = $1`,
+		q.ID,
+	); err != nil {
+		return err
+	}
+
+	if err := insertQuestionBlanks(ctx, tx, q.ID, blanks); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -577,8 +632,15 @@ WHERE 1=1`
 	if err != nil {
 		return nil, "", err
 	}
+
+	blanks, err := r.queryBlanksForQuestions(ctx, questionIDs)
+	if err != nil {
+		return nil, "", err
+	}
+
 	for i := range items {
 		items[i].Options = opts[items[i].Question.ID]
+		items[i].Blanks = blanks[items[i].Question.ID]
 	}
 
 	return items, nextCursor, nil
@@ -735,6 +797,20 @@ func insertQuestionOptions(ctx context.Context, tx pgx.Tx, questionID uuid.UUID,
 			`INSERT INTO question_option (question_id, key, text, image_url, is_correct, sort_order)
 			VALUES ($1, $2, $3, $4, $5, $6)`,
 			questionID, o.Key, o.Text, o.ImageURL, o.IsCorrect, o.SortOrder,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertQuestionBlanks(ctx context.Context, tx pgx.Tx, questionID uuid.UUID, blanks []model.QuestionBlank) error {
+	for _, b := range blanks {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO question_blank (question_id, blank_index, correct_answer)
+			VALUES ($1, $2, $3)`,
+			questionID, b.Index, b.CorrectAnswer,
 		)
 		if err != nil {
 			return err
