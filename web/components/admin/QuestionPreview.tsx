@@ -14,12 +14,13 @@ import { useTranslation } from "@/lib/i18n";
 import { RichContent } from "./RichContent";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
 
-const FORMAT_LABELS: Record<QuestionFormat, "fmt_mcq" | "fmt_multi_answer" | "fmt_short" | "fmt_fill_blank" | "fmt_essay"> = {
+const FORMAT_LABELS: Record<QuestionFormat, "fmt_mcq" | "fmt_multi_answer" | "fmt_short" | "fmt_fill_blank" | "fmt_essay" | "fmt_multi_blank"> = {
   mcq: "fmt_mcq",
   multi_answer: "fmt_multi_answer",
   short: "fmt_short",
   fill_blank: "fmt_fill_blank",
   essay: "fmt_essay",
+  multi_blank: "fmt_multi_blank",
 };
 
 const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard"> = {

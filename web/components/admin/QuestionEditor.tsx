@@ -158,15 +158,16 @@ function OptionEditor({
   );
 }
 
-const FORMAT_LABELS: Record<QuestionFormat, "tests_format_mcq" | "tests_format_multi_answer" | "tests_format_short" | "tests_format_fill_blank" | "tests_format_essay"> = {
+const FORMAT_LABELS: Record<QuestionFormat, "tests_format_mcq" | "tests_format_multi_answer" | "tests_format_short" | "tests_format_fill_blank" | "tests_format_essay" | "tests_format_multi_blank"> = {
   mcq: "tests_format_mcq",
   multi_answer: "tests_format_multi_answer",
   short: "tests_format_short",
   fill_blank: "tests_format_fill_blank",
   essay: "tests_format_essay",
+  multi_blank: "tests_format_multi_blank",
 };
 
-const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay"];
+const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay", "multi_blank"];
 
 
 function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionInput[] {
