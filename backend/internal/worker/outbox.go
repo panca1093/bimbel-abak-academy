@@ -2,11 +2,8 @@ package worker
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base32"
 	"encoding/json"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 )
 
 // OrderPaidPayload unmarshals from the outbox event payload written by service.OrderPaidPayload
@@ -42,6 +40,7 @@ type outboxRepository interface {
 	GetExamsByProductID(context.Context, uuid.UUID) ([]model.Exam, error)
 	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
+	GetOrderParticipants(context.Context, uuid.UUID) ([]uuid.UUID, error)
 }
 
 type Worker struct {
@@ -209,15 +208,29 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 				slog.Warn("no exams linked to product, skipping", "order_id", payload.OrderID, "product_id", item.ProductID)
 				continue
 			}
+
+			// Fan-out: if order_participant rows exist, register each
+			// participant instead of the buyer (order.StudentID).
+			registerIDs := []uuid.UUID{order.StudentID}
+			participants, err := w.repo.GetOrderParticipants(ctx, payload.OrderID)
+			if err != nil {
+				slog.Error("get order participants", "order_id", payload.OrderID, "err", err)
+				return
+			}
+			if len(participants) > 0 {
+				registerIDs = participants
+			}
 			for _, exam := range exams {
-				if err := w.repo.CreateExamRegistration(ctx, tx, model.ExamRegistration{
-					StudentID: order.StudentID,
-					ExamID:    exam.ID,
-					Token:     generateToken(),
-					Status:    "registered",
-				}); err != nil {
-					slog.Error("create exam registration", "order_id", payload.OrderID, "exam_id", exam.ID, "err", err)
-					return
+				for _, sid := range registerIDs {
+					if err := w.repo.CreateExamRegistration(ctx, tx, model.ExamRegistration{
+						StudentID: sid,
+						ExamID:    exam.ID,
+						Token:     repository.GenerateExamToken(),
+						Status:    "registered",
+					}); err != nil {
+						slog.Error("create exam registration", "order_id", payload.OrderID, "exam_id", exam.ID, "err", err)
+						return
+					}
 				}
 			}
 			if err := w.repo.StampOrderItemFulfilledAt(ctx, tx, payload.OrderID, item.ProductID); err != nil {
@@ -311,14 +324,4 @@ func (w *Worker) sweepStalePayments(ctx context.Context) {
 
 		slog.Info("stale payment expired", "order_id", orderID)
 	}
-}
-
-func generateToken() string {
-	b := make([]byte, 5)
-	if _, err := rand.Read(b); err != nil {
-		// crypto/rand.Read never fails on supported platforms; a constant
-		// fallback would be a guessable check-in credential.
-		panic(err)
-	}
-	return strings.ToUpper(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b)[:8])
 }
