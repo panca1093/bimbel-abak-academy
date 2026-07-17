@@ -119,8 +119,10 @@ describe("QuestionEditor", () => {
     );
 
     expect(screen.getByLabelText(/badan soal/i).textContent).toContain("Apa ibu kota Indonesia?");
-    expect(screen.getByDisplayValue("Jakarta")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Bandung")).toBeInTheDocument();
+    // Option text now uses RichTextEditor (contentEditable), check for text content
+    const optionTextElements = screen.getAllByLabelText(/teks opsi/i);
+    expect(optionTextElements.some((el) => el.textContent?.includes("Jakarta"))).toBe(true);
+    expect(optionTextElements.some((el) => el.textContent?.includes("Bandung"))).toBe(true);
 
     const radios = screen.getAllByRole("radio");
     const checked = radios.filter((r) => (r as HTMLInputElement).checked);

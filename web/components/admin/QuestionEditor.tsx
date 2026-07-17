@@ -157,57 +157,73 @@ function OptionEditor({
   return (
     <div className="space-y-2">
       {options.map((opt, index) => (
-        <div key={index} className="flex items-center gap-2">
-          <div className="w-8 text-sm font-mono uppercase text-muted-foreground">
-            {opt.key}
+        <div key={index} className="space-y-2 rounded-lg border p-2">
+          <div className="flex items-start gap-2">
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-mono uppercase text-muted-foreground">
+                  {opt.key}
+                </div>
+                <label className="ml-auto flex items-center gap-1 text-sm">
+                  {isSingle ? (
+                    <input
+                      type="radio"
+                      name={`question-correct-${format}`}
+                      checked={opt.is_correct}
+                      onChange={() => setCorrect(index, true)}
+                      disabled={disabled}
+                      aria-label={t("tests_field_option_is_correct")}
+                    />
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={opt.is_correct}
+                      onChange={(e) => setCorrect(index, e.target.checked)}
+                      disabled={disabled}
+                      aria-label={t("tests_field_option_is_correct")}
+                    />
+                  )}
+                  <span>{t("tests_field_option_is_correct")}</span>
+                </label>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  onClick={() => remove(index)}
+                  disabled={disabled || options.length <= 2}
+                  aria-label={t("tests_remove_option")}
+                >
+                  <Trash2 className="size-3" />
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                <label htmlFor={`option-text-${index}`} className="text-xs text-muted-foreground">
+                  {t("tests_field_option_text")}
+                </label>
+                <RichTextEditor
+                  id={`option-text-${index}`}
+                  aria-label={`${t("tests_field_option_text")} ${opt.key}`}
+                  value={opt.text}
+                  onChange={(html) => update(index, { text: html })}
+                  placeholder={t("tests_field_option_text")}
+                  disabled={disabled}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label htmlFor={`option-image-${index}`} className="text-xs text-muted-foreground">
+                  {t("tests_field_image_url")}
+                </label>
+                <Input
+                  id={`option-image-${index}`}
+                  aria-label={`${t("tests_field_image_url")} ${opt.key}`}
+                  value={opt.image_url ?? ""}
+                  onChange={(e) => update(index, { image_url: e.target.value || undefined })}
+                  placeholder="https://..."
+                  disabled={disabled}
+                />
+              </div>
+            </div>
           </div>
-          <Input
-            aria-label={t("tests_field_option_text")}
-            value={opt.text}
-            onChange={(e) => update(index, { text: e.target.value })}
-            placeholder={t("tests_field_option_text")}
-            disabled={disabled}
-            className="flex-1"
-          />
-          <Input
-            aria-label={`${t("tests_field_image_url")} ${opt.key}`}
-            value={opt.image_url ?? ""}
-            onChange={(e) => update(index, { image_url: e.target.value || undefined })}
-            placeholder={t("tests_field_image_url")}
-            disabled={disabled}
-            className="w-40"
-          />
-          <label className="flex items-center gap-1 text-sm">
-            {isSingle ? (
-              <input
-                type="radio"
-                name={`question-correct-${format}`}
-                checked={opt.is_correct}
-                onChange={() => setCorrect(index, true)}
-                disabled={disabled}
-                aria-label={t("tests_field_option_is_correct")}
-              />
-            ) : (
-              <input
-                type="checkbox"
-                checked={opt.is_correct}
-                onChange={(e) => setCorrect(index, e.target.checked)}
-                disabled={disabled}
-                aria-label={t("tests_field_option_is_correct")}
-              />
-            )}
-            <span>{t("tests_field_option_is_correct")}</span>
-          </label>
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            onClick={() => remove(index)}
-            disabled={disabled || options.length <= 2}
-            aria-label={t("tests_remove_option")}
-          >
-            <Trash2 className="size-3" />
-          </Button>
         </div>
       ))}
       <Button
