@@ -22,7 +22,7 @@ type UserRepository interface {
 	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
 	GetUserByID(ctx context.Context, id string) (*model.User, error)
 	UpdatePasswordHash(ctx context.Context, userID, hash string) error
-	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error
+	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string) error
 	UpdateUserPhoto(ctx context.Context, userID, photoURL string) error
 	ListSchools(ctx context.Context) ([]*model.School, error)
 	ActivateUser(ctx context.Context, userID string) (bool, error)

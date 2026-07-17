@@ -186,7 +186,7 @@ func (s *Service) ListSchools(ctx context.Context) ([]*model.School, error) {
 	return s.repo.ListSchools(ctx)
 }
 
-func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) (*model.User, error) {
+func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string) (*model.User, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -207,7 +207,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 		normalizedEmail = &e
 	}
 
-	if err := s.repo.UpdateUserProfile(ctx, userID, name, normalizedEmail, username, phone, address, targetExam, grade, schoolID); err != nil {
+	if err := s.repo.UpdateUserProfile(ctx, userID, name, normalizedEmail, username, phone, address, targetExam, grade, schoolID, unlistedSchoolName); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return nil, ErrEmailTaken

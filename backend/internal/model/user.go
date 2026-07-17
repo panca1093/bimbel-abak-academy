@@ -18,8 +18,9 @@ type User struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	// student-only
-	NIS            *string    `json:"nis"`
-	DOB            *time.Time `json:"dob"`
+	NIS                *string    `json:"nis"`
+	UnlistedSchoolName *string    `json:"unlisted_school_name"`
+	DOB                *time.Time `json:"dob"`
 	Gender         *string    `json:"gender"`
 	Grade          *int       `json:"grade"`
 	AlamatDomisili *string    `json:"alamat_domisili"`
