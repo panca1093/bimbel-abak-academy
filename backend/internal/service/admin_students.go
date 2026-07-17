@@ -222,6 +222,57 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 	}, nil
 }
 
+// CrossSchoolStudentResponse is the response shape for cross-school student
+// search (FR-SEARCH-01). Includes school_name so results are distinguishable.
+type CrossSchoolStudentResponse struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Username   string  `json:"username"`
+	Email      *string `json:"email"`
+	Status     string  `json:"status"`
+	Grade      *int    `json:"grade"`
+	SchoolID   string  `json:"school_id"`
+	SchoolName string  `json:"school_name"`
+	CreatedAt  string  `json:"created_at"`
+}
+
+func toCrossSchoolStudentResponse(row repository.CrossSchoolStudentRow) CrossSchoolStudentResponse {
+	return CrossSchoolStudentResponse{
+		ID:         row.ID,
+		Name:       row.Name,
+		Username:   row.Username,
+		Email:      row.Email,
+		Status:     row.Status,
+		Grade:      row.Grade,
+		SchoolID:   row.SchoolID,
+		SchoolName: row.SchoolName,
+		CreatedAt:  row.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+// SearchStudentsAcrossSchools searches students across all schools with optional
+// filters. Thin pass-through to the repository with bounded default limit.
+// This is the super_admin cross-school search (FR-SEARCH-01/03).
+func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, grade *int, jenjang string, limit int, cursor string) ([]CrossSchoolStudentResponse, string, error) {
+	rows, nextCursor, err := s.storeRepo.SearchStudentsAcrossSchools(ctx, repository.StudentFilter{
+		Cursor:   cursor,
+		Limit:    limit,
+		Q:        q,
+		SchoolID: schoolID,
+		Grade:    grade,
+		Jenjang:  jenjang,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	students := make([]CrossSchoolStudentResponse, len(rows))
+	for i, r := range rows {
+		students[i] = toCrossSchoolStudentResponse(r)
+	}
+	return students, nextCursor, nil
+}
+
 // ListStudents returns cursor-paginated students scoped to the given school.
 // Optional grade and jenjang filters narrow the result set.
 func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string, grade *int, jenjang string) ([]StudentResponse, string, error) {

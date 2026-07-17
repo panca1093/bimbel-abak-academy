@@ -72,5 +72,20 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	if searchGrantDBEnv != nil {
+		if searchGrantDBEnv.pool != nil {
+			searchGrantDBEnv.pool.Close()
+		}
+		if searchGrantDBEnv.rdb != nil {
+			searchGrantDBEnv.rdb.Close()
+		}
+		if searchGrantDBEnv.mr != nil {
+			searchGrantDBEnv.mr.Close()
+		}
+		if searchGrantDBEnv.pgContainer != nil {
+			_ = searchGrantDBEnv.pgContainer.Terminate(ctx)
+		}
+	}
+
 	os.Exit(code)
 }

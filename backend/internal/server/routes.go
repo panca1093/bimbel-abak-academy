@@ -274,6 +274,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamGrants := admin.Group("/exam-grants")
 	adminExamGrants.Use(handler.RBACMiddleware("exam-grants:write"))
 	adminExamGrants.POST("", h.AdminGrantExamAccess)
+	adminExamGrants.GET("/students/search", h.AdminSearchGrantStudents)
 
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")

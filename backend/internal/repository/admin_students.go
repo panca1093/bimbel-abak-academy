@@ -20,14 +20,16 @@ type StudentRow struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// StudentFilter carries optional filters for ListStudentsBySchool.
+// StudentFilter carries optional filters for ListStudentsBySchool and
+// SearchStudentsAcrossSchools.
 type StudentFilter struct {
 	Status  string
 	Cursor  string
 	Limit   int
 	Q       string
-	Grade   *int   // optional grade filter
-	Jenjang string // optional jenjang filter
+	Grade   *int    // optional grade filter
+	Jenjang string  // optional jenjang filter
+	SchoolID *string // optional school_id filter (cross-school search only)
 }
 
 // ListStudentsBySchool returns non-deleted students scoped to a school,
@@ -168,6 +170,96 @@ func (r *Repository) UpdateStudentStatus(ctx context.Context, id, schoolID, stat
 		status, id, schoolID,
 	)
 	return err
+}
+
+// CrossSchoolStudentRow extends StudentRow with school info for cross-school
+// search results. Used by SearchStudentsAcrossSchools.
+type CrossSchoolStudentRow struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Username   string    `json:"username"`
+	Email      *string   `json:"email"`
+	Status     string    `json:"status"`
+	Grade      *int      `json:"grade"`
+	SchoolID   string    `json:"school_id"`
+	SchoolName string    `json:"school_name"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// SearchStudentsAcrossSchools searches active students across all schools with
+// optional filters. When filter.SchoolID is set, narrows to that school. Joins
+// school to include school_name in each result row. Cursor-paginated with a
+// bounded default limit (FR-SEARCH-01/03).
+func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter StudentFilter) ([]CrossSchoolStudentRow, string, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 20
+	}
+	if filter.Limit > 100 {
+		filter.Limit = 100
+	}
+
+	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade, u.created_at, u.school_id, s.name
+			FROM users u JOIN school s ON u.school_id = s.id
+			WHERE u.role = 'student' AND u.status != 'deleted'`
+	args := []any{}
+	argNum := 1
+
+	if filter.SchoolID != nil {
+		query += fmt.Sprintf(` AND u.school_id = $%d`, argNum)
+		args = append(args, *filter.SchoolID)
+		argNum++
+	}
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND (u.name ILIKE $%d OR u.username ILIKE $%d)`, argNum, argNum+1)
+		args = append(args, "%"+filter.Q+"%", "%"+filter.Q+"%")
+		argNum += 2
+	}
+	if filter.Grade != nil {
+		query += fmt.Sprintf(` AND u.grade = $%d`, argNum)
+		args = append(args, *filter.Grade)
+		argNum++
+	}
+	if filter.Jenjang != "" {
+		query += fmt.Sprintf(` AND u.jenjang = $%d`, argNum)
+		args = append(args, filter.Jenjang)
+		argNum++
+	}
+	if filter.Cursor != "" {
+		query += fmt.Sprintf(` AND u.id < $%d::uuid`, argNum)
+		args = append(args, filter.Cursor)
+		argNum++
+	}
+
+	query += fmt.Sprintf(` ORDER BY u.created_at DESC LIMIT $%d`, argNum)
+	args = append(args, filter.Limit+1)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	students := []CrossSchoolStudentRow{}
+	nextCursor := ""
+	seen := 0
+	for rows.Next() {
+		var s CrossSchoolStudentRow
+		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.CreatedAt, &s.SchoolID, &s.SchoolName); err != nil {
+			return nil, "", err
+		}
+		if seen < filter.Limit {
+			students = append(students, s)
+		} else {
+			nextCursor = s.ID
+		}
+		seen++
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, "", err
+	}
+
+	return students, nextCursor, nil
 }
 
 // ResetStudentPasswordHash overwrites the password hash for a student,
