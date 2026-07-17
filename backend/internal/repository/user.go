@@ -156,7 +156,7 @@ func (r *Repository) UpdateUserPhoto(ctx context.Context, userID, photoURL strin
 // ListSchools returns active schools ordered by name.
 func (r *Repository) ListSchools(ctx context.Context) ([]*model.School, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, name, code FROM school WHERE status = 'active' ORDER BY name`)
+		`SELECT id, name, code, school_types FROM school WHERE status = 'active' ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func (r *Repository) ListSchools(ctx context.Context) ([]*model.School, error) {
 	schools := []*model.School{}
 	for rows.Next() {
 		s := &model.School{}
-		if err := rows.Scan(&s.ID, &s.Name, &s.Code); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Code, &s.SchoolTypes); err != nil {
 			return nil, err
 		}
 		schools = append(schools, s)
