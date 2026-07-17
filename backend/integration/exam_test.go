@@ -1623,6 +1623,58 @@ func TestExam_MultiBlankQuestion_persist_and_read(t *testing.T) {
 	assert.Equal(t, "1945", rb2["correct_answer"])
 }
 
+// TestExam_QuestionAudioURL_persists_and_reads_back covers a regression: audio_url was
+// correctly written by CreateQuestionTx/UpdateQuestionTx but ListQuestions/ListBankQuestions
+// never selected/scanned it back, so every read path (bank list, test detail) silently
+// dropped a saved audio_url.
+func TestExam_QuestionAudioURL_persists_and_reads_back(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	body := map[string]any{
+		"format":         "short",
+		"body":           "What is the capital of Indonesia?",
+		"correct_answer": "Jakarta",
+		"audio_url":      "https://example.com/clip.mp3",
+		"point_correct":  1,
+		"point_wrong":    0,
+	}
+	resp, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/questions", body, token)
+	require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", out)
+
+	questionData := out["question"].(map[string]any)
+	questionID := questionData["id"].(string)
+	assert.Equal(t, "https://example.com/clip.mp3", questionData["audio_url"], "create response should echo audio_url")
+
+	// Bank list read path (ListBankQuestions).
+	listResp, listOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions", nil, token)
+	require.Equal(t, http.StatusOK, listResp.StatusCode)
+	items := listOut["data"].([]any)
+	var found map[string]any
+	for _, item := range items {
+		q := item.(map[string]any)["question"].(map[string]any)
+		if q["id"] == questionID {
+			found = q
+			break
+		}
+	}
+	require.NotNil(t, found, "created question should appear in bank list")
+	assert.Equal(t, "https://example.com/clip.mp3", found["audio_url"], "bank list should return audio_url")
+
+	// Test-detail read path (ListQuestions via GetTestDetail).
+	testID := seedTest(t, env, "Audio URL Test", "geography", "capitals", 30)
+	attachResp, _ := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions/attach", map[string]any{"question_id": questionID}, token)
+	require.Equal(t, http.StatusNoContent, attachResp.StatusCode)
+
+	detailResp, detailOut := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests/"+testID, nil, token)
+	require.Equal(t, http.StatusOK, detailResp.StatusCode)
+	questionsData := detailOut["questions"].([]any)
+	require.Len(t, questionsData, 1)
+	detailedQuestion := questionsData[0].(map[string]any)["question"].(map[string]any)
+	assert.Equal(t, "https://example.com/clip.mp3", detailedQuestion["audio_url"], "test detail should return audio_url")
+}
+
 // TestExam_MultiBlankQuestion_non_multi_blank_has_empty_blanks tests that non-multi_blank
 // questions return an empty blanks slice, not nil.
 func TestExam_MultiBlankQuestion_non_multi_blank_has_empty_blanks(t *testing.T) {

@@ -255,7 +255,7 @@ func (r *Repository) DeleteTest(ctx context.Context, id uuid.UUID) error {
 
 func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]model.QuestionWithOptions, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, tq.sort_order
+		`SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, tq.sort_order
 		FROM question q
 		JOIN test_question tq ON tq.question_id = q.id
 		LEFT JOIN exam_topic et ON et.id = q.topic_id
@@ -272,11 +272,11 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 	for rows.Next() {
 		q := model.Question{}
 		var sortOrder int
-		var correctAnswer, explanation, difficulty, imageURL, topic *string
+		var correctAnswer, explanation, difficulty, imageURL, audioURL, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
 			&q.ID, &q.Format, &q.Body,
-			&correctAnswer, &explanation, &difficulty, &imageURL,
+			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL,
 			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &sortOrder,
 		); err != nil {
 			return nil, err
@@ -292,6 +292,9 @@ func (r *Repository) ListQuestions(ctx context.Context, testID uuid.UUID) ([]mod
 		}
 		if imageURL != nil {
 			q.ImageURL = imageURL
+		}
+		if audioURL != nil {
+			q.AudioURL = audioURL
 		}
 		if topicID != nil {
 			q.TopicID = topicID
@@ -537,7 +540,7 @@ func (r *Repository) ListBankQuestions(ctx context.Context, filter QuestionFilte
 		filter.Limit = 20
 	}
 
-	query := `SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0)
+	query := `SELECT q.id, q.format, q.body, q.correct_answer, q.explanation, q.difficulty, q.image_url, q.audio_url, q.topic_id, et.name AS topic, q.point_correct, q.point_wrong, COALESCE(tq.cnt, 0)
 FROM question q
 LEFT JOIN exam_topic et ON et.id = q.topic_id
 LEFT JOIN (
@@ -581,11 +584,11 @@ WHERE 1=1`
 	for rows.Next() {
 		q := model.Question{}
 		var attachedCount int
-		var correctAnswer, explanation, difficulty, imageURL, topic *string
+		var correctAnswer, explanation, difficulty, imageURL, audioURL, topic *string
 		var topicID *uuid.UUID
 		if err := rows.Scan(
 			&q.ID, &q.Format, &q.Body,
-			&correctAnswer, &explanation, &difficulty, &imageURL,
+			&correctAnswer, &explanation, &difficulty, &imageURL, &audioURL,
 			&topicID, &topic, &q.PointCorrect, &q.PointWrong, &attachedCount,
 		); err != nil {
 			return nil, "", err
@@ -601,6 +604,9 @@ WHERE 1=1`
 		}
 		if imageURL != nil {
 			q.ImageURL = imageURL
+		}
+		if audioURL != nil {
+			q.AudioURL = audioURL
 		}
 		if topicID != nil {
 			q.TopicID = topicID
