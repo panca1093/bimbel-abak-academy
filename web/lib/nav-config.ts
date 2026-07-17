@@ -79,9 +79,21 @@ const STUDENT_NAV: RoleNavConfig = [
   },
 ];
 
-const CONTENT_MANAGER_NAV: RoleNavConfig = [
+const EXAM_NAV_ITEMS: NavItem[] = [
+  { labelKey: "tests", href: "/admin/exam/tests", icon: ClipboardList },
+  { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar },
+  { labelKey: "question_bank", href: "/admin/exam/questions", icon: Library },
+  { labelKey: "session_monitor", href: "/admin/exam/monitor", icon: BarChart },
+];
+
+const SCHOOL_NAV_ITEMS: NavItem[] = [
+  { labelKey: "students", href: "/admin/school/students", icon: Users },
+  { labelKey: "reports", href: "/admin/school/reports", icon: FileText },
+];
+
+export const CONTENT_MANAGER_NAV: RoleNavConfig = [
   {
-    titleKey: "role_admin_store",
+    titleKey: "nav_group_store",
     items: [
       { labelKey: "nav_dashboard", href: "/admin/store", icon: LayoutDashboard, exact: true },
       { labelKey: "admin_nav_products", href: "/admin/products", icon: Package },
@@ -94,31 +106,23 @@ const CONTENT_MANAGER_NAV: RoleNavConfig = [
   },
 ];
 
-const ADMIN_EXAM_NAV: RoleNavConfig = [
+export const ADMIN_EXAM_NAV: RoleNavConfig = [
   {
-    titleKey: "role_admin_exam",
-    items: [
-      { labelKey: "tests", href: "/admin/exam/tests", icon: ClipboardList },
-      { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar },
-      { labelKey: "question_bank", href: "/admin/exam/questions", icon: Library },
-      { labelKey: "session_monitor", href: "/admin/exam/monitor", icon: BarChart },
-    ],
+    titleKey: "nav_group_exam",
+    items: EXAM_NAV_ITEMS,
   },
 ];
 
-const ADMIN_SCHOOL_NAV: RoleNavConfig = [
+export const ADMIN_SCHOOL_NAV: RoleNavConfig = [
   {
-    titleKey: "role_admin_school",
-    items: [
-      { labelKey: "students", href: "/admin/school/students", icon: Users },
-      { labelKey: "reports", href: "/admin/school/reports", icon: FileText },
-    ],
+    titleKey: "nav_group_exam",
+    items: SCHOOL_NAV_ITEMS,
   },
 ];
 
 // Store items for super admin — same as CONTENT_MANAGER_NAV but without the store dashboard.
 const SUPER_ADMIN_STORE_ITEMS: NavGroup = {
-  titleKey: "role_admin_store",
+  titleKey: "nav_group_store",
   items: [
     { labelKey: "admin_nav_products", href: "/admin/products", icon: Package },
     { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
@@ -136,8 +140,10 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
     ],
   },
   SUPER_ADMIN_STORE_ITEMS,
-  ...ADMIN_EXAM_NAV,
-  ...ADMIN_SCHOOL_NAV,
+  {
+    titleKey: "nav_group_exam",
+    items: [...EXAM_NAV_ITEMS, ...SCHOOL_NAV_ITEMS],
+  },
   {
     titleKey: "system",
     items: [
