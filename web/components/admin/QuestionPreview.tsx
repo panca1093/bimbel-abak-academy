@@ -40,8 +40,9 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
   const { t } = useTranslation();
   if (!item) return null;
 
-  const { question, options } = item;
+  const { question, options, blanks } = item;
   const showOptions = question.format === "mcq" || question.format === "multi_answer";
+  const showBlanks = question.format === "multi_blank";
   const formatKey = FORMAT_LABELS[question.format];
   const difficultyKey = question.difficulty ? DIFFICULTY_LABELS[question.difficulty] : undefined;
 
@@ -93,8 +94,28 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
                   <span className="w-6 text-center font-mono uppercase font-medium">
                     {opt.key}
                   </span>
-                  <span className="flex-1">{opt.text}</span>
+                  <div className="flex-1">
+                    <RichContent html={opt.text} />
+                  </div>
                   {opt.is_correct && <Badge variant="default">{t("tests_field_option_is_correct")}</Badge>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showBlanks && blanks && blanks.length > 0 && (
+            <div className="space-y-2">
+              {blanks.map((blank) => (
+                <div
+                  key={blank.index}
+                  className="rounded-lg border p-3 text-sm border-primary/50 bg-primary/5"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {t("tests_format_multi_blank")} #{blank.index}
+                    </span>
+                  </div>
+                  <p className="font-medium">{blank.correct_answer}</p>
                 </div>
               ))}
             </div>
