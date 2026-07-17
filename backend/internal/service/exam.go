@@ -99,6 +99,19 @@ func sanitizeQuestionBody(body string) string {
 	return cleaned
 }
 
+// sanitizeQuestionOptions sanitizes the Text field of each option using the same
+// policy as sanitizeQuestionBody. Called at every write path (CreateBankQuestion,
+// SaveQuestion, CreateQuestionForTest, ProcessQuestionImportRows) so the persisted
+// value is the sanitized one.
+func sanitizeQuestionOptions(options []model.QuestionOption) []model.QuestionOption {
+	sanitized := make([]model.QuestionOption, len(options))
+	for i, opt := range options {
+		sanitized[i] = opt
+		sanitized[i].Text = sanitizeQuestionBody(opt.Text)
+	}
+	return sanitized
+}
+
 // validateQuestion enforces the format-validation matrix from spec.md §4.
 // All error returns wrap ErrValidation with a sub-message so callers can
 // use errors.Is(err, ErrValidation) AND err.Error() carries the WHY.
@@ -282,6 +295,7 @@ func (s *Service) GetTestDetail(ctx context.Context, id uuid.UUID) (model.TestDe
 // SaveQuestion routes create vs update by q.ID == uuid.Nil.
 func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
+	options = sanitizeQuestionOptions(options)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
@@ -317,6 +331,7 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 // behavior after migration 0025 moved attachment to test_question.
 func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
+	options = sanitizeQuestionOptions(options)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
@@ -452,6 +467,7 @@ func sameUUIDSet(a, b []uuid.UUID) bool {
 // CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
 func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
+	options = sanitizeQuestionOptions(options)
 	if err := validateQuestion(q, options); err != nil {
 		return model.QuestionWithOptions{}, err
 	}

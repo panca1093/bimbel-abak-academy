@@ -1507,3 +1507,175 @@ func TestSanitizeQuestionBody_preservesListTags(t *testing.T) {
 		t.Errorf("list tags must round-trip unchanged\n in: %q\nout: %q", in, got)
 	}
 }
+
+// --- Question option text sanitization (FR-14) ---
+
+func TestCreateBankQuestion_sanitizes_option_text(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	// Test that malicious option text is sanitized at persist time
+	body := "option sanitize mcq " + uniqueSuffix()
+	q := model.Question{
+		Format:       "mcq",
+		Body:         body,
+		PointCorrect: 1,
+		PointWrong:   0,
+	}
+	opts := []model.QuestionOption{
+		{Key: "a", Text: "<script>alert(1)</script>ok", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "<b>bold</b> text", IsCorrect: false, SortOrder: 2},
+	}
+
+	_, err := svc.CreateBankQuestion(ctx, q, opts)
+	require.NoError(t, err)
+
+	// Fetch back the created question with options via ListBankQuestions
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	fetched := items[0]
+
+	// Verify first option: malicious script removed, text preserved
+	require.Len(t, fetched.Options, 2)
+	if strings.Contains(fetched.Options[0].Text, "<script>") {
+		t.Errorf("option text must not contain <script>, got %q", fetched.Options[0].Text)
+	}
+	if !strings.Contains(fetched.Options[0].Text, "ok") {
+		t.Errorf("option text must preserve plain text, got %q", fetched.Options[0].Text)
+	}
+
+	// Verify second option: rich text preserved
+	if fetched.Options[1].Text != "<b>bold</b> text" {
+		t.Errorf("option text must preserve allowed tags\n in: %q\nout: %q", "<b>bold</b> text", fetched.Options[1].Text)
+	}
+}
+
+func TestSaveQuestion_sanitizes_option_text(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	// Create a question first
+	body := "save question sanitize " + uniqueSuffix()
+	q := model.Question{
+		Format:       "mcq",
+		Body:         body,
+		PointCorrect: 1,
+		PointWrong:   0,
+	}
+	opts := []model.QuestionOption{
+		{Key: "a", Text: "<script>alert(1)</script>safe", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "no", IsCorrect: false, SortOrder: 2},
+	}
+
+	out, err := svc.CreateBankQuestion(ctx, q, opts)
+	require.NoError(t, err)
+	qid := out.Question.ID
+
+	// Update the question with new malicious option text
+	updatedBody := "save question updated " + uniqueSuffix()
+	updatedOpts := []model.QuestionOption{
+		{Key: "a", Text: "<img src=x onerror=\"alert(1)\">updated", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "no update", IsCorrect: false, SortOrder: 2},
+	}
+	q.ID = qid
+	q.Body = updatedBody
+
+	_, err = svc.SaveQuestion(ctx, q, updatedOpts)
+	require.NoError(t, err)
+
+	// Verify sanitization happened at persist time via ListBankQuestions
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: updatedBody, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	fetched := items[0]
+
+	if strings.Contains(strings.ToLower(fetched.Options[0].Text), "onerror") {
+		t.Errorf("option text must not contain onerror attribute, got %q", fetched.Options[0].Text)
+	}
+	if !strings.Contains(fetched.Options[0].Text, "updated") {
+		t.Errorf("option text must preserve plain text, got %q", fetched.Options[0].Text)
+	}
+}
+
+func TestCreateQuestionForTest_sanitizes_option_text(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	// Create a test first
+	testID := seedTestDirect(t, ctx, repo, "test for question "+uniqueSuffix(), "math", "algebra")
+
+	body := "question for test sanitize " + uniqueSuffix()
+	q := model.Question{
+		Format:       "mcq",
+		Body:         body,
+		PointCorrect: 1,
+		PointWrong:   0,
+	}
+	opts := []model.QuestionOption{
+		{Key: "a", Text: "<script>alert(1)</script>answer", IsCorrect: true, SortOrder: 1},
+		{Key: "b", Text: "plain answer", IsCorrect: false, SortOrder: 2},
+	}
+
+	_, err := svc.CreateQuestionForTest(ctx, testID, q, opts)
+	require.NoError(t, err)
+
+	// Verify option text was sanitized via ListBankQuestions
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	fetched := items[0]
+
+	if strings.Contains(fetched.Options[0].Text, "<script>") {
+		t.Errorf("option text must not contain <script>, got %q", fetched.Options[0].Text)
+	}
+	if !strings.Contains(fetched.Options[0].Text, "answer") {
+		t.Errorf("option text must preserve plain text, got %q", fetched.Options[0].Text)
+	}
+}
+
+func TestProcessQuestionImportRows_sanitizes_option_text(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	// Create a topic first for import
+	subject := "Math"
+	topicName := "Algebra " + uniqueSuffix()
+	seedTopicDirect(t, ctx, repo, topicName, subject)
+
+	// Create an import row with malicious option text
+	rows := []QuestionImportRow{
+		{
+			Subject:      subject,
+			Topic:        topicName,
+			Format:       "mcq",
+			Body:         "What is 2+2? " + uniqueSuffix(),
+			PointCorrect: 1,
+			PointWrong:   0,
+			Options: []model.QuestionOption{
+				{Key: "a", Text: "<script>alert(1)</script>4", IsCorrect: true, SortOrder: 1},
+				{Key: "b", Text: "5", IsCorrect: false, SortOrder: 2},
+			},
+		},
+	}
+
+	result, err := svc.ProcessQuestionImportRows(ctx, rows)
+	require.NoError(t, err)
+	require.Len(t, result.Rows, 1)
+	require.Equal(t, "inserted", result.Rows[0].Status)
+	require.NotNil(t, result.Rows[0].QuestionID)
+
+	// Verify option text was sanitized via ListBankQuestions
+	body := rows[0].Body
+	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	fetched := items[0]
+
+	if strings.Contains(fetched.Options[0].Text, "<script>") {
+		t.Errorf("option text must not contain <script>, got %q", fetched.Options[0].Text)
+	}
+	if !strings.Contains(fetched.Options[0].Text, "4") {
+		t.Errorf("option text must preserve plain text, got %q", fetched.Options[0].Text)
+	}
+}
