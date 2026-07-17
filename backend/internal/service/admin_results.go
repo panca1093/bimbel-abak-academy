@@ -94,7 +94,7 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 	detail := model.AdminResultDetail{
 		SessionID:    sess.SessionID,
 		StudentName:  sess.StudentName,
-		NIS:          sess.NIS,
+		Username:     sess.Username,
 		Score:        score,
 		SubmittedAt:  sess.SubmittedAt,
 		ResultConfig: exam.ResultConfig,
@@ -133,11 +133,11 @@ func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, 
 
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"name", "nis", "score", "submitted_at"})
+	_ = w.Write([]string{"name", "username", "score", "submitted_at"})
 	for _, r := range rows {
-		nis := ""
-		if r.NIS != nil {
-			nis = *r.NIS
+		username := ""
+		if r.Username != nil {
+			username = *r.Username
 		}
 		scoreStr := ""
 		if r.Score != nil {
@@ -147,7 +147,7 @@ func (s *Service) ExportSchoolResultsCSV(ctx context.Context, examID uuid.UUID, 
 		if r.SubmittedAt != nil {
 			submittedAt = r.SubmittedAt.Format(time.RFC3339)
 		}
-		_ = w.Write([]string{r.StudentName, nis, scoreStr, submittedAt})
+		_ = w.Write([]string{r.StudentName, username, scoreStr, submittedAt})
 	}
 	w.Flush()
 	return buf.Bytes(), nil

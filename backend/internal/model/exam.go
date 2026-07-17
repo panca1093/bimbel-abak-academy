@@ -335,7 +335,7 @@ type ExamLeaderboardEntry struct {
 type AdminResultRow struct {
 	SessionID   uuid.UUID  `json:"session_id"`
 	StudentName string     `json:"student_name"`
-	NIS         *string    `json:"nis"`
+	Username    *string    `json:"username"`
 	Score       *float64   `json:"score"`
 	SubmittedAt *time.Time `json:"submitted_at"`
 }
@@ -348,7 +348,7 @@ type AdminResultSession struct {
 	ExamID      uuid.UUID  `json:"exam_id"`
 	StudentID   uuid.UUID  `json:"student_id"`
 	StudentName string     `json:"student_name"`
-	NIS         *string    `json:"nis"`
+	Username    *string    `json:"username"`
 	Status      string     `json:"status"`
 	Score       *float64   `json:"score"`
 	SubmittedAt *time.Time `json:"submitted_at"`
@@ -360,7 +360,7 @@ type AdminResultSession struct {
 type AdminResultDetail struct {
 	SessionID    uuid.UUID                `json:"session_id"`
 	StudentName  string                   `json:"student_name"`
-	NIS          *string                  `json:"nis"`
+	Username    *string                  `json:"username"`
 	Score        float64                  `json:"score"`
 	SubmittedAt  *time.Time               `json:"submitted_at"`
 	ResultConfig string                   `json:"result_config"`

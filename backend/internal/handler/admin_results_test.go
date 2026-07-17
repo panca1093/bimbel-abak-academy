@@ -629,7 +629,7 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 		t.Fatalf("want 3 records (header + 2 data rows), got %d", len(records))
 	}
 
-	wantHeader := []string{"name", "nis", "score", "submitted_at"}
+	wantHeader := []string{"name", "username", "score", "submitted_at"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
