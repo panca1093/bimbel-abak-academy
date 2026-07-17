@@ -57,5 +57,20 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	if regionDBEnv != nil {
+		if regionDBEnv.pool != nil {
+			regionDBEnv.pool.Close()
+		}
+		if regionDBEnv.rdb != nil {
+			regionDBEnv.rdb.Close()
+		}
+		if regionDBEnv.mr != nil {
+			regionDBEnv.mr.Close()
+		}
+		if regionDBEnv.pgContainer != nil {
+			_ = regionDBEnv.pgContainer.Terminate(ctx)
+		}
+	}
+
 	os.Exit(code)
 }
