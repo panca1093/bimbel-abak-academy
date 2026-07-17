@@ -1104,8 +1104,9 @@ func TestListBankQuestions_filters_and_counts_used_in(t *testing.T) {
 	}
 	assert.True(t, ids[mcqID] && ids[essayID] && ids[shortID], "expected all three bank questions")
 
-	// Filter by format.
-	items, nextCursor, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Format: "mcq", Limit: 10})
+	// Filter by format (scoped by the unique token too — the DB is shared across the
+	// whole test binary, and other tests seed mcq-format questions of their own).
+	items, nextCursor, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Format: "mcq", Search: uniqueToken, Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, mcqID, items[0].Question.ID)
