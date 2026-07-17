@@ -87,6 +87,56 @@ func (r *Repository) ListDistrictsByCity(ctx context.Context, cityID string) ([]
 	return districts, nil
 }
 
+// GetProvinceByName returns a province by its name (case-insensitive), or nil, nil when not found.
+func (r *Repository) GetProvinceByName(ctx context.Context, name string) (*model.Province, error) {
+	p := &model.Province{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name FROM province WHERE LOWER(name) = LOWER($1)`,
+		name,
+	).Scan(&p.ID, &p.Name)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return p, nil
+}
+
+// GetCityByNameInProvince returns a city by its name within a given province
+// (case-insensitive), or nil, nil when not found.
+func (r *Repository) GetCityByNameInProvince(ctx context.Context, name, provinceID string) (*model.City, error) {
+	c := &model.City{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, province_id, name FROM city WHERE LOWER(name) = LOWER($1) AND province_id = $2`,
+		name, provinceID,
+	).Scan(&c.ID, &c.ProvinceID, &c.Name)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return c, nil
+}
+
+// GetDistrictByNameInCity returns a district by its name within a given city
+// (case-insensitive), or nil, nil when not found.
+func (r *Repository) GetDistrictByNameInCity(ctx context.Context, name, cityID string) (*model.District, error) {
+	d := &model.District{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, city_id, name FROM district WHERE LOWER(name) = LOWER($1) AND city_id = $2`,
+		name, cityID,
+	).Scan(&d.ID, &d.CityID, &d.Name)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return d, nil
+}
+
 // GetProvinceByID returns a province by its ID, or nil, nil when not found.
 func (r *Repository) GetProvinceByID(ctx context.Context, id string) (*model.Province, error) {
 	p := &model.Province{}

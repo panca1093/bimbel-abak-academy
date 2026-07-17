@@ -136,6 +136,9 @@ var _ interface {
 	GetProvinceByID(context.Context, string) (*model.Province, error)
 	GetCityByID(context.Context, string) (*model.City, error)
 	GetDistrictByID(context.Context, string) (*model.District, error)
+	GetProvinceByName(context.Context, string) (*model.Province, error)
+	GetCityByNameInProvince(context.Context, string, string) (*model.City, error)
+	GetDistrictByNameInCity(context.Context, string, string) (*model.District, error)
 } = (*Repository)(nil)
 
 func TestListProvinces(t *testing.T) {
@@ -331,6 +334,147 @@ func TestGetCityByID(t *testing.T) {
 	}
 	if c != nil {
 		t.Errorf("expected nil for non-existent city, got %+v", c)
+	}
+}
+
+func TestGetProvinceByName(t *testing.T) {
+	pool := newRegionTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	sulselID, _, _, _ := seedRegionTables(t, pool)
+
+	// Found by exact name.
+	p, err := repo.GetProvinceByName(ctx, "SULAWESI SELATAN")
+	if err != nil {
+		t.Fatalf("GetProvinceByName: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected province, got nil")
+	}
+	if p.ID != sulselID || p.Name != "SULAWESI SELATAN" {
+		t.Errorf("unexpected province: %+v", p)
+	}
+
+	// Case-insensitive.
+	p, err = repo.GetProvinceByName(ctx, "sulawesi selatan")
+	if err != nil {
+		t.Fatalf("GetProvinceByName case-insensitive: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected province for lowercase name, got nil")
+	}
+	if p.ID != sulselID {
+		t.Errorf("expected same province id, got %s", p.ID)
+	}
+
+	// Not-found case.
+	p, err = repo.GetProvinceByName(ctx, "NONEXISTENT PROVINCE")
+	if err != nil {
+		t.Fatalf("GetProvinceByName for non-existent should not error: %v", err)
+	}
+	if p != nil {
+		t.Errorf("expected nil for non-existent province, got %+v", p)
+	}
+}
+
+func TestGetCityByNameInProvince(t *testing.T) {
+	pool := newRegionTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	sulselID, jatimID, makassarID, _ := seedRegionTables(t, pool)
+
+	// Found by exact name in correct province.
+	c, err := repo.GetCityByNameInProvince(ctx, "KOTA MAKASSAR", sulselID)
+	if err != nil {
+		t.Fatalf("GetCityByNameInProvince: %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected city, got nil")
+	}
+	if c.ID != makassarID || c.ProvinceID != sulselID {
+		t.Errorf("unexpected city: %+v", c)
+	}
+
+	// Case-insensitive.
+	c, err = repo.GetCityByNameInProvince(ctx, "kota makassar", sulselID)
+	if err != nil {
+		t.Fatalf("GetCityByNameInProvince case-insensitive: %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected city for lowercase name, got nil")
+	}
+	if c.ID != makassarID {
+		t.Errorf("expected same city id, got %s", c.ID)
+	}
+
+	// Same city name in wrong province returns nil.
+	c, err = repo.GetCityByNameInProvince(ctx, "KOTA MAKASSAR", jatimID)
+	if err != nil {
+		t.Fatalf("GetCityByNameInProvince wrong province: %v", err)
+	}
+	if c != nil {
+		t.Errorf("expected nil for city in wrong province, got %+v", c)
+	}
+
+	// Not-found case.
+	c, err = repo.GetCityByNameInProvince(ctx, "NONEXISTENT", sulselID)
+	if err != nil {
+		t.Fatalf("GetCityByNameInProvince for non-existent should not error: %v", err)
+	}
+	if c != nil {
+		t.Errorf("expected nil for non-existent city, got %+v", c)
+	}
+}
+
+func TestGetDistrictByNameInCity(t *testing.T) {
+	pool := newRegionTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	_, _, makassarID, surabayaID := seedRegionTables(t, pool)
+
+	// Found by exact name in correct city.
+	d, err := repo.GetDistrictByNameInCity(ctx, "MARISO", makassarID)
+	if err != nil {
+		t.Fatalf("GetDistrictByNameInCity: %v", err)
+	}
+	if d == nil {
+		t.Fatal("expected district, got nil")
+	}
+	if d.ID != "7371010" || d.CityID != makassarID {
+		t.Errorf("unexpected district: %+v", d)
+	}
+
+	// Case-insensitive.
+	d, err = repo.GetDistrictByNameInCity(ctx, "mariso", makassarID)
+	if err != nil {
+		t.Fatalf("GetDistrictByNameInCity case-insensitive: %v", err)
+	}
+	if d == nil {
+		t.Fatal("expected district for lowercase name, got nil")
+	}
+	if d.ID != "7371010" {
+		t.Errorf("expected same district id, got %s", d.ID)
+	}
+
+	// Same district name in wrong city returns nil.
+	d, err = repo.GetDistrictByNameInCity(ctx, "MARISO", surabayaID)
+	if err != nil {
+		t.Fatalf("GetDistrictByNameInCity wrong city: %v", err)
+	}
+	if d != nil {
+		t.Errorf("expected nil for district in wrong city, got %+v", d)
+	}
+
+	// Not-found case.
+	d, err = repo.GetDistrictByNameInCity(ctx, "NONEXISTENT", makassarID)
+	if err != nil {
+		t.Fatalf("GetDistrictByNameInCity for non-existent should not error: %v", err)
+	}
+	if d != nil {
+		t.Errorf("expected nil for non-existent district, got %+v", d)
 	}
 }
 
