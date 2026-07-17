@@ -157,7 +157,7 @@ func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
-	reg, err := env.svc.RegisterStudent(ctx, school.ID, "Reissue Target", "brt1", nil, nil, nil, nil, nil, nil)
+	reg, err := env.svc.RegisterStudent(ctx, school.ID, "Reissue Target", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}

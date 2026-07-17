@@ -18,9 +18,13 @@ type User struct {
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	// student-only
-	NIS                *string    `json:"nis"`
-	UnlistedSchoolName *string    `json:"unlisted_school_name"`
-	DOB                *time.Time `json:"dob"`
+	Jenjang        string     `json:"jenjang"`
+	ProvinsiID     *string    `json:"provinsi_id"`
+	KotaID         *string    `json:"kota_id"`
+	KecamatanID    *string    `json:"kecamatan_id"`
+	KodePos        *string    `json:"kode_pos"`
+	UnlistedSchoolName *string `json:"unlisted_school_name"`
+	DOB            *time.Time `json:"dob"`
 	Gender         *string    `json:"gender"`
 	Grade          *int       `json:"grade"`
 	AlamatDomisili *string    `json:"alamat_domisili"`

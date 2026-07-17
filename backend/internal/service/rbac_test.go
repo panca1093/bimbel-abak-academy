@@ -10,7 +10,7 @@ func TestCapabilities_knownRoles(t *testing.T) {
 		{RoleStudent, 0},
 		{RoleAdminExam, 5},
 		{RoleAdminStore, 7},
-		{RoleAdminSchool, 2},
+		{RoleAdminSchool, 3},
 		{RoleSuperAdmin, 1},
 	}
 	for _, tc := range cases {

@@ -9,6 +9,7 @@ import (
 )
 
 // AdminListStudents returns cursor-paginated students scoped to the caller's school.
+// Supports optional grade and jenjang query filters.
 func (h *Handler) AdminListStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
 	schoolID, err := h.resolveSchoolScope(c, claims)
@@ -33,7 +34,15 @@ func (h *Handler) AdminListStudents(c echo.Context) error {
 		}
 	}
 
-	students, nextCursor, err := h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor)
+	var grade *int
+	if g := c.QueryParam("grade"); g != "" {
+		if n, err := strconv.Atoi(g); err == nil {
+			grade = &n
+		}
+	}
+	jenjang := c.QueryParam("jenjang")
+
+	students, nextCursor, err := h.svc.ListStudents(c.Request().Context(), schoolID, statusFilter, q, limit, cursor, grade, jenjang)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -57,19 +66,23 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 
 	var req struct {
 		Name           string  `json:"name"`
-		NIS            string  `json:"nis"`
+		Jenjang        string  `json:"jenjang"`
 		Email          *string `json:"email"`
 		DOB            *string `json:"dob"`
 		Gender         *string `json:"gender"`
 		Grade          *int    `json:"grade"`
 		AlamatDomisili *string `json:"alamat_domisili"`
 		TargetExam     *string `json:"target_exam"`
+		ProvinsiID     *string `json:"provinsi_id"`
+		KotaID         *string `json:"kota_id"`
+		KecamatanID    *string `json:"kecamatan_id"`
+		KodePos        *string `json:"kode_pos"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	if req.Name == "" || req.NIS == "" {
-		return badRequest(c, "name and nis are required")
+	if req.Name == "" || req.Jenjang == "" {
+		return badRequest(c, "name and jenjang are required")
 	}
 
 	var dob *time.Time
@@ -81,7 +94,7 @@ func (h *Handler) AdminRegisterStudent(c echo.Context) error {
 		dob = &parsed
 	}
 
-	resp, err := h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.NIS, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam)
+	resp, err := h.svc.RegisterStudent(c.Request().Context(), schoolID, req.Name, req.Jenjang, req.Email, dob, req.Gender, req.Grade, req.AlamatDomisili, req.TargetExam, req.ProvinsiID, req.KotaID, req.KecamatanID, req.KodePos)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

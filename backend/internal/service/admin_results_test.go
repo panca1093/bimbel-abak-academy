@@ -215,7 +215,7 @@ func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionI
 	detail := model.AdminResultDetail{
 		SessionID:    sess.SessionID,
 		StudentName:  sess.StudentName,
-		NIS:          sess.Username,
+		Username:     sess.Username,
 		Score:        score,
 		SubmittedAt:  sess.SubmittedAt,
 		ResultConfig: exam.ResultConfig,

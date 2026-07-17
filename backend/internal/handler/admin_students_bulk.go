@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -32,15 +34,28 @@ func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 }
 
 // AdminBulkImportStudents enqueues an async student_bulk job from an
-// already-uploaded CSV.
+// already-uploaded CSV. Branches on role instead of using resolveSchoolScope:
+// admin_school is pinned to their own school; super_admin has no school bound
+// and derives the storage key prefix from the fileKey itself.
 func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveSchoolScope(c, claims)
-	if scopeHandled(err) {
+
+	var schoolID string
+
+	switch claims.Role {
+	case "super_admin":
+		// super_admin: school is determined per-row from the CSV; skip
+		// resolveSchoolScope entirely. schoolID will be extracted from
+		// fileKey below for storage validation.
+	case "admin_school":
+		if claims.SchoolID == nil {
+			c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+			return nil
+		}
+		schoolID = *claims.SchoolID
+	default:
+		c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "insufficient permissions"})
 		return nil
-	}
-	if err != nil {
-		return err
 	}
 
 	var req struct {
@@ -51,6 +66,21 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 	}
 	if req.FileKey == "" {
 		return badRequest(c, "file_key is required")
+	}
+
+	// For super_admin, extract schoolID from the fileKey prefix (the presign
+	// endpoint already encoded it into the key). This is only needed for
+	// storage-level validation in EnqueueStudentBulkJob; the actual school
+	// scope is per-row from the CSV.
+	if claims.Role == "super_admin" {
+		parts := strings.SplitN(req.FileKey, "/", 3)
+		if len(parts) < 3 || parts[0] != "student-bulk" {
+			return badRequest(c, "invalid file_key")
+		}
+		schoolID = parts[1]
+		if _, err := uuid.Parse(schoolID); err != nil {
+			return badRequest(c, "invalid file_key")
+		}
 	}
 
 	jobID, err := h.svc.EnqueueStudentBulkJob(c.Request().Context(), schoolID, claims.Sub, req.FileKey)

@@ -23,15 +23,18 @@ func (r *Repository) CreateUser(ctx context.Context, u *model.User) error {
 		`INSERT INTO users (
 			email, username, phone, password_hash, role, name,
 			school_id, photo_url, status, otp_enabled, auth_provider,
-			nis, dob, gender, grade, alamat_domisili, target_exam
+			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
+			dob, gender, grade, alamat_domisili, target_exam
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
 			$7, $8, $9, $10, $11,
-			$12, $13, $14, $15, $16, $17
+			$12, $13, $14, $15, $16,
+			$17, $18, $19, $20, $21
 		) RETURNING id, created_at, updated_at`,
 		u.Email, u.Username, u.Phone, u.PasswordHash, u.Role, u.Name,
 		u.SchoolID, u.PhotoURL, u.Status, u.OTPEnabled, u.AuthProvider,
-		u.NIS, u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam,
+		u.Jenjang, u.ProvinsiID, u.KotaID, u.KecamatanID, u.KodePos,
+		u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
@@ -41,14 +44,16 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*model.U
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
 			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
-			nis, unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
+			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
+			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE email = $1 AND status != 'deleted'`,
 		email,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
 		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
-		&u.NIS, &u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
+		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
+		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -64,14 +69,16 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
 			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
-			nis, unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
+			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
+			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE username = $1 AND status != 'deleted'`,
 		username,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
 		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
-		&u.NIS, &u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
+		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
+		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -87,14 +94,16 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, e
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
 			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
-			nis, unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
+			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
+			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE id = $1`,
 		id,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
 		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
-		&u.NIS, &u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
+		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
+		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -126,7 +135,7 @@ func (r *Repository) ActivateUser(ctx context.Context, userID string) (bool, err
 
 // UpdateUserProfile patches the editable profile fields. nil args leave the
 // column unchanged via COALESCE. Email normalization is the caller's job.
-func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string) error {
+func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users
 		SET name = COALESCE($1, name),
@@ -138,9 +147,14 @@ func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name,
 		    grade = COALESCE($7, grade),
 		    school_id = COALESCE($8, school_id),
 		    unlisted_school_name = COALESCE($9, unlisted_school_name),
+		    jenjang = COALESCE($10, jenjang),
+		    provinsi_id = COALESCE($11, provinsi_id),
+		    kota_id = COALESCE($12, kota_id),
+		    kecamatan_id = COALESCE($13, kecamatan_id),
+		    kode_pos = COALESCE($14, kode_pos),
 		    updated_at = now()
-		WHERE id = $10`,
-		name, email, username, phone, address, targetExam, grade, schoolID, unlistedSchoolName, userID,
+		WHERE id = $15`,
+		name, email, username, phone, address, targetExam, grade, schoolID, unlistedSchoolName, jenjang, provinsiID, kotaID, kecamatanID, kodePos, userID,
 	)
 	return err
 }

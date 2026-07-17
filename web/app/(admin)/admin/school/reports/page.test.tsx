@@ -80,14 +80,14 @@ const sampleResultRows: AdminResultRow[] = [
   {
     session_id: "s1",
     student_name: "Budi Santoso",
-    nis: "12345",
+    username: "12345",
     score: 85,
     submitted_at: "2026-01-15T00:00:00Z",
   },
   {
     session_id: "s2",
     student_name: "Siti Aisyah",
-    nis: "67890",
+    username: "67890",
     score: 92,
     submitted_at: "2026-02-20T00:00:00Z",
   },
@@ -101,7 +101,7 @@ const paginatedResponse = (rows: AdminResultRow[]) => ({
 const scoreOnlyDetail: AdminResultDetail = {
   session_id: "s1",
   student_name: "Budi Santoso",
-  nis: "12345",
+  username: "12345",
   score: 85,
   submitted_at: "2026-01-15T00:00:00Z",
   result_config: "score_only",
@@ -113,7 +113,7 @@ const scoreOnlyDetail: AdminResultDetail = {
 const scorePembahasanDetail: AdminResultDetail = {
   session_id: "s2",
   student_name: "Siti Aisyah",
-  nis: "67890",
+  username: "67890",
   score: 92,
   submitted_at: "2026-02-20T00:00:00Z",
   result_config: "score_pembahasan",
@@ -204,7 +204,7 @@ describe("SchoolReportsPage", () => {
       expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
     });
 
-    // Check NIS and score columns
+    // Check Username and score columns
     expect(screen.getByText("12345")).toBeInTheDocument();
     expect(screen.getByText("67890")).toBeInTheDocument();
     expect(screen.getByText("85")).toBeInTheDocument();

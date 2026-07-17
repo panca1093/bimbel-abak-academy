@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/service"
@@ -12,7 +13,7 @@ import (
 // studentBulkProcessor covers just the row-processing step so *service.Service
 // (concrete, real-DB-backed) can be swapped for a fake at the worker-dispatch level.
 type studentBulkProcessor interface {
-	ProcessStudentBulkRows(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
+	ProcessStudentBulkRows(ctx context.Context, schoolBound *string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
 }
 
 // runStudentBulkJob downloads the job's input CSV, processes each row through
@@ -21,11 +22,17 @@ type studentBulkProcessor interface {
 // finishes the job as failed with the job's progress left unchanged.
 func (w *Worker) runStudentBulkJob(ctx context.Context, job model.Job) {
 	user, err := w.jobRepo.GetUserByID(ctx, job.CreatedBy)
-	if err != nil || user == nil || user.SchoolID == nil {
-		w.failStudentBulkJob(ctx, job, fmt.Sprintf("resolve owning school: %v", err))
+	if err != nil || user == nil {
+		w.failStudentBulkJob(ctx, job, fmt.Sprintf("resolve owning user: %v", err))
 		return
 	}
-	schoolID := *user.SchoolID
+
+	// schoolBound restricts row school resolution: non-nil = all rows must
+	// match this school; nil = no restriction (super_admin cross-school).
+	var schoolBound *string
+	if user.SchoolID != nil {
+		schoolBound = user.SchoolID
+	}
 
 	if job.InputURL == nil {
 		w.failStudentBulkJob(ctx, job, "missing input_url")
@@ -49,14 +56,21 @@ func (w *Worker) runStudentBulkJob(ctx context.Context, job model.Job) {
 		}
 	}
 
-	results, successCount, err := w.svc.ProcessStudentBulkRows(ctx, schoolID, rows, onProgress)
+	results, successCount, err := w.svc.ProcessStudentBulkRows(ctx, schoolBound, rows, onProgress)
 	if err != nil {
 		w.failStudentBulkJob(ctx, job, fmt.Sprintf("process rows: %v", err))
 		return
 	}
 
 	reportCSV := service.BuildStudentBulkResultCSV(results)
-	resultKey := fmt.Sprintf("student-bulk/%s/results/%s.csv", schoolID, job.ID)
+
+	// Derive the result key prefix from the input URL path to keep results
+	// co-located with the source CSV (handles super_admin where the creator
+	// has no SchoolID).
+	// InputURL format: "student-bulk/{schoolID}/uuid-filename"
+	inputParts := strings.SplitN(*job.InputURL, "/", 3)
+	resultSchoolID := inputParts[1] // schoolID from the key prefix
+	resultKey := fmt.Sprintf("student-bulk/%s/results/%s.csv", resultSchoolID, job.ID)
 	if err := w.objectStore.PutObjectBytes(ctx, w.privateBucket, resultKey, reportCSV, "text/csv"); err != nil {
 		w.failStudentBulkJob(ctx, job, fmt.Sprintf("upload result: %v", err))
 		return

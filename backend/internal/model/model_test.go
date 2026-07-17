@@ -23,7 +23,6 @@ var _ = User{
 	OTPEnabled:     false,
 	CreatedAt:      time.Time{},
 	UpdatedAt:      time.Time{},
-	NIS:            nil,
 	DOB:            nil,
 	Gender:         nil,
 	Grade:          nil,

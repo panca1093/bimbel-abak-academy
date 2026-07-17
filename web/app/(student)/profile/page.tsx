@@ -582,13 +582,6 @@ export default function ProfilePage() {
                   )}
                 </div>
                 <Field
-                  id="nis"
-                  label={t("nis")}
-                  value={profile?.nis}
-                  locked
-                  isLoading={isLoading}
-                />
-                <Field
                   id="address"
                   label={t("address")}
                   value={address}

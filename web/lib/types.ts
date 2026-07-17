@@ -47,22 +47,30 @@ export interface AdminStudent {
   id: string;
   name: string;
   username: string;
-  nis: string;
+  jenjang: string;
   email?: string;
   status: string;
   grade?: number;
+  provinsi_id?: string;
+  kota_id?: string;
+  kecamatan_id?: string;
+  kode_pos?: string;
   created_at: string;
 }
 
 export interface StudentRegistrationInput {
   name: string;
-  nis: string;
+  jenjang: string;
   email?: string;
   dob?: string;
   gender?: string;
   grade?: number;
   alamat_domisili?: string;
   target_exam?: string;
+  provinsi_id?: string;
+  kota_id?: string;
+  kecamatan_id?: string;
+  kode_pos?: string;
 }
 
 export interface StudentRegistrationResult extends AdminStudent {
@@ -919,12 +927,31 @@ export interface ExamAnalytics {
   distribution: ScoreBucket[];
 }
 
+// ── Province/city/district reference types (Task 5/17) ──────────────────────
+
+export interface Province {
+  id: string;
+  name: string;
+}
+
+export interface City {
+  id: string;
+  province_id: string;
+  name: string;
+}
+
+export interface District {
+  id: string;
+  city_id: string;
+  name: string;
+}
+
 // ── Admin Results (FR-SCHOOL-08) ───────────────────────────────────────────
 
 export interface AdminResultRow {
   session_id: string;
   student_name: string;
-  nis?: string | null;
+  username?: string | null;
   score: number;
   submitted_at: string;
 }
@@ -932,7 +959,7 @@ export interface AdminResultRow {
 export interface AdminResultDetail {
   session_id: string;
   student_name: string;
-  nis?: string | null;
+  username?: string | null;
   score: number;
   submitted_at: string;
   result_config: string;

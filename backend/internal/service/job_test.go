@@ -14,7 +14,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	schoolID := createTestSchool(t, svc)
-	reg, err := svc.RegisterStudent(ctx, schoolID, "Job Creator", "jc_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	reg, err := svc.RegisterStudent(ctx, schoolID, "Job Creator", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestEnqueueStudentBulkJob_RejectsFileKeyOutsideCallersSchool_Integration(t 
 
 	schoolA := createTestSchool(t, svc)
 	schoolB := createTestSchool(t, svc)
-	reg, err := svc.RegisterStudent(ctx, schoolA, "Job Creator", "jc_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	reg, err := svc.RegisterStudent(ctx, schoolA, "Job Creator", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -95,11 +95,11 @@ func TestGetJobStatus_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	schoolID := createTestSchool(t, svc)
-	owner, err := svc.RegisterStudent(ctx, schoolID, "Job Owner", "jo_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	owner, err := svc.RegisterStudent(ctx, schoolID, "Job Owner", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
-	other, err := svc.RegisterStudent(ctx, schoolID, "Not Owner", "no_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	other, err := svc.RegisterStudent(ctx, schoolID, "Not Owner", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestGetJobStatus_SucceededWithResultURL_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	schoolID := createTestSchool(t, svc)
-	owner, err := svc.RegisterStudent(ctx, schoolID, "Result Owner", "ro_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	owner, err := svc.RegisterStudent(ctx, schoolID, "Result Owner", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestClaimNextJob_ConcurrentClaims_Integration(t *testing.T) {
 	}
 
 	schoolID := createTestSchool(t, svc)
-	owner, err := svc.RegisterStudent(ctx, schoolID, "Claimer", "cl_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	owner, err := svc.RegisterStudent(ctx, schoolID, "Claimer", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}

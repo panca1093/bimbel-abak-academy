@@ -83,7 +83,7 @@ type fakeStudentBulkProcessor struct {
 	processFn func(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error)
 }
 
-func (f *fakeStudentBulkProcessor) ProcessStudentBulkRows(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
+func (f *fakeStudentBulkProcessor) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
 	return f.processFn(ctx, schoolID, rows, onProgress)
 }
 
@@ -171,8 +171,8 @@ func TestRunStudentBulkJobSucceedsUploadsReportAndFinishesSucceeded(t *testing.T
 			}
 			onProgress(100)
 			return []service.StudentBulkResultRow{
-				{Name: "Ali", NIS: "111", Status: "success", Username: "ali1", TempPassword: "temp1"},
-				{Name: "Budi", NIS: "222", Status: "success", Username: "budi1", TempPassword: "temp2"},
+				{Name: "Ali", Status: "success", Username: "ali1", TempPassword: "temp1"},
+				{Name: "Budi", Status: "success", Username: "budi1", TempPassword: "temp2"},
 			}, 2, nil
 		},
 	}
@@ -232,8 +232,8 @@ func TestRunStudentBulkJobZeroSuccessesFinishesFailedButKeepsResultURL(t *testin
 	svc := &fakeStudentBulkProcessor{
 		processFn: func(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
 			return []service.StudentBulkResultRow{
-				{Name: "Ali", NIS: "111", Status: "failed", Error: "duplicate_nis"},
-				{Name: "Budi", NIS: "222", Status: "failed", Error: "duplicate_nis"},
+				{Name: "Ali", Status: "failed", Error: "duplicate_nis"},
+				{Name: "Budi", Status: "failed", Error: "duplicate_nis"},
 			}, 0, nil
 		},
 	}
@@ -385,7 +385,7 @@ func TestRunStudentBulkJobFailsWhenUploadFails(t *testing.T) {
 	}
 	svc := &fakeStudentBulkProcessor{
 		processFn: func(ctx context.Context, schoolID string, rows []service.StudentBulkRow, onProgress func(int)) ([]service.StudentBulkResultRow, int, error) {
-			return []service.StudentBulkResultRow{{Name: "Ali", NIS: "111", Status: "success"}}, 1, nil
+			return []service.StudentBulkResultRow{{Name: "Ali", Status: "success"}}, 1, nil
 		},
 	}
 

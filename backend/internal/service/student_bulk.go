@@ -12,13 +12,16 @@ import (
 const maxBulkRows = 1000
 
 var (
-	ErrInvalidCSV       = errors.New("invalid csv")
-	ErrMissingCSVHeader = errors.New("csv missing required name/jenjang header")
-	ErrRowLimitExceeded = errors.New("row limit exceeded")
+	ErrInvalidCSV          = errors.New("invalid csv")
+	ErrMissingCSVHeader    = errors.New("csv missing required name/jenjang/school header")
+	ErrRowLimitExceeded    = errors.New("row limit exceeded")
+	ErrSchoolNotFoundByName = errors.New("school not found by name")
+	ErrCrossSchoolBound    = errors.New("school mismatch: row school differs from bound school")
 )
 
 type StudentBulkRow struct {
 	Name      string
+	School    string
 	Email     *string
 	Jenjang   string
 	Provinsi  *string
@@ -29,6 +32,7 @@ type StudentBulkRow struct {
 
 type StudentBulkResultRow struct {
 	Name         string
+	School       string
 	Email        string
 	Status       string
 	Username     string
@@ -36,8 +40,9 @@ type StudentBulkResultRow struct {
 	Error        string
 }
 
-// ParseStudentBulkCSV reads a student-bulk upload. jenjang is required; nis is
-// ignored if present; provinsi/kota/kecamatan/kode_pos are optional.
+// ParseStudentBulkCSV reads a student-bulk upload. jenjang and school are
+// required; nis is ignored if present; provinsi/kota/kecamatan/kode_pos are
+// optional.
 func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 	r := csv.NewReader(bytes.NewReader(data))
 
@@ -49,7 +54,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		return nil, ErrInvalidCSV
 	}
 
-	nameIdx, jenjangIdx, emailIdx := -1, -1, -1
+	nameIdx, jenjangIdx, schoolIdx, emailIdx := -1, -1, -1, -1
 	provinsiIdx, kotaIdx, kecamatanIdx, kodePosIdx := -1, -1, -1, -1
 	for i, h := range header {
 		switch strings.ToLower(strings.TrimSpace(h)) {
@@ -57,6 +62,8 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			nameIdx = i
 		case "jenjang":
 			jenjangIdx = i
+		case "school":
+			schoolIdx = i
 		case "email":
 			emailIdx = i
 		case "provinsi":
@@ -70,7 +77,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		// "nis" is intentionally ignored
 		}
 	}
-	if nameIdx == -1 || jenjangIdx == -1 {
+	if nameIdx == -1 || jenjangIdx == -1 || schoolIdx == -1 {
 		return nil, ErrMissingCSVHeader
 	}
 
@@ -89,6 +96,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 
 		row := StudentBulkRow{
 			Name:    record[nameIdx],
+			School:  record[schoolIdx],
 			Jenjang: record[jenjangIdx],
 		}
 		if emailIdx != -1 && record[emailIdx] != "" {
@@ -119,7 +127,9 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 
 // ProcessStudentBulkRows applies RegisterStudent to each row, resolving
 // province/city/district names to IDs before passing them to RegisterStudent.
-func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolID string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
+// schoolBound, when non-nil, restricts every row's resolved school to match it.
+// nil means no restriction (super_admin cross-school).
+func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
 	results := make([]StudentBulkResultRow, len(rows))
 	successCount := 0
 
@@ -129,10 +139,46 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolID string, r
 	}
 
 	for i, r := range rows {
-		result := StudentBulkResultRow{Name: r.Name}
+		result := StudentBulkResultRow{Name: r.Name, School: r.School}
 		if r.Email != nil {
 			result.Email = *r.Email
 		}
+
+		// Resolve School name to school_id.
+		school, err := s.storeRepo.GetSchoolByNameCI(ctx, r.School)
+		if err != nil {
+			result.Status = "failed"
+			result.Error = err.Error()
+			results[i] = result
+			if onProgress != nil && (i+1)%checkpoint == 0 {
+				onProgress((i + 1) * 100 / len(rows))
+			}
+			continue
+		}
+		if school == nil {
+			result.Status = "failed"
+			result.Error = ErrSchoolNotFoundByName.Error()
+			results[i] = result
+			if onProgress != nil && (i+1)%checkpoint == 0 {
+				onProgress((i + 1) * 100 / len(rows))
+			}
+			continue
+		}
+
+		// Check school bound.
+		if schoolBound != nil && school.ID != *schoolBound {
+			result.Status = "failed"
+			result.Error = ErrCrossSchoolBound.Error()
+			results[i] = result
+			if onProgress != nil && (i+1)%checkpoint == 0 {
+				onProgress((i + 1) * 100 / len(rows))
+			}
+			continue
+		}
+
+		schoolID := school.ID
+		// Update result School with resolved name (captures canonical casing).
+		result.School = school.Name
 
 		// Resolve address names to IDs (all-or-nothing).
 		var provinsiID, kotaID, kecamatanID, kodePos *string
@@ -252,9 +298,9 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolID string, r
 func BuildStudentBulkResultCSV(results []StudentBulkResultRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"name", "email", "status", "username", "temp_password", "error"})
+	_ = w.Write([]string{"name", "school", "email", "status", "username", "temp_password", "error"})
 	for _, r := range results {
-		_ = w.Write([]string{r.Name, r.Email, r.Status, r.Username, r.TempPassword, r.Error})
+		_ = w.Write([]string{r.Name, r.School, r.Email, r.Status, r.Username, r.TempPassword, r.Error})
 	}
 	w.Flush()
 	return buf.Bytes()

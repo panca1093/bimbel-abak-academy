@@ -23,10 +23,10 @@ let reissueState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending
 // Auth store mock
 let authStore: {
   token: string | null;
-  user: { role?: string; name?: string } | null;
+  user: { role?: string; name?: string; school_id?: string } | null;
 } = {
   token: "t",
-  user: { role: "admin_school" },
+  user: { role: "admin_school", school_id: "s1" },
 };
 
 // Schools mock
@@ -51,6 +51,19 @@ vi.mock("@/lib/hooks/admin-schools", () => ({
   useAdminSchools: () => schoolsState,
 }));
 
+vi.mock("@/lib/hooks/students", () => ({
+  useSchools: () => ({
+    data: [{ id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA", "SMK"] }],
+    isLoading: false,
+  }),
+}));
+
+vi.mock("@/lib/hooks/regions", () => ({
+  useProvinces: () => ({ data: [], isLoading: false }),
+  useCitiesByProvince: () => ({ data: [], isLoading: false }),
+  useDistrictsByCity: () => ({ data: [], isLoading: false }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
@@ -63,7 +76,7 @@ const sampleStudents: AdminStudent[] = [
     id: "st1",
     name: "Budi Santoso",
     username: "budi",
-    nis: "12345",
+    jenjang: "SMA",
     email: "budi@test.com",
     status: "active",
     grade: 12,
@@ -73,7 +86,7 @@ const sampleStudents: AdminStudent[] = [
     id: "st2",
     name: "Siti Aisyah",
     username: "siti",
-    nis: "67890",
+    jenjang: "SMK",
     status: "deactivated",
     grade: 11,
     created_at: "2026-02-20T00:00:00Z",
@@ -89,7 +102,7 @@ describe("SchoolStudentsPage", () => {
   beforeEach(() => {
     authStore = {
       token: "t",
-      user: { role: "admin_school" },
+      user: { role: "admin_school", school_id: "s1" },
     };
     schoolsState = {
       data: { data: [{ id: "s1", name: "SMAN 1 Jakarta" }, { id: "s2", name: "SMAN 2 Bandung" }], next_cursor: undefined },
@@ -155,8 +168,8 @@ describe("SchoolStudentsPage", () => {
       expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/NIS: 12345/)).toBeInTheDocument();
-    expect(screen.getByText(/NIS: 67890/)).toBeInTheDocument();
+    expect(screen.getByText(/@budi/)).toBeInTheDocument();
+    expect(screen.getByText(/@siti/)).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("11")).toBeInTheDocument();
     expect(screen.getAllByText("Aktif").length).toBeGreaterThanOrEqual(1);
@@ -177,7 +190,7 @@ describe("SchoolStudentsPage", () => {
       id: "st3",
       name: "Dewi Lestari",
       username: "dewi",
-      nis: "11111",
+      jenjang: "SMA",
       status: "active",
       created_at: "2026-03-01T00:00:00Z",
       temp_password: "tempPass321",
@@ -196,8 +209,11 @@ describe("SchoolStudentsPage", () => {
     const nameInput = screen.getByPlaceholderText("Nama Lengkap");
     fireEvent.input(nameInput, { target: { value: "Dewi Lestari" } });
 
-    const nisInput = screen.getByPlaceholderText("NIS");
-    fireEvent.input(nisInput, { target: { value: "11111" } });
+    // Select Jenjang from the required select
+    const jenjangTrigger = screen.getByRole("combobox", { name: /jenjang/i });
+    fireEvent.click(jenjangTrigger);
+    const smaOption = await screen.findByRole("option", { name: "SMA" });
+    fireEvent.click(smaOption);
 
     // Click the submit button inside the dialog
     const dialog = screen.getByRole("dialog");
@@ -207,7 +223,7 @@ describe("SchoolStudentsPage", () => {
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
-          input: expect.objectContaining({ name: "Dewi Lestari", nis: "11111" }),
+          input: expect.objectContaining({ name: "Dewi Lestari", jenjang: "SMA" }),
         }),
       );
       expect(toast.success).toHaveBeenCalledWith("Siswa berhasil didaftarkan.");
@@ -331,8 +347,11 @@ describe("SchoolStudentsPage", () => {
     const nameInput = screen.getByPlaceholderText("Nama Lengkap");
     fireEvent.input(nameInput, { target: { value: "Gagal Student" } });
 
-    const nisInput = screen.getByPlaceholderText("NIS");
-    fireEvent.input(nisInput, { target: { value: "99999" } });
+    // Select Jenjang
+    const jenjangTrigger = screen.getByRole("combobox", { name: /jenjang/i });
+    fireEvent.click(jenjangTrigger);
+    const smaOption = await screen.findByRole("option", { name: "SMA" });
+    fireEvent.click(smaOption);
 
     const dialog = screen.getByRole("dialog");
     const submitBtn = within(dialog).getByRole("button", { name: /daftarkan siswa/i });

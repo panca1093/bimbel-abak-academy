@@ -186,7 +186,7 @@ func (s *Service) ListSchools(ctx context.Context) ([]*model.School, error) {
 	return s.repo.ListSchools(ctx)
 }
 
-func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string) (*model.User, error) {
+func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*model.User, error) {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -207,7 +207,69 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, name, email,
 		normalizedEmail = &e
 	}
 
-	if err := s.repo.UpdateUserProfile(ctx, userID, name, normalizedEmail, username, phone, address, targetExam, grade, schoolID, unlistedSchoolName); err != nil {
+	// Resolve the school_id to use for jenjang validation: use the
+	// newly-submitted value if provided, otherwise the user's existing one.
+	var resolveSchoolID string
+	if schoolID != nil {
+		resolveSchoolID = *schoolID
+	} else if user.SchoolID != nil {
+		resolveSchoolID = *user.SchoolID
+	}
+
+	// Validate jenjang against school_types when a school is resolvable.
+	if jenjang != nil && resolveSchoolID != "" {
+		school, err := s.storeRepo.GetSchoolByID(ctx, resolveSchoolID)
+		if err != nil {
+			return nil, err
+		}
+		if school != nil && len(school.SchoolTypes) > 0 && !jenjangInSchoolTypes(*jenjang, school.SchoolTypes) {
+			return nil, ErrInvalidJenjang
+		}
+	}
+
+	// All-or-nothing address validation (FR-REG-02a).
+	addrCount := 0
+	if provinsiID != nil {
+		addrCount++
+	}
+	if kotaID != nil {
+		addrCount++
+	}
+	if kecamatanID != nil {
+		addrCount++
+	}
+	if addrCount > 0 && addrCount < 3 {
+		return nil, ErrIncompleteAddress
+	}
+
+	// If all three address fields are present, validate each.
+	if addrCount == 3 {
+		prov, err := s.storeRepo.GetProvinceByID(ctx, *provinsiID)
+		if err != nil {
+			return nil, err
+		}
+		if prov == nil {
+			return nil, ErrInvalidProvinsi
+		}
+
+		city, err := s.storeRepo.GetCityByID(ctx, *kotaID)
+		if err != nil {
+			return nil, err
+		}
+		if city == nil || city.ProvinceID != *provinsiID {
+			return nil, ErrInvalidKota
+		}
+
+		district, err := s.storeRepo.GetDistrictByID(ctx, *kecamatanID)
+		if err != nil {
+			return nil, err
+		}
+		if district == nil || district.CityID != *kotaID {
+			return nil, ErrInvalidKecamatan
+		}
+	}
+
+	if err := s.repo.UpdateUserProfile(ctx, userID, name, normalizedEmail, username, phone, address, targetExam, grade, schoolID, unlistedSchoolName, jenjang, provinsiID, kotaID, kecamatanID, kodePos); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return nil, ErrEmailTaken

@@ -115,12 +115,22 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "school_required", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolNotAllowed):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "school_not_allowed", Message: err.Error()}
-	case errors.Is(err, service.ErrDuplicateNIS):
-		status, apiErr = http.StatusConflict, APIError{Code: "duplicate_nis", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolDeactivated):
 		status, apiErr = http.StatusConflict, APIError{Code: "school_deactivated", Message: err.Error()}
 	case errors.Is(err, service.ErrStudentNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "student_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidJenjang):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_jenjang", Message: err.Error()}
+	case errors.Is(err, service.ErrIncompleteAddress):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "incomplete_address", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidProvinsi):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_provinsi", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidKota):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_kota", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidKecamatan):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_kecamatan", Message: err.Error()}
+	case errors.Is(err, service.ErrUsernameGenerationExhausted):
+		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "username_generation_exhausted", Message: err.Error()}
 	case errors.Is(err, service.ErrUploadNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "upload_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidCSV):
@@ -163,6 +173,14 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "section_locked", Message: err.Error()}
 	case errors.Is(err, service.ErrSectionNotActive):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "section_not_active", Message: err.Error()}
+	case errors.Is(err, service.ErrCrossSchoolStudent):
+		status, apiErr = http.StatusForbidden, APIError{Code: "cross_school_student", Message: err.Error()}
+	case errors.Is(err, service.ErrEmptySelector):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrZeroNetNewParticipants):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "zero_net_new", Message: err.Error()}
+	case errors.Is(err, service.ErrExamNotOrderable):
+		status, apiErr = http.StatusNotFound, APIError{Code: "exam_not_orderable", Message: err.Error()}
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}

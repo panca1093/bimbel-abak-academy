@@ -72,6 +72,28 @@ func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Prod
 	return p, nil
 }
 
+// GetProductByExamID returns the exam-type product linked to the given exam
+// via product_exam. Returns ErrNotFound when no product is linked or the
+// linked product is not of type "exam".
+func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (*model.Product, error) {
+	p := &model.Product{}
+	err := scanProduct(r.pool.QueryRow(ctx,
+		`SELECT p.id, p.type, p.name, p.description, p.price, p.stock, p.status,
+		        p.weight_grams, p.image_url, p.created_at, p.updated_at
+		 FROM product p
+		 JOIN product_exam pe ON pe.product_id = p.id
+		 WHERE pe.exam_id = $1 AND p.type = 'exam'`,
+		examID,
+	), p)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return p, nil
+}
+
 func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]model.Product, string, error) {
 	if filter.Limit == 0 {
 		filter.Limit = 20

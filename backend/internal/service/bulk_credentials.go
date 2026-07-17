@@ -36,9 +36,6 @@ func (s *Service) ReissueStudentCredentialsBulk(ctx context.Context, schoolID st
 		}
 		if student != nil {
 			row.Name = student.Name
-			if student.NIS != nil {
-				row.NIS = *student.NIS
-			}
 		}
 
 		creds, err := s.ReissueStudentCredentials(ctx, schoolID, id)
@@ -97,9 +94,9 @@ func (s *Service) collectAllStudentIDs(ctx context.Context, schoolID string) ([]
 func BuildCredentialsResultCSV(rows []StudentBulkResultRow) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"name", "nis", "username", "temp_password", "error"})
+	_ = w.Write([]string{"name", "username", "temp_password", "error"})
 	for _, r := range rows {
-		_ = w.Write([]string{r.Name, r.NIS, r.Username, r.TempPassword, r.Error})
+		_ = w.Write([]string{r.Name, r.Username, r.TempPassword, r.Error})
 	}
 	w.Flush()
 	return buf.Bytes()

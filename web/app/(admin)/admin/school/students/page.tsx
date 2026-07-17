@@ -48,6 +48,8 @@ import {
   useReissueStudentCredentials,
 } from "@/lib/hooks/admin-students";
 import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useSchools } from "@/lib/hooks/students";
+import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 import { useAuthStore } from "@/stores/auth";
 import type {
   AdminStudent,
@@ -130,13 +132,17 @@ export default function SchoolStudentsPage() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registerForm, setRegisterForm] = useState<StudentRegistrationInput>({
     name: "",
-    nis: "",
+    jenjang: "",
     email: "",
     dob: "",
     gender: "",
     grade: undefined,
     alamat_domisili: "",
     target_exam: "",
+    provinsi_id: undefined,
+    kota_id: undefined,
+    kecamatan_id: undefined,
+    kode_pos: undefined,
   });
   const [registerResult, setRegisterResult] =
     useState<StudentRegistrationResult | null>(null);
@@ -162,8 +168,22 @@ export default function SchoolStudentsPage() {
     [accumulated]
   );
 
+  // Region hooks (Task 17)
+  const { data: provinces, isLoading: provincesLoading } = useProvinces();
+  const { data: cities, isLoading: citiesLoading } = useCitiesByProvince(registerForm.provinsi_id);
+  const { data: districts, isLoading: districtsLoading } = useDistrictsByCity(registerForm.kota_id);
+
+  // Jenjang options from target school's school_types
+  const currentUser = useAuthStore((s) => s.user);
+  const { data: publicSchools } = useSchools();
+  const adminOwnSchool = publicSchools?.find((s) => s.id === currentUser?.school_id);
+  const adminOwnSchoolTypes = adminOwnSchool?.school_types ?? [];
+  const selectedSchoolObj = schoolsData?.data?.find((s) => s.id === selectedSchoolId);
+  const superAdminSchoolTypes = selectedSchoolObj?.school_types ?? [];
+  const jenjangOptions = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
+
   const handleRegister = async () => {
-    if (!registerForm.name || !registerForm.nis) {
+    if (!registerForm.name || !registerForm.jenjang) {
       toast.error(t("accounts_toast_required"));
       return;
     }
@@ -236,13 +256,17 @@ export default function SchoolStudentsPage() {
     setRegisterResult(null);
     setRegisterForm({
       name: "",
-      nis: "",
+      jenjang: "",
       email: "",
       dob: "",
       gender: "",
       grade: undefined,
       alamat_domisili: "",
       target_exam: "",
+      provinsi_id: undefined,
+      kota_id: undefined,
+      kecamatan_id: undefined,
+      kode_pos: undefined,
     });
   };
 
@@ -429,7 +453,7 @@ export default function SchoolStudentsPage() {
                           {s.name}
                         </div>
                         <div className="text-[11px] text-ink-500">
-                          NIS: {s.nis} · @{s.username}
+                          @{s.username}
                         </div>
                       </div>
                     </div>
@@ -612,19 +636,29 @@ export default function SchoolStudentsPage() {
                 </div>
                 <div>
                   <Label>
-                    {t("students_field_nis")}{" "}
+                    {t("students_field_jenjang")}{" "}
                     <span className="text-danger">*</span>
                   </Label>
-                  <Input
-                    value={registerForm.nis}
-                    onChange={(e) =>
+                  <Select
+                    value={registerForm.jenjang}
+                    onValueChange={(v) =>
                       setRegisterForm((f) => ({
                         ...f,
-                        nis: e.target.value,
+                        jenjang: v,
                       }))
                     }
-                    placeholder={t("students_field_nis")}
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t("students_field_jenjang")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {jenjangOptions.map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {opt}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label>{t("students_field_email")}</Label>
@@ -721,6 +755,97 @@ export default function SchoolStudentsPage() {
                     }
                     placeholder={t("students_field_alamat_domisili")}
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>{t("students_field_provinsi")}</Label>
+                    <Select
+                      value={registerForm.provinsi_id ?? ""}
+                      onValueChange={(v) =>
+                        setRegisterForm((f) => ({
+                          ...f,
+                          provinsi_id: v || undefined,
+                          kota_id: undefined,
+                          kecamatan_id: undefined,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("students_field_provinsi")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(provinces ?? []).map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t("students_field_kota")}</Label>
+                    <Select
+                      value={registerForm.kota_id ?? ""}
+                      onValueChange={(v) =>
+                        setRegisterForm((f) => ({
+                          ...f,
+                          kota_id: v || undefined,
+                          kecamatan_id: undefined,
+                        }))
+                      }
+                      disabled={!registerForm.provinsi_id}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("students_field_kota")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(cities ?? []).map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>{t("students_field_kecamatan")}</Label>
+                    <Select
+                      value={registerForm.kecamatan_id ?? ""}
+                      onValueChange={(v) =>
+                        setRegisterForm((f) => ({
+                          ...f,
+                          kecamatan_id: v || undefined,
+                        }))
+                      }
+                      disabled={!registerForm.kota_id}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("students_field_kecamatan")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(districts ?? []).map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t("students_field_kode_pos")}</Label>
+                    <Input
+                      value={registerForm.kode_pos ?? ""}
+                      onChange={(e) =>
+                        setRegisterForm((f) => ({
+                          ...f,
+                          kode_pos: e.target.value || undefined,
+                        }))
+                      }
+                      placeholder={t("students_field_kode_pos")}
+                    />
+                  </div>
                 </div>
               </div>
               <DialogFooter className="mt-4">
