@@ -188,7 +188,7 @@ func newTestService(t *testing.T, repo UserRepository) (*Service, *miniredis.Min
 func TestRegister(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("happy path creates user", func(t *testing.T) {
+	t.Run("happy path creates user with username", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
 		pending, err := svc.Register(ctx, "New@Example.com", "password123", "Budi")
@@ -211,6 +211,15 @@ func TestRegister(t *testing.T) {
 		if !mr.Exists("otp:" + u.ID) {
 			t.Error("otp key should be stored after register")
 		}
+		if u.Username == nil {
+			t.Fatal("username should be set")
+		}
+		if !strings.HasPrefix(*u.Username, "budi") {
+			t.Errorf("Username %q: want prefix 'budi'", *u.Username)
+		}
+		if len(*u.Username) != 8 {
+			t.Errorf("Username %q: want 8 chars (4 base + 4 digits), got %d", *u.Username, len(*u.Username))
+		}
 	})
 
 	t.Run("duplicate email", func(t *testing.T) {
@@ -229,6 +238,43 @@ func TestRegister(t *testing.T) {
 		_, err := svc.Register(ctx, "x@example.com", "short", "Budi")
 		if !errors.Is(err, ErrWeakPassword) {
 			t.Errorf("want ErrWeakPassword, got %v", err)
+		}
+	})
+
+	t.Run("username generation exhaustion fails account creation", func(t *testing.T) {
+		repo := &collisionRepo{fakeUserRepo: *newFakeUserRepo(), blockUntil: 99}
+		svc, _ := newTestService(t, repo)
+		_, err := svc.Register(ctx, "exhausted@example.com", "password123", "Budi Santoso")
+		if !errors.Is(err, ErrUsernameGenerationExhausted) {
+			t.Errorf("want ErrUsernameGenerationExhausted, got %v", err)
+		}
+		u, _ := repo.GetUserByEmail(ctx, "exhausted@example.com")
+		if u != nil {
+			t.Error("user should not have been created when username generation failed")
+		}
+	})
+
+	t.Run("can login with generated username (FR-SELFREG-03)", func(t *testing.T) {
+		repo := newFakeUserRepo()
+		svc, _ := newTestService(t, repo)
+		_, err := svc.Register(ctx, "loginuser@example.com", "password123", "Login User")
+		if err != nil {
+			t.Fatalf("Register: %v", err)
+		}
+		u, _ := repo.GetUserByEmail(ctx, "loginuser@example.com")
+		if u == nil || u.Username == nil {
+			t.Fatal("user/username not created")
+		}
+		_, _, pending, err := svc.Login(ctx, *u.Username, "password123")
+		if !errors.Is(err, ErrVerificationPending) {
+			t.Fatalf("Login with username: want ErrVerificationPending, got %v", err)
+		}
+		if pending == "" {
+			t.Error("Login with username: want non-empty pending_token")
+		}
+		_, _, _, err = svc.Login(ctx, *u.Username, "wrongpassword")
+		if !errors.Is(err, ErrInvalidCredentials) {
+			t.Errorf("Login with wrong password: want ErrInvalidCredentials, got %v", err)
 		}
 	})
 
