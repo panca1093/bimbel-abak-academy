@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"time"
@@ -78,6 +79,51 @@ func gradeMultiAnswer(answer string, options []model.QuestionOption) bool {
 	return true
 }
 
+// gradeMultiBlank grades a multi_blank question by unmarshaling the answer
+// string (JSON array of strings) and comparing each blank against the
+// corresponding question_blank.correct_answer (case-insensitive, trimmed).
+// Per-blank scoring: empty -> 0, correct -> +point_correct, wrong -> -point_wrong.
+// The question's score is the sum of per-blank scores (not independently clamped).
+// On JSON unmarshal failure, returns 0 (all blanks treated as empty).
+// IsCorrect is true only if all attempted blanks are correct (no wrong blanks).
+func gradeMultiBlank(answer *string, blanks []model.QuestionBlank, pointCorrect, pointWrong int) (float64, bool) {
+	if answer == nil || *answer == "" {
+		return 0, false
+	}
+
+	var answers []string
+	if err := json.Unmarshal([]byte(*answer), &answers); err != nil {
+		return 0, false
+	}
+
+	var score float64
+	var hasAnswer bool
+	var anyWrong bool
+	for _, blank := range blanks {
+		// Blank indices are 1-based; array positions are 0-based
+		answerIdx := blank.Index - 1
+		var blankAnswer string
+		if answerIdx >= 0 && answerIdx < len(answers) {
+			blankAnswer = strings.TrimSpace(answers[answerIdx])
+		}
+
+		if blankAnswer == "" {
+			continue
+		}
+
+		hasAnswer = true
+		if strings.EqualFold(blankAnswer, strings.TrimSpace(blank.CorrectAnswer)) {
+			score += float64(pointCorrect)
+		} else {
+			score -= float64(pointWrong)
+			anyWrong = true
+		}
+	}
+
+	isCorrect := hasAnswer && !anyWrong
+	return score, isCorrect
+}
+
 // gradeObjective grades all objective questions per the points model (FR-S5-06..10).
 // Essay questions are returned with is_correct=nil, score=nil, graded_at=nil (not
 // auto-graded — awaits manual grading).
@@ -86,6 +132,7 @@ func gradeMultiAnswer(answer string, options []model.QuestionOption) bool {
 // (a positive magnitude authored per question — the engine applies the sign); empty
 // answers score 0 and are never penalized. Objective answers are stamped graded_at=now()
 // since they are auto-graded at submit time. The returned total is clamped at 0 (FR-S5-10).
+// Multi_blank questions score the sum of per-blank points (unclamped per-question).
 func gradeObjective(questions []model.QuestionWithOptions, answers map[uuid.UUID]*string) ([]model.ExamSessionAnswer, float64) {
 	now := time.Now()
 	graded := make([]model.ExamSessionAnswer, 0, len(questions))
@@ -98,6 +145,21 @@ func gradeObjective(questions []model.QuestionWithOptions, answers map[uuid.UUID
 			graded = append(graded, model.ExamSessionAnswer{
 				QuestionID: q.Question.ID,
 				Answer:     ans,
+			})
+			continue
+		}
+
+		if q.Question.Format == "multi_blank" {
+			score, anyCorrect := gradeMultiBlank(ans, q.Blanks, q.Question.PointCorrect, q.Question.PointWrong)
+			sum += score
+
+			gradedAt := now
+			graded = append(graded, model.ExamSessionAnswer{
+				QuestionID: q.Question.ID,
+				Answer:     ans,
+				IsCorrect:  &anyCorrect,
+				Score:      &score,
+				GradedAt:   &gradedAt,
 			})
 			continue
 		}

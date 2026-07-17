@@ -68,6 +68,66 @@ func TestGroupQuestionsByTest_derivesTestIDAndOrderFromOwningTest(t *testing.T) 
 	}
 }
 
+func TestGroupQuestionsByTest_populates_AudioURL_and_Blanks(t *testing.T) {
+	testID := uuid.New()
+	qID1 := uuid.New()
+	qID2 := uuid.New()
+	audioURL := "https://example.com/audio.mp3"
+
+	tests := []model.TestDetail{
+		{
+			Test: model.Test{ID: testID, Title: "T1"},
+			Questions: []model.QuestionWithOptions{
+				{
+					Question: model.Question{
+						ID:       qID1,
+						Format:   "multi_blank",
+						AudioURL: &audioURL,
+					},
+					Blanks: []model.QuestionBlank{
+						{QuestionID: qID1, Index: 1, CorrectAnswer: "jakarta"},
+						{QuestionID: qID1, Index: 2, CorrectAnswer: "1945"},
+					},
+					SortOrder: 1,
+				},
+				{
+					Question: model.Question{ID: qID2, Format: "mcq"},
+					SortOrder: 2,
+				},
+			},
+		},
+	}
+
+	grouped := groupQuestionsByTest(tests)
+
+	if len(grouped) != 1 {
+		t.Fatalf("want 1 test, got %d", len(grouped))
+	}
+	if len(grouped[0].Questions) != 2 {
+		t.Fatalf("want 2 questions, got %d", len(grouped[0].Questions))
+	}
+
+	// First question: multi_blank with AudioURL and Blanks
+	q1 := grouped[0].Questions[0]
+	if q1.AudioURL == nil || *q1.AudioURL != audioURL {
+		t.Errorf("question[0].audio_url: want %v, got %v", audioURL, q1.AudioURL)
+	}
+	if len(q1.Blanks) != 2 {
+		t.Fatalf("question[0].blanks: want 2, got %d", len(q1.Blanks))
+	}
+	if q1.Blanks[0] != 1 || q1.Blanks[1] != 2 {
+		t.Errorf("question[0].blanks: want [1,2], got [%v,%v]", q1.Blanks[0], q1.Blanks[1])
+	}
+	// Second question: no audio or blanks
+	q2 := grouped[0].Questions[1]
+	if q2.AudioURL != nil {
+		t.Errorf("question[1].audio_url: want nil, got %v", q2.AudioURL)
+	}
+	if len(q2.Blanks) != 0 {
+		t.Errorf("question[1].blanks: want empty, got %v", q2.Blanks)
+	}
+}
+
 // ---------- fakeSessionRepo ----------
 
 type fakeSessionRepo struct {

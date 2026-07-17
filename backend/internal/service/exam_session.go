@@ -56,6 +56,8 @@ type SessionQuestion struct {
 	Format    string           `json:"format"`
 	Body      string           `json:"body"`
 	Options   []SessionOption  `json:"options"`
+	AudioURL  *string          `json:"audio_url,omitempty"`
+	Blanks    []int            `json:"blanks,omitempty"`
 	SortOrder int              `json:"sort_order"`
 }
 
@@ -118,7 +120,8 @@ var validViolationTypes = map[string]bool{
 // groupQuestionsByTest groups questions by their parent test and strips
 // correct_answer / is_correct from the student-facing payload. Per-question
 // test_id and sort_order come from the owning test context, not from the bank
-// question (FR-26).
+// question (FR-26). Populates audio_url from the question and blanks (ordered
+// indices only, never correct_answer) for multi_blank questions.
 func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 	var out []SessionTestPayload
 	for _, td := range tests {
@@ -134,6 +137,7 @@ func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 				TestID:    td.Test.ID,
 				Format:    q.Question.Format,
 				Body:      q.Question.Body,
+				AudioURL:  q.Question.AudioURL,
 				SortOrder: q.SortOrder,
 			}
 			for _, o := range q.Options {
@@ -143,6 +147,12 @@ func groupQuestionsByTest(tests []model.TestDetail) []SessionTestPayload {
 					ImageURL:  o.ImageURL,
 					SortOrder: o.SortOrder,
 				})
+			}
+			// Populate blanks (ordered indices) for multi_blank questions
+			if q.Question.Format == "multi_blank" {
+				for _, b := range q.Blanks {
+					sq.Blanks = append(sq.Blanks, b.Index)
+				}
 			}
 			st.Questions = append(st.Questions, sq)
 		}
