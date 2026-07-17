@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import {
   Bold,
@@ -15,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { fileUrl } from "@/lib/api";
-import { usePresignUpload } from "@/lib/hooks/students";
+import { usePresignAdminImageUpload } from "@/lib/hooks/admin-uploads";
 
 interface RichTextEditorProps {
   value: string;
@@ -35,11 +36,18 @@ function isEffectivelyEmpty(html: string): boolean {
   return true;
 }
 
+function sanitizeClipboardHtml(html: string): string {
+  const ALLOWED_TAGS = ["b", "i", "u", "ul", "ol", "li", "sup", "sub", "img"];
+  // For pasted content, only allow src/alt on img, no style attributes
+  const ALLOWED_ATTR = ["src", "alt"];
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
+}
+
 export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby }: RichTextEditorProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
-  const presign = usePresignUpload();
+  const presign = usePresignAdminImageUpload();
 
   // On mount only, mirror `value` into the contentEditable if it differs.
   useEffect(() => {
@@ -66,6 +74,25 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
     const sel = typeof window !== "undefined" ? window.getSelection() : null;
     const chosen = sel ? sel.toString() : "";
     exec("insertText", chosen ? `\\(${chosen}\\)` : "\\(\\ \\)");
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const html = e.clipboardData?.getData("text/html");
+
+    if (html) {
+      const sanitized = sanitizeClipboardHtml(html);
+      if (sanitized) {
+        exec("insertHTML", sanitized);
+      }
+    } else {
+      // Fall back to plain text if HTML is not available.
+      // Use insertText to insert literal text without parsing markup.
+      const text = e.clipboardData?.getData("text/plain") || "";
+      if (text) {
+        exec("insertText", text);
+      }
+    }
   }
 
   async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
@@ -221,6 +248,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           suppressContentEditableWarning
           onInput={sync}
           onBlur={sync}
+          onPaste={handlePaste}
           className="min-h-[130px] px-3 py-2 text-sm leading-relaxed outline-none"
         />
         {empty && placeholder && (

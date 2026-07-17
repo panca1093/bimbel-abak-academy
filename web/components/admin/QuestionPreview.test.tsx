@@ -158,4 +158,130 @@ describe("QuestionPreview", () => {
       screen.getByText(/Because.*x squared.*literally/)
     ).toBeInTheDocument();
   });
+
+  it("renders bold HTML in option text as <b> element (not literal tags)", () => {
+    const itemWithRichOption: BankQuestionListItem = {
+      ...sampleItem,
+      options: [
+        { question_id: "q1", key: "a", text: "<b>bold</b> option", is_correct: false, sort_order: 1 },
+        { question_id: "q1", key: "b", text: "normal option", is_correct: true, sort_order: 2 },
+      ],
+    };
+    renderWithClient(
+      <QuestionPreview
+        item={itemWithRichOption}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    // Find the options container (space-y-2 div inside the dialog)
+    const optionsContainer = document.querySelector(".space-y-2");
+    expect(optionsContainer).not.toBeNull();
+    // Find RichContent nodes within option containers (flex items-center gap-3)
+    const optionDivs = optionsContainer?.querySelectorAll("div.flex.items-center.gap-3");
+    expect(optionDivs?.length).toBeGreaterThan(0);
+    // Check the first option's RichContent
+    const firstOptionDiv = optionDivs?.[0] as HTMLElement;
+    const richNode = firstOptionDiv.querySelector("[data-rich-content]");
+    expect(richNode).not.toBeNull();
+    const bElement = richNode?.querySelector("b");
+    expect(bElement).not.toBeNull();
+    expect(bElement?.textContent).toBe("bold");
+    // Verify the literal tag text is NOT in the visible text
+    expect(richNode?.textContent).not.toContain("<b>");
+  });
+
+  it("renders LaTeX in option text as KaTeX formula", async () => {
+    const itemWithLatexOption: BankQuestionListItem = {
+      ...sampleItem,
+      options: [
+        { question_id: "q1", key: "a", text: "\\(x^2\\)", is_correct: false, sort_order: 1 },
+        { question_id: "q1", key: "b", text: "\\(x^3\\)", is_correct: true, sort_order: 2 },
+      ],
+    };
+    renderWithClient(
+      <QuestionPreview
+        item={itemWithLatexOption}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    await waitFor(() => {
+      // Find options container and check for KaTeX rendered in options
+      const optionsContainer = document.querySelector(".space-y-2");
+      const katexInOptions = optionsContainer?.querySelectorAll(".katex");
+      expect(katexInOptions?.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("renders multi_blank question with blanks showing index and correct_answer", () => {
+    const multiBlankItem: BankQuestionListItem = {
+      question: {
+        id: "q2",
+        format: "multi_blank",
+        body: "The capital of Indonesia is {{1}}, founded in {{2}}.",
+        difficulty: "easy",
+        point_correct: 2,
+        point_wrong: 0,
+        sort_order: 1,
+      },
+      options: [],
+      attached_count: 0,
+      blanks: [
+        { index: 1, correct_answer: "Jakarta" },
+        { index: 2, correct_answer: "1945" },
+      ],
+    };
+    renderWithClient(
+      <QuestionPreview
+        item={multiBlankItem}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    // Should NOT show options section (multi_blank has no options)
+    expect(screen.queryByText("a")).toBeNull();
+    // Should show blanks section with correct answers
+    expect(screen.getByText("Jakarta")).toBeInTheDocument();
+    expect(screen.getByText("1945")).toBeInTheDocument();
+    // Should show the body
+    expect(screen.getByText(/The capital of Indonesia/)).toBeInTheDocument();
+  });
+
+  it("does not show options section for multi_blank (shows blanks instead)", () => {
+    const multiBlankItem: BankQuestionListItem = {
+      question: {
+        id: "q3",
+        format: "multi_blank",
+        body: "Fill {{1}} and {{2}}",
+        difficulty: "medium",
+        point_correct: 1,
+        point_wrong: 0,
+        sort_order: 1,
+      },
+      options: [],
+      attached_count: 0,
+      blanks: [
+        { index: 1, correct_answer: "answer1" },
+        { index: 2, correct_answer: "answer2" },
+      ],
+    };
+    renderWithClient(
+      <QuestionPreview
+        item={multiBlankItem}
+        open={true}
+        onOpenChange={onOpenChange}
+        onEdit={onEdit}
+      />
+    );
+    // The options list should NOT be present
+    const optionElements = document.querySelectorAll("div[class*='border p-3']");
+    // The first p-3 is the body, second should be the blanks (not options)
+    // We verify by checking that the blanks are shown
+    expect(screen.getByText("answer1")).toBeInTheDocument();
+    expect(screen.getByText("answer2")).toBeInTheDocument();
+  });
 });

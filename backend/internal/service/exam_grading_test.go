@@ -521,3 +521,117 @@ func TestObjectiveCounts_missingAnswerRow_countsAsEmpty(t *testing.T) {
 	assert.Equal(t, 0, wrong)
 	assert.Equal(t, 1, empty)
 }
+
+// ---- gradeMultiBlank (FR-20/21/22/24) ----
+
+func multiBlankQuestion(id uuid.UUID, pointCorrect, pointWrong int, correctAnswers []string) model.QuestionWithOptions {
+	blanks := make([]model.QuestionBlank, len(correctAnswers))
+	for i, ans := range correctAnswers {
+		blanks[i] = model.QuestionBlank{
+			QuestionID:    id,
+			Index:         i + 1,
+			CorrectAnswer: ans,
+		}
+	}
+	return model.QuestionWithOptions{
+		Question: model.Question{ID: id, Format: "multi_blank", Body: "Stem", PointCorrect: pointCorrect, PointWrong: pointWrong},
+		Blanks:   blanks,
+	}
+}
+
+func TestGradingMultiBlank_correctAndEmpty_FR20(t *testing.T) {
+	// FR-20: blank 1 correct, blank 2 empty -> +point_correct + 0 = 2
+	q := multiBlankQuestion(uuid.New(), 2, 1, []string{"jakarta", "1945"})
+	answer := `["jakarta"]` // only blank 1 answered correctly
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 2.0, score)
+	assert.Len(t, graded, 1)
+	assert.True(t, *graded[0].IsCorrect)
+	assert.Equal(t, 2.0, *graded[0].Score)
+}
+
+func TestGradingMultiBlank_correctAndWrong_FR21(t *testing.T) {
+	// FR-21: blank 1 correct, blank 2 wrong -> +point_correct - point_wrong = 2-1 = 1
+	q := multiBlankQuestion(uuid.New(), 2, 1, []string{"jakarta", "1945"})
+	answer := `["jakarta","1946"]` // blank 1 correct, blank 2 wrong
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 1.0, score)
+	assert.Len(t, graded, 1)
+	assert.False(t, *graded[0].IsCorrect)
+	assert.Equal(t, 1.0, *graded[0].Score)
+}
+
+func TestGradingMultiBlank_allWrong_unclamped_FR22(t *testing.T) {
+	// FR-22: both blanks wrong -> -1 - 1 = -2, not clamped per-question, only session-level
+	q := multiBlankQuestion(uuid.New(), 2, 1, []string{"jakarta", "1945"})
+	answer := `["bandung","1946"]` // both wrong
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score, "session total is clamped to 0")
+	assert.Len(t, graded, 1)
+	assert.False(t, *graded[0].IsCorrect)
+	assert.Equal(t, -2.0, *graded[0].Score, "per-question score is -2 (unclamped)")
+}
+
+func TestGradingMultiBlank_malformedJSON_FR24(t *testing.T) {
+	// FR-24: malformed JSON -> treat all blanks as empty -> score 0
+	q := multiBlankQuestion(uuid.New(), 2, 1, []string{"jakarta", "1945"})
+	answer := `invalid-json`
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 0.0, score)
+	assert.Len(t, graded, 1)
+	assert.False(t, *graded[0].IsCorrect)
+	assert.Equal(t, 0.0, *graded[0].Score)
+}
+
+func TestGradingMultiBlank_caseInsensitiveTrim(t *testing.T) {
+	// Same comparator as fill_blank: case-insensitive and trimmed
+	q := multiBlankQuestion(uuid.New(), 2, 1, []string{"jakarta", "1945"})
+	answer := `["  JAKARTA  ","  1945  "]`
+	answers := map[uuid.UUID]*string{q.Question.ID: &answer}
+
+	graded, score := gradeObjective([]model.QuestionWithOptions{q}, answers)
+
+	assert.Equal(t, 4.0, score)
+	assert.True(t, *graded[0].IsCorrect)
+}
+
+func TestGradingObjective_multiBlankMixed_withOtherFormats(t *testing.T) {
+	// Full-session test: multi_blank + mcq + short to verify sum and session clamping
+	multiBlankQ := multiBlankQuestion(uuid.New(), 2, 1, []string{"jakarta", "1945"})
+	mcqQ := mcqQuestion(uuid.New(), 2, 1)
+	shortQ := model.QuestionWithOptions{
+		Question: model.Question{ID: uuid.New(), Format: "short", Body: "Q3", PointCorrect: 2, PointWrong: 1, CorrectAnswer: strPtr("answer")},
+	}
+
+	answers := map[uuid.UUID]*string{
+		multiBlankQ.Question.ID: strPtr(`["jakarta","1945"]`), // both correct: +2+2 = 4
+		mcqQ.Question.ID:        strPtr("b"),                   // correct: +2
+		shortQ.Question.ID:      strPtr("answer"),              // correct: +2
+	}
+
+	graded, score := gradeObjective(
+		[]model.QuestionWithOptions{multiBlankQ, mcqQ, shortQ},
+		answers,
+	)
+
+	assert.Equal(t, 8.0, score)
+	assert.Len(t, graded, 3)
+	assert.True(t, *graded[0].IsCorrect)  // multi_blank both correct
+	assert.Equal(t, 4.0, *graded[0].Score)
+	assert.True(t, *graded[1].IsCorrect)  // mcq correct
+	assert.Equal(t, 2.0, *graded[1].Score)
+	assert.True(t, *graded[2].IsCorrect)  // short correct
+	assert.Equal(t, 2.0, *graded[2].Score)
+}

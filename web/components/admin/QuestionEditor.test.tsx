@@ -31,6 +31,17 @@ vi.mock("@/lib/hooks/admin-topics", () => ({
   useTopics: () => ({ data: { data: mockTopics }, isLoading: false }),
 }));
 
+const mockPresignAudioAsync = vi.fn();
+let presignAudioState = { mutateAsync: mockPresignAudioAsync, isPending: false };
+
+vi.mock("@/lib/hooks/admin-uploads", () => ({
+  usePresignAdminAudioUpload: () => presignAudioState,
+  usePresignAdminImageUpload: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 function renderWithClient(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
@@ -100,6 +111,14 @@ describe("QuestionEditor", () => {
     mockUpdateBankAsync.mockReset();
     mockUpdateBankAsync.mockResolvedValue({ question: makeQuestion(), options: [] });
     updateBankState = { mutateAsync: mockUpdateBankAsync, isPending: false };
+
+    mockPresignAudioAsync.mockReset();
+    mockPresignAudioAsync.mockResolvedValue({
+      url: "https://upload.example.com/put-here",
+      method: "PUT",
+      key: "questions/uuid/audio.mp3",
+    });
+    presignAudioState = { mutateAsync: mockPresignAudioAsync, isPending: false };
   });
 
   it("renders create mode with format defaulting to mcq", () => {
@@ -119,8 +138,10 @@ describe("QuestionEditor", () => {
     );
 
     expect(screen.getByLabelText(/badan soal/i).textContent).toContain("Apa ibu kota Indonesia?");
-    expect(screen.getByDisplayValue("Jakarta")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Bandung")).toBeInTheDocument();
+    // Option text now uses RichTextEditor (contentEditable), check for text content
+    const optionTextElements = screen.getAllByLabelText(/teks opsi/i);
+    expect(optionTextElements.some((el) => el.textContent?.includes("Jakarta"))).toBe(true);
+    expect(optionTextElements.some((el) => el.textContent?.includes("Bandung"))).toBe(true);
 
     const radios = screen.getAllByRole("radio");
     const checked = radios.filter((r) => (r as HTMLInputElement).checked);
@@ -492,6 +513,231 @@ describe("QuestionEditor", () => {
         expect.objectContaining({
           question: undefined,
           input: expect.objectContaining({ topic_id: "topic-1" }),
+        })
+      );
+    });
+  });
+
+  // ── Multi-blank format (Task 7) ─────────────────────────────────────────
+
+  it("switching format to multi_blank shows blank editor instead of option editor", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(screen.getAllByRole("radio").length).toBeGreaterThan(0);
+
+    const formatSelect = screen.getByLabelText(/format/i);
+    fireEvent.change(formatSelect, { target: { value: "multi_blank" } });
+
+    // Should hide option editor (radios/checkboxes)
+    expect(screen.queryAllByRole("radio").length).toBe(0);
+    expect(screen.queryAllByRole("checkbox").length).toBe(0);
+  });
+
+  it("multi_blank question can be created with 2 blanks and saves with blanks array", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // Set format to multi_blank
+    const formatSelect = screen.getByLabelText(/format/i);
+    fireEvent.change(formatSelect, { target: { value: "multi_blank" } });
+
+    // Fill required fields
+    setBodyValue("Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+
+    // Fill in the blank correct answers
+    const blankInputs = screen.getAllByLabelText(/jawaban benar/i);
+    fireEvent.change(blankInputs[0], { target: { value: "Jakarta" } });
+    fireEvent.change(blankInputs[1], { target: { value: "1945" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            format: "multi_blank",
+            body: "Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.",
+            topic_id: "topic-1",
+            blanks: expect.arrayContaining([
+              expect.objectContaining({ index: 1, correct_answer: "Jakarta" }),
+              expect.objectContaining({ index: 2, correct_answer: "1945" }),
+            ]),
+          }),
+        })
+      );
+    });
+  });
+
+  // ── Rich-text option authoring (Task 7, FR-11) ─────────────────────────
+
+  it("mcq option text field is present in render (before rich-text swap)", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // Default format is mcq, should see option text fields (multiple inputs)
+    expect(screen.getAllByLabelText(/teks opsi/i).length).toBeGreaterThan(0);
+  });
+
+  // ── Per-question audio URL (Task 7, FR-25) ─────────────────────────────
+
+  it("audio_url field is present for every format", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // For mcq (default)
+    expect(screen.getByLabelText(/url audio/i)).toBeInTheDocument();
+  });
+
+  it("audio_url field is preserved and round-trips in save payload", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    const audioInput = screen.getByLabelText(/url audio/i);
+    fireEvent.change(audioInput, { target: { value: "https://example.com/audio.mp3" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            audio_url: "https://example.com/audio.mp3",
+          }),
+        })
+      );
+    });
+  });
+
+  it("audio_url field is empty/omitted when not filled", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    // Don't fill audio_url
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.not.objectContaining({
+            audio_url: expect.any(String),
+          }),
+        })
+      );
+    });
+  });
+
+  it("edit mode pre-fills audio_url if question has it", () => {
+    const qwo = makeQuestionWithOptions({
+      audio_url: "https://example.com/existing-audio.mp3",
+    });
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    const audioInput = screen.getByLabelText(/url audio/i) as HTMLInputElement;
+    expect(audioInput.value).toBe("https://example.com/existing-audio.mp3");
+  });
+
+  it("audio_url field uses AudioUploadInput with upload capability", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // AudioUploadInput renders both a text input and an upload button
+    const audioInput = screen.getByLabelText(/url audio/i) as HTMLInputElement;
+    expect(audioInput).toBeInTheDocument();
+
+    const uploadButton = screen.getByRole("button", { name: /upload audio/i });
+    expect(uploadButton).toBeInTheDocument();
+  });
+
+  it("selecting an audio file triggers presign and upload flow", async () => {
+    const onChange = vi.fn();
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={onChange} />
+    );
+
+    fillRequiredFields();
+
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    // Find the hidden file input for audio upload
+    const fileInput = document.querySelector('input[data-testid="audio-upload-input-question-audio-url"]') as HTMLInputElement;
+    expect(fileInput).toBeInTheDocument();
+
+    const file = new File(["audio data"], "test.mp3", { type: "audio/mpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Wait for presign call
+    await waitFor(() => {
+      expect(mockPresignAudioAsync).toHaveBeenCalledWith({
+        filename: "test.mp3",
+        content_type: "audio/mpeg",
+      });
+    });
+
+    // Verify fetch was called with PUT
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://upload.example.com/put-here",
+        expect.objectContaining({
+          method: "PUT",
+          body: file,
+        })
+      );
+    });
+
+    // Verify the audio_url field was populated with the result
+    await waitFor(() => {
+      const audioInput = screen.getByLabelText(/url audio/i) as HTMLInputElement;
+      expect(audioInput.value).toContain("audio.mp3");
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("pre-existing audio_url with AudioUploadInput still loads correctly", () => {
+    const qwo = makeQuestionWithOptions({
+      audio_url: "https://example.com/existing-audio.mp3",
+    });
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // AudioUploadInput should display the pre-existing URL
+    const audioInput = screen.getByDisplayValue("https://example.com/existing-audio.mp3");
+    expect(audioInput).toBeInTheDocument();
+  });
+
+  it("pre-existing audio_url saves correctly without forced re-upload", async () => {
+    const qwo = makeQuestionWithOptions({
+      audio_url: "https://example.com/existing-audio.mp3",
+    });
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // Don't upload a new file, just save
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            audio_url: "https://example.com/existing-audio.mp3",
+          }),
         })
       );
     });

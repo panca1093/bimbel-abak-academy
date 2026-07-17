@@ -10,6 +10,7 @@ import {
   Flag,
   BookOpen,
 } from "lucide-react";
+import DOMPurify from "dompurify";
 
 import {
   useReconnectSession,
@@ -523,6 +524,15 @@ export default function SessionPage() {
               <SectionAudioPlayer
                 audioUrl={activeTest.audio_url}
                 playLimit={activeTest.audio_play_limit}
+                testId="section-audio-player"
+              />
+            )}
+
+            {/* Per-question audio player (listening sections only) */}
+            {isSectioned && activeTest?.section_type === "listening" && currentQ?.audio_url && (
+              <SectionAudioPlayer
+                audioUrl={currentQ.audio_url}
+                testId="question-audio-player"
               />
             )}
 
@@ -721,13 +731,166 @@ function LegendItem({
   );
 }
 
+// Helper: sanitize HTML using same allowlist as RichContent
+const ALLOWED_TAGS = ["b", "i", "u", "ul", "ol", "li", "sup", "sub", "img"];
+const ALLOWED_ATTR = ["src", "alt", "style"];
+
+function sanitizeForRichContent(html: string): string {
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
+}
+
+// Component: render multi_blank with inline inputs
+function MultiBlankInput({
+  sanitizedHtml,
+  blanks,
+  currentValue,
+  onChange,
+  disabled,
+}: {
+  sanitizedHtml: string;
+  blanks: number[] | undefined;
+  currentValue: string;
+  onChange: (val: string) => void;
+  disabled: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const blankValuesRef = useRef<string[]>([]);
+
+  // Parse the current value as JSON array and sync to ref
+  // This effect ONLY syncs the ref, does not rebuild DOM
+  useEffect(() => {
+    let parsed: string[] = [];
+    if (currentValue) {
+      try {
+        parsed = JSON.parse(currentValue);
+        if (!Array.isArray(parsed)) {
+          parsed = [];
+        }
+      } catch {
+        parsed = [];
+      }
+    }
+
+    // Pad array to match blank count
+    if (blanks) {
+      while (parsed.length < blanks.length) {
+        parsed.push("");
+      }
+    }
+
+    blankValuesRef.current = parsed;
+  }, [currentValue, blanks]);
+
+  // Build DOM structure only when structure changes (sanitized HTML, blank count, disabled state)
+  // NOT when values change (currentValue)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !blanks || blanks.length === 0) return;
+
+    // Clear and set initial HTML
+    container.innerHTML = sanitizedHtml;
+
+    // Walk text nodes looking for {{N}} tokens
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT,
+      null,
+    );
+
+    const nodesToProcess: Array<{
+      node: Node;
+      matches: Array<{ text: string; num: number }>;
+    }> = [];
+    let currentNode: Node | null;
+
+    while ((currentNode = walker.nextNode())) {
+      const text = currentNode.textContent || "";
+      const regex = /\{\{(\d+)\}\}/g;
+      const matches: Array<{ text: string; num: number }> = [];
+      let match;
+
+      while ((match = regex.exec(text)) !== null) {
+        matches.push({
+          text: match[0],
+          num: parseInt(match[1], 10),
+        });
+      }
+
+      if (matches.length > 0) {
+        nodesToProcess.push({ node: currentNode, matches });
+      }
+    }
+
+    // Process in reverse order to avoid node shifting
+    for (let i = nodesToProcess.length - 1; i >= 0; i--) {
+      const { node, matches } = nodesToProcess[i];
+      const text = node.textContent || "";
+      let lastIndex = 0;
+      const fragment = document.createDocumentFragment();
+
+      for (const m of matches) {
+        const index = text.indexOf(m.text, lastIndex);
+        if (index !== -1) {
+          // Add text before the token
+          if (index > lastIndex) {
+            fragment.appendChild(
+              document.createTextNode(text.slice(lastIndex, index)),
+            );
+          }
+
+          // Create input for this blank (only if token is in 1..N range)
+          const blankIndex = m.num - 1;
+          if (blankIndex >= 0 && blankIndex < blanks.length) {
+            const input = document.createElement("input");
+            input.type = "text";
+            // Read from ref, which always has the latest values
+            input.value = blankValuesRef.current[blankIndex] || "";
+            input.disabled = disabled;
+            input.className =
+              "mx-1 inline-block w-20 border-b-2 border-brand-500 bg-transparent text-sm text-ink-900 outline-none disabled:opacity-60 disabled:cursor-not-allowed";
+            input.addEventListener("change", () => {
+              // Read current values from ref (always latest, no stale closure)
+              const newValues = [...blankValuesRef.current];
+              newValues[blankIndex] = input.value;
+              onChange(JSON.stringify(newValues));
+            });
+            input.addEventListener("input", () => {
+              // Read current values from ref (always latest, no stale closure)
+              const newValues = [...blankValuesRef.current];
+              newValues[blankIndex] = input.value;
+              onChange(JSON.stringify(newValues));
+            });
+            fragment.appendChild(input);
+          }
+
+          lastIndex = index + m.text.length;
+        }
+      }
+
+      // Add remaining text
+      if (lastIndex < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+
+      // Replace the node
+      node.parentNode?.replaceChild(fragment, node);
+    }
+  }, [sanitizedHtml, blanks, disabled]);
+
+  if (!blanks || blanks.length === 0) {
+    return <RichContent html={sanitizedHtml} />;
+  }
+
+  return <div ref={containerRef} className="text-base text-ink-900" />;
+}
+
 function renderAnswerInput(
   question: SessionQuestion,
   currentValue: string,
   onChange: (val: string) => void,
   disabled: boolean,
 ) {
-  const { format, options } = question;
+  const { format, options, blanks } = question;
 
   if (format === "mcq") {
     return (
@@ -750,7 +913,9 @@ function renderAnswerInput(
               disabled={disabled}
               className="size-4 accent-brand-600"
             />
-            <span className="text-sm text-ink-800">{opt.text}</span>
+            <div className="text-sm text-ink-800">
+              <RichContent html={sanitizeForRichContent(opt.text)} />
+            </div>
           </label>
         ))}
       </div>
@@ -785,10 +950,25 @@ function renderAnswerInput(
               disabled={disabled}
               className="size-4 accent-brand-600"
             />
-            <span className="text-sm text-ink-800">{opt.text}</span>
+            <div className="text-sm text-ink-800">
+              <RichContent html={sanitizeForRichContent(opt.text)} />
+            </div>
           </label>
         ))}
       </div>
+    );
+  }
+
+  if (format === "multi_blank") {
+    const sanitized = sanitizeForRichContent(question.body);
+    return (
+      <MultiBlankInput
+        sanitizedHtml={sanitized}
+        blanks={blanks}
+        currentValue={currentValue}
+        onChange={onChange}
+        disabled={disabled}
+      />
     );
   }
 

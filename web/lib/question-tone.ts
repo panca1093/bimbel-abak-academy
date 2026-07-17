@@ -6,6 +6,7 @@ export const FORMAT_TONE: Record<QuestionFormat, string> = {
   short: "bg-success-bg text-success",
   fill_blank: "bg-line-2 text-ink-600",
   essay: "bg-gold-bg text-gold",
+  multi_blank: "bg-line-2 text-ink-600",
 };
 
 export const DIFFICULTY_TONE: Record<string, string> = {

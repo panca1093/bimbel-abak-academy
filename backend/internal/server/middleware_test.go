@@ -186,3 +186,69 @@ func TestJWTMiddleware_ValidToken(t *testing.T) {
 		t.Errorf("claims.Sub = %q, want %q", gotClaims.Sub, "user1")
 	}
 }
+
+// FR-35: a student JWT (no "uploads:write" capability) hitting an
+// uploads:write-gated route is rejected 403, same as questions:*/tests:*.
+func TestRBACMiddleware_UploadsWrite_StudentForbidden(t *testing.T) {
+	signer, svc, mr := newTestDeps(t)
+
+	tokenStr, jti, err := signer.SignAccess("student1", service.RoleStudent, nil, nil)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	mr.Set("session:access:"+jti, "student1")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTMiddleware(svc, signer)
+	rbac := RBACMiddleware("uploads:write")
+
+	chain := mw(rbac(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	}))
+	err = chain(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d", rec.Code)
+	}
+}
+
+// FR-35 (positive case): admin_exam carries "uploads:write" (rbac.go's
+// roleCapabilities map) and passes the same gate.
+func TestRBACMiddleware_UploadsWrite_AdminExamAllowed(t *testing.T) {
+	signer, svc, mr := newTestDeps(t)
+
+	tokenStr, jti, err := signer.SignAccess("admin1", service.RoleAdminExam, nil, nil)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	mr.Set("session:access:"+jti, "admin1")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTMiddleware(svc, signer)
+	rbac := RBACMiddleware("uploads:write")
+
+	chain := mw(rbac(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	}))
+	err = chain(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rec.Code)
+	}
+}

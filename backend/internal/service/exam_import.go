@@ -227,14 +227,15 @@ func (s *Service) ProcessQuestionImportRows(ctx context.Context, rows []Question
 		q.TopicID = topicID
 
 		q.Body = sanitizeQuestionBody(q.Body)
-		if err := validateQuestion(q, row.Options); err != nil {
+		sanitizedOpts := sanitizeQuestionOptions(row.Options)
+		if err := validateQuestion(q, sanitizedOpts, nil); err != nil {
 			res.Status = "error"
 			res.Error = err.Error()
 			result.Rows[i] = res
 			continue
 		}
 
-		out, err := s.CreateBankQuestion(ctx, q, row.Options)
+		out, err := s.CreateBankQuestion(ctx, q, sanitizedOpts, nil)
 		if err != nil {
 			res.Status = "error"
 			res.Error = err.Error()

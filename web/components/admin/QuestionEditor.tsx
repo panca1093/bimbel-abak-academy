@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
+import { ImageUploadInput } from "@/components/admin/ImageUploadInput";
 import { useSaveQuestion } from "@/lib/hooks/admin-tests";
 import {
   useCreateBankQuestion,
@@ -42,6 +44,72 @@ function nextKey(existing: AdminQuestionOptionInput[]): string {
     if (!used.has(k)) return k;
   }
   return "x";
+}
+
+interface BlankEditorProps {
+  blanks: Array<{ index: number; correct_answer: string }>;
+  onChange: (next: Array<{ index: number; correct_answer: string }>) => void;
+  disabled: boolean;
+}
+
+function BlankEditor({ blanks, onChange, disabled }: BlankEditorProps) {
+  const { t } = useTranslation();
+
+  function update(index: number, patch: { correct_answer?: string }) {
+    onChange(blanks.map((b, i) => (i === index ? { ...b, ...patch } : b)));
+  }
+
+  function remove(index: number) {
+    if (blanks.length <= 1) return;
+    onChange(blanks.filter((_, i) => i !== index));
+  }
+
+  function add() {
+    onChange([
+      ...blanks,
+      { index: blanks.length + 1, correct_answer: "" },
+    ]);
+  }
+
+  return (
+    <div className="space-y-2">
+      {blanks.map((blank, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <div className="w-8 text-sm font-mono text-muted-foreground">
+            {`{{${blank.index}}}`}
+          </div>
+          <Input
+            aria-label={t("tests_field_correct_answer")}
+            value={blank.correct_answer}
+            onChange={(e) => update(index, { correct_answer: e.target.value })}
+            placeholder={t("tests_field_correct_answer")}
+            disabled={disabled}
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            onClick={() => remove(index)}
+            disabled={disabled || blanks.length <= 1}
+            aria-label={t("tests_remove_option")}
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={add}
+        disabled={disabled}
+      >
+        <Plus className="mr-1 size-4" />
+        {t("tests_add_option")}
+      </Button>
+    </div>
+  );
 }
 
 function OptionEditor({
@@ -91,57 +159,73 @@ function OptionEditor({
   return (
     <div className="space-y-2">
       {options.map((opt, index) => (
-        <div key={index} className="flex items-center gap-2">
-          <div className="w-8 text-sm font-mono uppercase text-muted-foreground">
-            {opt.key}
+        <div key={index} className="space-y-2 rounded-lg border p-2">
+          <div className="flex items-start gap-2">
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-mono uppercase text-muted-foreground">
+                  {opt.key}
+                </div>
+                <label className="ml-auto flex items-center gap-1 text-sm">
+                  {isSingle ? (
+                    <input
+                      type="radio"
+                      name={`question-correct-${format}`}
+                      checked={opt.is_correct}
+                      onChange={() => setCorrect(index, true)}
+                      disabled={disabled}
+                      aria-label={t("tests_field_option_is_correct")}
+                    />
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={opt.is_correct}
+                      onChange={(e) => setCorrect(index, e.target.checked)}
+                      disabled={disabled}
+                      aria-label={t("tests_field_option_is_correct")}
+                    />
+                  )}
+                  <span>{t("tests_field_option_is_correct")}</span>
+                </label>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  onClick={() => remove(index)}
+                  disabled={disabled || options.length <= 2}
+                  aria-label={t("tests_remove_option")}
+                >
+                  <Trash2 className="size-3" />
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                <label htmlFor={`option-text-${index}`} className="text-xs text-muted-foreground">
+                  {t("tests_field_option_text")}
+                </label>
+                <RichTextEditor
+                  id={`option-text-${index}`}
+                  aria-label={`${t("tests_field_option_text")} ${opt.key}`}
+                  value={opt.text}
+                  onChange={(html) => update(index, { text: html })}
+                  placeholder={t("tests_field_option_text")}
+                  disabled={disabled}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label htmlFor={`option-image-${index}`} className="text-xs text-muted-foreground">
+                  {t("tests_field_image_url")}
+                </label>
+                <ImageUploadInput
+                  id={`option-image-${index}`}
+                  aria-label={`${t("tests_field_image_url")} ${opt.key}`}
+                  value={opt.image_url ?? ""}
+                  onChange={(url) => update(index, { image_url: url || undefined })}
+                  placeholder="https://..."
+                  disabled={disabled}
+                />
+              </div>
+            </div>
           </div>
-          <Input
-            aria-label={t("tests_field_option_text")}
-            value={opt.text}
-            onChange={(e) => update(index, { text: e.target.value })}
-            placeholder={t("tests_field_option_text")}
-            disabled={disabled}
-            className="flex-1"
-          />
-          <Input
-            aria-label={`${t("tests_field_image_url")} ${opt.key}`}
-            value={opt.image_url ?? ""}
-            onChange={(e) => update(index, { image_url: e.target.value || undefined })}
-            placeholder={t("tests_field_image_url")}
-            disabled={disabled}
-            className="w-40"
-          />
-          <label className="flex items-center gap-1 text-sm">
-            {isSingle ? (
-              <input
-                type="radio"
-                name={`question-correct-${format}`}
-                checked={opt.is_correct}
-                onChange={() => setCorrect(index, true)}
-                disabled={disabled}
-                aria-label={t("tests_field_option_is_correct")}
-              />
-            ) : (
-              <input
-                type="checkbox"
-                checked={opt.is_correct}
-                onChange={(e) => setCorrect(index, e.target.checked)}
-                disabled={disabled}
-                aria-label={t("tests_field_option_is_correct")}
-              />
-            )}
-            <span>{t("tests_field_option_is_correct")}</span>
-          </label>
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            onClick={() => remove(index)}
-            disabled={disabled || options.length <= 2}
-            aria-label={t("tests_remove_option")}
-          >
-            <Trash2 className="size-3" />
-          </Button>
         </div>
       ))}
       <Button
@@ -158,15 +242,16 @@ function OptionEditor({
   );
 }
 
-const FORMAT_LABELS: Record<QuestionFormat, "tests_format_mcq" | "tests_format_multi_answer" | "tests_format_short" | "tests_format_fill_blank" | "tests_format_essay"> = {
+const FORMAT_LABELS: Record<QuestionFormat, "tests_format_mcq" | "tests_format_multi_answer" | "tests_format_short" | "tests_format_fill_blank" | "tests_format_essay" | "tests_format_multi_blank"> = {
   mcq: "tests_format_mcq",
   multi_answer: "tests_format_multi_answer",
   short: "tests_format_short",
   fill_blank: "tests_format_fill_blank",
   essay: "tests_format_essay",
+  multi_blank: "tests_format_multi_blank",
 };
 
-const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay"];
+const ALL_FORMATS: QuestionFormat[] = ["mcq", "multi_answer", "short", "fill_blank", "essay", "multi_blank"];
 
 
 function buildOptionsFromQuestion(q: QuestionWithOptions): AdminQuestionOptionInput[] {
@@ -192,8 +277,10 @@ function buildInput(
   difficulty: string,
   explanation: string,
   imageUrl: string,
+  audioUrl: string,
   correctAnswer: string,
   options: AdminQuestionOptionInput[],
+  blanks: Array<{ index: number; correct_answer: string }>,
   pointCorrect: string,
   pointWrong: string,
   topicId: string
@@ -208,6 +295,7 @@ function buildInput(
   if (difficulty) base.difficulty = difficulty;
   if (explanation.trim()) base.explanation = explanation.trim();
   if (imageUrl.trim()) base.image_url = imageUrl.trim();
+  if (audioUrl.trim()) base.audio_url = audioUrl.trim();
   if (format === "short" || format === "fill_blank") {
     base.correct_answer = correctAnswer.trim();
   }
@@ -220,6 +308,12 @@ function buildInput(
       sort_order: i + 1,
     }));
   }
+  if (format === "multi_blank") {
+    base.blanks = blanks.map((b) => ({
+      index: b.index,
+      correct_answer: b.correct_answer.trim(),
+    }));
+  }
   return base;
 }
 
@@ -228,6 +322,7 @@ function validate(
   body: string,
   correctAnswer: string,
   options: AdminQuestionOptionInput[],
+  blanks: Array<{ index: number; correct_answer: string }>,
   topicId: string
 ): { ok: true } | { ok: false; key: string } {
   if (!topicId) {
@@ -249,6 +344,16 @@ function validate(
       return { ok: false, key: "tests_validation_correct_answer_required" };
     }
   }
+  if (format === "multi_blank") {
+    if (blanks.length === 0) {
+      return { ok: false, key: "tests_validation_blanks_required" };
+    }
+    for (const blank of blanks) {
+      if (!blank.correct_answer.trim()) {
+        return { ok: false, key: "tests_validation_correct_answer_required" };
+      }
+    }
+  }
   return { ok: true };
 }
 
@@ -261,6 +366,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const [difficulty, setDifficulty] = useState<string>(question?.question.difficulty ?? "");
   const [explanation, setExplanation] = useState(question?.question.explanation ?? "");
   const [imageUrl, setImageUrl] = useState(question?.question.image_url ?? "");
+  const [audioUrl, setAudioUrl] = useState(question?.question.audio_url ?? "");
   const [correctAnswer, setCorrectAnswer] = useState(question?.question.correct_answer ?? "");
   const [pointCorrect, setPointCorrect] = useState(String(question?.question.point_correct ?? 1));
   const [pointWrong, setPointWrong] = useState(String(question?.question.point_wrong ?? 0));
@@ -269,6 +375,12 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     question ? buildOptionsFromQuestion(question) : [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
       { key: "b", text: "", is_correct: false, sort_order: 2 },
+    ]
+  );
+  const [blanks, setBlanks] = useState<Array<{ index: number; correct_answer: string }>>(
+    question?.blanks ?? [
+      { index: 1, correct_answer: "" },
+      { index: 2, correct_answer: "" },
     ]
   );
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -285,6 +397,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setDifficulty("");
       setExplanation("");
       setImageUrl("");
+      setAudioUrl("");
       setCorrectAnswer("");
       setPointCorrect("1");
       setPointWrong("0");
@@ -292,6 +405,10 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setOptions([
         { key: "a", text: "", is_correct: true, sort_order: 1 },
         { key: "b", text: "", is_correct: false, sort_order: 2 },
+      ]);
+      setBlanks([
+        { index: 1, correct_answer: "" },
+        { index: 2, correct_answer: "" },
       ]);
     }
   }, [question]);
@@ -301,7 +418,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   }
 
   async function handleSave() {
-    const result = validate(format, body, correctAnswer, options, topicId);
+    const result = validate(format, body, correctAnswer, options, blanks, topicId);
     if (!result.ok) {
       setErrorKey(result.key);
       return;
@@ -313,8 +430,10 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       difficulty,
       explanation,
       imageUrl,
+      audioUrl,
       correctAnswer,
       options,
+      blanks,
       pointCorrect,
       pointWrong,
       topicId
@@ -336,6 +455,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
 
   const showOptions = format === "mcq" || format === "multi_answer";
   const showCorrectAnswer = format === "short" || format === "fill_blank";
+  const showBlanks = format === "multi_blank";
   const errorMessage = errorKey ? t(errorKey as Parameters<typeof t>[0]) : null;
   const savePending = testSave.isPending || createBankQuestion.isPending || updateBankQuestion.isPending;
 
@@ -411,6 +531,17 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
             />
           </div>
 
+          <div className="grid gap-2">
+            <Label htmlFor="question-audio-url">{t("tests_field_audio_url")}</Label>
+            <AudioUploadInput
+              id="question-audio-url"
+              value={audioUrl}
+              onChange={setAudioUrl}
+              placeholder="https://..."
+              disabled={savePending}
+            />
+          </div>
+
           {showOptions && (
             <div className="grid gap-2">
               <Label>{t("tests_field_option_text")}</Label>
@@ -430,6 +561,17 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                 id="question-correct-answer"
                 value={correctAnswer}
                 onChange={(e) => setCorrectAnswer(e.target.value)}
+                disabled={savePending}
+              />
+            </div>
+          )}
+
+          {showBlanks && (
+            <div className="grid gap-2">
+              <Label>{t("tests_field_correct_answer")}</Label>
+              <BlankEditor
+                blanks={blanks}
+                onChange={setBlanks}
                 disabled={savePending}
               />
             </div>

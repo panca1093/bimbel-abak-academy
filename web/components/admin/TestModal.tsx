@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
 import { useTranslation } from "@/lib/i18n";
 import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/types";
 
@@ -217,10 +218,10 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
-                <Input
+                <AudioUploadInput
                   id="test-audio-url"
                   value={audioUrl}
-                  onChange={(e) => setAudioUrl(e.target.value)}
+                  onChange={setAudioUrl}
                   placeholder="https://..."
                   disabled={isPending}
                 />

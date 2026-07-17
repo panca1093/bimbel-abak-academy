@@ -102,11 +102,11 @@ func TestQuestionStruct(t *testing.T) {
 	typ := reflect.TypeOf((*Question)(nil)).Elem()
 	v := newModel(typ)
 
-	// Question has NO created_at (migration doesn't define one). 11 fields: id,
-	// format, body, correct_answer, explanation, difficulty, image_url, topic_id,
-	// topic, point_correct, point_wrong.
-	if typ.NumField() != 11 {
-		t.Fatalf("Question struct: got %d fields, want 11", typ.NumField())
+	// Question has NO created_at (migration doesn't define one). 12 fields: id,
+	// format, body, correct_answer, explanation, difficulty, image_url, audio_url,
+	// topic_id, topic, point_correct, point_wrong.
+	if typ.NumField() != 12 {
+		t.Fatalf("Question struct: got %d fields, want 12", typ.NumField())
 	}
 	if _, ok := typ.FieldByName("CreatedAt"); ok {
 		t.Errorf("Question must NOT have CreatedAt — migration 0014_exam.up.sql does not define it")
@@ -115,6 +115,7 @@ func TestQuestionStruct(t *testing.T) {
 	jsonTag(t, v, "Format", "format")
 	jsonTag(t, v, "CorrectAnswer", "correct_answer")
 	jsonTag(t, v, "ImageURL", "image_url")
+	jsonTag(t, v, "AudioURL", "audio_url")
 	jsonTag(t, v, "TopicID", "topic_id")
 	jsonTag(t, v, "Topic", "topic")
 	jsonTag(t, v, "PointCorrect", "point_correct")

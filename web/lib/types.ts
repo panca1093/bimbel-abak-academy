@@ -423,7 +423,7 @@ export interface AuditLogEntry {
 
 export type SystemConfig = Record<string, string>;
 
-export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay";
+export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay" | "multi_blank";
 
 export type SectionType = "listening" | "reading" | "writing";
 
@@ -448,6 +448,7 @@ export interface Question {
   explanation?: string | null;
   difficulty?: string | null;
   image_url?: string | null;
+  audio_url?: string | null;
   sort_order: number;
   point_correct: number;
   point_wrong: number;
@@ -467,6 +468,7 @@ export interface BankQuestionListItem {
   question: Question;
   options: QuestionOption[];
   attached_count: number;
+  blanks?: { index: number; correct_answer: string }[];
 }
 
 export interface BankQuestionListResponse {
@@ -486,6 +488,7 @@ export interface QuestionOption {
 export interface QuestionWithOptions {
   question: Question;
   options: QuestionOption[];
+  blanks?: { index: number; correct_answer: string }[];
 }
 
 export interface TestDetail {
@@ -527,8 +530,10 @@ export interface AdminQuestionInput {
   difficulty?: string;
   explanation?: string;
   image_url?: string;
+  audio_url?: string;
   correct_answer?: string;
   options?: AdminQuestionOptionInput[];
+  blanks?: { index: number; correct_answer: string }[];
   point_correct?: number;
   point_wrong?: number;
   topic_id?: string;
@@ -668,8 +673,10 @@ export interface SessionQuestion {
   explanation?: string | null;
   difficulty?: string | null;
   image_url?: string | null;
+  audio_url?: string | null;
   sort_order: number;
   options: SessionQuestionOption[];
+  blanks?: number[];
 }
 
 export interface SessionTest {

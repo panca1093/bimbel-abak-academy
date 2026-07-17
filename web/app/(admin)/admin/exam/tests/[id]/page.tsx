@@ -41,12 +41,14 @@ const FORMAT_BADGE: Record<
   | "tests_format_short"
   | "tests_format_fill_blank"
   | "tests_format_essay"
+  | "tests_format_multi_blank"
 > = {
   mcq: "tests_format_mcq",
   multi_answer: "tests_format_multi_answer",
   short: "tests_format_short",
   fill_blank: "tests_format_fill_blank",
   essay: "tests_format_essay",
+  multi_blank: "tests_format_multi_blank",
 };
 
 const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard"> = {

@@ -6,10 +6,29 @@ import type { Test } from "@/lib/types";
 const mockOnSubmit = vi.fn();
 const mockOnOpenChange = vi.fn();
 
+const mockPresignAudioAsync = vi.fn();
+let presignAudioState = { mutateAsync: mockPresignAudioAsync, isPending: false };
+
+vi.mock("@/lib/hooks/admin-uploads", () => ({
+  usePresignAdminAudioUpload: () => presignAudioState,
+  usePresignAdminImageUpload: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 describe("TestModal", () => {
   beforeEach(() => {
     mockOnSubmit.mockReset();
     mockOnOpenChange.mockReset();
+
+    mockPresignAudioAsync.mockReset();
+    mockPresignAudioAsync.mockResolvedValue({
+      url: "https://upload.example.com/put-here",
+      method: "PUT",
+      key: "tests/uuid/audio.mp3",
+    });
+    presignAudioState = { mutateAsync: mockPresignAudioAsync, isPending: false };
   });
 
   it("renders create modal with empty fields", () => {
@@ -374,5 +393,130 @@ describe("TestModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /batal/i }));
     expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("audio_url field uses AudioUploadInput with upload capability", () => {
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    // AudioUploadInput renders both a text input and an upload button
+    const audioInput = screen.getByLabelText(/url audio/i) as HTMLInputElement;
+    expect(audioInput).toBeInTheDocument();
+
+    const uploadButton = screen.getByRole("button", { name: /upload audio/i });
+    expect(uploadButton).toBeInTheDocument();
+  });
+
+  it("selecting an audio file triggers presign and upload flow for test", async () => {
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    // Find the hidden file input for audio upload
+    const fileInput = document.querySelector('input[data-testid="audio-upload-input-test-audio-url"]') as HTMLInputElement;
+    expect(fileInput).toBeInTheDocument();
+
+    const file = new File(["audio data"], "test.mp3", { type: "audio/mpeg" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    // Wait for presign call
+    await waitFor(() => {
+      expect(mockPresignAudioAsync).toHaveBeenCalledWith({
+        filename: "test.mp3",
+        content_type: "audio/mpeg",
+      });
+    });
+
+    // Verify fetch was called with PUT
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://upload.example.com/put-here",
+        expect.objectContaining({
+          method: "PUT",
+          body: file,
+        })
+      );
+    });
+
+    // Verify the audio_url field was populated with the result
+    await waitFor(() => {
+      const audioInput = screen.getByLabelText(/url audio/i) as HTMLInputElement;
+      expect(audioInput.value).toContain("audio.mp3");
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("pre-existing audio_url with AudioUploadInput still loads correctly", () => {
+    const test: Test = {
+      id: "t1",
+      title: "Tryout 1",
+      subject: "Matematika",
+      topic: "Aljabar",
+      duration_minutes: 90,
+      audio_url: "https://example.com/existing-audio.mp3",
+      audio_play_limit: 2,
+    };
+
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        test={test}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    // AudioUploadInput should display the pre-existing URL
+    const audioInput = screen.getByDisplayValue("https://example.com/existing-audio.mp3");
+    expect(audioInput).toBeInTheDocument();
+  });
+
+  it("pre-existing audio_url saves correctly without forced re-upload", async () => {
+    const test: Test = {
+      id: "t1",
+      title: "Tryout 1",
+      subject: "Matematika",
+      topic: "Aljabar",
+      duration_minutes: 90,
+      audio_url: "https://example.com/existing-audio.mp3",
+      audio_play_limit: 2,
+    };
+
+    render(
+      <TestModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        test={test}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    // Don't upload a new file, just save
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          audio_url: "https://example.com/existing-audio.mp3",
+        })
+      );
+    });
   });
 });

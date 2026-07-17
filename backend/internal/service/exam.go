@@ -28,6 +28,7 @@ var validQuestionFormats = map[string]bool{
 	"multi_answer": true,
 	"short":        true,
 	"fill_blank":   true,
+	"multi_blank":  true,
 	"essay":        true,
 }
 
@@ -99,10 +100,72 @@ func sanitizeQuestionBody(body string) string {
 	return cleaned
 }
 
+// sanitizeQuestionOptions sanitizes the Text field of each option using the same
+// policy as sanitizeQuestionBody. Called at every write path (CreateBankQuestion,
+// SaveQuestion, CreateQuestionForTest, ProcessQuestionImportRows) so the persisted
+// value is the sanitized one.
+func sanitizeQuestionOptions(options []model.QuestionOption) []model.QuestionOption {
+	sanitized := make([]model.QuestionOption, len(options))
+	for i, opt := range options {
+		sanitized[i] = opt
+		sanitized[i].Text = sanitizeQuestionBody(opt.Text)
+	}
+	return sanitized
+}
+
+// extractTokensFromStem finds all {{N}} tokens in the stem and returns their
+// numeric indices in order. Returns the slice and error if any token is malformed.
+func extractTokensFromStem(body string) ([]int, error) {
+	tokenPattern := regexp.MustCompile(`\{\{(\d+)\}\}`)
+	matches := tokenPattern.FindAllStringSubmatch(body, -1)
+	if len(matches) == 0 {
+		return []int{}, nil
+	}
+
+	tokens := make([]int, len(matches))
+	for i, match := range matches {
+		// match[1] is the captured group (the number inside {{N}})
+		num := 0
+		_, err := fmt.Sscanf(match[1], "%d", &num)
+		if err != nil {
+			return nil, fmt.Errorf("%w: malformed token number", ErrValidation)
+		}
+		tokens[i] = num
+	}
+	return tokens, nil
+}
+
+// validateTokenSequence checks that the given token indices form an exact 1..N
+// contiguous set with no duplicates or gaps.
+func validateTokenSequence(tokens []int) error {
+	if len(tokens) == 0 {
+		return fmt.Errorf("%w: multi_blank requires at least one {{N}} token", ErrValidation)
+	}
+
+	seen := make(map[int]bool)
+	for _, t := range tokens {
+		if t < 1 {
+			return fmt.Errorf("%w: token index must be >= 1", ErrValidation)
+		}
+		if seen[t] {
+			return fmt.Errorf("%w: duplicate token index: %d", ErrValidation, t)
+		}
+		seen[t] = true
+	}
+
+	for i := 1; i <= len(tokens); i++ {
+		if !seen[i] {
+			return fmt.Errorf("%w: token sequence has gap; expected {{%d}}", ErrValidation, i)
+		}
+	}
+
+	return nil
+}
+
 // validateQuestion enforces the format-validation matrix from spec.md §4.
 // All error returns wrap ErrValidation with a sub-message so callers can
 // use errors.Is(err, ErrValidation) AND err.Error() carries the WHY.
-func validateQuestion(q model.Question, options []model.QuestionOption) error {
+func validateQuestion(q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) error {
 	if !validQuestionFormats[q.Format] {
 		return fmt.Errorf("%w: unknown question format: %s", ErrValidation, q.Format)
 	}
@@ -171,6 +234,33 @@ func validateQuestion(q model.Question, options []model.QuestionOption) error {
 		}
 		if !hasCorrectAnswer {
 			return fmt.Errorf("%w: fill_blank requires non-empty correct_answer", ErrValidation)
+		}
+	case "multi_blank":
+		// multi_blank: stem contains {{N}} tokens, no options, no scalar correct_answer,
+		// blanks array has one entry per token with non-empty correct_answer
+		if hasOptions {
+			return fmt.Errorf("%w: multi_blank cannot have options", ErrValidation)
+		}
+		if hasCorrectAnswer {
+			return fmt.Errorf("%w: multi_blank cannot have correct_answer", ErrValidation)
+		}
+
+		tokens, err := extractTokensFromStem(q.Body)
+		if err != nil {
+			return err
+		}
+		if err := validateTokenSequence(tokens); err != nil {
+			return err
+		}
+
+		if len(blanks) != len(tokens) {
+			return fmt.Errorf("%w: blanks count (%d) must match token count (%d)", ErrValidation, len(blanks), len(tokens))
+		}
+
+		for i, blank := range blanks {
+			if strings.TrimSpace(blank.CorrectAnswer) == "" {
+				return fmt.Errorf("%w: blank at index %d has empty correct_answer", ErrValidation, i)
+			}
 		}
 	case "essay":
 		if hasOptions {
@@ -280,9 +370,10 @@ func (s *Service) GetTestDetail(ctx context.Context, id uuid.UUID) (model.TestDe
 }
 
 // SaveQuestion routes create vs update by q.ID == uuid.Nil.
-func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
-	if err := validateQuestion(q, options); err != nil {
+	options = sanitizeQuestionOptions(options)
+	if err := validateQuestion(q, options, blanks); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -293,11 +384,11 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 	defer tx.Rollback(ctx)
 
 	if q.ID == uuid.Nil {
-		if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+		if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
 			return model.QuestionWithOptions{}, err
 		}
 	} else {
-		if err := s.storeRepo.UpdateQuestionTx(ctx, tx, &q, options); err != nil {
+		if err := s.storeRepo.UpdateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return model.QuestionWithOptions{}, ErrQuestionNotFound
 			}
@@ -309,15 +400,16 @@ func (s *Service) SaveQuestion(ctx context.Context, q model.Question, options []
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options}, nil
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 // CreateQuestionForTest creates a bank question and atomically attaches it to the
 // given test (FR-25). This preserves the existing POST /admin/tests/:id/questions
 // behavior after migration 0025 moved attachment to test_question.
-func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
-	if err := validateQuestion(q, options); err != nil {
+	options = sanitizeQuestionOptions(options)
+	if err := validateQuestion(q, options, blanks); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -327,7 +419,7 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 	if err := s.storeRepo.AttachQuestionToTestTx(ctx, tx, testID, q.ID); err != nil {
@@ -338,7 +430,7 @@ func (s *Service) CreateQuestionForTest(ctx context.Context, testID uuid.UUID, q
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options}, nil
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 // AttachQuestions appends bank questions to a test. Already-attached questions are
@@ -450,9 +542,10 @@ func sameUUIDSet(a, b []uuid.UUID) bool {
 }
 
 // CreateBankQuestion creates a question in the bank with no test attachment (FR-9).
-func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption) (model.QuestionWithOptions, error) {
+func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, options []model.QuestionOption, blanks []model.QuestionBlank) (model.QuestionWithOptions, error) {
 	q.Body = sanitizeQuestionBody(q.Body)
-	if err := validateQuestion(q, options); err != nil {
+	options = sanitizeQuestionOptions(options)
+	if err := validateQuestion(q, options, blanks); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -462,7 +555,7 @@ func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, opti
 	}
 	defer tx.Rollback(ctx)
 
-	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options); err != nil {
+	if err := s.storeRepo.CreateQuestionTx(ctx, tx, &q, options, blanks); err != nil {
 		return model.QuestionWithOptions{}, err
 	}
 
@@ -470,7 +563,7 @@ func (s *Service) CreateBankQuestion(ctx context.Context, q model.Question, opti
 		return model.QuestionWithOptions{}, err
 	}
 
-	return model.QuestionWithOptions{Question: q, Options: options}, nil
+	return model.QuestionWithOptions{Question: q, Options: options, Blanks: blanks}, nil
 }
 
 func (s *Service) DeleteQuestion(ctx context.Context, id uuid.UUID) error {

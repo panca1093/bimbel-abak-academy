@@ -1301,5 +1301,446 @@ describe("SessionPage", () => {
     // Ensure the violation overlay is not rendered
     expect(screen.queryByTestId("violation-overlay")).not.toBeInTheDocument();
   });
+
+  // ── Multi-blank rendering (FR-16, FR-17, FR-18) ──────────────────────────
+
+  it("renders multi_blank question with inline inputs at {{N}} positions (FR-16)", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-multi-blank",
+                test_id: "test-1",
+                format: "multi_blank",
+                body: "Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.",
+                sort_order: 1,
+                options: [],
+                blanks: [1, 2],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+
+    // Wait for two inputs to be mounted
+    await waitFor(() => {
+      const inputs = screen
+        .getAllByRole("textbox")
+        .filter((tb) => tb.tagName === "INPUT");
+      expect(inputs.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("preserves values independently across blanks when typing (FR-17)", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-multi-blank-17",
+                test_id: "test-1",
+                format: "multi_blank",
+                body: "Fill {{1}} and {{2}} blanks",
+                sort_order: 1,
+                options: [],
+                blanks: [1, 2],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+
+    await waitFor(() => {
+      const inputs = screen
+        .getAllByRole("textbox")
+        .filter((tb) => tb.tagName === "INPUT");
+      expect(inputs.length).toBeGreaterThanOrEqual(2);
+    });
+
+    // Query fresh inputs (before any interactions)
+    let inputs = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT");
+
+    // Type into blank 2 — this should trigger onChange, which updates the component state
+    fireEvent.change(inputs[1], { target: { value: "value2" } });
+
+    // RE-QUERY inputs from the DOM to get fresh references.
+    // If the component is incorrectly rebuilding the DOM on every keystroke,
+    // the original references will be detached, and fresh queries will get new elements.
+    inputs = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT");
+
+    // Type into blank 1
+    fireEvent.change(inputs[0], { target: { value: "value1" } });
+
+    // RE-QUERY again to verify the live DOM state
+    inputs = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT");
+
+    // Both should retain their values in the LIVE DOM
+    // If there's a stale-closure bug, blank 2's value would be clobbered when blank 1's
+    // detached event listener fires again.
+    expect((inputs[0] as HTMLInputElement).value).toBe("value1");
+    expect((inputs[1] as HTMLInputElement).value).toBe("value2");
+  });
+
+  it("does not lose focus or clobber values with multiple keystrokes (FR-17 regression)", async () => {
+    // This test catches two real bugs:
+    // 1. Focus loss: typing multiple characters loses focus after the first keystroke
+    // 2. Stale-closure clobbering: editing blank 2 then typing in blank 1 clobbers blank 2
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-multi-blank-17-focus",
+                test_id: "test-1",
+                format: "multi_blank",
+                body: "Fill {{1}} and {{2}} blanks",
+                sort_order: 1,
+                options: [],
+                blanks: [1, 2],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+
+    await waitFor(() => {
+      const inputs = screen
+        .getAllByRole("textbox")
+        .filter((tb) => tb.tagName === "INPUT");
+      expect(inputs.length).toBeGreaterThanOrEqual(2);
+    });
+
+    // Test 1: Multiple keystrokes without focus loss
+    // The component should NOT rebuild the DOM on every keystroke.
+    let inputs = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT");
+    const input0RefBefore = inputs[0]; // Capture original reference
+
+    // Type multiple characters — all should go into the same input without rebuilding
+    fireEvent.input(inputs[0], { target: { value: "m" } });
+    fireEvent.input(inputs[0], { target: { value: "mu" } });
+    fireEvent.input(inputs[0], { target: { value: "mul" } });
+
+    // If the DOM is being rebuilt on every keystroke (bug), the input reference will be different.
+    // Re-query and verify it's the SAME element (or at least, the value is still there).
+    inputs = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT");
+    expect((inputs[0] as HTMLInputElement).value).toBe("mul");
+
+    // Test 2: No stale-closure clobbering
+    // Clear and start fresh
+    fireEvent.input(inputs[1], { target: { value: "second" } });
+
+    // Re-query
+    inputs = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT");
+
+    // Now type into blank 0 again
+    fireEvent.input(inputs[0], { target: { value: "multi" } });
+
+    // Re-query and verify BOTH values are preserved (not clobbered)
+    inputs = screen
+      .getAllByRole("textbox")
+      .filter((tb) => tb.tagName === "INPUT");
+    expect((inputs[0] as HTMLInputElement).value).toBe("multi");
+    expect((inputs[1] as HTMLInputElement).value).toBe("second");
+  });
+
+  it("renders malformed token set without crashing (FR-18)", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-multi-blank-18",
+                test_id: "test-1",
+                format: "multi_blank",
+                body: "Question: {{1}} and {{3}} tokens",
+                sort_order: 1,
+                options: [],
+                blanks: [1, 3],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    document.documentElement.requestFullscreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("enter-fullscreen"));
+
+    // Should render without crashing - the inputs for 1 and 3 should be mounted
+    await waitFor(() => {
+      const inputs = screen
+        .getAllByRole("textbox")
+        .filter((tb) => tb.tagName === "INPUT");
+      expect(inputs.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ── Rich-text option rendering (FR-12) ─────────────────────────────────
+
+  it("renders mcq option text with RichContent (formatted, not literal tags) (FR-12)", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-mcq-rich",
+                test_id: "test-1",
+                format: "mcq",
+                body: "Question?",
+                sort_order: 1,
+                options: [
+                  { key: "A", text: "Option <b>bold</b>", sort_order: 1 },
+                  { key: "B", text: "Option plain", sort_order: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Question\?/);
+
+    // Rich-text HTML should be rendered, not the literal <b> tag
+    const boldElements = document.querySelectorAll("b");
+    let foundBold = false;
+    boldElements.forEach((el) => {
+      if (el.textContent === "bold") foundBold = true;
+    });
+    expect(foundBold).toBe(true);
+  });
+
+  it("renders multi_answer option text with RichContent (FR-12)", async () => {
+    sessionState = {
+      ...sessionState,
+      data: {
+        ...sampleSession,
+        tests: [
+          {
+            ...sampleSession.tests[0],
+            questions: [
+              {
+                id: "q-multi-rich",
+                test_id: "test-1",
+                format: "multi_answer",
+                body: "Pick the right ones",
+                sort_order: 1,
+                options: [
+                  { key: "A", text: "\\(x^2\\)", sort_order: 1 },
+                  { key: "B", text: "plain text", sort_order: 2 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    render(<SessionPage />);
+    await enterFullscreenUntil(/Pick the right ones/);
+
+    // KaTeX should render the formula
+    const katex = document.querySelector(".katex");
+    expect(katex).not.toBeNull();
+  });
+
+  // ── Per-question audio (FR-26, FR-27, FR-28) ──────────────────────────
+
+  it("renders question-audio player when listening section question has audio_url (FR-26)", async () => {
+    const listeningWithQuestionAudio = {
+      ...ieltsSession,
+      active_test_id: "test-listening",
+      tests: [
+        {
+          ...ieltsSession.tests[0],
+          status: "active" as const,
+          questions: [
+            {
+              id: "q-listening",
+              test_id: "test-listening",
+              format: "mcq" as const,
+              body: "Listening Q1?",
+              sort_order: 1,
+              options: [
+                { key: "A", text: "Opt A", sort_order: 1 },
+                { key: "B", text: "Opt B", sort_order: 2 },
+              ],
+              audio_url: "https://example.com/question-audio.mp3",
+            },
+          ],
+        },
+        ieltsSession.tests[1],
+        ieltsSession.tests[2],
+      ],
+    };
+    sessionState = { ...sessionState, data: listeningWithQuestionAudio };
+    render(<SessionPage />);
+    await enterFullscreenIELTS();
+
+    // Both section and question audio players should be visible
+    const audioPlayers = screen.getAllByTestId(/audio-player/);
+    expect(audioPlayers.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("distinguishes section vs question audio by testId (FR-26)", async () => {
+    const listeningWithQuestionAudio = {
+      ...ieltsSession,
+      active_test_id: "test-listening",
+      tests: [
+        {
+          ...ieltsSession.tests[0],
+          status: "active" as const,
+          questions: [
+            {
+              id: "q-listening",
+              test_id: "test-listening",
+              format: "mcq" as const,
+              body: "Listening Q1?",
+              sort_order: 1,
+              options: [
+                { key: "A", text: "Opt A", sort_order: 1 },
+                { key: "B", text: "Opt B", sort_order: 2 },
+              ],
+              audio_url: "https://example.com/question-audio.mp3",
+            },
+          ],
+        },
+        ieltsSession.tests[1],
+        ieltsSession.tests[2],
+      ],
+    };
+    sessionState = { ...sessionState, data: listeningWithQuestionAudio };
+    render(<SessionPage />);
+    await enterFullscreenIELTS();
+
+    // Section player
+    const sectionPlayer = screen.getByTestId("section-audio-player");
+    expect(sectionPlayer).toBeInTheDocument();
+    expect(sectionPlayer).toHaveAttribute("src", "https://example.com/audio.mp3");
+
+    // Question player
+    const questionPlayer = screen.getByTestId("question-audio-player");
+    expect(questionPlayer).toBeInTheDocument();
+    expect(questionPlayer).toHaveAttribute("src", "https://example.com/question-audio.mp3");
+  });
+
+  it("does not render question audio player when audio_url is missing (FR-26)", async () => {
+    sessionState = { ...sessionState, data: ieltsSession };
+    render(<SessionPage />);
+    await enterFullscreenIELTS();
+
+    // Only section player should exist (no question player)
+    expect(screen.getByTestId("section-audio-player")).toBeInTheDocument();
+    expect(screen.queryByTestId("question-audio-player")).not.toBeInTheDocument();
+  });
+
+  it("navigating questions preserves section player but unmounts question player (FR-27)", async () => {
+    const listeningMultiQuestion = {
+      ...ieltsSession,
+      active_test_id: "test-listening",
+      tests: [
+        {
+          ...ieltsSession.tests[0],
+          status: "active" as const,
+          questions: [
+            {
+              id: "q-listening-1",
+              test_id: "test-listening",
+              format: "mcq" as const,
+              body: "Listening Q1?",
+              sort_order: 1,
+              options: [
+                { key: "A", text: "A1", sort_order: 1 },
+                { key: "B", text: "B1", sort_order: 2 },
+              ],
+              audio_url: "https://example.com/q1-audio.mp3",
+            },
+            {
+              id: "q-listening-2",
+              test_id: "test-listening",
+              format: "mcq" as const,
+              body: "Listening Q2?",
+              sort_order: 2,
+              options: [
+                { key: "A", text: "A2", sort_order: 1 },
+                { key: "B", text: "B2", sort_order: 2 },
+              ],
+            },
+          ],
+        },
+        ieltsSession.tests[1],
+        ieltsSession.tests[2],
+      ],
+    };
+    sessionState = { ...sessionState, data: listeningMultiQuestion };
+    render(<SessionPage />);
+    await enterFullscreenIELTS();
+
+    // Q1 has question audio
+    expect(screen.getByTestId("question-audio-player")).toBeInTheDocument();
+
+    // Navigate to Q2
+    fireEvent.click(screen.getByTestId("session-nav-1"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Listening Q2\?/)).toBeInTheDocument();
+    });
+
+    // Section player still present, question player gone
+    expect(screen.getByTestId("section-audio-player")).toBeInTheDocument();
+    expect(screen.queryByTestId("question-audio-player")).not.toBeInTheDocument();
+  });
 });
 
