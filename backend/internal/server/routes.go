@@ -258,6 +258,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)
 	adminExams.GET("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
 
+	// Admin upload routes (image + audio presigning)
+	adminUploads := admin.Group("/uploads")
+	adminUploads.Use(handler.RBACMiddleware("uploads:write"))
+	adminUploads.POST("/image", h.AdminUploadImage)
+	adminUploads.POST("/audio", h.AdminUploadAudio)
+
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")
 	adminSystem.Use(handler.RBACMiddleware("system:admin"))
