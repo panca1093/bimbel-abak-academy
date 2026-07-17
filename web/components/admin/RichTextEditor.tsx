@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { fileUrl } from "@/lib/api";
-import { usePresignUpload } from "@/lib/hooks/students";
+import { usePresignAdminImageUpload } from "@/lib/hooks/admin-uploads";
 
 interface RichTextEditorProps {
   value: string;
@@ -47,7 +47,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
   const ref = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
-  const presign = usePresignUpload();
+  const presign = usePresignAdminImageUpload();
 
   // On mount only, mirror `value` into the contentEditable if it differs.
   useEffect(() => {

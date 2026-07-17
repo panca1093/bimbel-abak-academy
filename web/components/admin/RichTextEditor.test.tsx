@@ -14,8 +14,8 @@ let presignState: {
   isPending: false,
 };
 
-vi.mock("@/lib/hooks/students", () => ({
-  usePresignUpload: () => presignState,
+vi.mock("@/lib/hooks/admin-uploads", () => ({
+  usePresignAdminImageUpload: () => presignState,
 }));
 
 beforeEach(() => {

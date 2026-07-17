@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
+import { ImageUploadInput } from "@/components/admin/ImageUploadInput";
 import { useSaveQuestion } from "@/lib/hooks/admin-tests";
 import {
   useCreateBankQuestion,
@@ -214,11 +215,11 @@ function OptionEditor({
                 <label htmlFor={`option-image-${index}`} className="text-xs text-muted-foreground">
                   {t("tests_field_image_url")}
                 </label>
-                <Input
+                <ImageUploadInput
                   id={`option-image-${index}`}
                   aria-label={`${t("tests_field_image_url")} ${opt.key}`}
                   value={opt.image_url ?? ""}
-                  onChange={(e) => update(index, { image_url: e.target.value || undefined })}
+                  onChange={(url) => update(index, { image_url: url || undefined })}
                   placeholder="https://..."
                   disabled={disabled}
                 />
