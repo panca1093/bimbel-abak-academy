@@ -79,18 +79,19 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
   function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
     e.preventDefault();
     const html = e.clipboardData?.getData("text/html");
-    let toInsert: string;
 
     if (html) {
-      toInsert = sanitizeClipboardHtml(html);
+      const sanitized = sanitizeClipboardHtml(html);
+      if (sanitized) {
+        exec("insertHTML", sanitized);
+      }
     } else {
       // Fall back to plain text if HTML is not available.
+      // Use insertText to insert literal text without parsing markup.
       const text = e.clipboardData?.getData("text/plain") || "";
-      toInsert = text;
-    }
-
-    if (toInsert) {
-      exec("insertHTML", toInsert);
+      if (text) {
+        exec("insertText", text);
+      }
     }
   }
 

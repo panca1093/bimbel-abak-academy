@@ -754,27 +754,35 @@ function MultiBlankInput({
   disabled: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const blankValuesRef = useRef<string[]>([]);
 
-  // Parse the current value as JSON array
-  let blankValues: string[] = [];
-  if (currentValue) {
-    try {
-      blankValues = JSON.parse(currentValue);
-      if (!Array.isArray(blankValues)) {
-        blankValues = [];
+  // Parse the current value as JSON array and sync to ref
+  // This effect ONLY syncs the ref, does not rebuild DOM
+  useEffect(() => {
+    let parsed: string[] = [];
+    if (currentValue) {
+      try {
+        parsed = JSON.parse(currentValue);
+        if (!Array.isArray(parsed)) {
+          parsed = [];
+        }
+      } catch {
+        parsed = [];
       }
-    } catch {
-      blankValues = [];
     }
-  }
 
-  // Pad array to match blank count
-  if (blanks) {
-    while (blankValues.length < blanks.length) {
-      blankValues.push("");
+    // Pad array to match blank count
+    if (blanks) {
+      while (parsed.length < blanks.length) {
+        parsed.push("");
+      }
     }
-  }
 
+    blankValuesRef.current = parsed;
+  }, [currentValue, blanks]);
+
+  // Build DOM structure only when structure changes (sanitized HTML, blank count, disabled state)
+  // NOT when values change (currentValue)
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !blanks || blanks.length === 0) return;
@@ -835,17 +843,20 @@ function MultiBlankInput({
           if (blankIndex >= 0 && blankIndex < blanks.length) {
             const input = document.createElement("input");
             input.type = "text";
-            input.value = blankValues[blankIndex] || "";
+            // Read from ref, which always has the latest values
+            input.value = blankValuesRef.current[blankIndex] || "";
             input.disabled = disabled;
             input.className =
               "mx-1 inline-block w-20 border-b-2 border-brand-500 bg-transparent text-sm text-ink-900 outline-none disabled:opacity-60 disabled:cursor-not-allowed";
             input.addEventListener("change", () => {
-              const newValues = [...blankValues];
+              // Read current values from ref (always latest, no stale closure)
+              const newValues = [...blankValuesRef.current];
               newValues[blankIndex] = input.value;
               onChange(JSON.stringify(newValues));
             });
             input.addEventListener("input", () => {
-              const newValues = [...blankValues];
+              // Read current values from ref (always latest, no stale closure)
+              const newValues = [...blankValuesRef.current];
               newValues[blankIndex] = input.value;
               onChange(JSON.stringify(newValues));
             });
@@ -864,7 +875,7 @@ function MultiBlankInput({
       // Replace the node
       node.parentNode?.replaceChild(fragment, node);
     }
-  }, [sanitizedHtml, blanks, currentValue, disabled, onChange]);
+  }, [sanitizedHtml, blanks, disabled]);
 
   if (!blanks || blanks.length === 0) {
     return <RichContent html={sanitizedHtml} />;
