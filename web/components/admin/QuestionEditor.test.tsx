@@ -496,4 +496,135 @@ describe("QuestionEditor", () => {
       );
     });
   });
+
+  // ── Multi-blank format (Task 7) ─────────────────────────────────────────
+
+  it("switching format to multi_blank shows blank editor instead of option editor", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    expect(screen.getAllByRole("radio").length).toBeGreaterThan(0);
+
+    const formatSelect = screen.getByLabelText(/format/i);
+    fireEvent.change(formatSelect, { target: { value: "multi_blank" } });
+
+    // Should hide option editor (radios/checkboxes)
+    expect(screen.queryAllByRole("radio").length).toBe(0);
+    expect(screen.queryAllByRole("checkbox").length).toBe(0);
+  });
+
+  it("multi_blank question can be created with 2 blanks and saves with blanks array", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // Set format to multi_blank
+    const formatSelect = screen.getByLabelText(/format/i);
+    fireEvent.change(formatSelect, { target: { value: "multi_blank" } });
+
+    // Fill required fields
+    setBodyValue("Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.");
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "topic-1" } });
+
+    // Fill in the blank correct answers
+    const blankInputs = screen.getAllByLabelText(/jawaban benar/i);
+    fireEvent.change(blankInputs[0], { target: { value: "Jakarta" } });
+    fireEvent.change(blankInputs[1], { target: { value: "1945" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            format: "multi_blank",
+            body: "Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.",
+            topic_id: "topic-1",
+            blanks: expect.arrayContaining([
+              expect.objectContaining({ index: 1, correct_answer: "Jakarta" }),
+              expect.objectContaining({ index: 2, correct_answer: "1945" }),
+            ]),
+          }),
+        })
+      );
+    });
+  });
+
+  // ── Rich-text option authoring (Task 7, FR-11) ─────────────────────────
+
+  it("mcq option text field is present in render (before rich-text swap)", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // Default format is mcq, should see option text fields (multiple inputs)
+    expect(screen.getAllByLabelText(/teks opsi/i).length).toBeGreaterThan(0);
+  });
+
+  // ── Per-question audio URL (Task 7, FR-25) ─────────────────────────────
+
+  it("audio_url field is present for every format", () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    // For mcq (default)
+    expect(screen.getByLabelText(/url audio/i)).toBeInTheDocument();
+  });
+
+  it("audio_url field is preserved and round-trips in save payload", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    const audioInput = screen.getByLabelText(/url audio/i);
+    fireEvent.change(audioInput, { target: { value: "https://example.com/audio.mp3" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            audio_url: "https://example.com/audio.mp3",
+          }),
+        })
+      );
+    });
+  });
+
+  it("audio_url field is empty/omitted when not filled", async () => {
+    renderWithClient(
+      <QuestionEditor testId="test-1" onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    fillRequiredFields();
+    // Don't fill audio_url
+
+    fireEvent.click(screen.getByRole("button", { name: /simpan soal/i }));
+
+    await waitFor(() => {
+      expect(mockTestSaveAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.not.objectContaining({
+            audio_url: expect.any(String),
+          }),
+        })
+      );
+    });
+  });
+
+  it("edit mode pre-fills audio_url if question has it", () => {
+    const qwo = makeQuestionWithOptions({
+      audio_url: "https://example.com/existing-audio.mp3",
+    });
+    renderWithClient(
+      <QuestionEditor testId="test-1" question={qwo} onCancel={vi.fn()} onSaved={vi.fn()} />
+    );
+
+    const audioInput = screen.getByLabelText(/url audio/i) as HTMLInputElement;
+    expect(audioInput.value).toBe("https://example.com/existing-audio.mp3");
+  });
 });

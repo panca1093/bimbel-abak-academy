@@ -44,6 +44,72 @@ function nextKey(existing: AdminQuestionOptionInput[]): string {
   return "x";
 }
 
+interface BlankEditorProps {
+  blanks: Array<{ index: number; correct_answer: string }>;
+  onChange: (next: Array<{ index: number; correct_answer: string }>) => void;
+  disabled: boolean;
+}
+
+function BlankEditor({ blanks, onChange, disabled }: BlankEditorProps) {
+  const { t } = useTranslation();
+
+  function update(index: number, patch: { correct_answer?: string }) {
+    onChange(blanks.map((b, i) => (i === index ? { ...b, ...patch } : b)));
+  }
+
+  function remove(index: number) {
+    if (blanks.length <= 1) return;
+    onChange(blanks.filter((_, i) => i !== index));
+  }
+
+  function add() {
+    onChange([
+      ...blanks,
+      { index: blanks.length + 1, correct_answer: "" },
+    ]);
+  }
+
+  return (
+    <div className="space-y-2">
+      {blanks.map((blank, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <div className="w-8 text-sm font-mono text-muted-foreground">
+            {`{{${blank.index}}}`}
+          </div>
+          <Input
+            aria-label={t("tests_field_correct_answer")}
+            value={blank.correct_answer}
+            onChange={(e) => update(index, { correct_answer: e.target.value })}
+            placeholder={t("tests_field_correct_answer")}
+            disabled={disabled}
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            onClick={() => remove(index)}
+            disabled={disabled || blanks.length <= 1}
+            aria-label={t("tests_remove_option")}
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={add}
+        disabled={disabled}
+      >
+        <Plus className="mr-1 size-4" />
+        {t("tests_add_option")}
+      </Button>
+    </div>
+  );
+}
+
 function OptionEditor({
   format,
   options,
@@ -193,8 +259,10 @@ function buildInput(
   difficulty: string,
   explanation: string,
   imageUrl: string,
+  audioUrl: string,
   correctAnswer: string,
   options: AdminQuestionOptionInput[],
+  blanks: Array<{ index: number; correct_answer: string }>,
   pointCorrect: string,
   pointWrong: string,
   topicId: string
@@ -209,6 +277,7 @@ function buildInput(
   if (difficulty) base.difficulty = difficulty;
   if (explanation.trim()) base.explanation = explanation.trim();
   if (imageUrl.trim()) base.image_url = imageUrl.trim();
+  if (audioUrl.trim()) base.audio_url = audioUrl.trim();
   if (format === "short" || format === "fill_blank") {
     base.correct_answer = correctAnswer.trim();
   }
@@ -221,6 +290,12 @@ function buildInput(
       sort_order: i + 1,
     }));
   }
+  if (format === "multi_blank") {
+    base.blanks = blanks.map((b) => ({
+      index: b.index,
+      correct_answer: b.correct_answer.trim(),
+    }));
+  }
   return base;
 }
 
@@ -229,6 +304,7 @@ function validate(
   body: string,
   correctAnswer: string,
   options: AdminQuestionOptionInput[],
+  blanks: Array<{ index: number; correct_answer: string }>,
   topicId: string
 ): { ok: true } | { ok: false; key: string } {
   if (!topicId) {
@@ -250,6 +326,16 @@ function validate(
       return { ok: false, key: "tests_validation_correct_answer_required" };
     }
   }
+  if (format === "multi_blank") {
+    if (blanks.length === 0) {
+      return { ok: false, key: "tests_validation_blanks_required" };
+    }
+    for (const blank of blanks) {
+      if (!blank.correct_answer.trim()) {
+        return { ok: false, key: "tests_validation_correct_answer_required" };
+      }
+    }
+  }
   return { ok: true };
 }
 
@@ -262,6 +348,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const [difficulty, setDifficulty] = useState<string>(question?.question.difficulty ?? "");
   const [explanation, setExplanation] = useState(question?.question.explanation ?? "");
   const [imageUrl, setImageUrl] = useState(question?.question.image_url ?? "");
+  const [audioUrl, setAudioUrl] = useState(question?.question.audio_url ?? "");
   const [correctAnswer, setCorrectAnswer] = useState(question?.question.correct_answer ?? "");
   const [pointCorrect, setPointCorrect] = useState(String(question?.question.point_correct ?? 1));
   const [pointWrong, setPointWrong] = useState(String(question?.question.point_wrong ?? 0));
@@ -270,6 +357,12 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     question ? buildOptionsFromQuestion(question) : [
       { key: "a", text: "", is_correct: true, sort_order: 1 },
       { key: "b", text: "", is_correct: false, sort_order: 2 },
+    ]
+  );
+  const [blanks, setBlanks] = useState<Array<{ index: number; correct_answer: string }>>(
+    question?.blanks ?? [
+      { index: 1, correct_answer: "" },
+      { index: 2, correct_answer: "" },
     ]
   );
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -286,6 +379,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setDifficulty("");
       setExplanation("");
       setImageUrl("");
+      setAudioUrl("");
       setCorrectAnswer("");
       setPointCorrect("1");
       setPointWrong("0");
@@ -293,6 +387,10 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       setOptions([
         { key: "a", text: "", is_correct: true, sort_order: 1 },
         { key: "b", text: "", is_correct: false, sort_order: 2 },
+      ]);
+      setBlanks([
+        { index: 1, correct_answer: "" },
+        { index: 2, correct_answer: "" },
       ]);
     }
   }, [question]);
@@ -302,7 +400,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   }
 
   async function handleSave() {
-    const result = validate(format, body, correctAnswer, options, topicId);
+    const result = validate(format, body, correctAnswer, options, blanks, topicId);
     if (!result.ok) {
       setErrorKey(result.key);
       return;
@@ -314,8 +412,10 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       difficulty,
       explanation,
       imageUrl,
+      audioUrl,
       correctAnswer,
       options,
+      blanks,
       pointCorrect,
       pointWrong,
       topicId
@@ -337,6 +437,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
 
   const showOptions = format === "mcq" || format === "multi_answer";
   const showCorrectAnswer = format === "short" || format === "fill_blank";
+  const showBlanks = format === "multi_blank";
   const errorMessage = errorKey ? t(errorKey as Parameters<typeof t>[0]) : null;
   const savePending = testSave.isPending || createBankQuestion.isPending || updateBankQuestion.isPending;
 
@@ -412,6 +513,17 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
             />
           </div>
 
+          <div className="grid gap-2">
+            <Label htmlFor="question-audio-url">{t("tests_field_audio_url")}</Label>
+            <Input
+              id="question-audio-url"
+              value={audioUrl}
+              onChange={(e) => setAudioUrl(e.target.value)}
+              placeholder="https://..."
+              disabled={savePending}
+            />
+          </div>
+
           {showOptions && (
             <div className="grid gap-2">
               <Label>{t("tests_field_option_text")}</Label>
@@ -431,6 +543,17 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                 id="question-correct-answer"
                 value={correctAnswer}
                 onChange={(e) => setCorrectAnswer(e.target.value)}
+                disabled={savePending}
+              />
+            </div>
+          )}
+
+          {showBlanks && (
+            <div className="grid gap-2">
+              <Label>{t("tests_field_correct_answer")}</Label>
+              <BlankEditor
+                blanks={blanks}
+                onChange={setBlanks}
                 disabled={savePending}
               />
             </div>
