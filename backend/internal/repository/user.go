@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"akademi-bimbel/internal/model"
+
+	"github.com/google/uuid"
 )
 
 func normalizeEmail(email string) string {
@@ -186,6 +188,46 @@ func (r *Repository) ListSchools(ctx context.Context) ([]*model.School, error) {
 		schools = append(schools, s)
 	}
 	return schools, rows.Err()
+}
+
+// GetUsersByIDs returns only users with role='student' for the given IDs.
+// Used by the direct exam grant path to batch-validate existence + role
+// (no school-boundary filter — super_admin has none).
+func (r *Repository) GetUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]model.User, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, email, username, phone, password_hash, role, name,
+			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
+			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
+			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
+		FROM users
+		WHERE id = ANY($1) AND role = 'student'`,
+		ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []model.User
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(
+			&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
+			&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
+			&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
+			&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
+		); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if users == nil {
+		users = []model.User{}
+	}
+	return users, nil
 }
 
 func (r *Repository) TombstoneUser(ctx context.Context, userID string) error {

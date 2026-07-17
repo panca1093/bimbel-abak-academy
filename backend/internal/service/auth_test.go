@@ -15,6 +15,7 @@ import (
 	"akademi-bimbel/internal/model"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -160,6 +161,26 @@ func (f *fakeUserRepo) ActivateUser(_ context.Context, userID string) (bool, err
 	u.Status = "active"
 	u.OTPEnabled = false
 	return true, nil
+}
+
+func (f *fakeUserRepo) GetUsersByIDs(_ context.Context, ids []uuid.UUID) ([]model.User, error) {
+	idSet := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		idSet[id.String()] = true
+	}
+	var users []model.User
+	for _, u := range f.byID {
+		if u.Role != "student" {
+			continue
+		}
+		if idSet[u.ID] {
+			users = append(users, *u)
+		}
+	}
+	if users == nil {
+		users = []model.User{}
+	}
+	return users, nil
 }
 
 func (f *fakeUserRepo) TombstoneUser(_ context.Context, userID string) error {

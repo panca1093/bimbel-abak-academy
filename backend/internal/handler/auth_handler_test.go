@@ -18,6 +18,7 @@ import (
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
@@ -76,6 +77,26 @@ func (f *fakeRepo) GetUserByID(_ context.Context, id string) (*model.User, error
 	}
 	cp := *u
 	return &cp, nil
+}
+
+func (f *fakeRepo) GetUsersByIDs(_ context.Context, ids []uuid.UUID) ([]model.User, error) {
+	idSet := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		idSet[id.String()] = true
+	}
+	var users []model.User
+	for _, u := range f.byID {
+		if u.Role != "student" {
+			continue
+		}
+		if idSet[u.ID] {
+			users = append(users, *u)
+		}
+	}
+	if users == nil {
+		users = []model.User{}
+	}
+	return users, nil
 }
 
 func (f *fakeRepo) UpdatePasswordHash(_ context.Context, userID, hash string) error {

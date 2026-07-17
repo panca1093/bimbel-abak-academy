@@ -269,6 +269,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminUploads.POST("/image", h.AdminUploadImage)
 	adminUploads.POST("/audio", h.AdminUploadAudio)
 
+	// Admin exam grant routes (super_admin only — satisfies "exam-grants:write"
+	// via the "*" wildcard; see rbac.go:29-48)
+	adminExamGrants := admin.Group("/exam-grants")
+	adminExamGrants.Use(handler.RBACMiddleware("exam-grants:write"))
+	adminExamGrants.POST("", h.AdminGrantExamAccess)
+
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")
 	adminSystem.Use(handler.RBACMiddleware("system:admin"))

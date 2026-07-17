@@ -11,6 +11,7 @@ import (
 
 	"akademi-bimbel/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -21,6 +22,7 @@ type UserRepository interface {
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
 	GetUserByID(ctx context.Context, id string) (*model.User, error)
+	GetUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]model.User, error)
 	UpdatePasswordHash(ctx context.Context, userID, hash string) error
 	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error
 	UpdateUserPhoto(ctx context.Context, userID, photoURL string) error
