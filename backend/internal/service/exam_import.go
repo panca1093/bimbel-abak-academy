@@ -228,14 +228,14 @@ func (s *Service) ProcessQuestionImportRows(ctx context.Context, rows []Question
 
 		q.Body = sanitizeQuestionBody(q.Body)
 		sanitizedOpts := sanitizeQuestionOptions(row.Options)
-		if err := validateQuestion(q, sanitizedOpts); err != nil {
+		if err := validateQuestion(q, sanitizedOpts, nil); err != nil {
 			res.Status = "error"
 			res.Error = err.Error()
 			result.Rows[i] = res
 			continue
 		}
 
-		out, err := s.CreateBankQuestion(ctx, q, sanitizedOpts)
+		out, err := s.CreateBankQuestion(ctx, q, sanitizedOpts, nil)
 		if err != nil {
 			res.Status = "error"
 			res.Error = err.Error()

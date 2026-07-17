@@ -178,7 +178,7 @@ func (h *Handler) AdminCreateQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions())
+	out, err := h.svc.CreateQuestionForTest(c.Request().Context(), testID, q, req.toOptions(), nil)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -287,7 +287,7 @@ func (h *Handler) AdminUpdateQuestion(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	q.ID = qID
-	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions())
+	out, err := h.svc.SaveQuestion(c.Request().Context(), q, req.toOptions(), nil)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -435,7 +435,7 @@ func (h *Handler) AdminCreateBankQuestion(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions())
+	out, err := h.svc.CreateBankQuestion(c.Request().Context(), q, req.toOptions(), nil)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

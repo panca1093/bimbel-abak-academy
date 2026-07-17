@@ -25,7 +25,7 @@ func TestValidateQuestion_mcq_accepts_exactly_one_correct(t *testing.T) {
 		{Key: "a", Text: "4", IsCorrect: true, SortOrder: 1},
 		{Key: "b", Text: "5", SortOrder: 2},
 	}
-	if err := validateQuestion(q, options); err != nil {
+	if err := validateQuestion(q, options, nil); err != nil {
 		t.Errorf("mcq with 1 correct + 2 options should pass, got %v", err)
 	}
 }
@@ -36,7 +36,7 @@ func TestValidateQuestion_mcq_rejects_zero_correct(t *testing.T) {
 		{Key: "a", Text: "4", SortOrder: 1},
 		{Key: "b", Text: "5", SortOrder: 2},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("mcq with 0 correct should return ErrValidation, got %v", err)
 	}
@@ -51,7 +51,7 @@ func TestValidateQuestion_mcq_rejects_two_correct(t *testing.T) {
 		{Key: "a", Text: "4", IsCorrect: true, SortOrder: 1},
 		{Key: "b", Text: "5", IsCorrect: true, SortOrder: 2},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("mcq with 2 correct should return ErrValidation, got %v", err)
 	}
@@ -65,7 +65,7 @@ func TestValidateQuestion_mcq_rejects_fewer_than_2_options(t *testing.T) {
 	options := []model.QuestionOption{
 		{Key: "a", Text: "4", IsCorrect: true, SortOrder: 1},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("mcq with 1 option should return ErrValidation, got %v", err)
 	}
@@ -82,7 +82,7 @@ func TestValidateQuestion_multi_answer_accepts_one_or_more_correct(t *testing.T)
 		{Key: "b", Text: "4", SortOrder: 2},
 		{Key: "c", Text: "6", SortOrder: 3},
 	}
-	if err := validateQuestion(q, opts1); err != nil {
+	if err := validateQuestion(q, opts1, nil); err != nil {
 		t.Errorf("multi_answer with 1 correct + 3 options should pass, got %v", err)
 	}
 	// two correct
@@ -91,7 +91,7 @@ func TestValidateQuestion_multi_answer_accepts_one_or_more_correct(t *testing.T)
 		{Key: "b", Text: "4", IsCorrect: true, SortOrder: 2},
 		{Key: "c", Text: "6", SortOrder: 3},
 	}
-	if err := validateQuestion(q, opts2); err != nil {
+	if err := validateQuestion(q, opts2, nil); err != nil {
 		t.Errorf("multi_answer with 2 correct + 3 options should pass, got %v", err)
 	}
 }
@@ -102,7 +102,7 @@ func TestValidateQuestion_multi_answer_rejects_zero_correct(t *testing.T) {
 		{Key: "a", Text: "2", SortOrder: 1},
 		{Key: "b", Text: "4", SortOrder: 2},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("multi_answer with 0 correct should return ErrValidation, got %v", err)
 	}
@@ -113,7 +113,7 @@ func TestValidateQuestion_multi_answer_rejects_zero_correct(t *testing.T) {
 
 func TestValidateQuestion_short_requires_correct_answer(t *testing.T) {
 	q := model.Question{Format: "short", Body: "capital of France"}
-	err := validateQuestion(q, nil)
+	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("short with empty correct_answer should return ErrValidation, got %v", err)
 	}
@@ -127,7 +127,7 @@ func TestValidateQuestion_short_rejects_options(t *testing.T) {
 	options := []model.QuestionOption{
 		{Key: "a", Text: "y", SortOrder: 1},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("short with options should return ErrValidation, got %v", err)
 	}
@@ -138,7 +138,7 @@ func TestValidateQuestion_short_rejects_options(t *testing.T) {
 
 func TestValidateQuestion_fill_blank_requires_correct_answer(t *testing.T) {
 	q := model.Question{Format: "fill_blank", Body: "the ___ is blue"}
-	err := validateQuestion(q, nil)
+	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("fill_blank with empty correct_answer should return ErrValidation, got %v", err)
 	}
@@ -149,7 +149,7 @@ func TestValidateQuestion_fill_blank_requires_correct_answer(t *testing.T) {
 
 func TestValidateQuestion_essay_accepts_no_options_no_correct_answer(t *testing.T) {
 	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 1}
-	if err := validateQuestion(q, nil); err != nil {
+	if err := validateQuestion(q, nil, nil); err != nil {
 		t.Errorf("essay with no options + no correct_answer should pass, got %v", err)
 	}
 }
@@ -159,7 +159,7 @@ func TestValidateQuestion_essay_rejects_options(t *testing.T) {
 	options := []model.QuestionOption{
 		{Key: "a", Text: "x", SortOrder: 1},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("essay with options should return ErrValidation, got %v", err)
 	}
@@ -170,7 +170,7 @@ func TestValidateQuestion_essay_rejects_options(t *testing.T) {
 
 func TestValidateQuestion_essay_rejects_correct_answer(t *testing.T) {
 	q := model.Question{Format: "essay", Body: "explain", CorrectAnswer: strPtr("something")}
-	err := validateQuestion(q, nil)
+	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("essay with correct_answer should return ErrValidation, got %v", err)
 	}
@@ -181,7 +181,7 @@ func TestValidateQuestion_essay_rejects_correct_answer(t *testing.T) {
 
 func TestValidateQuestion_rejects_unknown_format(t *testing.T) {
 	q := model.Question{Format: "matching", Body: "x"}
-	err := validateQuestion(q, nil)
+	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("unknown format should return ErrValidation, got %v", err)
 	}
@@ -196,7 +196,7 @@ func TestValidateQuestion_rejects_duplicate_option_keys(t *testing.T) {
 		{Key: "a", Text: "1", IsCorrect: true, SortOrder: 1},
 		{Key: "a", Text: "2", SortOrder: 2},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("duplicate option key should return ErrValidation, got %v", err)
 	}
@@ -211,7 +211,7 @@ func TestValidateQuestion_rejects_empty_option_text(t *testing.T) {
 		{Key: "a", Text: "   ", IsCorrect: true, SortOrder: 1},
 		{Key: "b", Text: "y", SortOrder: 2},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("empty (whitespace) option text should return ErrValidation, got %v", err)
 	}
@@ -226,7 +226,7 @@ func TestValidateQuestion_mcq_rejects_correct_answer_set(t *testing.T) {
 		{Key: "a", Text: "1", IsCorrect: true, SortOrder: 1},
 		{Key: "b", Text: "2", SortOrder: 2},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("mcq with correct_answer set should return ErrValidation, got %v", err)
 	}
@@ -289,14 +289,14 @@ func TestValidateTest_accepts_valid(t *testing.T) {
 // sanity: validateQuestion for a short question with non-empty correct_answer passes
 func TestValidateQuestion_short_accepts_valid(t *testing.T) {
 	q := model.Question{Format: "short", Body: "capital of France", CorrectAnswer: strPtr("Paris"), PointCorrect: 1}
-	if err := validateQuestion(q, nil); err != nil {
+	if err := validateQuestion(q, nil, nil); err != nil {
 		t.Errorf("valid short should pass, got %v", err)
 	}
 }
 
 func TestValidateQuestion_short_rejects_whitespace_only_correct_answer(t *testing.T) {
 	q := model.Question{Format: "short", Body: "x", CorrectAnswer: strPtr("   ")}
-	err := validateQuestion(q, nil)
+	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("whitespace-only correct_answer should return ErrValidation, got %v", err)
 	}
@@ -308,7 +308,7 @@ func TestValidateQuestion_empty_option_key(t *testing.T) {
 		{Key: "", Text: "1", IsCorrect: true, SortOrder: 1},
 		{Key: "b", Text: "2", SortOrder: 2},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("empty option key should return ErrValidation, got %v", err)
 	}
@@ -322,7 +322,7 @@ func TestValidateQuestion_multi_answer_rejects_fewer_than_2_options(t *testing.T
 	options := []model.QuestionOption{
 		{Key: "a", Text: "1", IsCorrect: true, SortOrder: 1},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("multi_answer with 1 option should return ErrValidation, got %v", err)
 	}
@@ -336,7 +336,7 @@ func TestValidateQuestion_fill_blank_rejects_options(t *testing.T) {
 	options := []model.QuestionOption{
 		{Key: "a", Text: "y", SortOrder: 1},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("fill_blank with options should return ErrValidation, got %v", err)
 	}
@@ -348,7 +348,7 @@ func TestValidateQuestion_multi_answer_rejects_correct_answer_set(t *testing.T) 
 		{Key: "a", Text: "1", IsCorrect: true, SortOrder: 1},
 		{Key: "b", Text: "2", SortOrder: 2},
 	}
-	err := validateQuestion(q, options)
+	err := validateQuestion(q, options, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("multi_answer with correct_answer set should return ErrValidation, got %v", err)
 	}
@@ -359,7 +359,7 @@ func TestValidateQuestion_multi_answer_rejects_correct_answer_set(t *testing.T) 
 
 func TestValidateQuestion_rejects_point_correct_below_1(t *testing.T) {
 	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 0, PointWrong: 0}
-	err := validateQuestion(q, nil)
+	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("point_correct=0 should return ErrValidation, got %v", err)
 	}
@@ -370,7 +370,7 @@ func TestValidateQuestion_rejects_point_correct_below_1(t *testing.T) {
 
 func TestValidateQuestion_rejects_negative_point_wrong(t *testing.T) {
 	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 1, PointWrong: -1}
-	err := validateQuestion(q, nil)
+	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("point_wrong=-1 should return ErrValidation, got %v", err)
 	}
@@ -381,7 +381,7 @@ func TestValidateQuestion_rejects_negative_point_wrong(t *testing.T) {
 
 func TestValidateQuestion_accepts_valid_points(t *testing.T) {
 	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 2, PointWrong: 1}
-	if err := validateQuestion(q, nil); err != nil {
+	if err := validateQuestion(q, nil, nil); err != nil {
 		t.Errorf("point_correct=2, point_wrong=1 should pass, got %v", err)
 	}
 }
@@ -390,12 +390,157 @@ func TestValidateQuestion_rejects_body_empty_after_sanitization(t *testing.T) {
 	// Simulates what every write path does: sanitize, then validate. <br> has
 	// no allowlisted tag and no text content, so it sanitizes to "".
 	q := model.Question{Format: "essay", Body: sanitizeQuestionBody("<br>"), PointCorrect: 1}
-	err := validateQuestion(q, nil)
+	err := validateQuestion(q, nil, nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("body that sanitizes to empty should return ErrValidation, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "body cannot be empty") {
 		t.Errorf("empty-body msg should mention 'body cannot be empty', got %q", err.Error())
+	}
+}
+
+// Multi-blank validation tests
+func TestValidateQuestion_multi_blank_accepts_sequential_tokens_with_matching_blanks(t *testing.T) {
+	q := model.Question{
+		Format:       "multi_blank",
+		Body:         "Ibu kota Indonesia adalah {{1}}, didirikan tahun {{2}}.",
+		PointCorrect: 1,
+	}
+	blanks := []model.QuestionBlank{
+		{Index: 1, CorrectAnswer: "jakarta"},
+		{Index: 2, CorrectAnswer: "1945"},
+	}
+	if err := validateQuestion(q, nil, blanks); err != nil {
+		t.Errorf("valid multi_blank with sequential tokens should pass, got %v", err)
+	}
+}
+
+func TestValidateQuestion_multi_blank_rejects_non_sequential_tokens(t *testing.T) {
+	q := model.Question{
+		Format:       "multi_blank",
+		Body:         "{{1}} and {{3}}",
+		PointCorrect: 1,
+	}
+	blanks := []model.QuestionBlank{
+		{Index: 1, CorrectAnswer: "a"},
+		{Index: 3, CorrectAnswer: "b"},
+	}
+	err := validateQuestion(q, nil, blanks)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("non-sequential tokens should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "gap") {
+		t.Errorf("non-sequential tokens msg should mention 'gap', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_blank_rejects_duplicate_tokens(t *testing.T) {
+	q := model.Question{
+		Format:       "multi_blank",
+		Body:         "{{1}} and {{1}}",
+		PointCorrect: 1,
+	}
+	blanks := []model.QuestionBlank{
+		{Index: 1, CorrectAnswer: "a"},
+	}
+	err := validateQuestion(q, nil, blanks)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("duplicate tokens should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("duplicate tokens msg should mention 'duplicate', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_blank_rejects_zero_tokens(t *testing.T) {
+	q := model.Question{
+		Format:       "multi_blank",
+		Body:         "no tokens here",
+		PointCorrect: 1,
+	}
+	err := validateQuestion(q, nil, nil)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("zero tokens should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "at least one") {
+		t.Errorf("zero tokens msg should mention 'at least one', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_blank_rejects_non_empty_options(t *testing.T) {
+	q := model.Question{
+		Format:       "multi_blank",
+		Body:         "{{1}}",
+		PointCorrect: 1,
+	}
+	options := []model.QuestionOption{
+		{Key: "a", Text: "opt", SortOrder: 1},
+	}
+	blanks := []model.QuestionBlank{
+		{Index: 1, CorrectAnswer: "a"},
+	}
+	err := validateQuestion(q, options, blanks)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("multi_blank with options should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "cannot have options") {
+		t.Errorf("multi_blank with options msg should mention 'cannot have options', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_blank_rejects_non_empty_correct_answer(t *testing.T) {
+	q := model.Question{
+		Format:        "multi_blank",
+		Body:          "{{1}}",
+		CorrectAnswer: strPtr("scalar"),
+		PointCorrect:  1,
+	}
+	blanks := []model.QuestionBlank{
+		{Index: 1, CorrectAnswer: "a"},
+	}
+	err := validateQuestion(q, nil, blanks)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("multi_blank with correct_answer should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "cannot have correct_answer") {
+		t.Errorf("multi_blank with correct_answer msg should mention 'cannot have correct_answer', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_blank_rejects_blanks_count_mismatch(t *testing.T) {
+	q := model.Question{
+		Format:       "multi_blank",
+		Body:         "{{1}} and {{2}}",
+		PointCorrect: 1,
+	}
+	blanks := []model.QuestionBlank{
+		{Index: 1, CorrectAnswer: "a"},
+		// Missing blank for {{2}}
+	}
+	err := validateQuestion(q, nil, blanks)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("blanks count mismatch should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "blanks count") {
+		t.Errorf("blanks count mismatch msg should mention 'blanks count', got %q", err.Error())
+	}
+}
+
+func TestValidateQuestion_multi_blank_rejects_empty_blank_correct_answer(t *testing.T) {
+	q := model.Question{
+		Format:       "multi_blank",
+		Body:         "{{1}}",
+		PointCorrect: 1,
+	}
+	blanks := []model.QuestionBlank{
+		{Index: 1, CorrectAnswer: ""},
+	}
+	err := validateQuestion(q, nil, blanks)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("empty blank correct_answer should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "empty correct_answer") {
+		t.Errorf("empty blank correct_answer msg should mention 'empty correct_answer', got %q", err.Error())
 	}
 }
 
@@ -807,7 +952,7 @@ func TestCreateBankQuestion_creates_no_attachment(t *testing.T) {
 	ctx := context.Background()
 
 	q := model.Question{Format: "essay", Body: "explain gravity", PointCorrect: 1, PointWrong: 0}
-	out, err := svc.CreateBankQuestion(ctx, q, nil)
+	out, err := svc.CreateBankQuestion(ctx, q, nil, nil)
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, out.Question.ID)
 	assert.Equal(t, "essay", out.Question.Format)
@@ -822,7 +967,7 @@ func TestCreateBankQuestion_rejects_body_that_sanitizes_to_empty(t *testing.T) {
 	// content, so sanitizeQuestionBody reduces it to "" before validateQuestion
 	// runs — a blank question must not be persisted.
 	q := model.Question{Format: "essay", Body: "<br>", PointCorrect: 1, PointWrong: 0}
-	_, err := svc.CreateBankQuestion(ctx, q, nil)
+	_, err := svc.CreateBankQuestion(ctx, q, nil, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrValidation)
 
@@ -843,7 +988,7 @@ func TestListBankQuestions_populates_nested_question_and_options(t *testing.T) {
 		{Key: "a", Text: "yes", IsCorrect: true, SortOrder: 1},
 		{Key: "b", Text: "no", IsCorrect: false, SortOrder: 2},
 	}
-	created, err := svc.CreateBankQuestion(ctx, q, opts)
+	created, err := svc.CreateBankQuestion(ctx, q, opts, nil)
 	require.NoError(t, err)
 
 	items, _, err := svc.ListBankQuestions(ctx, repository.QuestionFilter{Search: body, Limit: 10})
@@ -1201,7 +1346,7 @@ func TestCreateQuestionForTest_creates_bank_question_and_join(t *testing.T) {
 	attachQuestionDirect(t, ctx, repo, testID, existingQ, 0)
 
 	q := model.Question{Format: "essay", Body: "explain relativity", PointCorrect: 1, PointWrong: 0}
-	out, err := svc.CreateQuestionForTest(ctx, testID, q, nil)
+	out, err := svc.CreateQuestionForTest(ctx, testID, q, nil, nil)
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, out.Question.ID)
 
@@ -1527,7 +1672,7 @@ func TestCreateBankQuestion_sanitizes_option_text(t *testing.T) {
 		{Key: "b", Text: "<b>bold</b> text", IsCorrect: false, SortOrder: 2},
 	}
 
-	_, err := svc.CreateBankQuestion(ctx, q, opts)
+	_, err := svc.CreateBankQuestion(ctx, q, opts, nil)
 	require.NoError(t, err)
 
 	// Fetch back the created question with options via ListBankQuestions
@@ -1568,7 +1713,7 @@ func TestSaveQuestion_sanitizes_option_text(t *testing.T) {
 		{Key: "b", Text: "no", IsCorrect: false, SortOrder: 2},
 	}
 
-	out, err := svc.CreateBankQuestion(ctx, q, opts)
+	out, err := svc.CreateBankQuestion(ctx, q, opts, nil)
 	require.NoError(t, err)
 	qid := out.Question.ID
 
@@ -1581,7 +1726,7 @@ func TestSaveQuestion_sanitizes_option_text(t *testing.T) {
 	q.ID = qid
 	q.Body = updatedBody
 
-	_, err = svc.SaveQuestion(ctx, q, updatedOpts)
+	_, err = svc.SaveQuestion(ctx, q, updatedOpts, nil)
 	require.NoError(t, err)
 
 	// Verify sanitization happened at persist time via ListBankQuestions
@@ -1617,7 +1762,7 @@ func TestCreateQuestionForTest_sanitizes_option_text(t *testing.T) {
 		{Key: "b", Text: "plain answer", IsCorrect: false, SortOrder: 2},
 	}
 
-	_, err := svc.CreateQuestionForTest(ctx, testID, q, opts)
+	_, err := svc.CreateQuestionForTest(ctx, testID, q, opts, nil)
 	require.NoError(t, err)
 
 	// Verify option text was sanitized via ListBankQuestions
