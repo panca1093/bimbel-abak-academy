@@ -193,4 +193,156 @@ describe("RichTextEditor", () => {
     expect(promptSpy).not.toHaveBeenCalled();
     promptSpy.mockRestore();
   });
+
+  it("sanitizes Word-style HTML on paste by removing style attributes and unwrapping span", async () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
+      // Mirror the insertHTML behavior so onChange can pick it up.
+      if (cmd === "insertHTML" && typeof arg === "string") {
+        const editable = document.querySelector('[contenteditable="true"]');
+        if (editable) editable.innerHTML = arg;
+        return true;
+      }
+      return true;
+    });
+
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    // Simulate paste with Word-style HTML containing style attributes.
+    const wordHtml = '<span style="mso-line-height-rule:exactly;line-height:9999%">text</span>';
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text/html" ? wordHtml : ""),
+      },
+    });
+
+    editable.dispatchEvent(pasteEvent);
+
+    // The result should have no style attribute and no wrapping span (text rendered directly).
+    await waitFor(() => {
+      const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
+      expect(lastCall).toBeDefined();
+      expect(lastCall).not.toContain('style=');
+      expect(lastCall).not.toContain('<span>text</span>');
+      // The plain text "text" should be present.
+      expect(lastCall).toContain('text');
+    });
+
+    execSpy.mockRestore();
+  });
+
+  it("preserves plain text paste when text/html is not available", async () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
+      // Mirror the insertHTML behavior so onChange can pick it up.
+      if (cmd === "insertHTML" && typeof arg === "string") {
+        const editable = document.querySelector('[contenteditable="true"]');
+        if (editable) editable.innerHTML = arg;
+        return true;
+      }
+      return true;
+    });
+
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    // Simulate paste with only plain text (no text/html).
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text/plain" ? "plain text content" : ""),
+      },
+    });
+
+    editable.dispatchEvent(pasteEvent);
+
+    // Plain text should be inserted.
+    await waitFor(() => {
+      const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
+      expect(lastCall).toBeDefined();
+      expect(lastCall).toContain('plain text content');
+    });
+
+    execSpy.mockRestore();
+  });
+
+  it("preserves clean HTML with allowed tags on paste", async () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
+      // Mirror the insertHTML behavior so onChange can pick it up.
+      if (cmd === "insertHTML" && typeof arg === "string") {
+        const editable = document.querySelector('[contenteditable="true"]');
+        if (editable) editable.innerHTML = arg;
+        return true;
+      }
+      return true;
+    });
+
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    // Simulate paste with clean HTML containing only allowed tags.
+    const cleanHtml = '<b>bold</b> and <i>italic</i>';
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text/html" ? cleanHtml : ""),
+      },
+    });
+
+    editable.dispatchEvent(pasteEvent);
+
+    // Clean HTML should be preserved.
+    await waitFor(() => {
+      const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
+      expect(lastCall).toBeDefined();
+      expect(lastCall).toContain('<b>bold</b>');
+      expect(lastCall).toContain('<i>italic</i>');
+    });
+
+    execSpy.mockRestore();
+  });
+
+  it("removes disallowed tags (e.g., script) on paste", async () => {
+    const execSpy = vi.spyOn(document, "execCommand").mockImplementation((cmd, _ui, arg) => {
+      // Mirror the insertHTML behavior so onChange can pick it up.
+      if (cmd === "insertHTML" && typeof arg === "string") {
+        const editable = document.querySelector('[contenteditable="true"]');
+        if (editable) editable.innerHTML = arg;
+        return true;
+      }
+      return true;
+    });
+
+    const onChange = vi.fn();
+    render(<RichTextEditor value="" onChange={onChange} />);
+    const editable = screen.getByRole("textbox");
+    editable.focus();
+
+    // Simulate paste with dangerous content.
+    const dangerousHtml = '<b>safe</b><script>alert("xss")</script>';
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(pasteEvent, "clipboardData", {
+      value: {
+        getData: (type: string) => (type === "text/html" ? dangerousHtml : ""),
+      },
+    });
+
+    editable.dispatchEvent(pasteEvent);
+
+    // Script tag should be removed, but bold should remain.
+    await waitFor(() => {
+      const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0];
+      expect(lastCall).toBeDefined();
+      expect(lastCall).toContain('<b>safe</b>');
+      expect(lastCall).not.toContain('script');
+    });
+
+    execSpy.mockRestore();
+  });
 });
