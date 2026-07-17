@@ -38,6 +38,11 @@ vi.mock("sonner", () => ({
   },
 }));
 
+vi.mock("@/lib/hooks/admin-uploads", () => ({
+  usePresignAdminAudioUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  usePresignAdminImageUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 const sampleTests: Test[] = [
   {
     id: "t1",
