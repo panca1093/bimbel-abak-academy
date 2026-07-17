@@ -168,7 +168,7 @@ func TestAdminCreateSchool_ResponseStatusActive_Integration(t *testing.T) {
 	require.Equal(t, "active", resp["status"])
 }
 
-func TestSchoolCodeLock_Integration(t *testing.T) {
+func TestSchoolCodeChange_Integration(t *testing.T) {
 	env := newTestEnv(t)
 
 	// Seed a school
@@ -176,14 +176,14 @@ func TestSchoolCodeLock_Integration(t *testing.T) {
 	err := env.pool.QueryRow(t.Context(),
 		`INSERT INTO school (name, code, npsn, school_types, alamat, status)
 		 VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
-		"Code Lock School", "codelock", "20000001", []string{"SMA"}, "Jl. Test",
+		"Code Change School", "codechg", "20000001", []string{"SMA"}, "Jl. Test",
 	).Scan(&schoolID)
 	require.NoError(t, err)
 
 	// Register a student
 	alsUserID := seedUser(t, env, "admin_school", "active", false)
 	adminToken := authTokenWithSchool(t, env, alsUserID, "admin_school", schoolID)
-	studentBody := map[string]string{"name": "Stu", "nis": "locktest"}
+	studentBody := map[string]string{"name": "Stu", "nis": "chgtest"}
 	b, _ := json.Marshal(studentBody)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
@@ -192,17 +192,17 @@ func TestSchoolCodeLock_Integration(t *testing.T) {
 	env.server.Config.Handler.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusCreated, rec.Code)
 
-	// Attempt to change code — should fail with 409
+	// Change code with students — should succeed (lock removed)
 	suUserID := seedUser(t, env, "super_admin", "active", false)
 	superToken := authToken(t, env, suUserID, "super_admin")
-	updateBody := map[string]string{"code": "newcode"}
+	updateBody := map[string]string{"code": "newcodechg"}
 	b, _ = json.Marshal(updateBody)
 	req = httptest.NewRequest(http.MethodPut, "/api/v1/admin/schools/"+schoolID, bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+superToken)
 	rec = httptest.NewRecorder()
 	env.server.Config.Handler.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusConflict, rec.Code)
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestRowScoping_Integration(t *testing.T) {

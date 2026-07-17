@@ -152,9 +152,9 @@ func TestUpdateSchool_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("code lock when students exist", func(t *testing.T) {
+	t.Run("code change succeeds when students exist (lock removed)", func(t *testing.T) {
 		code := "us_" + uniqueSuffix()
-		school, err := svc.CreateSchool(ctx, "Locked School", code, nil, nil, nil)
+		school, err := svc.CreateSchool(ctx, "School With Students", code, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
@@ -163,18 +163,33 @@ func TestUpdateSchool_Integration(t *testing.T) {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
 		newCode := "us_" + uniqueSuffix()
-		_, err = svc.UpdateSchool(ctx, school.ID, nil, nil, nil, nil, &newCode)
-		if !errors.Is(err, ErrSchoolCodeLocked) {
-			t.Errorf("want ErrSchoolCodeLocked, got %v", err)
+		updated, err := svc.UpdateSchool(ctx, school.ID, nil, nil, nil, nil, &newCode)
+		if err != nil {
+			t.Errorf("code change should succeed (lock removed), got %v", err)
 		}
+		if updated != nil && updated.Code != newCode {
+			t.Errorf("Code: want %s, got %s", newCode, updated.Code)
+		}
+	})
 
-		// Same code (no-op change) and omitted code must still succeed regardless of student count.
-		if _, err := svc.UpdateSchool(ctx, school.ID, nil, nil, nil, nil, &code); err != nil {
-			t.Errorf("update with unchanged code should succeed, got %v", err)
+	t.Run("code uniqueness still enforced on update", func(t *testing.T) {
+		codeA := "us_" + uniqueSuffix()
+		codeB := "us_" + uniqueSuffix()
+		_, err := svc.CreateSchool(ctx, "School A", codeA, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool A: %v", err)
 		}
-		unchangedName := "Locked School Renamed"
-		if _, err := svc.UpdateSchool(ctx, school.ID, &unchangedName, nil, nil, nil, nil); err != nil {
-			t.Errorf("update omitting code should succeed, got %v", err)
+		schoolB, err := svc.CreateSchool(ctx, "School B", codeB, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("CreateSchool B: %v", err)
+		}
+		nis := "nis_" + uniqueSuffix()
+		if _, err := svc.RegisterStudent(ctx, schoolB.ID, "Stu Dent", nis, nil, nil, nil, nil, nil, nil); err != nil {
+			t.Fatalf("RegisterStudent: %v", err)
+		}
+		_, err = svc.UpdateSchool(ctx, schoolB.ID, nil, nil, nil, nil, &codeA)
+		if !errors.Is(err, ErrSchoolCodeTaken) {
+			t.Errorf("want ErrSchoolCodeTaken, got %v", err)
 		}
 	})
 }
@@ -254,9 +269,6 @@ func TestAdminListSchools_Integration(t *testing.T) {
 func TestSchoolSentinelErrors(t *testing.T) {
 	if ErrSchoolNotFound == nil {
 		t.Error("ErrSchoolNotFound is nil")
-	}
-	if ErrSchoolCodeLocked == nil {
-		t.Error("ErrSchoolCodeLocked is nil")
 	}
 	if ErrSchoolCodeTaken == nil {
 		t.Error("ErrSchoolCodeTaken is nil")

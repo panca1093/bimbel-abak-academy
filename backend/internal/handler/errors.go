@@ -109,8 +109,6 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "school_not_found", Message: err.Error()}
-	case errors.Is(err, service.ErrSchoolCodeLocked):
-		status, apiErr = http.StatusConflict, APIError{Code: "school_code_locked", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolCodeTaken):
 		status, apiErr = http.StatusConflict, APIError{Code: "school_code_taken", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolRequired):
