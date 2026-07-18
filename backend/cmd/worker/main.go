@@ -57,7 +57,7 @@ func main() {
 	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	emailProvider := newEmailProvider(cfg)
 	paymentClient := adapter.ResolvePaymentClient(ctx, repo, &cfg)
-	logisticsClient := &adapter.NoopLogisticsClient{}
+	logisticsClient := adapter.ResolveShippingClient(ctx, repo, &cfg)
 	storageClient := newStorageClient(cfg)
 
 	svc := service.NewWithStore(repo, repo, rdb, jwtSigner, &service.NoopOTPProvider{}, emailProvider, paymentClient, logisticsClient, storageClient, &cfg)

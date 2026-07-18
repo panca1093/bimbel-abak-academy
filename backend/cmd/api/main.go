@@ -59,7 +59,7 @@ func main() {
 	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	otpProvider, emailProvider := newNotifyProviders(cfg)
 	paymentClient := adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
-	logisticsClient := &adapter.NoopLogisticsClient{}
+	logisticsClient := adapter.ResolveShippingClient(ctx, storeRepo, &cfg)
 	storageClient := newStorageClient(cfg)
 	svc := service.NewWithStore(storeRepo, storeRepo, rdb, jwtSigner, otpProvider, emailProvider, paymentClient, logisticsClient, storageClient, &cfg)
 	svc.SetReloadPaymentFn(func(ctx context.Context) service.PaymentClient {
