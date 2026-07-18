@@ -67,8 +67,8 @@ func TestSchoolCRUD_Integration(t *testing.T) {
 	// 3. Register a student as the school admin
 	adminToken := authTokenWithSchool(t, env, createdAdminID, "admin_school", schoolID)
 	studentBody := map[string]interface{}{
-		"name": "Test Student",
-		"nis":  "12345",
+		"name":    "Test Student",
+		"jenjang": "SMA",
 	}
 	b, _ = json.Marshal(studentBody)
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
@@ -82,12 +82,13 @@ func TestSchoolCRUD_Integration(t *testing.T) {
 	var regResp map[string]interface{}
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&regResp))
 	require.NotEmpty(t, regResp["temp_password"])
-	require.Equal(t, "smantest_12345", regResp["username"])
+	username := regResp["username"].(string)
+	require.NotEmpty(t, username, "username must be populated")
 	studentID := regResp["id"].(string)
 
 	// 4. Student can log in with username + temp_password (FR-STU-10)
 	loginBody := map[string]string{
-		"identifier": "smantest_12345",
+		"identifier": username,
 		"password":   regResp["temp_password"].(string),
 	}
 	b, _ = json.Marshal(loginBody)
@@ -183,7 +184,7 @@ func TestSchoolCodeChange_Integration(t *testing.T) {
 	// Register a student
 	alsUserID := seedUser(t, env, "admin_school", "active", false)
 	adminToken := authTokenWithSchool(t, env, alsUserID, "admin_school", schoolID)
-	studentBody := map[string]string{"name": "Stu", "nis": "chgtest"}
+	studentBody := map[string]string{"name": "Stu", "jenjang": "SMA"}
 	b, _ := json.Marshal(studentBody)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
@@ -224,7 +225,7 @@ func TestRowScoping_Integration(t *testing.T) {
 	// Admin A registers a student
 	adminAUserID := seedUser(t, env, "admin_school", "active", false)
 	tokenA := authTokenWithSchool(t, env, adminAUserID, "admin_school", schoolA)
-	studentBody := map[string]string{"name": "Student A", "nis": "a001"}
+	studentBody := map[string]string{"name": "Student A", "jenjang": "SMA"}
 	b, _ := json.Marshal(studentBody)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/students", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")

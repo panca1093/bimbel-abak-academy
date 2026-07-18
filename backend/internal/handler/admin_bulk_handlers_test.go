@@ -191,7 +191,10 @@ func TestAdminBulkReissueCredentials_HappyPath_ReturnsCSV(t *testing.T) {
 		t.Fatalf("want 2 records (header + 1 row), got %d", len(records))
 	}
 	row := records[1]
-	if row[0] != "Reissue Target" || row[1] != "brt1" || row[2] == "" || row[3] == "" || row[4] != "" {
+	if len(row) != 4 {
+		t.Errorf("want 4 columns (name, username, temp_password, error), got %d: %+v", len(row), row)
+	}
+	if row[0] != "Reissue Target" || row[1] == "" || row[2] == "" || row[3] != "" {
 		t.Errorf("unexpected credentials row: %+v", row)
 	}
 }
