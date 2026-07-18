@@ -623,3 +623,185 @@ func TestUpdateSystemConfig_SkipsStarStarStarForSecrets(t *testing.T) {
 		t.Errorf("stored secret should still be encrypted version of 'real-secret-value', decrypted to %q", decrypted)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// New Biteship + Origin Location keys
+// ---------------------------------------------------------------------------
+
+func TestBuildConfigMap_NewKeysPresent(t *testing.T) {
+	// Verify that all new keys appear in the catalog and default to ""
+	result := buildConfigMap([]repository.SystemConfigRow{})
+
+	newKeys := []string{
+		"app_province_id",
+		"app_city_id",
+		"app_district_id",
+		"app_kode_pos",
+		"shipping_fallback_flat_rate",
+		"biteship_api_key",
+	}
+
+	for _, key := range newKeys {
+		if _, ok := result[key]; !ok {
+			t.Errorf("key %q missing from result", key)
+		}
+		if result[key] != "" {
+			t.Errorf("key %q should default to empty, got %q", key, result[key])
+		}
+	}
+}
+
+func TestBuildConfigMap_BiteshipKeyMasked(t *testing.T) {
+	// biteship_api_key is secret: true, so it should be masked as "***" when non-empty
+	rows := []repository.SystemConfigRow{
+		{Key: "biteship_api_key", Value: "encrypted-blob", IsSecret: true},
+		{Key: "shipping_fallback_flat_rate", Value: "50000", IsSecret: false},
+	}
+
+	result := buildConfigMap(rows)
+
+	if result["biteship_api_key"] != "***" {
+		t.Errorf("biteship_api_key: want '***', got %q", result["biteship_api_key"])
+	}
+	if result["shipping_fallback_flat_rate"] != "50000" {
+		t.Errorf("shipping_fallback_flat_rate: want '50000', got %q", result["shipping_fallback_flat_rate"])
+	}
+}
+
+func TestUpdateSystemConfig_NewNonSecretKeys(t *testing.T) {
+	// Verify that non-secret origin/fallback keys round-trip through UpdateSystemConfig
+	ctx := context.Background()
+	svc := newFakeSystemConfigService("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2")
+
+	result, err := svc.UpdateSystemConfig(ctx, map[string]string{
+		"app_province_id":         "1",
+		"app_city_id":             "2",
+		"app_district_id":         "3",
+		"app_kode_pos":            "12345",
+		"shipping_fallback_flat_rate": "50000",
+	})
+	if err != nil {
+		t.Fatalf("UpdateSystemConfig: %v", err)
+	}
+
+	if result["app_province_id"] != "1" {
+		t.Errorf("app_province_id: want '1', got %q", result["app_province_id"])
+	}
+	if result["app_city_id"] != "2" {
+		t.Errorf("app_city_id: want '2', got %q", result["app_city_id"])
+	}
+	if result["app_district_id"] != "3" {
+		t.Errorf("app_district_id: want '3', got %q", result["app_district_id"])
+	}
+	if result["app_kode_pos"] != "12345" {
+		t.Errorf("app_kode_pos: want '12345', got %q", result["app_kode_pos"])
+	}
+	if result["shipping_fallback_flat_rate"] != "50000" {
+		t.Errorf("shipping_fallback_flat_rate: want '50000', got %q", result["shipping_fallback_flat_rate"])
+	}
+}
+
+func TestUpdateSystemConfig_BiteshipKeyIsSecret(t *testing.T) {
+	// Verify that biteship_api_key is encrypted and returned masked
+	ctx := context.Background()
+	svc := newFakeSystemConfigService("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2")
+
+	result, err := svc.UpdateSystemConfig(ctx, map[string]string{
+		"biteship_api_key": "real-biteship-key-12345",
+	})
+	if err != nil {
+		t.Fatalf("UpdateSystemConfig: %v", err)
+	}
+
+	// Should be masked as "***"
+	if result["biteship_api_key"] != "***" {
+		t.Errorf("biteship_api_key: want '***', got %q", result["biteship_api_key"])
+	}
+
+	// Verify it was encrypted in storage
+	rows, _ := svc.repo.ListSystemConfig(ctx)
+	var storedEncrypted string
+	for _, r := range rows {
+		if r.Key == "biteship_api_key" {
+			storedEncrypted = r.Value
+		}
+	}
+
+	if storedEncrypted == "" {
+		t.Fatal("biteship_api_key should be stored with encrypted value")
+	}
+	if storedEncrypted == "real-biteship-key-12345" {
+		t.Fatal("biteship_api_key should be encrypted, not plaintext")
+	}
+
+	// Verify it can be decrypted
+	decrypted, err := decryptConfigValue("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2", storedEncrypted)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	if decrypted != "real-biteship-key-12345" {
+		t.Errorf("decrypted: want 'real-biteship-key-12345', got %q", decrypted)
+	}
+}
+
+func TestUpdateSystemConfig_BiteshipKeySkipsStarStarStar(t *testing.T) {
+	// Verify that "***" for biteship_api_key skips the update, preserving the existing encrypted value
+	ctx := context.Background()
+	svc := newFakeSystemConfigService("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2")
+
+	// First update: set a real value
+	firstResult, err := svc.UpdateSystemConfig(ctx, map[string]string{
+		"biteship_api_key": "original-key-value",
+	})
+	if err != nil {
+		t.Fatalf("first update: %v", err)
+	}
+	if firstResult["biteship_api_key"] != "***" {
+		t.Fatalf("after setting secret, should be masked as '***', got %q", firstResult["biteship_api_key"])
+	}
+
+	// Get the encrypted value from storage
+	rows1, _ := svc.repo.ListSystemConfig(ctx)
+	var originalEncrypted string
+	for _, r := range rows1 {
+		if r.Key == "biteship_api_key" {
+			originalEncrypted = r.Value
+		}
+	}
+
+	// Second update: send "***" — should skip it
+	secondResult, err := svc.UpdateSystemConfig(ctx, map[string]string{
+		"app_province_id":  "5",
+		"biteship_api_key": "***",
+	})
+	if err != nil {
+		t.Fatalf("second update with '***': %v", err)
+	}
+
+	// biteship_api_key should still be "***"
+	if secondResult["biteship_api_key"] != "***" {
+		t.Errorf("after '***' skip, want '***', got %q", secondResult["biteship_api_key"])
+	}
+
+	// Verify the underlying encrypted value wasn't changed
+	rows2, _ := svc.repo.ListSystemConfig(ctx)
+	var afterSkipEncrypted string
+	for _, r := range rows2 {
+		if r.Key == "biteship_api_key" {
+			afterSkipEncrypted = r.Value
+		}
+	}
+
+	if afterSkipEncrypted != originalEncrypted {
+		t.Error("biteship_api_key encrypted value should not change when '***' is sent")
+	}
+
+	// Verify the value can still be decrypted to the original
+	decrypted, err := decryptConfigValue("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2", afterSkipEncrypted)
+	if err != nil {
+		t.Fatalf("decrypt: %v", err)
+	}
+	if decrypted != "original-key-value" {
+		t.Errorf("decrypted: want 'original-key-value', got %q", decrypted)
+	}
+}
