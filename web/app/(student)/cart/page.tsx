@@ -1,30 +1,78 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart, X } from "lucide-react";
-import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo } from "@/lib/hooks/orders";
+import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart } from "@/lib/hooks/orders";
+import { useProfile } from "@/lib/hooks/students";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { OrderItem } from "@/lib/types";
 import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoInput } from "@/components/cart/PromoInput";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
+import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
+import { CourierRateList } from "@/components/cart/CourierRateList";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { hasPhysicalItems, calculateTotalPhysicalWeight } from "@/lib/shipping";
 
 export default function CartPage() {
   const { t } = useTranslation();
   const { data: cart, isLoading, isError, error, refetch } = useCart();
+  const { data: profile } = useProfile();
   const removeItem = useRemoveCartItem();
   const updateQty = useUpdateCartItemQty();
   const validatePromo = useValidatePromo();
+  const shippingRates = useShippingRates();
+  const patchCart = usePatchCart();
+
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddressFormState>({
+    provinsi_id: "",
+    kota_id: "",
+    kecamatan_id: "",
+    kode_pos: "",
+  });
+  const [selectedCourier, setSelectedCourier] = useState<string | null>(null);
 
   const items: OrderItem[] = cart?.items ?? [];
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
   const discount = cart?.discount ?? 0;
-  const total = cart?.total ?? Math.max(0, subtotal - discount);
+  const total = cart?.total ?? Math.max(0, subtotal - discount + (cart?.shipping_cost ?? 0));
+
+  const hasPhysical = hasPhysicalItems(items);
+  const totalPhysicalWeight = calculateTotalPhysicalWeight(items);
+
+  const handleAddressChange = useCallback((state: ShippingAddressFormState) => {
+    setShippingAddress(state);
+  }, []);
+
+  const handleCheckShipping = useCallback(() => {
+    if (!shippingAddress.kode_pos) return;
+    shippingRates.mutate({
+      destination_postal_code: shippingAddress.kode_pos,
+      weight_grams: totalPhysicalWeight,
+    });
+  }, [shippingAddress.kode_pos, totalPhysicalWeight, shippingRates]);
+
+  const handleSelectCourier = useCallback(
+    (rate: { courier: string; price: number }) => {
+      if (!cart) return;
+      setSelectedCourier(rate.courier);
+      patchCart.mutate({
+        orderId: cart.id,
+        courier: rate.courier,
+        shipping_cost: rate.price,
+        province_id: shippingAddress.provinsi_id,
+        city_id: shippingAddress.kota_id,
+        district_id: shippingAddress.kecamatan_id,
+        kode_pos: shippingAddress.kode_pos,
+      });
+    },
+    [cart, shippingAddress, patchCart]
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
@@ -70,6 +118,25 @@ export default function CartPage() {
                 updatingQty={updateQty.isPending}
               />
             ))}
+
+            {hasPhysical && (
+              <ShippingAddressForm
+                profile={profile}
+                onAddressChange={handleAddressChange}
+                onCheckShipping={handleCheckShipping}
+                isCheckingShipping={shippingRates.isPending}
+              />
+            )}
+
+            {hasPhysical && shippingRates.data && (
+              <CourierRateList
+                rates={shippingRates.data}
+                selectedCourier={selectedCourier}
+                onSelect={handleSelectCourier}
+                isLoading={false}
+                isError={shippingRates.isError}
+              />
+            )}
           </section>
 
           <aside className="lg:sticky lg:top-6">
@@ -87,6 +154,7 @@ export default function CartPage() {
               <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
                 <Row label={t("cart_subtotal")} value={formatRupiah(subtotal)} />
                 {discount > 0 && <Row label={t("cart_discount")} value={`−${formatRupiah(discount)}`} tone="text-success" />}
+                {(cart?.shipping_cost ?? 0) > 0 && <Row label={t("order_shipping")} value={formatRupiah(cart?.shipping_cost ?? 0)} />}
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-line pt-4">
