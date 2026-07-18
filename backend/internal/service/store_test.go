@@ -503,7 +503,7 @@ func TestValidatePromo_NotFound(t *testing.T) {
 func TestGetShippingRates(t *testing.T) {
 	ctx := context.Background()
 	svc := newShim(newFakeStoreRepo())
-	rates, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationZip: "12345", WeightGrams: 500})
+	rates, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationPostalCode: "12345", WeightGrams: 500})
 	if err != nil {
 		t.Fatalf("GetShippingRates: %v", err)
 	}

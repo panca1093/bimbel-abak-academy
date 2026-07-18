@@ -225,8 +225,8 @@ func (h *Handler) GetShipping(c echo.Context) error {
 	}
 
 	rates, err := h.svc.GetShippingRates(c.Request().Context(), service.ShippingQuoteRequest{
-		DestinationZip: req.DestinationZip,
-		WeightGrams:    req.WeightGrams,
+		DestinationPostalCode: req.DestinationZip,
+		WeightGrams:           req.WeightGrams,
 	})
 	if err != nil {
 		return mapServiceError(c, err)

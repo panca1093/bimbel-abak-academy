@@ -3,8 +3,8 @@ package service
 import "context"
 
 type ShippingQuoteRequest struct {
-	DestinationZip string
-	WeightGrams    int
+	DestinationPostalCode string
+	WeightGrams           int
 }
 
 type CourierRate struct {
