@@ -177,6 +177,13 @@ export interface OrderItem {
   created_at?: string;
 }
 
+export interface CourierRate {
+  courier: string;
+  service: string;
+  estimated_days: number;
+  price: number;
+}
+
 export interface Order {
   id: string;
   student_id: string;
