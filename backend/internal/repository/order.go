@@ -309,7 +309,7 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 		_, err = r.pool.Exec(ctx, `
 			UPDATE orders SET
 			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
-			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
 			  shipping_cost = 0,
 			  selected_courier = '',
 			  updated_at = now()
@@ -331,7 +331,7 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID, 
 		_, err = r.pool.Exec(ctx, `
 			UPDATE orders SET
 			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
-			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
 			  shipping_cost = 0,
 			  selected_courier = '',
 			  updated_at = now()
@@ -353,7 +353,7 @@ func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUI
 		_, err = r.pool.Exec(ctx, `
 			UPDATE orders SET
 			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
-			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
 			  shipping_cost = 0,
 			  selected_courier = '',
 			  updated_at = now()

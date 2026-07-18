@@ -94,3 +94,54 @@ func merchStock(t *testing.T, pool *pgxpool.Pool, productID uuid.UUID) int {
 		`SELECT stock FROM product WHERE id = $1`, productID).Scan(&stock))
 	return stock
 }
+
+// TestRemoveItem_ClearsShippingCostInvariant_Real verifies the total invariant
+// is maintained when clearShipping=true clears shipping cost.
+// This is a real DB test because the bug (pre-image evaluation in SQL SET clauses)
+// only manifests in actual Postgres, not in shim/in-memory reimplementations.
+func TestRemoveItem_ClearsShippingCostInvariant_Real(t *testing.T) {
+	ctx := context.Background()
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+
+	studentID := insertGradingUser(t, pool, "student", "Test Buyer")
+	bookProdID := seedPhysicalProductRow(t, pool, "book", 10)
+	courseProdID := seedPhysicalProductRow(t, pool, "course", 10)
+
+	orderID := uuid.New()
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO orders (id, student_id, status, subtotal, discount, shipping_cost, total)
+		 VALUES ($1, $2, 'cart', 100000, 0, 15000, 115000)
+		 RETURNING id`, orderID, studentID).Scan(&orderID))
+
+	bookItemID := uuid.New()
+	courseItemID := uuid.New()
+	_, err := pool.Exec(ctx,
+		`INSERT INTO order_item (id, order_id, product_id, product_type, name, unit_price, qty, jumlah, created_at)
+		 VALUES ($1, $2, $3, 'book', 'Book', 50000, 1, 50000, now())`,
+		bookItemID, orderID, bookProdID,
+	)
+	require.NoError(t, err)
+
+	_, err = pool.Exec(ctx,
+		`INSERT INTO order_item (id, order_id, product_id, product_type, name, unit_price, qty, jumlah, created_at)
+		 VALUES ($1, $2, $3, 'course', 'Course', 50000, 1, 50000, now())`,
+		courseItemID, orderID, courseProdID,
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, repo.RemoveItem(ctx, orderID, bookItemID, true))
+
+	var subtotal, discount, shippingCost, total float64
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT subtotal, discount, shipping_cost, total FROM orders WHERE id = $1`,
+		orderID,
+	).Scan(&subtotal, &discount, &shippingCost, &total))
+
+	require.Equal(t, 50000.0, subtotal, "subtotal should be sum of remaining items")
+	require.Equal(t, 0.0, discount, "discount unchanged")
+	require.Equal(t, 0.0, shippingCost, "shipping_cost should be cleared")
+
+	expectedTotal := subtotal - discount + shippingCost
+	require.Equal(t, expectedTotal, total, "total invariant: total = subtotal - discount + shipping_cost; got total=%v, expected=%v", total, expectedTotal)
+}
