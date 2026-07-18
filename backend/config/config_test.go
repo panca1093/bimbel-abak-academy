@@ -287,6 +287,7 @@ fazpass_merchant_key: "fz-merchant"
 fazpass_api_key: "fz-api"
 midtrans_server_key: "mt-server"
 midtrans_client_key: "mt-client"
+biteship_api_key: "bs-key-xyz"
 smtp_username: "smtp-user"
 smtp_password: "smtp-pass"
 `)
@@ -315,6 +316,7 @@ smtp_password: "smtp-pass"
 		{"FazpassBaseURL", cfg.FazpassBaseURL, "https://fazpass.example.com"},
 		{"MidtransServerKey", cfg.MidtransServerKey, "mt-server"},
 		{"MidtransClientKey", cfg.MidtransClientKey, "mt-client"},
+		{"BiteshipAPIKey", cfg.BiteshipAPIKey, "bs-key-xyz"},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
 		{"SMTPHost", cfg.SMTPHost, "smtp.gmail.com"},
 		{"SMTPPort", cfg.SMTPPort, "587"},
