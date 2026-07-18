@@ -38,6 +38,11 @@ export interface UpdateProfileInput {
   address?: string;
   dob?: string;
   gender?: string;
+  jenjang?: string;
+  provinsi_id?: string;
+  kota_id?: string;
+  kecamatan_id?: string;
+  kode_pos?: string;
 }
 
 export function useSchools() {

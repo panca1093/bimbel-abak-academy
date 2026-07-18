@@ -105,6 +105,11 @@ export interface User {
   alamat_domisili?: string;
   dob?: string;
   gender?: string;
+  jenjang?: string | null;
+  provinsi_id?: string | null;
+  kota_id?: string | null;
+  kecamatan_id?: string | null;
+  kode_pos?: string | null;
   photo_url?: string;
   created_at?: string;
   updated_at?: string;
