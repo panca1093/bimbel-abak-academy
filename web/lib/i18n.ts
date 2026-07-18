@@ -986,6 +986,10 @@ export const DICT = {
     exam_grant_empty_exam: "Pilih ujian terlebih dahulu.",
     exam_grant_empty_students: "Pilih minimal satu siswa.",
     exam_grant_grant_again: "Beri Akses Lagi",
+
+    // Complete-profile unlisted-school fallback
+    complete_profile_school_unlisted_label: "Sekolah saya tidak ada di daftar",
+    complete_profile_school_unlisted_placeholder: "Tulis nama sekolah Anda",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1968,6 +1972,10 @@ export const DICT = {
     exam_grant_empty_exam: "Please select an exam first.",
     exam_grant_empty_students: "Please select at least one student.",
     exam_grant_grant_again: "Grant Again",
+
+    // Complete-profile unlisted-school fallback
+    complete_profile_school_unlisted_label: "My school is not on the list",
+    complete_profile_school_unlisted_placeholder: "Type your school name",
   },
 };
 

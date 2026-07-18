@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProfile, useSchools, useUpdateProfile } from "@/lib/hooks/students";
 import { studentsKeys } from "@/lib/hooks/students";
 import { isProfileComplete } from "@/lib/profile";
+import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,10 +24,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 const GRADES = ["7", "8", "9", "10", "11", "12"];
+const UNLISTED_SCHOOL_VALUE = "_unlisted_";
 
 export default function CompleteProfilePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const { data: profile, isLoading } = useProfile();
@@ -34,9 +37,12 @@ export default function CompleteProfilePage() {
   const updateProfile = useUpdateProfile();
 
   const [schoolId, setSchoolId] = useState("");
+  const [unlistedSchoolName, setUnlistedSchoolName] = useState("");
   const [grade, setGrade] = useState("");
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const isUnlisted = schoolId === UNLISTED_SCHOOL_VALUE;
 
   // Prefill name from the stored user (Google-provided).
   useEffect(() => {
@@ -60,17 +66,25 @@ export default function CompleteProfilePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!schoolId || !grade) {
+    if (!grade || (!schoolId && !unlistedSchoolName)) {
       toast.error("Silakan lengkapi sekolah dan kelas.");
       return;
     }
     setSubmitting(true);
     try {
-      await updateProfile.mutateAsync({
-        name: name || undefined,
-        school_id: schoolId,
-        grade: parseInt(grade, 10),
-      });
+      if (isUnlisted) {
+        await updateProfile.mutateAsync({
+          name: name || undefined,
+          unlisted_school_name: unlistedSchoolName.trim(),
+          grade: parseInt(grade, 10),
+        });
+      } else {
+        await updateProfile.mutateAsync({
+          name: name || undefined,
+          school_id: schoolId,
+          grade: parseInt(grade, 10),
+        });
+      }
       // Invalidate the profile query so the gate re-evaluates with fresh data.
       await queryClient.invalidateQueries({ queryKey: studentsKeys.profile() });
       toast.success("Profil berhasil dilengkapi!");
@@ -129,8 +143,27 @@ export default function CompleteProfilePage() {
             </Label>
             {schoolsLoading ? (
               <Skeleton className="h-11 w-full rounded-md" />
+            ) : isUnlisted ? (
+              <Input
+                id="onboard-school"
+                value={unlistedSchoolName}
+                onChange={(e) => setUnlistedSchoolName(e.target.value)}
+                placeholder={t("complete_profile_school_unlisted_placeholder")}
+                className="h-11 rounded-md"
+                aria-label={t("complete_profile_school_unlisted_placeholder")}
+              />
             ) : (
-              <Select value={schoolId || "_empty_"} onValueChange={(v) => setSchoolId(v === "_empty_" ? "" : v)}>
+              <Select
+                value={schoolId || "_empty_"}
+                onValueChange={(v) => {
+                  if (v === "_empty_") {
+                    setSchoolId("");
+                  } else {
+                    setSchoolId(v);
+                    setUnlistedSchoolName("");
+                  }
+                }}
+              >
                 <SelectTrigger id="onboard-school" className="h-11 rounded-md">
                   <SelectValue placeholder="Pilih sekolah" />
                 </SelectTrigger>
@@ -141,6 +174,9 @@ export default function CompleteProfilePage() {
                       {s.name}
                     </SelectItem>
                   ))}
+                  <SelectItem value={UNLISTED_SCHOOL_VALUE}>
+                    {t("complete_profile_school_unlisted_label")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             )}

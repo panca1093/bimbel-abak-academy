@@ -38,4 +38,16 @@ describe("isProfileComplete", () => {
     // isProfileComplete is provider-agnostic; the gate checks auth_provider separately.
     expect(isProfileComplete(user({ school_id: "s1", grade: "10", auth_provider: "password" }))).toBe(true);
   });
+
+  it("true when unlisted_school_name is set and grade is set (no real school_id)", () => {
+    expect(isProfileComplete(user({ grade: "10", unlisted_school_name: "SMA Maju Bersama" }))).toBe(true);
+  });
+
+  it("false when neither school_id nor unlisted_school_name is set", () => {
+    expect(isProfileComplete(user({ grade: "10" }))).toBe(false);
+  });
+
+  it("false when unlisted_school_name is empty string", () => {
+    expect(isProfileComplete(user({ grade: "10", unlisted_school_name: "" }))).toBe(false);
+  });
 });

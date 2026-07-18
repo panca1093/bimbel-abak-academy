@@ -33,6 +33,7 @@ export interface UpdateProfileInput {
   nis?: string;
   grade?: string | number;
   school_id?: string;
+  unlisted_school_name?: string;
   target_exam?: string;
   address?: string;
   dob?: string;

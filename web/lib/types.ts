@@ -94,6 +94,7 @@ export interface User {
   name?: string;
   role?: string;
   school_id?: string;
+  unlisted_school_name?: string | null;
   auth_provider?: "password" | "google";
   status?: string;
   otp_enabled?: boolean;
