@@ -60,7 +60,7 @@ export default function BulkExamOrderPage() {
 
   const hasPreview =
     previewMutation.data && previewInput !== null &&
-    previewMutation.data.exam.id === selectedExamId;
+    previewInput.exam_id === selectedExamId;
 
   const handlePreview = () => {
     if (!selectedExamId) {
@@ -218,28 +218,28 @@ export default function BulkExamOrderPage() {
               </h4>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-ink-600">
-                  {previewMutation.data.exam.title}
+                  {selectedExam?.title}
                 </span>
                 <Badge variant="outline">
-                  {previewMutation.data.students.length}{" "}
+                  {previewMutation.data.net_new_count}{" "}
                   {t("bulk_exam_order_students_count").replace(
                     "{n}",
-                    String(previewMutation.data.students.length),
+                    String(previewMutation.data.net_new_count),
                   )}
                 </Badge>
               </div>
 
-              {previewMutation.data.students.length > 0 && (
+              {previewMutation.data.excluded.length > 0 && (
                 <div className="max-h-[160px] overflow-y-auto rounded-lg border border-line p-2">
-                  {previewMutation.data.students.map((s) => (
+                  {previewMutation.data.excluded.map((s) => (
                     <div
-                      key={s.id}
+                      key={s.student_id}
                       className="flex items-center gap-2 px-2 py-1.5 text-sm"
                     >
                       <span className="font-medium text-ink-900">
                         {s.name}
                       </span>
-                      <span className="text-ink-500">@{s.username}</span>
+                      <span className="text-ink-500">({s.reason})</span>
                     </div>
                   ))}
                 </div>
@@ -251,7 +251,7 @@ export default function BulkExamOrderPage() {
                     {t("bulk_exam_order_total")}
                   </span>
                   <span className="font-serif text-lg font-bold text-success">
-                    {formatRupiah(previewMutation.data.total_price)}
+                    {formatRupiah(previewMutation.data.total)}
                   </span>
                 </div>
               </div>

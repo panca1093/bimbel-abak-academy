@@ -276,6 +276,16 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamGrants.POST("", h.AdminGrantExamAccess)
 	adminExamGrants.GET("/students/search", h.AdminSearchGrantStudents)
 
+	// Admin bulk-exam-order routes (FR-BULK-01..07). admin_school +
+	// super_admin + admin_store may all order exams; capability is
+	// "bulk-exam-orders:write".
+	adminBulkExamOrders := admin.Group("/bulk-exam-orders")
+	adminBulkExamOrders.Use(handler.RBACMiddleware("bulk-exam-orders:write"))
+	adminBulkExamOrders.GET("/exams", h.AdminListOrderableExams)
+	adminBulkExamOrders.POST("/preview", h.AdminPreviewBulkOrder)
+	adminBulkExamOrders.POST("", h.AdminCreateBulkOrder)
+	adminBulkExamOrders.POST("/:id/checkout", h.AdminCheckoutBulkOrder)
+
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")
 	adminSystem.Use(handler.RBACMiddleware("system:admin"))

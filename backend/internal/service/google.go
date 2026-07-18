@@ -33,8 +33,13 @@ func (s *Service) GoogleLogin(ctx context.Context, idToken string) (accessToken 
 	}
 
 	if user == nil {
+		username, err := s.generateUniqueUsername(ctx, info.Name)
+		if err != nil {
+			return "", "", err
+		}
 		newUser := &model.User{
 			Email:        &email,
+			Username:     &username,
 			Role:         RoleStudent,
 			Name:         info.Name,
 			Status:       "active",

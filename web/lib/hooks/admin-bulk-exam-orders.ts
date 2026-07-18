@@ -14,18 +14,19 @@ export const bulkExamOrderKeys = {
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-export interface BulkExamOrderStudent {
-  id: string;
+export interface BulkOrderExcluded {
+  student_id: string;
   name: string;
-  username: string;
-  jenjang: string;
-  grade?: number;
+  reason: string;
 }
 
+// Matches backend service.BulkOrderPreview
+// (backend/internal/service/bulk_exam_order.go:23-28)
 export interface BulkExamOrderPreview {
-  exam: ExamListItem;
-  students: BulkExamOrderStudent[];
-  total_price: number;
+  net_new_count: number;
+  excluded: BulkOrderExcluded[];
+  unit_price: number;
+  total: number;
 }
 
 export interface CreateBulkOrderInput {
@@ -37,13 +38,13 @@ export interface CreateBulkOrderInput {
 
 /**
  * Fetch exams that have a published product (can be ordered via bulk).
- * GET /admin/exams?orderable=true  (or equivalent backend endpoint)
+ * GET /admin/bulk-exam-orders/exams  (FR-BULK-01)
  */
 export function useOrderableExams() {
   return useQuery({
     queryKey: bulkExamOrderKeys.orderableExams(),
     queryFn: () =>
-      authFetch<{ data: ExamListItem[] }>("/admin/exams?orderable=true"),
+      authFetch<{ data: ExamListItem[] }>("/admin/bulk-exam-orders/exams"),
   });
 }
 

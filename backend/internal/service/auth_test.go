@@ -120,7 +120,7 @@ func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name,
 		u.UnlistedSchoolName = unlistedSchoolName
 	}
 	if jenjang != nil {
-		u.Jenjang = *jenjang
+		u.Jenjang = jenjang
 	}
 	if provinsiID != nil {
 		u.ProvinsiID = provinsiID

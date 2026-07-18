@@ -192,7 +192,7 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 		SchoolID:       &schoolID,
 		Status:         "active",
 		OTPEnabled:     false,
-		Jenjang:        jenjang,
+		Jenjang:        &jenjang,
 		ProvinsiID:     provinsiID,
 		KotaID:         kotaID,
 		KecamatanID:    kecamatanID,

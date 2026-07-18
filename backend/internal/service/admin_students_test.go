@@ -147,8 +147,8 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		if u.Role != RoleStudent || u.Status != "active" || u.OTPEnabled {
 			t.Errorf("unexpected defaults: role=%s status=%s otp=%v", u.Role, u.Status, u.OTPEnabled)
 		}
-		if u.Jenjang != jenjang {
-			t.Errorf("persisted Jenjang: want %s, got %s", jenjang, u.Jenjang)
+		if u.Jenjang == nil || *u.Jenjang != jenjang {
+			t.Errorf("persisted Jenjang: want %s, got %v", jenjang, u.Jenjang)
 		}
 		if u.ProvinsiID != nil {
 			t.Errorf("persisted ProvinsiID: want nil, got %v", *u.ProvinsiID)
@@ -342,8 +342,8 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("UpdateProfile (valid jenjang): %v", err)
 		}
-		if updated.Jenjang != jenjang {
-			t.Errorf("Jenjang: want %s, got %s", jenjang, updated.Jenjang)
+		if updated.Jenjang == nil || *updated.Jenjang != jenjang {
+			t.Errorf("Jenjang: want %s, got %v", jenjang, updated.Jenjang)
 		}
 	})
 
@@ -367,8 +367,8 @@ func TestUpdateProfile_JenjangAndAddressValidation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("UpdateProfile (no school): %v", err)
 		}
-		if updated.Jenjang != jenjang {
-			t.Errorf("Jenjang: want %s, got %s", jenjang, updated.Jenjang)
+		if updated.Jenjang == nil || *updated.Jenjang != jenjang {
+			t.Errorf("Jenjang: want %s, got %v", jenjang, updated.Jenjang)
 		}
 	})
 

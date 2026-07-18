@@ -77,8 +77,13 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 	if err != nil {
 		return "", err
 	}
+	username, err := s.generateUniqueUsername(ctx, name)
+	if err != nil {
+		return "", err
+	}
 	user := &model.User{
 		Email:        &email,
+		Username:     &username,
 		PasswordHash: string(hash),
 		Role:         RoleStudent,
 		Name:         name,
