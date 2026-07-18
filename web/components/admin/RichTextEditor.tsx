@@ -27,6 +27,7 @@ interface RichTextEditorProps {
   "aria-label"?: string;
   "aria-labelledby"?: string;
   minHeightClassName?: string;
+  compact?: boolean;
 }
 
 function isEffectivelyEmpty(html: string): boolean {
@@ -44,7 +45,7 @@ function sanitizeClipboardHtml(html: string): string {
   return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
 }
 
-export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]" }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]", compact = false }: RichTextEditorProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
@@ -125,6 +126,9 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
   }
 
   const uploading = presign.isPending;
+  const iconSize = compact ? "icon-xs" : "icon-sm";
+  const formulaSize = compact ? "xs" : "sm";
+  const iconGlyphSize = compact ? "size-3" : "size-4";
 
   return (
     <div
@@ -133,63 +137,63 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
         disabled && "pointer-events-none opacity-50",
       )}
     >
-      <div className="flex flex-wrap items-center gap-1 border-b bg-muted/40 p-1.5">
+      <div className={cn("flex items-center border-b bg-muted/40", compact ? "flex-nowrap gap-0.5 p-1" : "flex-wrap gap-1 p-1.5")}>
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={iconSize}
           onClick={() => exec("bold")}
           aria-label="Bold"
           disabled={disabled}
         >
-          <Bold className="size-4" />
+          <Bold className={iconGlyphSize} />
         </Button>
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={iconSize}
           onClick={() => exec("italic")}
           aria-label="Italic"
           disabled={disabled}
         >
-          <Italic className="size-4" />
+          <Italic className={iconGlyphSize} />
         </Button>
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={iconSize}
           onClick={() => exec("underline")}
           aria-label="Underline"
           disabled={disabled}
         >
-          <Underline className="size-4" />
+          <Underline className={iconGlyphSize} />
         </Button>
-        <Separator orientation="vertical" className="mx-1 h-5" />
+        <Separator orientation="vertical" className={cn(compact ? "mx-0.5 h-4" : "mx-1 h-5")} />
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={iconSize}
           onClick={() => exec("insertUnorderedList")}
           aria-label="Bulleted list"
           disabled={disabled}
         >
-          <List className="size-4" />
+          <List className={iconGlyphSize} />
         </Button>
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={iconSize}
           onClick={() => exec("insertOrderedList")}
           aria-label="Numbered list"
           disabled={disabled}
         >
-          <ListOrdered className="size-4" />
+          <ListOrdered className={iconGlyphSize} />
         </Button>
-        <Separator orientation="vertical" className="mx-1 h-5" />
+        <Separator orientation="vertical" className={cn(compact ? "mx-0.5 h-4" : "mx-1 h-5")} />
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={iconSize}
           onClick={() => exec("superscript")}
           aria-label="Superscript"
           disabled={disabled}
@@ -200,7 +204,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={iconSize}
           onClick={() => exec("subscript")}
           aria-label="Subscript"
           disabled={disabled}
@@ -208,11 +212,11 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
         >
           x₂
         </Button>
-        <Separator orientation="vertical" className="mx-1 h-5" />
+        <Separator orientation="vertical" className={cn(compact ? "mx-0.5 h-4" : "mx-1 h-5")} />
         <Button
           type="button"
           variant="ghost"
-          size="sm"
+          size={formulaSize}
           onClick={insertFormula}
           aria-label="Insert formula"
           disabled={disabled}
@@ -223,12 +227,12 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
         <Button
           type="button"
           variant="ghost"
-          size="icon-sm"
+          size={iconSize}
           onClick={() => fileInputRef.current?.click()}
           aria-label="Insert image"
           disabled={disabled || uploading}
         >
-          {uploading ? <ImageIcon className="size-4 animate-pulse" /> : <ImagePlus className="size-4" />}
+          {uploading ? <ImageIcon className={cn(iconGlyphSize, "animate-pulse")} /> : <ImagePlus className={iconGlyphSize} />}
         </Button>
         <input
           ref={fileInputRef}

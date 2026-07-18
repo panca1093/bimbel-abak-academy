@@ -208,6 +208,7 @@ function OptionEditor({
               placeholder={t("tests_field_option_text")}
               disabled={disabled}
               minHeightClassName="min-h-[60px]"
+              compact
             />
           </div>
         ))}
