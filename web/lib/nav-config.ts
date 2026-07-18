@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   GraduationCap,
+  FileUp,
 } from "lucide-react";
 
 export type UserRole =
@@ -92,6 +93,7 @@ const SCHOOL_NAV_ITEMS: NavItem[] = [
   { labelKey: "students", href: "/admin/school/students", icon: Users },
   { labelKey: "reports", href: "/admin/school/reports", icon: FileText },
   { labelKey: "nav_bulk_exam_order", href: "/admin/school/bulk-exam-order", icon: ShoppingCart },
+  { labelKey: "nav_bulk_register", href: "/admin/school/bulk-register", icon: FileUp },
 ];
 
 export const CONTENT_MANAGER_NAV: RoleNavConfig = [

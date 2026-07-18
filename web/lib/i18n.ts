@@ -990,6 +990,22 @@ export const DICT = {
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "Sekolah saya tidak ada di daftar",
     complete_profile_school_unlisted_placeholder: "Tulis nama sekolah Anda",
+
+    // Bulk student-registration screen (admin_school)
+    nav_bulk_register: "Pendaftaran Massal",
+    bulk_register_title: "Pendaftaran Siswa Massal",
+    bulk_register_subtitle: "Unggah CSV untuk mendaftarkan banyak siswa sekaligus.",
+    bulk_register_download_template: "Unduh Template",
+    bulk_register_choose_file: "Pilih file CSV",
+    bulk_register_upload: "Unggah",
+    bulk_register_uploading: "Mengunggah…",
+    bulk_register_progress: "Memproses… {pct}%",
+    bulk_register_success: "Selesai.",
+    bulk_register_download_result: "Unduh Hasil",
+    bulk_register_failed: "Gagal memproses",
+    bulk_register_no_file: "Pilih file terlebih dahulu.",
+    bulk_register_enqueue_failed: "Gagal memulai proses.",
+    bulk_register_put_failed: "Gagal mengunggah file.",
   },
   en: {
     app_tag: "Bimbel Platform",
@@ -1976,6 +1992,22 @@ export const DICT = {
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "My school is not on the list",
     complete_profile_school_unlisted_placeholder: "Type your school name",
+
+    // Bulk student-registration screen (admin_school)
+    nav_bulk_register: "Bulk Register",
+    bulk_register_title: "Bulk Student Registration",
+    bulk_register_subtitle: "Upload a CSV to register many students at once.",
+    bulk_register_download_template: "Download Template",
+    bulk_register_choose_file: "Choose CSV file",
+    bulk_register_upload: "Upload",
+    bulk_register_uploading: "Uploading…",
+    bulk_register_progress: "Processing… {pct}%",
+    bulk_register_success: "Done.",
+    bulk_register_download_result: "Download Result",
+    bulk_register_failed: "Processing failed",
+    bulk_register_no_file: "Please select a file first.",
+    bulk_register_enqueue_failed: "Failed to start processing.",
+    bulk_register_put_failed: "Failed to upload file.",
   },
 };
 
