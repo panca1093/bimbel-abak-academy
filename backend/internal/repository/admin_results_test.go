@@ -100,13 +100,13 @@ func TestAdminResults_ListSchoolResults(t *testing.T) {
 	studentB := insertSchoolUser(t, pool, "student", "Student B", schoolA)
 	studentC := insertSchoolUser(t, pool, "student", "Student C", schoolA)
 	studentD := insertSchoolUser(t, pool, "student", "Student D", schoolA)
-	// Student with NIS set for search testing.
+	// Student with username set for free-text search testing (Q filter matches name OR username).
 	studentF := insertSchoolUser(t, pool, "student", "Student F", schoolA)
-	pool.Exec(ctx, `UPDATE users SET nis = 'NIS-F' WHERE id = $1`, studentF)
+	pool.Exec(ctx, `UPDATE users SET username = 'usrf-1234' WHERE id = $1`, studentF)
 
 	// School B student (cross-school exclusion check).
 	studentE := insertSchoolUser(t, pool, "student", "Student E", schoolB)
-	pool.Exec(ctx, `UPDATE users SET nis = 'NIS-E' WHERE id = $1`, studentE)
+	pool.Exec(ctx, `UPDATE users SET username = 'usre-1234' WHERE id = $1`, studentE)
 
 	// Admin/grader user.
 	admin := insertSchoolUser(t, pool, "admin_exam", "Grader Admin", schoolA)
@@ -139,7 +139,7 @@ func TestAdminResults_ListSchoolResults(t *testing.T) {
 	sessionE := insertGradingSession(t, pool, studentE, examID, "submitted", &now, f64PtrG(95))
 	insertGradingAnswer(t, pool, sessionE, essayQID, strPtrG("e answer"), f64PtrG(10), &admin, timePtrG(now))
 
-	// Session F (student F, school A): submitted, fully graded → should appear (NIS searchable).
+	// Session F (student F, school A): submitted, fully graded → should appear (username searchable).
 	sessionF := insertGradingSession(t, pool, studentF, examID, "submitted", &now, f64PtrG(85))
 	insertGradingAnswer(t, pool, sessionF, essayQID, strPtrG("f answer"), f64PtrG(10), &admin, timePtrG(now))
 
@@ -207,13 +207,13 @@ func TestAdminResults_ListSchoolResults(t *testing.T) {
 		}
 	})
 
-	t.Run("free-text search filters by NIS ILIKE", func(t *testing.T) {
-		rows, _, err := repo.ListSchoolResults(ctx, examID, schoolA, AdminResultFilter{Q: "NIS-F", Limit: 20})
+	t.Run("free-text search filters by username ILIKE", func(t *testing.T) {
+		rows, _, err := repo.ListSchoolResults(ctx, examID, schoolA, AdminResultFilter{Q: "usrf-1234", Limit: 20})
 		if err != nil {
-			t.Fatalf("ListSchoolResults with Q='NIS-F': %v", err)
+			t.Fatalf("ListSchoolResults with Q='usrf-1234': %v", err)
 		}
 		if len(rows) != 1 {
-			t.Fatalf("want 1 row for Q='NIS-F', got %d: %+v", len(rows), rows)
+			t.Fatalf("want 1 row for Q='usrf-1234', got %d: %+v", len(rows), rows)
 		}
 		if rows[0].SessionID != sessionF {
 			t.Errorf("expected session F, got %v", rows[0].SessionID)
