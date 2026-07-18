@@ -286,7 +286,7 @@ describe("SystemSchoolsPage", () => {
     });
   });
 
-  it("disables the school code input when the school has students, enables it otherwise", async () => {
+  it("always keeps the school code input editable (Task 32 removed the student-count lock)", async () => {
     render(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
@@ -304,8 +304,8 @@ describe("SystemSchoolsPage", () => {
     fireEvent.click(await screen.findByText("Edit"));
 
     let dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByDisplayValue("SMAN1JKT")).toBeDisabled();
-    expect(screen.getByText(/Kode tidak dapat diubah/)).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue("SMAN1JKT")).not.toBeDisabled();
+    expect(screen.queryByText(/Kode tidak dapat diubah/)).not.toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: /^batal$/i }));
 

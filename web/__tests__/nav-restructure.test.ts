@@ -137,9 +137,11 @@ describe("FR-FE-16: super_admin sees all six items under one Exam group", () => 
     expect(hrefs).toContain("/admin/exam-grants");
   });
 
-  it("has seven items in the merged group (6 original + exam-grant)", () => {
+  it("has eight items in the merged group (6 original + bulk-exam-order + exam-grant)", () => {
     expect(examGroup).toBeDefined();
-    expect(examGroup!.items).toHaveLength(7);
+    const hrefs = examGroup!.items.map((i) => i.href);
+    expect(hrefs).toContain("/admin/school/bulk-exam-order");
+    expect(examGroup!.items).toHaveLength(8);
   });
 });
 

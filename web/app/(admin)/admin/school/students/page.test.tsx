@@ -209,8 +209,9 @@ describe("SchoolStudentsPage", () => {
     const nameInput = screen.getByPlaceholderText("Nama Lengkap");
     fireEvent.input(nameInput, { target: { value: "Dewi Lestari" } });
 
-    // Select Jenjang from the required select
-    const jenjangTrigger = screen.getByRole("combobox", { name: /jenjang/i });
+    // Select Jenjang from the required select (scoped to the dialog; jenjang is the first combobox inside)
+    const dialogForJenjang = screen.getByRole("dialog");
+    const jenjangTrigger = within(dialogForJenjang).getAllByRole("combobox")[0];
     fireEvent.click(jenjangTrigger);
     const smaOption = await screen.findByRole("option", { name: "SMA" });
     fireEvent.click(smaOption);
@@ -347,8 +348,9 @@ describe("SchoolStudentsPage", () => {
     const nameInput = screen.getByPlaceholderText("Nama Lengkap");
     fireEvent.input(nameInput, { target: { value: "Gagal Student" } });
 
-    // Select Jenjang
-    const jenjangTrigger = screen.getByRole("combobox", { name: /jenjang/i });
+    // Select Jenjang (scoped to the dialog; jenjang is the first combobox inside)
+    const dialogForJenjang2 = screen.getByRole("dialog");
+    const jenjangTrigger = within(dialogForJenjang2).getAllByRole("combobox")[0];
     fireEvent.click(jenjangTrigger);
     const smaOption = await screen.findByRole("option", { name: "SMA" });
     fireEvent.click(smaOption);
