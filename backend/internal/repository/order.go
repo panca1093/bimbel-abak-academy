@@ -30,6 +30,10 @@ type OrderPatch struct {
 	Discount        float64
 	ShippingCost    float64
 	Total           float64
+	ProvinceID      string
+	CityID          string
+	DistrictID      string
+	KodePos         *string
 }
 
 const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost, total,
@@ -166,7 +170,7 @@ func (r *Repository) InsertOrderItemTx(ctx context.Context, tx pgx.Tx, orderID u
 	_, err = tx.Exec(ctx, `
 		UPDATE orders SET
 		  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
-		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
 		  updated_at = now()
 		WHERE id = $1`, orderID)
 	return err
@@ -330,7 +334,7 @@ func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) e
 	_, err := r.pool.Exec(ctx, `
 		UPDATE orders SET
 		  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
-		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
 		  updated_at = now()
 		WHERE id = $1`, orderID)
 	return err
@@ -340,10 +344,14 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders
 		 SET shipping_address = $1, selected_courier = $2, promo_code_id = $3,
-		     discount = $4, shipping_cost = $5, total = $6, updated_at = now()
-		 WHERE id = $7`,
+		     discount = $4, shipping_cost = $5, total = $6,
+		     province_id = $7, city_id = $8, district_id = $9, kode_pos = $10,
+		     updated_at = now()
+		 WHERE id = $11`,
 		patch.ShippingAddress, patch.SelectedCourier, patch.PromoCodeID,
-		patch.Discount, patch.ShippingCost, patch.Total, orderID,
+		patch.Discount, patch.ShippingCost, patch.Total,
+		patch.ProvinceID, patch.CityID, patch.DistrictID, patch.KodePos,
+		orderID,
 	)
 	return err
 }

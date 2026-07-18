@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -27,6 +28,7 @@ var (
 	ErrInvalidSignature       = errors.New("invalid signature")
 	ErrCourseLinkRequired     = errors.New("course product requires at least one linked course")
 	ErrExamLinkRequired       = errors.New("exam product requires at least one linked exam")
+	ErrShippingRequired       = errors.New("order requires a shipping selection before checkout")
 )
 
 type PromoValidation struct {
@@ -358,7 +360,7 @@ func (s *Service) DeleteProduct(ctx context.Context, id string, role string) err
 	return s.storeRepo.ArchiveProduct(ctx, id)
 }
 
-func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float64) (PromoValidation, error) {
+func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float64, shippingCost float64) (PromoValidation, error) {
 	promo, err := s.storeRepo.GetPromoByCode(ctx, code)
 	if err != nil {
 		return PromoValidation{}, err
@@ -389,11 +391,25 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 		}
 	}
 
-	return PromoValidation{PromoID: promo.ID, Code: code, Discount: discount, Total: subtotal - discount}, nil
+	return PromoValidation{PromoID: promo.ID, Code: code, Discount: discount, Total: subtotal - discount + shippingCost}, nil
 }
 
 func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
-	return s.logistics.GetRates(ctx, req)
+	rates, err := s.logistics.GetRates(ctx, req)
+	if err == nil && len(rates) > 0 {
+		return rates, nil
+	}
+
+	cfg, cfgErr := s.GetSystemConfig(ctx)
+	if cfgErr == nil && cfg["shipping_fallback_flat_rate"] != "" {
+		flatRateStr := cfg["shipping_fallback_flat_rate"]
+		var flatRate int64
+		if _, scanErr := fmt.Sscanf(flatRateStr, "%d", &flatRate); scanErr == nil && flatRate > 0 {
+			return []CourierRate{{Courier: "Flat", Service: "Standard", Price: flatRate}}, nil
+		}
+	}
+
+	return nil, err
 }
 
 func (s *Service) MintCart(ctx context.Context, studentID string) (model.Order, bool, error) {
@@ -516,6 +532,11 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 type CartPatch struct {
 	ShippingAddress []byte
 	Courier         string
+	ShippingCost    float64
+	ProvinceID      string
+	CityID          string
+	DistrictID      string
+	KodePos         *string
 	PromoCode       *string
 }
 
@@ -547,18 +568,24 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		ShippingAddress: patch.ShippingAddress,
 		SelectedCourier: patch.Courier,
 		Discount:        order.Discount,
-		ShippingCost:    order.ShippingCost,
+		ShippingCost:    patch.ShippingCost,
 		Total:           order.Total,
+		ProvinceID:      patch.ProvinceID,
+		CityID:          patch.CityID,
+		DistrictID:      patch.DistrictID,
+		KodePos:         patch.KodePos,
 	}
 
 	if patch.PromoCode != nil && *patch.PromoCode != "" {
-		validation, err := s.ValidatePromo(ctx, *patch.PromoCode, order.Subtotal)
+		validation, err := s.ValidatePromo(ctx, *patch.PromoCode, order.Subtotal, patch.ShippingCost)
 		if err != nil {
 			return err
 		}
 		repoPatch.PromoCodeID = &validation.PromoID
 		repoPatch.Discount = validation.Discount
 		repoPatch.Total = validation.Total
+	} else {
+		repoPatch.Total = order.Subtotal - repoPatch.Discount + repoPatch.ShippingCost
 	}
 
 	return s.storeRepo.PatchCart(ctx, oID, repoPatch)
@@ -617,6 +644,16 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 		})
 	}
 
+	if order.ShippingCost > 0 {
+		req.Items = append(req.Items, ItemDetail{
+			ID:       "shipping",
+			Name:     "Ongkos Kirim",
+			Price:    int64(order.ShippingCost),
+			Qty:      1,
+			Category: "Shipping",
+		})
+	}
+
 	return req
 }
 
@@ -668,6 +705,12 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	}
 	if order.Status != "cart" {
 		return CheckoutResult{}, ErrOrderNotEditable
+	}
+
+	for _, item := range order.Items {
+		if isPhysicalType(item.ProductType) && order.ShippingCost <= 0 {
+			return CheckoutResult{}, ErrShippingRequired
+		}
 	}
 
 	tx, err := s.storeRepo.BeginTx(ctx)

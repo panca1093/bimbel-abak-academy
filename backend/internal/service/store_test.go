@@ -301,7 +301,7 @@ func (s *shimService) CreateProductWithCourses(ctx context.Context, p model.Prod
 	return p, nil
 }
 
-func (s *shimService) ValidatePromo(ctx context.Context, code string, subtotal float64) (PromoValidation, error) {
+func (s *shimService) ValidatePromo(ctx context.Context, code string, subtotal float64, shippingCost float64) (PromoValidation, error) {
 	promo, err := s.fake.GetPromoByCode(ctx, code)
 	if err != nil {
 		return PromoValidation{}, err
@@ -332,7 +332,7 @@ func (s *shimService) ValidatePromo(ctx context.Context, code string, subtotal f
 		}
 	}
 
-	return PromoValidation{Code: code, Discount: discount, Total: subtotal - discount}, nil
+	return PromoValidation{Code: code, Discount: discount, Total: subtotal - discount + shippingCost}, nil
 }
 
 func (s *shimService) UpdateProduct(ctx context.Context, id string, p model.Product, role string) (model.Product, error) {
@@ -447,7 +447,7 @@ func TestValidatePromo_Expired(t *testing.T) {
 		ExpiresAt: &past,
 	})
 	svc := newShim(fake)
-	_, err := svc.ValidatePromo(ctx, "EXPIRED", 100)
+	_, err := svc.ValidatePromo(ctx, "EXPIRED", 100, 0)
 	if !errors.Is(err, ErrInvalidPromo) {
 		t.Errorf("want ErrInvalidPromo for expired promo, got %v", err)
 	}
@@ -462,16 +462,38 @@ func TestValidatePromo_Math(t *testing.T) {
 		MaxDiscountAmount: float64ptr(8),
 	})
 	svc := newShim(fake)
-	result, err := svc.ValidatePromo(ctx, "DISC10", 100)
+	result, err := svc.ValidatePromo(ctx, "DISC10", 100, 0)
 	if err != nil {
 		t.Fatalf("ValidatePromo: %v", err)
 	}
-	// 10% of 100 = 10, capped to 8
+	// 10% of 100 = 10, capped to 8; total = 100 - 8 + 0 = 92
 	if result.Discount != 8 {
 		t.Errorf("want discount=8 (capped), got %v", result.Discount)
 	}
 	if result.Total != 92 {
 		t.Errorf("want total=92, got %v", result.Total)
+	}
+}
+
+func TestValidatePromo_WithShippingCost(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeStoreRepo()
+	fake.seedPromo(model.PromoCode{
+		Code:              "DISC10",
+		DiscountPercent:   float64ptr(10),
+		MaxDiscountAmount: float64ptr(8),
+	})
+	svc := newShim(fake)
+	// subtotal=100, discount=8, shipping=50 → total = 100 - 8 + 50 = 142
+	result, err := svc.ValidatePromo(ctx, "DISC10", 100, 50)
+	if err != nil {
+		t.Fatalf("ValidatePromo: %v", err)
+	}
+	if result.Discount != 8 {
+		t.Errorf("want discount=8, got %v", result.Discount)
+	}
+	if result.Total != 142 {
+		t.Errorf("want total=142, got %v", result.Total)
 	}
 }
 
@@ -484,7 +506,7 @@ func TestValidatePromo_MinOrder(t *testing.T) {
 		MinOrderAmount: float64ptr(200),
 	})
 	svc := newShim(fake)
-	_, err := svc.ValidatePromo(ctx, "MINORDER", 100)
+	_, err := svc.ValidatePromo(ctx, "MINORDER", 100, 0)
 	if !errors.Is(err, ErrPromoMinOrder) {
 		t.Errorf("want ErrPromoMinOrder, got %v", err)
 	}
@@ -494,7 +516,7 @@ func TestValidatePromo_NotFound(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeStoreRepo()
 	svc := newShim(fake)
-	_, err := svc.ValidatePromo(ctx, "MISSING", 100)
+	_, err := svc.ValidatePromo(ctx, "MISSING", 100, 0)
 	if !errors.Is(err, ErrInvalidPromo) {
 		t.Errorf("want ErrInvalidPromo for missing promo, got %v", err)
 	}
@@ -509,6 +531,123 @@ func TestGetShippingRates(t *testing.T) {
 	}
 	if len(rates) == 0 {
 		t.Error("want at least one rate")
+	}
+}
+
+func TestCheckout_PhysicalItemWithoutShipping_ReturnsError(t *testing.T) {
+	ctx := context.Background()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	fake := newFakeOrderRepo()
+	svc := &shimCheckoutService{
+		fake: fake,
+		rdb:  rdb,
+	}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+
+	sid, _ := uuid.Parse(studentID)
+	oid := uuid.New()
+	pid, _ := uuid.Parse(productID)
+
+	fake.seedProduct(model.Product{
+		ID:    productID,
+		Type:  "book",
+		Name:  "Book 1",
+		Stock: 100,
+		Price: 10000,
+	})
+
+	order := model.Order{
+		ID:           oid,
+		StudentID:    sid,
+		Status:       "cart",
+		Subtotal:     100,
+		ShippingCost: 0,
+	}
+	order.Items = append(order.Items, model.OrderItem{
+		ID:          uuid.New(),
+		OrderID:     oid,
+		ProductID:   pid,
+		ProductType: "book",
+		Name:        "Book 1",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+	fake.seedOrder(order)
+
+	result, err := svc.Checkout(ctx, studentID, oid.String(), "test-key")
+	if err == nil {
+		t.Errorf("want error for physical item with zero shipping_cost, got nil result: %+v", result)
+	}
+	if !errors.Is(err, ErrShippingRequired) {
+		t.Errorf("want ErrShippingRequired, got %v", err)
+	}
+}
+
+func TestCheckout_DigitalItemWithoutShipping_Succeeds(t *testing.T) {
+	ctx := context.Background()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	fake := newFakeOrderRepo()
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	productID := "00000000-0000-0000-0000-000000000002"
+
+	sid, _ := uuid.Parse(studentID)
+	oid := uuid.New()
+	pid, _ := uuid.Parse(productID)
+
+	fake.seedProduct(model.Product{
+		ID:    productID,
+		Type:  "course",
+		Name:  "Math Course",
+		Stock: 100,
+		Price: 10000,
+	})
+
+	order := model.Order{
+		ID:           oid,
+		StudentID:    sid,
+		Status:       "cart",
+		Subtotal:     100,
+		ShippingCost: 0,
+	}
+	order.Items = append(order.Items, model.OrderItem{
+		ID:          uuid.New(),
+		OrderID:     oid,
+		ProductID:   pid,
+		ProductType: "course",
+		Name:        "Math Course",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+	fake.seedOrder(order)
+
+	svc := &shimCheckoutService{
+		fake: fake,
+		rdb:  rdb,
+	}
+
+	result, err := svc.Checkout(ctx, studentID, oid.String(), "test-key-digital")
+	if err != nil {
+		t.Fatalf("Checkout with digital item and no shipping: %v", err)
+	}
+	if result.GatewayRef == "" {
+		t.Error("want non-empty gateway_ref for successful checkout")
 	}
 }
 
@@ -789,10 +928,11 @@ func TestCheckout_IdempotencyReturnsCached(t *testing.T) {
 
 	// Seed cart order with items
 	order := model.Order{
-		ID:        oid,
-		StudentID: sid,
-		Status:    "cart",
-		Subtotal:  100,
+		ID:           oid,
+		StudentID:    sid,
+		Status:       "cart",
+		Subtotal:     100,
+		ShippingCost: 50,
 	}
 	order.Items = append(order.Items, model.OrderItem{
 		ID:          uuid.New(),
@@ -858,6 +998,13 @@ func (s *shimCheckoutService) Checkout(ctx context.Context, studentID, orderID, 
 	}
 	if order.Status != "cart" {
 		return CheckoutResult{}, ErrOrderNotEditable
+	}
+
+	// Check physical items have shipping_cost
+	for _, item := range order.Items {
+		if isPhysicalType(item.ProductType) && order.ShippingCost <= 0 {
+			return CheckoutResult{}, ErrShippingRequired
+		}
 	}
 
 	// Mark order as payment_pending
@@ -1322,6 +1469,77 @@ func TestPurchaseNotifyEnabled_EnabledByMissingKey(t *testing.T) {
 	cfg := map[string]string{}
 	if !purchaseNotifyEnabled(cfg) {
 		t.Error("want true for missing key")
+	}
+}
+
+// Test: buildPaymentRequest appends shipping line item when shipping_cost > 0
+func TestBuildPaymentRequest_ShippingLineItem(t *testing.T) {
+	order := model.Order{
+		ID:           uuid.New(),
+		Subtotal:     100,
+		Discount:     10,
+		ShippingCost: 50,
+		Total:        140,
+	}
+	order.Items = append(order.Items, model.OrderItem{
+		ProductID:   uuid.New(),
+		ProductType: "book",
+		Name:        "Book 1",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+
+	customer := CustomerInfo{Name: "John Doe", Email: "john@example.com"}
+	req := buildPaymentRequest(order.ID.String(), order, customer)
+
+	if req.Amount != 140 {
+		t.Errorf("want amount=140, got %d", req.Amount)
+	}
+
+	shippingFound := false
+	for _, item := range req.Items {
+		if item.ID == "shipping" {
+			shippingFound = true
+			if item.Name != "Ongkos Kirim" {
+				t.Errorf("want shipping name 'Ongkos Kirim', got %q", item.Name)
+			}
+			if item.Price != 50 {
+				t.Errorf("want shipping price=50, got %d", item.Price)
+			}
+			if item.Category != "Shipping" {
+				t.Errorf("want shipping category 'Shipping', got %q", item.Category)
+			}
+			break
+		}
+	}
+	if !shippingFound {
+		t.Error("shipping line item not found in payment request")
+	}
+}
+
+func TestBuildPaymentRequest_NoShippingLineItemWhenZero(t *testing.T) {
+	order := model.Order{
+		ID:           uuid.New(),
+		Subtotal:     100,
+		Discount:     0,
+		ShippingCost: 0,
+		Total:        100,
+	}
+	order.Items = append(order.Items, model.OrderItem{
+		ProductID:   uuid.New(),
+		ProductType: "course",
+		Name:        "Course 1",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+
+	customer := CustomerInfo{Name: "Jane Doe"}
+	req := buildPaymentRequest(order.ID.String(), order, customer)
+
+	for _, item := range req.Items {
+		if item.ID == "shipping" {
+			t.Error("shipping line item should not be present when shipping_cost = 0")
+		}
 	}
 }
 
