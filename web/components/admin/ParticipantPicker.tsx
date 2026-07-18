@@ -1,0 +1,315 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Search, Check, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
+import { useTranslation, type Lang } from "@/lib/i18n";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAdminStudents } from "@/lib/hooks/admin-students";
+import { useAdminSchools } from "@/lib/hooks/admin-schools";
+import { useSearchStudentsAcrossSchools } from "@/lib/hooks/admin-exam-grants";
+import { cn } from "@/lib/utils";
+import type { AdminStudent } from "@/lib/types";
+
+// ── Jenjang/grade options ─────────────────────────────────────────────────
+
+const JENJANG_OPTIONS = [
+  "SD",
+  "SMP",
+  "SMA",
+  "MA",
+  "SMK",
+  "PKBM",
+  "LKP",
+  "Kursus",
+];
+
+// ── Debounce helper ───────────────────────────────────────────────────────
+
+function useDebouncedValue(value: string, delay: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
+
+// ── ParticipantPicker ─────────────────────────────────────────────────────
+
+export interface ParticipantPickerProps {
+  schoolId?: string;
+  selected: string[];
+  onChange: (ids: string[]) => void;
+}
+
+export function ParticipantPicker({
+  schoolId,
+  selected,
+  onChange,
+}: ParticipantPickerProps) {
+  const { t, lang } = useTranslation();
+  const [search, setSearch] = useState("");
+  const [jenjangFilter, setJenjangFilter] = useState("");
+  const [gradeFilter, setGradeFilter] = useState("");
+
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  // Track selected IDs across search/filter changes via a ref
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+
+  // Build query input for the hook
+  const queryOpts = {
+    q: debouncedSearch || undefined,
+    jenjang: jenjangFilter || undefined,
+    grade: gradeFilter || undefined,
+    enabled: schoolId ? Boolean(schoolId) : true,
+  };
+
+  let students: AdminStudent[];
+  let isLoading: boolean;
+  let isError: boolean;
+
+  if (schoolId) {
+    // School-scoped: use existing useAdminStudents with schoolId
+    // We need to call the hook unconditionally, then pass schoolId
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const scopedQuery = useAdminStudents({
+      q: debouncedSearch || undefined,
+      schoolId,
+      enabled: Boolean(schoolId),
+    });
+    students = scopedQuery.data?.data ?? [];
+    isLoading = scopedQuery.isLoading;
+    isError = scopedQuery.isError;
+
+    // Client-side filter for jenjang/grade since useAdminStudents doesn't support them as params
+    if (jenjangFilter) {
+      students = students.filter((s) => s.jenjang === jenjangFilter);
+    }
+    if (gradeFilter) {
+      students = students.filter(
+        (s) => String(s.grade ?? "") === gradeFilter,
+      );
+    }
+  } else {
+    // Cross-school: use search-across-schools hook
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const crossQuery = useSearchStudentsAcrossSchools(queryOpts);
+    students = crossQuery.data?.data ?? [];
+    isLoading = crossQuery.isLoading;
+    isError = crossQuery.isError;
+  }
+
+  // Unique jenjang/grade values from fetched students
+  const facetedJenjang = useMemo(() => {
+    const set = new Set(students.map((s) => s.jenjang).filter(Boolean));
+    return [...set].sort();
+  }, [students]);
+
+  const facetedGrade = useMemo(() => {
+    const set = new Set(
+      students
+        .map((s) => (s.grade != null ? String(s.grade) : ""))
+        .filter(Boolean),
+    );
+    return [...set].sort((a, b) => Number(a) - Number(b));
+  }, [students]);
+
+  function toggle(id: string) {
+    const next = selectedRef.current.includes(id)
+      ? selectedRef.current.filter((sid) => sid !== id)
+      : [...selectedRef.current, id];
+    onChange(next);
+  }
+
+  function selectAll() {
+    const allIds = students.map((s) => s.id);
+    const current = selectedRef.current;
+    const merged = [...new Set([...current, ...allIds])];
+    onChange(merged);
+  }
+
+  function deselectAll() {
+    const allIds = new Set(students.map((s) => s.id));
+    const remaining = selectedRef.current.filter(
+      (id) => !allIds.has(id),
+    );
+    onChange(remaining);
+  }
+
+  const selectableCount = selected.filter((id) =>
+    students.some((s) => s.id === id),
+  ).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Search + Filter row */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("students_search_placeholder")}
+            className="h-9 pl-9 text-xs"
+          />
+        </div>
+
+        <Select value={jenjangFilter} onValueChange={setJenjangFilter}>
+          <SelectTrigger className="h-9 w-[130px] text-xs">
+            <SelectValue>
+              {jenjangFilter || t("students_field_jenjang")}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">
+              <span className="text-ink-500">{t("students_field_jenjang")}</span>
+            </SelectItem>
+            {facetedJenjang.map((j) => (
+              <SelectItem key={j} value={j}>
+                {j}
+              </SelectItem>
+            ))}
+            {!schoolId &&
+              facetedJenjang.length === 0 &&
+              JENJANG_OPTIONS.map((j) => (
+                <SelectItem key={j} value={j}>
+                  {j}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={gradeFilter} onValueChange={setGradeFilter}>
+          <SelectTrigger className="h-9 w-[110px] text-xs">
+            <SelectValue>
+              {gradeFilter || t("students_field_grade")}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">
+              <span className="text-ink-500">{t("students_field_grade")}</span>
+            </SelectItem>
+            {facetedGrade.map((g) => (
+              <SelectItem key={g} value={g}>
+                {t("school")} {g}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* School facet (only when schoolId absent) */}
+        {!schoolId && <SchoolFacetSelect />}
+      </div>
+
+      {/* Selection count + bulk actions */}
+      <div className="flex items-center justify-between text-xs text-ink-500">
+        <span>
+          {selectableCount} / {students.length} dipilih
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={selectAll}
+            className="font-medium text-brand-600 hover:underline"
+          >
+            Pilih semua
+          </button>
+          <button
+            onClick={deselectAll}
+            className="font-medium text-ink-500 hover:underline"
+          >
+            Hapus semua
+          </button>
+        </div>
+      </div>
+
+      {/* Student list */}
+      <div className="max-h-[320px] space-y-1 overflow-y-auto rounded-lg border border-line p-2">
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="size-5 animate-spin text-ink-400" />
+          </div>
+        )}
+        {isError && !isLoading && (
+          <div className="py-8 text-center text-sm text-danger">
+            {t("sys_error_load")}
+          </div>
+        )}
+        {!isLoading && !isError && students.length === 0 && (
+          <div className="py-8 text-center text-sm text-ink-500">
+            {t("students_empty")}
+          </div>
+        )}
+        {students.map((s) => {
+          const isSelected = selected.includes(s.id);
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => toggle(s.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2",
+                isSelected && "bg-brand-50",
+              )}
+            >
+              <div
+                className={cn(
+                  "flex size-5 shrink-0 items-center justify-center rounded border",
+                  isSelected
+                    ? "border-brand-600 bg-brand-600 text-white"
+                    : "border-line",
+                )}
+              >
+                {isSelected && <Check className="size-3.5" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium text-ink-900">
+                  {s.name}
+                </div>
+                <div className="truncate text-[11px] text-ink-500">
+                  @{s.username}
+                  {s.grade ? ` · ${t("school")} ${s.grade}` : ""}
+                  {s.jenjang ? ` · ${s.jenjang}` : ""}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── School facet (placeholder for cross-school mode) ──────────────────────
+
+function SchoolFacetSelect() {
+  const { t } = useTranslation();
+  const { data: schoolsData } = useAdminSchools();
+  const schools = useMemo(() => schoolsData?.data ?? [], [schoolsData]);
+
+  return (
+    <Select>
+      <SelectTrigger className="h-9 w-[180px] text-xs">
+        <SelectValue placeholder={t("select_school")} />
+      </SelectTrigger>
+      <SelectContent>
+        {schools.map((s) => (
+          <SelectItem key={s.id} value={s.id}>
+            {s.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}

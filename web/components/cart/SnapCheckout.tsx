@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button";
 
 export interface SnapCheckoutProps {
   orderId?: string;
+  basePath?: string;
   disabled?: boolean;
 }
 
-export function SnapCheckout({ orderId, disabled }: SnapCheckoutProps) {
+export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCheckoutProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const checkout = useCheckout();
+  const checkout = useCheckout(basePath);
 
   const handleCheckout = () => {
     if (!orderId) return;

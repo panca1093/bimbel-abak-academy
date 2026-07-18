@@ -58,6 +58,11 @@ export interface AdminStudent {
   created_at: string;
 }
 
+export interface CrossSchoolStudent extends AdminStudent {
+  school_id: string;
+  school_name: string;
+}
+
 export interface StudentRegistrationInput {
   name: string;
   jenjang: string;
