@@ -24,6 +24,9 @@ var (
 	ErrCrossSchoolStudent = errors.New("student does not belong to this school")
 	// ErrEmptySelector is returned when no selection criteria are provided.
 	ErrEmptySelector = errors.New("empty participant selector")
+	// ErrDuplicateParticipant is returned when the same student_id appears more
+	// than once in a participant selector (FR-BULK-03).
+	ErrDuplicateParticipant = errors.New("duplicate student_id in participant selector")
 )
 
 // ResolveSchoolParticipantSet resolves a ParticipantSelector against a single school.
@@ -45,7 +48,16 @@ func (s *Service) ResolveSchoolParticipantSet(ctx context.Context, schoolID stri
 
 // resolveByStudentIDs validates each student_id belongs to the given school.
 // Any cross-school id causes the entire call to fail (FR-BULK-03).
+// Duplicates are rejected before any DB calls.
 func (s *Service) resolveByStudentIDs(ctx context.Context, schoolID string, studentIDs []string) ([]uuid.UUID, error) {
+	seen := make(map[string]bool, len(studentIDs))
+	for _, id := range studentIDs {
+		if seen[id] {
+			return nil, fmt.Errorf("%w: %s", ErrDuplicateParticipant, id)
+		}
+		seen[id] = true
+	}
+
 	result := make([]uuid.UUID, 0, len(studentIDs))
 	for _, id := range studentIDs {
 		student, err := s.storeRepo.GetStudentByID(ctx, id, schoolID)

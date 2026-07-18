@@ -23,7 +23,7 @@ import {
   useCreateBulkExamOrder,
 } from "@/lib/hooks/admin-bulk-exam-orders";
 import { useAuthStore } from "@/stores/auth";
-import type { ExamListItem } from "@/lib/types";
+import type { Product } from "@/lib/types";
 
 export default function BulkExamOrderPage() {
   const { t } = useTranslation();
@@ -42,7 +42,7 @@ export default function BulkExamOrderPage() {
   const previewMutation = usePreviewBulkExamOrder();
   const createMutation = useCreateBulkExamOrder();
 
-  const exams: ExamListItem[] = useMemo(
+  const exams: Product[] = useMemo(
     () => examsData?.data ?? [],
     [examsData],
   );
@@ -121,7 +121,7 @@ export default function BulkExamOrderPage() {
             {t("bulk_exam_order_created")}
           </h2>
           <p className="mt-2 text-sm text-ink-500">
-            {selectedExam?.title} &middot; {selectedStudentIds.length} {t("bulk_exam_order_students_count").replace("{n}", String(selectedStudentIds.length))}
+            {selectedExam?.name} &middot; {selectedStudentIds.length} {t("bulk_exam_order_students_count").replace("{n}", String(selectedStudentIds.length))}
           </p>
 
           <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
@@ -166,7 +166,7 @@ export default function BulkExamOrderPage() {
               <SelectContent>
                 {exams.map((e) => (
                   <SelectItem key={e.id} value={e.id}>
-                    {e.title}
+                    {e.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -218,7 +218,7 @@ export default function BulkExamOrderPage() {
               </h4>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-ink-600">
-                  {selectedExam?.title}
+                  {selectedExam?.name}
                 </span>
                 <Badge variant="outline">
                   {previewMutation.data.net_new_count}{" "}

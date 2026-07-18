@@ -131,6 +131,41 @@ func TestPreviewBulkExamOrder_Integration(t *testing.T) {
 			t.Errorf("want ErrExamNotOrderable, got %v", err)
 		}
 	})
+
+	t.Run("preview with duplicate student ids fails (FR-BULK-03)", func(t *testing.T) {
+		_, err := svc.PreviewBulkExamOrder(ctx, schoolID, examID, ParticipantSelector{
+			StudentIDs: []string{studentIDs[0], studentIDs[1], studentIDs[0]},
+		})
+		if err == nil {
+			t.Fatal("expected error for duplicate student id, got nil")
+		}
+		if !errors.Is(err, ErrDuplicateParticipant) {
+			t.Errorf("want ErrDuplicateParticipant, got %v", err)
+		}
+	})
+
+	t.Run("preview with draft product returns ErrExamNotOrderable", func(t *testing.T) {
+		draftExamID := createTestExamForBulk(t, repo)
+		draftProductID := createTestExamProductForBulk(t, repo, draftExamID, 50000)
+
+		_, err := repo.Pool().Exec(ctx,
+			`UPDATE product SET status = 'draft' WHERE id = $1`,
+			draftProductID,
+		)
+		if err != nil {
+			t.Fatalf("update product to draft: %v", err)
+		}
+
+		_, err = svc.PreviewBulkExamOrder(ctx, schoolID, draftExamID, ParticipantSelector{
+			StudentIDs: studentIDs[:1],
+		})
+		if err == nil {
+			t.Fatal("expected error for draft product, got nil")
+		}
+		if !errors.Is(err, ErrExamNotOrderable) {
+			t.Errorf("want ErrExamNotOrderable for draft product, got %v", err)
+		}
+	})
 }
 
 func TestCreateBulkExamOrder_Integration(t *testing.T) {
@@ -262,6 +297,41 @@ func TestCreateBulkExamOrder_Integration(t *testing.T) {
 		}
 		if !errors.Is(err, ErrZeroNetNewParticipants) {
 			t.Errorf("want ErrZeroNetNewParticipants, got %v", err)
+		}
+	})
+
+	t.Run("create order with duplicate student ids fails (FR-BULK-03)", func(t *testing.T) {
+		_, err := svc.CreateBulkExamOrder(ctx, adminID, schoolID, examID, ParticipantSelector{
+			StudentIDs: []string{studentIDs[1], studentIDs[2], studentIDs[1]},
+		})
+		if err == nil {
+			t.Fatal("expected error for duplicate student id, got nil")
+		}
+		if !errors.Is(err, ErrDuplicateParticipant) {
+			t.Errorf("want ErrDuplicateParticipant, got %v", err)
+		}
+	})
+
+	t.Run("create order with draft product returns ErrExamNotOrderable", func(t *testing.T) {
+		draftExamID := createTestExamForBulk(t, repo)
+		draftProductID := createTestExamProductForBulk(t, repo, draftExamID, 75000)
+
+		_, err := repo.Pool().Exec(ctx,
+			`UPDATE product SET status = 'draft' WHERE id = $1`,
+			draftProductID,
+		)
+		if err != nil {
+			t.Fatalf("update product to draft: %v", err)
+		}
+
+		_, err = svc.CreateBulkExamOrder(ctx, adminID, schoolID, draftExamID, ParticipantSelector{
+			StudentIDs: studentIDs[1:],
+		})
+		if err == nil {
+			t.Fatal("expected error for draft product, got nil")
+		}
+		if !errors.Is(err, ErrExamNotOrderable) {
+			t.Errorf("want ErrExamNotOrderable for draft product, got %v", err)
 		}
 	})
 }

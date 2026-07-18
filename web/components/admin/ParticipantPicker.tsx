@@ -61,6 +61,7 @@ export function ParticipantPicker({
   const [search, setSearch] = useState("");
   const [jenjangFilter, setJenjangFilter] = useState("");
   const [gradeFilter, setGradeFilter] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("");
 
   const debouncedSearch = useDebouncedValue(search, 300);
 
@@ -73,6 +74,7 @@ export function ParticipantPicker({
     q: debouncedSearch || undefined,
     jenjang: jenjangFilter || undefined,
     grade: gradeFilter || undefined,
+    schoolId: schoolFilter || undefined,
     enabled: schoolId ? Boolean(schoolId) : true,
   };
 
@@ -210,7 +212,9 @@ export function ParticipantPicker({
         </Select>
 
         {/* School facet (only when schoolId absent) */}
-        {!schoolId && <SchoolFacetSelect />}
+        {!schoolId && (
+          <SchoolFacetSelect value={schoolFilter} onValueChange={setSchoolFilter} />
+        )}
       </div>
 
       {/* Selection count + bulk actions */}
@@ -293,17 +297,26 @@ export function ParticipantPicker({
 
 // ── School facet (placeholder for cross-school mode) ──────────────────────
 
-function SchoolFacetSelect() {
+function SchoolFacetSelect({
+  value,
+  onValueChange,
+}: {
+  value: string;
+  onValueChange: (v: string) => void;
+}) {
   const { t } = useTranslation();
   const { data: schoolsData } = useAdminSchools();
   const schools = useMemo(() => schoolsData?.data ?? [], [schoolsData]);
 
   return (
-    <Select>
+    <Select value={value} onValueChange={onValueChange}>
       <SelectTrigger className="h-9 w-[180px] text-xs">
         <SelectValue placeholder={t("select_school")} />
       </SelectTrigger>
       <SelectContent>
+        <SelectItem value="">
+          <span className="text-ink-500">{t("select_school")}</span>
+        </SelectItem>
         {schools.map((s) => (
           <SelectItem key={s.id} value={s.id}>
             {s.name}

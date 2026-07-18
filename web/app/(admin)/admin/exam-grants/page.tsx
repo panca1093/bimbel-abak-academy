@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useOrderableExams } from "@/lib/hooks/admin-bulk-exam-orders";
 import { useGrantExamAccess } from "@/lib/hooks/admin-exam-grants";
-import type { ExamListItem } from "@/lib/types";
+import type { Product } from "@/lib/types";
 
 export default function ExamGrantPage() {
   const { t } = useTranslation();
@@ -33,7 +33,7 @@ export default function ExamGrantPage() {
   const { data: examsData, isLoading: examsLoading } = useOrderableExams();
   const grantMutation = useGrantExamAccess();
 
-  const exams: ExamListItem[] = useMemo(
+  const exams: Product[] = useMemo(
     () => examsData?.data ?? [],
     [examsData],
   );
@@ -85,7 +85,7 @@ export default function ExamGrantPage() {
         <AdminPageHeader
           icon={CheckCircle}
           title={t("exam_grant_success_title")}
-          description={`${t("exam_grant_success_desc")} ${selectedExam?.title}`}
+          description={`${t("exam_grant_success_desc")} ${selectedExam?.name}`}
         />
 
         <div className="md-card-outlined p-6 text-center">
@@ -94,7 +94,7 @@ export default function ExamGrantPage() {
             {t("exam_grant_success_title")}
           </h2>
           <p className="mt-2 text-sm text-ink-500">
-            {t("exam_grant_success_desc_count").replace("{n}", String(grantResult.granted_count))} &middot; {selectedExam?.title}
+            {t("exam_grant_success_desc_count").replace("{n}", String(grantResult.granted_count))} &middot; {selectedExam?.name}
           </p>
 
           {grantResult.granted_students.length > 0 && (
@@ -149,7 +149,7 @@ export default function ExamGrantPage() {
               <SelectContent>
                 {exams.map((e) => (
                   <SelectItem key={e.id} value={e.id}>
-                    {e.title}
+                    {e.name}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { ExamListItem, Order, CheckoutResult } from "@/lib/types";
+import type { Product, Order, CheckoutResult } from "@/lib/types";
 
 // ── Query keys ────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export function useOrderableExams() {
   return useQuery({
     queryKey: bulkExamOrderKeys.orderableExams(),
     queryFn: () =>
-      authFetch<{ data: ExamListItem[] }>("/admin/bulk-exam-orders/exams"),
+      authFetch<{ data: Product[] }>("/admin/bulk-exam-orders/exams"),
   });
 }
 

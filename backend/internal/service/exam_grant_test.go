@@ -87,22 +87,22 @@ func TestGrantExamAccess_Integration(t *testing.T) {
 	actorStr := actorID.String()
 
 	t.Run("happy path — cross-school grant succeeds", func(t *testing.T) {
-		regs, err := svc.GrantExamAccess(ctx, actorStr, examID.String(), studentIDs)
+		result, err := svc.GrantExamAccess(ctx, actorStr, examID.String(), studentIDs)
 		if err != nil {
 			t.Fatalf("GrantExamAccess: %v", err)
 		}
-		if len(regs) != 3 {
-			t.Fatalf("want 3 registrations, got %d", len(regs))
+		if result.GrantedCount != 3 {
+			t.Fatalf("want 3 granted students, got %d", result.GrantedCount)
 		}
-		for _, reg := range regs {
-			if reg.ExamID != examID {
-				t.Errorf("ExamID: want %s, got %s", examID, reg.ExamID)
+		if len(result.GrantedStudents) != 3 {
+			t.Fatalf("want 3 GrantedStudents entries, got %d", len(result.GrantedStudents))
+		}
+		for _, gs := range result.GrantedStudents {
+			if gs.ID == "" {
+				t.Error("student ID should not be empty")
 			}
-			if reg.Token == "" {
-				t.Error("token should not be empty")
-			}
-			if reg.Status != "registered" {
-				t.Errorf("status: want 'registered', got '%s'", reg.Status)
+			if gs.Name == "" {
+				t.Error("student Name should not be empty")
 			}
 		}
 
@@ -138,13 +138,16 @@ func TestGrantExamAccess_Integration(t *testing.T) {
 
 	t.Run("already-registered silently skipped", func(t *testing.T) {
 		// Grant for studentIDs[0] again (already registered from the first test)
-		regs, err := svc.GrantExamAccess(ctx, actorStr, examID.String(), []uuid.UUID{studentIDs[0]})
+		result, err := svc.GrantExamAccess(ctx, actorStr, examID.String(), []uuid.UUID{studentIDs[0]})
 		if err != nil {
 			t.Fatalf("GrantExamAccess (repeat): %v", err)
 		}
 		// Should return no new registrations (ON CONFLICT DO NOTHING)
-		if len(regs) != 0 {
-			t.Fatalf("want 0 new registrations (dedup), got %d", len(regs))
+		if result.GrantedCount != 0 {
+			t.Fatalf("want 0 new registrations (dedup), got %d", result.GrantedCount)
+		}
+		if len(result.GrantedStudents) != 0 {
+			t.Fatalf("want 0 GrantedStudents entries (dedup), got %d", len(result.GrantedStudents))
 		}
 	})
 }

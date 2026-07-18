@@ -74,7 +74,7 @@ func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Prod
 
 // GetProductByExamID returns the exam-type product linked to the given exam
 // via product_exam. Returns ErrNotFound when no product is linked or the
-// linked product is not of type "exam".
+// linked product is not of type "exam" or is not published.
 func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (*model.Product, error) {
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
@@ -82,7 +82,7 @@ func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (
 		        p.weight_grams, p.image_url, p.created_at, p.updated_at
 		 FROM product p
 		 JOIN product_exam pe ON pe.product_id = p.id
-		 WHERE pe.exam_id = $1 AND p.type = 'exam'`,
+		 WHERE pe.exam_id = $1 AND p.type = 'exam' AND p.status = 'published'`,
 		examID,
 	), p)
 	if err != nil {

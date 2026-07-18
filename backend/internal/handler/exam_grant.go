@@ -82,12 +82,10 @@ func (h *Handler) AdminGrantExamAccess(c echo.Context) error {
 		return badRequest(c, "student_ids is required")
 	}
 
-	registrations, err := h.svc.GrantExamAccess(c.Request().Context(), claims.Sub, req.ExamID, req.StudentIDs)
+	result, err := h.svc.GrantExamAccess(c.Request().Context(), claims.Sub, req.ExamID, req.StudentIDs)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 
-	return c.JSON(http.StatusCreated, map[string]any{
-		"data": registrations,
-	})
+	return c.JSON(http.StatusCreated, result)
 }

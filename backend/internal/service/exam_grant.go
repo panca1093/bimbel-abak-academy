@@ -16,27 +16,39 @@ import (
 // does not exist or is not a student (FR-GRANT-06).
 var ErrInvalidGrantStudent = errors.New("one or more student IDs are invalid or not students")
 
+type GrantedStudent struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Username string `json:"username"`
+}
+
+type GrantExamAccessResult struct {
+	GrantedCount    int              `json:"granted_count"`
+	GrantedStudents []GrantedStudent `json:"granted_students"`
+}
+
 // GrantExamAccess creates direct exam registrations for the given students,
 // bypassing the order pipeline entirely (FR-GRANT-01/02). No school-scoping
 // check is performed — super_admin has none.
 //
 // Already-registered students are silently skipped via ON CONFLICT DO NOTHING
-// (FR-GRANT-03). Returns only newly created registrations.
-func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, studentIDs []uuid.UUID) ([]model.ExamRegistration, error) {
+// (FR-GRANT-03). Returns only newly created registrations along with their
+// student metadata.
+func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, studentIDs []uuid.UUID) (GrantExamAccessResult, error) {
 	examUUID, err := uuid.Parse(examID)
 	if err != nil {
-		return nil, err
+		return GrantExamAccessResult{}, err
 	}
 
 	// Batch-validate existence + role='student' (FR-GRANT-01, FR-GRANT-06, NFR-07).
 	users, err := s.repo.GetUsersByIDs(ctx, studentIDs)
 	if err != nil {
-		return nil, err
+		return GrantExamAccessResult{}, err
 	}
 
 	// Every requested id must be present (FR-GRANT-06).
 	if len(users) != len(studentIDs) {
-		return nil, ErrInvalidGrantStudent
+		return GrantExamAccessResult{}, ErrInvalidGrantStudent
 	}
 
 	// Collect distinct school_ids for audit metadata (FR-GRANT-04).
@@ -59,7 +71,7 @@ func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, s
 
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
-		return nil, err
+		return GrantExamAccessResult{}, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -91,7 +103,7 @@ func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, s
 			if errors.Is(err, pgx.ErrNoRows) {
 				continue
 			}
-			return nil, err
+			return GrantExamAccessResult{}, err
 		}
 		registrations = append(registrations, inserted)
 	}
@@ -103,12 +115,39 @@ func (s *Service) GrantExamAccess(ctx context.Context, actorID, examID string, s
 		"student_ids": studentIDStrs,
 		"school_ids":  schoolIDs,
 	}); err != nil {
-		return nil, fmt.Errorf("write audit log: %w", err)
+		return GrantExamAccessResult{}, fmt.Errorf("write audit log: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return GrantExamAccessResult{}, err
 	}
 
-	return registrations, nil
+	// Build result with student metadata matched from users slice.
+	grantedStudents := make([]GrantedStudent, 0, len(registrations))
+	for _, reg := range registrations {
+		var student *model.User
+		for j := range users {
+			if users[j].ID == reg.StudentID.String() {
+				student = &users[j]
+				break
+			}
+		}
+		if student == nil {
+			continue
+		}
+		username := ""
+		if student.Username != nil {
+			username = *student.Username
+		}
+		grantedStudents = append(grantedStudents, GrantedStudent{
+			ID:       student.ID,
+			Name:     student.Name,
+			Username: username,
+		})
+	}
+
+	return GrantExamAccessResult{
+		GrantedCount:    len(registrations),
+		GrantedStudents: grantedStudents,
+	}, nil
 }

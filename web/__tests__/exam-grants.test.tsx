@@ -1,9 +1,91 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DICT } from "@/lib/i18n";
 import { NAV_CONFIG } from "@/lib/nav-config";
 
 // Get actual translations for assertions
 const t = (key: string) => DICT.id[key as keyof typeof DICT.id] || DICT.en[key as keyof typeof DICT.en];
+
+// ── Mock state ──────────────────────────────────────────────────────────
+
+const orderableExamsState: { data: { data: any[] } | null } = {
+  data: { data: [{ id: "exam-1", name: "Tryout UTBK 2026" }] },
+};
+
+const grantMutateSpy = vi.fn();
+let grantShouldError = false;
+let grantErrorMessage = "";
+let grantMockResult: any = null;
+
+vi.mock("@/lib/hooks/admin-bulk-exam-orders", () => ({
+  useOrderableExams: () => ({
+    data: orderableExamsState.data,
+    isLoading: false,
+  }),
+}));
+
+// mutate calls through to the real component's onSuccess/onError callbacks,
+// same as the real POST /admin/exam-grants mutation would — so the assertions
+// below exercise the page's actual handleGrant + setGrantResult code path,
+// not a hand-rolled callback the test invents itself.
+vi.mock("@/lib/hooks/admin-exam-grants", () => ({
+  useGrantExamAccess: () => ({
+    isPending: false,
+    isError: false,
+    reset: vi.fn(),
+    mutate: (input: any, opts?: any) => {
+      grantMutateSpy(input, opts);
+      if (grantShouldError) {
+        opts?.onError?.(new Error(grantErrorMessage));
+      } else {
+        opts?.onSuccess?.(grantMockResult);
+      }
+    },
+  }),
+  useSearchStudentsAcrossSchools: () => ({
+    data: { data: [] },
+    isLoading: false,
+  }),
+}));
+
+vi.mock("@/components/admin/ParticipantPicker", () => ({
+  ParticipantPicker: ({ onChange }: { selected: string[]; onChange: (ids: string[]) => void }) => (
+    <button
+      data-testid="participant-picker-stub"
+      onClick={() => onChange(["s1", "s2"])}
+    >
+      Pick Students
+    </button>
+  ),
+}));
+
+vi.mock("@/lib/i18n", async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    useTranslation: () => ({
+      lang: "id",
+      t: (key: string) => key,
+    }),
+  };
+});
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+function wrapperFactory() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
+import ExamGrantPage from "@/app/(admin)/admin/exam-grants/page";
+import { toast } from "sonner";
 
 describe("FR-FE-13/14: exam grant screen requirements", () => {
   it("should have exam-grant navigation item in super_admin nav", () => {
@@ -23,29 +105,6 @@ describe("FR-FE-13/14: exam grant screen requirements", () => {
     expect(t("exam_grant_grant")).toBe("Beri Akses");
     expect(t("exam_grant_success_title")).toBe("Akses Diberikan");
     expect(t("bulk_exam_order_pick_participants")).toBeDefined();
-  });
-
-  it("should have exam-grant screen file created", async () => {
-    // This test verifies the file exists by importing it
-    const module = await import("@/app/(admin)/admin/exam-grants/page");
-    expect(module.default).toBeDefined();
-  });
-
-  it("should have useGrantExamAccess hook available", async () => {
-    const module = await import("@/lib/hooks/admin-exam-grants");
-    expect(module.useGrantExamAccess).toBeDefined();
-    expect(module.useSearchStudentsAcrossSchools).toBeDefined();
-  });
-
-  it("should have ParticipantPicker component available", async () => {
-    const module = await import("@/components/admin/ParticipantPicker");
-    expect(module.ParticipantPicker).toBeDefined();
-  });
-
-  it("should have CrossSchoolStudent type available", async () => {
-    const module = await import("@/lib/types");
-    // This verifies the type exists (can't directly assert on types, but we can check exports)
-    expect(module).toBeDefined();
   });
 
   it("should not include exam-grant in admin_exam nav subset", () => {
@@ -80,108 +139,84 @@ describe("FR-FE-13/14: exam grant screen requirements", () => {
   });
 });
 
-describe("FR-FE-13: Screen renders without school-picker gating", () => {
-  it("should have exam grant page that imports ParticipantPicker", async () => {
-    // Read the actual page source to verify structure
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
-    const filePath = path.join(
-      process.cwd(),
-      "app/(admin)/admin/exam-grants/page.tsx"
-    );
-
-    const content = await fs.readFile(filePath, "utf-8");
-
-    // Verify no "school picker first" gating
-    expect(content).toContain("ParticipantPicker");
-    expect(content).toContain("selectedExamId");
-    expect(content).toContain("selectedStudentIds");
-
-    // Verify the structure shows ParticipantPicker immediately after exam selection
-    expect(content).toContain('schoolId={undefined}');
-  });
-});
-
-describe("FR-FE-14: Grant action with multi-school support", () => {
-  it("should have POST /admin/exam-grants hook that accepts exam_id and student_ids", async () => {
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
-    const filePath = path.join(
-      process.cwd(),
-      "lib/hooks/admin-exam-grants.ts"
-    );
-
-    const content = await fs.readFile(filePath, "utf-8");
-
-    // Verify the hook signature
-    expect(content).toContain("GrantExamAccessInput");
-    expect(content).toContain("exam_id");
-    expect(content).toContain("student_ids");
-    expect(content).toContain("/admin/exam-grants");
-    expect(content).toContain("POST");
+describe("ExamGrantPage — real grant flow (drives the actual component, not mocked callbacks)", () => {
+  beforeEach(() => {
+    grantMutateSpy.mockClear();
+    grantShouldError = false;
+    grantErrorMessage = "";
+    grantMockResult = null;
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
   });
 
-  it("should show success state with granted student details", async () => {
-    const fs = await import("fs/promises");
-    const path = await import("path");
+  function openExamSelect() {
+    fireEvent.click(screen.getByRole("combobox"));
+  }
 
-    const filePath = path.join(
-      process.cwd(),
-      "app/(admin)/admin/exam-grants/page.tsx"
-    );
-
-    const content = await fs.readFile(filePath, "utf-8");
-
-    // Verify success state shows student names and usernames
-    expect(content).toContain("grantResult");
-    expect(content).toContain("granted_students");
-    expect(content).toContain("granted_count");
-    expect(content).toContain("CheckCircle");
-    expect(content).toContain("exam_grant_success_title");
+  it("renders exam options using the real Product name field (not the removed title field)", async () => {
+    render(<ExamGrantPage />, { wrapper: wrapperFactory() });
+    openExamSelect();
+    await waitFor(() => {
+      expect(screen.getByText("Tryout UTBK 2026")).toBeInTheDocument();
+    });
   });
 
-  it("should not show preview or payment step in the flow", async () => {
-    const fs = await import("fs/promises");
-    const path = await import("path");
+  it("shows granted student names and usernames after a successful grant (regression for the granted_students crash)", async () => {
+    grantMockResult = {
+      granted_count: 2,
+      granted_students: [
+        { id: "s1", name: "Andi Saputra", username: "andi123" },
+        { id: "s2", name: "Budi Santoso", username: "budi456" },
+      ],
+    };
 
-    const filePath = path.join(
-      process.cwd(),
-      "app/(admin)/admin/exam-grants/page.tsx"
+    render(<ExamGrantPage />, { wrapper: wrapperFactory() });
+
+    openExamSelect();
+    const examOption = await screen.findByText("Tryout UTBK 2026");
+    fireEvent.click(examOption);
+
+    const pickButton = await screen.findByTestId("participant-picker-stub");
+    fireEvent.click(pickButton);
+
+    const grantButton = await screen.findByText("exam_grant_grant");
+    fireEvent.click(grantButton);
+
+    expect(grantMutateSpy).toHaveBeenCalledWith(
+      { exam_id: "exam-1", student_ids: ["s1", "s2"] },
+      expect.any(Object),
     );
 
-    const content = await fs.readFile(filePath, "utf-8");
-
-    // Verify no preview step
-    expect(content).not.toContain("handlePreview");
-    expect(content).not.toContain("preview");
-
-    // Verify no payment/checkout integration
-    expect(content).not.toContain("SnapCheckout");
-    expect(content).not.toContain("useCheckout");
-    expect(content).not.toContain("Midtrans");
-    expect(content).not.toContain("payment");
-
-    // Verify direct grant action
-    expect(content).toContain("handleGrant");
-    expect(content).toContain("exam_grant_grant");
+    await waitFor(() => {
+      expect(screen.getByText("Andi Saputra")).toBeInTheDocument();
+    });
+    expect(screen.getByText("@andi123")).toBeInTheDocument();
+    expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    expect(screen.getByText("@budi456")).toBeInTheDocument();
   });
 
-  it("should call POST /admin/exam-grants with flat student_ids list", async () => {
-    const fs = await import("fs/promises");
-    const path = await import("path");
+  it("shows an error toast when the backend rejects duplicate student_ids", async () => {
+    grantShouldError = true;
+    grantErrorMessage = "duplicate student_id in participant selector: s1";
 
-    const filePath = path.join(
-      process.cwd(),
-      "app/(admin)/admin/exam-grants/page.tsx"
-    );
+    render(<ExamGrantPage />, { wrapper: wrapperFactory() });
 
-    const content = await fs.readFile(filePath, "utf-8");
+    openExamSelect();
+    const examOption = await screen.findByText("Tryout UTBK 2026");
+    fireEvent.click(examOption);
 
-    // Verify the mutation call includes both exam_id and student_ids
-    expect(content).toContain("grantMutation.mutate");
-    expect(content).toContain("exam_id: selectedExamId");
-    expect(content).toContain("student_ids: selectedStudentIds");
+    const pickButton = await screen.findByTestId("participant-picker-stub");
+    fireEvent.click(pickButton);
+
+    const grantButton = await screen.findByText("exam_grant_grant");
+    fireEvent.click(grantButton);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "duplicate student_id in participant selector: s1",
+      );
+    });
+    // Must not have fallen through to the success state.
+    expect(screen.queryByText("Andi Saputra")).not.toBeInTheDocument();
   });
 });

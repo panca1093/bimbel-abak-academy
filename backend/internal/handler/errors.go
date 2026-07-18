@@ -175,6 +175,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "section_not_active", Message: err.Error()}
 	case errors.Is(err, service.ErrCrossSchoolStudent):
 		status, apiErr = http.StatusForbidden, APIError{Code: "cross_school_student", Message: err.Error()}
+	case errors.Is(err, service.ErrDuplicateParticipant):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "duplicate_participant", Message: err.Error()}
 	case errors.Is(err, service.ErrEmptySelector):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrZeroNetNewParticipants):

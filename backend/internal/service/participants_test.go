@@ -78,6 +78,18 @@ func TestResolveSchoolParticipantSet_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("duplicate student ids in selector causes error", func(t *testing.T) {
+		_, err := svc.ResolveSchoolParticipantSet(ctx, schoolAID, ParticipantSelector{
+			StudentIDs: []string{studentIDs[0], studentIDs[1], studentIDs[0]},
+		})
+		if err == nil {
+			t.Fatal("expected error for duplicate student id, got nil")
+		}
+		if !errors.Is(err, ErrDuplicateParticipant) {
+			t.Errorf("want ErrDuplicateParticipant, got %v", err)
+		}
+	})
+
 	t.Run("Grade selects exactly that grade's students in-school", func(t *testing.T) {
 		g := 10
 		result, err := svc.ResolveSchoolParticipantSet(ctx, schoolAID, ParticipantSelector{
