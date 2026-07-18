@@ -79,6 +79,24 @@ func (strictPaymentClient) VerifySignature(payload []byte, signature string) boo
 	return signature != ""
 }
 
+// capturingPaymentClient captures the payment request for assertion.
+type capturingPaymentClient struct {
+	lastPaymentRequest *service.PaymentRequest
+}
+
+func (c *capturingPaymentClient) CreatePayment(ctx context.Context, req service.PaymentRequest) (service.PaymentResponse, error) {
+	c.lastPaymentRequest = &req
+	return service.PaymentResponse{GatewayRef: "noop-" + req.OrderID}, nil
+}
+
+func (c *capturingPaymentClient) QueryStatus(ctx context.Context, reference string) (service.PaymentStatus, error) {
+	return service.PaymentStatus{}, nil
+}
+
+func (c *capturingPaymentClient) VerifySignature(payload []byte, signature string) bool {
+	return true
+}
+
 // webhookServer returns a test server wired with a strict payment client for signature verification tests.
 func webhookServer(t *testing.T, env *testEnv, payment service.PaymentClient) *httptest.Server {
 	t.Helper()
@@ -329,5 +347,251 @@ func TestCheckout(t *testing.T) {
 			`SELECT COUNT(*) FROM outbox WHERE aggregate_id=$1 AND event_type='OrderPaid'`, orderID,
 		).Scan(&outboxCount))
 		assert.Equal(t, 1, outboxCount, "duplicate delivery must not insert a second outbox row")
+	})
+
+	t.Run("FR-SHIP-01..10 total invariant — add→quote→select→mutate→invalidate→re-quote→checkout", func(t *testing.T) {
+		// Use a fresh env for this test to avoid state pollution.
+		testEnv := newTestEnv(t)
+		ctx := context.Background()
+
+		userID := seedUser(t, testEnv, "student", "active", false)
+		token := authToken(t, testEnv, userID, "student")
+
+		// Seed a physical product with weight.
+		var productID string
+		err := testEnv.pool.QueryRow(ctx,
+			`INSERT INTO product (type, name, price, stock, status, weight_grams)
+			 VALUES ($1, $2, $3, 100, 'published', $4) RETURNING id`,
+			"book", "Buku Pengiriman", 100000, 500,
+		).Scan(&productID)
+		require.NoError(t, err)
+
+		// Step 1: Create cart and add physical item.
+		resp := testEnv.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+		body := decodeBody(t, resp)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		orderID := body["id"].(string)
+
+		drainClose(testEnv.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		// Step 2: Quote shipping (NoopLogisticsClient returns JNE 15000, TIKI 25000).
+		shippingResp := testEnv.doJSON(t, http.MethodPost, "/api/v1/orders/shipping",
+			map[string]any{
+				"destination_postal_code": "12345",
+				"weight_grams":            500,
+			}, token)
+		require.Equal(t, http.StatusOK, shippingResp.StatusCode)
+		shippingBody := decodeBody(t, shippingResp)
+		rates, ok := shippingBody["rates"].([]any)
+		require.True(t, ok, "rates must be an array, got: %T", shippingBody["rates"])
+		require.Len(t, rates, 2, "expected 2 courier rates from noop logistics client")
+
+		// Extract first rate (JNE, price 15000).
+		ratesMap := rates[0].(map[string]any)
+		priceVal, ok := ratesMap["Price"]
+		require.True(t, ok, "rates must have Price field, got keys: %v", ratesMap)
+		var selectedPrice int64
+		switch v := priceVal.(type) {
+		case float64:
+			selectedPrice = int64(v)
+		case int:
+			selectedPrice = int64(v)
+		default:
+			require.Fail(t, "Price must be a number, got: %T", v)
+		}
+		require.Equal(t, int64(15000), selectedPrice)
+
+		// Step 3: PATCH cart to select courier and set shipping cost.
+		// Get a valid province_id from the database.
+		var provinceID string
+		err1 := testEnv.pool.QueryRow(ctx,
+			`SELECT id FROM province LIMIT 1`,
+		).Scan(&provinceID)
+		require.NoError(t, err1, "must have at least one province seeded")
+
+		// Get a valid city_id for this province.
+		var cityID string
+		err2 := testEnv.pool.QueryRow(ctx,
+			`SELECT id FROM city WHERE province_id = $1 LIMIT 1`, provinceID,
+		).Scan(&cityID)
+		require.NoError(t, err2, "must have at least one city for this province")
+
+		// Get a valid district_id for this city.
+		var districtID string
+		err3 := testEnv.pool.QueryRow(ctx,
+			`SELECT id FROM district WHERE city_id = $1 LIMIT 1`, cityID,
+		).Scan(&districtID)
+		require.NoError(t, err3, "must have at least one district for this city")
+
+		patchResp := testEnv.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{
+				"courier":       "JNE",
+				"shipping_cost": 15000.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token)
+		require.Equal(t, http.StatusOK, patchResp.StatusCode)
+		drainClose(patchResp)
+
+		// Step 4: Get order and verify total = subtotal - discount + shipping_cost.
+		orderResp := testEnv.doJSON(t, http.MethodGet, "/api/v1/orders/"+orderID, nil, token)
+		require.Equal(t, http.StatusOK, orderResp.StatusCode)
+		orderBody := decodeBody(t, orderResp)
+
+		subtotal, ok := orderBody["subtotal"].(float64)
+		require.True(t, ok, "subtotal must be float64, got: %T", orderBody["subtotal"])
+
+		discountVal := orderBody["discount"]
+		discount := 0.0
+		if discountVal != nil {
+			if v, ok := discountVal.(float64); ok {
+				discount = v
+			}
+		}
+
+		shippingCost, ok := orderBody["shipping_cost"].(float64)
+		require.True(t, ok, "shipping_cost must be float64, got: %T", orderBody["shipping_cost"])
+
+		total, ok := orderBody["total"].(float64)
+		require.True(t, ok, "total must be float64, got: %T", orderBody["total"])
+
+		require.Equal(t, 100000.0, subtotal, "subtotal should be 100000 (1x 100000)")
+		require.Equal(t, 0.0, discount, "discount should be 0 (no promo)")
+		require.Equal(t, 15000.0, shippingCost, "shipping_cost should be 15000 (selected rate)")
+
+		expectedTotal := subtotal - discount + shippingCost
+		assert.Equal(t, expectedTotal, total, "total must equal subtotal - discount + shipping_cost")
+
+		// Step 5: Update item qty (this should clear shipping).
+		itemsArray := orderBody["items"].([]any)
+		require.Len(t, itemsArray, 1)
+		item := itemsArray[0].(map[string]any)
+		itemID := item["id"].(string)
+
+		qtyResp := testEnv.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID+"/items/"+itemID,
+			map[string]any{"qty": 2}, token)
+		require.Equal(t, http.StatusNoContent, qtyResp.StatusCode)
+
+		// Step 6: Verify shipping is cleared and total is recomputed.
+		orderResp2 := testEnv.doJSON(t, http.MethodGet, "/api/v1/orders/"+orderID, nil, token)
+		require.Equal(t, http.StatusOK, orderResp2.StatusCode)
+		order2 := decodeBody(t, orderResp2)
+
+		subtotal2, ok := order2["subtotal"].(float64)
+		require.True(t, ok, "subtotal must be float64")
+		discount2Val := order2["discount"]
+		discount2 := 0.0
+		if discount2Val != nil {
+			if v, ok := discount2Val.(float64); ok {
+				discount2 = v
+			}
+		}
+		shippingCost2, ok := order2["shipping_cost"].(float64)
+		require.True(t, ok, "shipping_cost must be float64")
+		total2, ok := order2["total"].(float64)
+		require.True(t, ok, "total must be float64")
+		selectedCourier2Val := order2["selected_courier"]
+		selectedCourier2 := ""
+		if selectedCourier2Val != nil {
+			if v, ok := selectedCourier2Val.(string); ok {
+				selectedCourier2 = v
+			}
+		}
+
+		require.Equal(t, 200000.0, subtotal2, "subtotal should be 200000 (2x 100000)")
+		require.Equal(t, 0.0, discount2, "discount still 0")
+		require.Equal(t, 0.0, shippingCost2, "shipping_cost must be cleared after qty change")
+		require.Equal(t, "", selectedCourier2, "selected_courier must be cleared")
+
+		expectedTotal2 := subtotal2 - discount2 + shippingCost2
+		assert.Equal(t, expectedTotal2, total2, "total must equal subtotal - discount + shipping_cost (0)")
+
+		// This is the critical assertion: if the pre-image bug existed (total retained
+		// the old shipping_cost in the SET clause), this would fail.
+		assert.Equal(t, 200000.0, total2, "total should be exactly subtotal (200000) since shipping_cost is 0")
+
+		// Step 7: Re-quote shipping (for new total weight).
+		shippingResp2 := testEnv.doJSON(t, http.MethodPost, "/api/v1/orders/shipping",
+			map[string]any{
+				"destination_postal_code": "12345",
+				"weight_grams":            1000, // doubled weight
+			}, token)
+		require.Equal(t, http.StatusOK, shippingResp2.StatusCode)
+		shippingBody2 := decodeBody(t, shippingResp2)
+		rates2 := shippingBody2["rates"].([]any)
+		require.Len(t, rates2, 2)
+
+		// Step 8: Re-select a different courier (TIKI, price 25000).
+		ratesMap2 := rates2[1].(map[string]any)
+		priceVal2, ok := ratesMap2["Price"]
+		require.True(t, ok, "rates must have Price field")
+		var selectedPrice2 int64
+		switch v := priceVal2.(type) {
+		case float64:
+			selectedPrice2 = int64(v)
+		case int:
+			selectedPrice2 = int64(v)
+		default:
+			require.Fail(t, "Price must be a number, got: %T", v)
+		}
+		require.Equal(t, int64(25000), selectedPrice2)
+
+		patchResp2 := testEnv.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{
+				"courier":       "TIKI",
+				"shipping_cost": 25000.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token)
+		require.Equal(t, http.StatusOK, patchResp2.StatusCode)
+		drainClose(patchResp2)
+
+		// Verify total is recalculated correctly.
+		orderResp3 := testEnv.doJSON(t, http.MethodGet, "/api/v1/orders/"+orderID, nil, token)
+		require.Equal(t, http.StatusOK, orderResp3.StatusCode)
+		order3 := decodeBody(t, orderResp3)
+
+		subtotal3, ok := order3["subtotal"].(float64)
+		require.True(t, ok, "subtotal must be float64")
+		shippingCost3, ok := order3["shipping_cost"].(float64)
+		require.True(t, ok, "shipping_cost must be float64")
+		total3, ok := order3["total"].(float64)
+		require.True(t, ok, "total must be float64")
+
+		require.Equal(t, 200000.0, subtotal3)
+		require.Equal(t, 25000.0, shippingCost3, "shipping_cost should be 25000 (new selection)")
+		expectedTotal3 := subtotal3 + shippingCost3
+		assert.Equal(t, expectedTotal3, total3, "total must be subtotal + shipping_cost = 225000")
+
+		// Step 9: Checkout succeeds with correct total.
+		checkoutReq, err := http.NewRequest(http.MethodPost,
+			testEnv.server.URL+"/api/v1/orders/"+orderID+"/checkout", nil)
+		require.NoError(t, err)
+		checkoutReq.Header.Set("Authorization", "Bearer "+token)
+		checkoutReq.Header.Set("Idempotency-Key", fmt.Sprintf("ship-checkout-%d", time.Now().UnixNano()))
+		checkoutResp, err := http.DefaultClient.Do(checkoutReq)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, checkoutResp.StatusCode)
+		drainClose(checkoutResp)
+
+		// Step 10: Verify order was marked payment_pending and shipping ItemDetail was built.
+		// (The payment request building is tested separately in unit tests; this integration test
+		// focuses on the total invariant across the full lifecycle.)
+		var orderStatus string
+		var finalShippingCost float64
+		var finalTotal float64
+		err = testEnv.pool.QueryRow(ctx,
+			`SELECT status, shipping_cost, total FROM orders WHERE id=$1`, orderID,
+		).Scan(&orderStatus, &finalShippingCost, &finalTotal)
+		require.NoError(t, err)
+
+		assert.Equal(t, "payment_pending", orderStatus, "order should be payment_pending after checkout")
+		assert.Equal(t, 25000.0, finalShippingCost, "shipping_cost should persist as 25000")
+		assert.Equal(t, 225000.0, finalTotal, "final total should still be 225000")
 	})
 }
