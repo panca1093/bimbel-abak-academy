@@ -442,7 +442,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		if successCount != 0 {
 			t.Errorf("want successCount=0 for unknown school, got %d", successCount)
 		}
-		if results[0].Status != "failed" || !errors.Is(ErrSchoolNotFoundByName, errors.New(results[0].Error)) {
+		if results[0].Status != "failed" || results[0].Error != ErrSchoolNotFoundByName.Error() {
 			t.Errorf("want failed with ErrSchoolNotFoundByName, got %+v", results[0])
 		}
 		if results[0].School != "THIS SCHOOL DOES NOT EXIST" {
@@ -466,7 +466,7 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		if successCount != 0 {
 			t.Errorf("want successCount=0 for cross-school, got %d", successCount)
 		}
-		if results[0].Status != "failed" || !errors.Is(ErrCrossSchoolBound, errors.New(results[0].Error)) {
+		if results[0].Status != "failed" || results[0].Error != ErrCrossSchoolBound.Error() {
 			t.Errorf("want failed with ErrCrossSchoolBound, got %+v", results[0])
 		}
 		if results[0].School != schoolBName {
@@ -535,33 +535,30 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 }
 
 // seedTestRegionData inserts deterministic region data into the shared test DB.
+// Uses ON CONFLICT DO NOTHING for idempotency so the function is safe to call
+// multiple times when other tests share the DB fixture.
 func seedTestRegionData(t *testing.T, repo *repository.Repository) {
 	t.Helper()
 	ctx := context.Background()
 	pool := repo.Pool()
 
-	// Delete in FK order.
-	_, _ = pool.Exec(ctx, `DELETE FROM district`)
-	_, _ = pool.Exec(ctx, `DELETE FROM city`)
-	_, _ = pool.Exec(ctx, `DELETE FROM province`)
-
-	_, err := pool.Exec(ctx, `INSERT INTO province (id, name) VALUES ('73', 'SULAWESI SELATAN')`)
+	_, err := pool.Exec(ctx, `INSERT INTO province (id, name) VALUES ('73', 'SULAWESI SELATAN') ON CONFLICT DO NOTHING`)
 	if err != nil {
 		t.Fatalf("insert province sulsel: %v", err)
 	}
-	_, err = pool.Exec(ctx, `INSERT INTO province (id, name) VALUES ('35', 'JAWA TIMUR')`)
+	_, err = pool.Exec(ctx, `INSERT INTO province (id, name) VALUES ('35', 'JAWA TIMUR') ON CONFLICT DO NOTHING`)
 	if err != nil {
 		t.Fatalf("insert province jatim: %v", err)
 	}
-	_, err = pool.Exec(ctx, `INSERT INTO city (id, province_id, name) VALUES ('7371', '73', 'KOTA MAKASSAR')`)
+	_, err = pool.Exec(ctx, `INSERT INTO city (id, province_id, name) VALUES ('7371', '73', 'KOTA MAKASSAR') ON CONFLICT DO NOTHING`)
 	if err != nil {
 		t.Fatalf("insert city makassar: %v", err)
 	}
-	_, err = pool.Exec(ctx, `INSERT INTO city (id, province_id, name) VALUES ('3578', '35', 'KOTA SURABAYA')`)
+	_, err = pool.Exec(ctx, `INSERT INTO city (id, province_id, name) VALUES ('3578', '35', 'KOTA SURABAYA') ON CONFLICT DO NOTHING`)
 	if err != nil {
 		t.Fatalf("insert city surabaya: %v", err)
 	}
-	_, err = pool.Exec(ctx, `INSERT INTO district (id, city_id, name) VALUES ('7371010', '7371', 'MARISO')`)
+	_, err = pool.Exec(ctx, `INSERT INTO district (id, city_id, name) VALUES ('7371010', '7371', 'MARISO') ON CONFLICT DO NOTHING`)
 	if err != nil {
 		t.Fatalf("insert district mariso: %v", err)
 	}
