@@ -568,9 +568,13 @@ func TestCheckout(t *testing.T) {
 		expectedTotal3 := subtotal3 + shippingCost3
 		assert.Equal(t, expectedTotal3, total3, "total must be subtotal + shipping_cost = 225000")
 
-		// Step 9: Checkout succeeds with correct total.
+		// Step 9: Checkout succeeds with correct total, capturing the payment request.
+		capturingClient := &capturingPaymentClient{}
+		ts := webhookServer(t, testEnv, capturingClient)
+		defer ts.Close()
+
 		checkoutReq, err := http.NewRequest(http.MethodPost,
-			testEnv.server.URL+"/api/v1/orders/"+orderID+"/checkout", nil)
+			ts.URL+"/api/v1/orders/"+orderID+"/checkout", nil)
 		require.NoError(t, err)
 		checkoutReq.Header.Set("Authorization", "Bearer "+token)
 		checkoutReq.Header.Set("Idempotency-Key", fmt.Sprintf("ship-checkout-%d", time.Now().UnixNano()))
@@ -579,9 +583,27 @@ func TestCheckout(t *testing.T) {
 		require.Equal(t, http.StatusOK, checkoutResp.StatusCode)
 		drainClose(checkoutResp)
 
-		// Step 10: Verify order was marked payment_pending and shipping ItemDetail was built.
-		// (The payment request building is tested separately in unit tests; this integration test
-		// focuses on the total invariant across the full lifecycle.)
+		// Step 10: Verify Midtrans payment request includes shipping ItemDetail with correct amount.
+		require.NotNil(t, capturingClient.lastPaymentRequest, "payment request must be captured")
+		paymentReq := capturingClient.lastPaymentRequest
+
+		// Verify amount matches order total.
+		require.Equal(t, int64(225000), paymentReq.Amount, "payment amount must equal order total (225000)")
+
+		// Find and verify shipping item in request.
+		var shippingItem *service.ItemDetail
+		for i := range paymentReq.Items {
+			if paymentReq.Items[i].Category == "Shipping" {
+				shippingItem = &paymentReq.Items[i]
+				break
+			}
+		}
+		require.NotNil(t, shippingItem, "payment request must include Shipping ItemDetail")
+		assert.Equal(t, "shipping", shippingItem.ID, "shipping item ID must be 'shipping'")
+		assert.Equal(t, int64(25000), shippingItem.Price, "shipping item price must match selected rate (25000)")
+		assert.EqualValues(t, 1, shippingItem.Qty, "shipping item qty must be 1")
+
+		// Verify order table reflects correct state.
 		var orderStatus string
 		var finalShippingCost float64
 		var finalTotal float64
