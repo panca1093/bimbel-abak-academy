@@ -46,6 +46,15 @@ func TestGoogleLogin_CreateSetsGoogleProvider(t *testing.T) {
 	if u.AuthProvider != "google" {
 		t.Errorf("AuthProvider: want 'google', got '%s'", u.AuthProvider)
 	}
+	if u.Username == nil {
+		t.Fatal("Username should be set on Google-created user (FR-SELFREG-02)")
+	}
+	if !strings.HasPrefix(*u.Username, "goog") {
+		t.Errorf("Username %q: want prefix 'goog'", *u.Username)
+	}
+	if len(*u.Username) != 8 {
+		t.Errorf("Username %q: want 8 chars (4 base + 4 digits), got %d", *u.Username, len(*u.Username))
+	}
 }
 
 func TestGoogleLogin_ExistingUserKeepsOriginalProvider(t *testing.T) {

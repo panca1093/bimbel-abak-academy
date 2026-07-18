@@ -15,9 +15,13 @@ import (
 )
 
 var (
-	ErrDuplicateNIS      = errors.New("nis already registered in this school")
 	ErrSchoolDeactivated  = errors.New("school is deactivated")
 	ErrStudentNotFound    = errors.New("student not found")
+	ErrInvalidJenjang     = errors.New("invalid jenjang for school")
+	ErrIncompleteAddress  = errors.New("incomplete address: all or none of provinsi/kota/kecamatan required")
+	ErrInvalidProvinsi    = errors.New("invalid provinsi")
+	ErrInvalidKota        = errors.New("invalid kota")
+	ErrInvalidKecamatan   = errors.New("invalid kecamatan")
 )
 
 const tempPasswordLen = 10
@@ -42,7 +46,11 @@ type StudentRegistrationResponse struct {
 	ID           string  `json:"id"`
 	Name         string  `json:"name"`
 	Username     string  `json:"username"`
-	NIS          string  `json:"nis"`
+	Jenjang      string  `json:"jenjang"`
+	ProvinsiID   *string `json:"provinsi_id"`
+	KotaID       *string `json:"kota_id"`
+	KecamatanID  *string `json:"kecamatan_id"`
+	KodePos      *string `json:"kode_pos"`
 	Email        *string `json:"email"`
 	TempPassword string  `json:"temp_password"`
 	CreatedAt    string  `json:"created_at"`
@@ -52,7 +60,6 @@ type StudentResponse struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
 	Username  string  `json:"username"`
-	NIS       string  `json:"nis"`
 	Email     *string `json:"email"`
 	Status    string  `json:"status"`
 	Grade     *int    `json:"grade"`
@@ -73,7 +80,6 @@ func toStudentResponse(row repository.StudentRow) StudentResponse {
 		ID:        row.ID,
 		Name:      row.Name,
 		Username:  row.Username,
-		NIS:       row.NIS,
 		Email:     row.Email,
 		Status:    row.Status,
 		Grade:     grade,
@@ -81,12 +87,25 @@ func toStudentResponse(row repository.StudentRow) StudentResponse {
 	}
 }
 
+// jenjangInSchoolTypes checks whether jenjang is present in the school's
+// SchoolTypes slice. Exported for reuse by the profile-update path (Task 30).
+func jenjangInSchoolTypes(jenjang string, types []string) bool {
+	for _, t := range types {
+		if t == jenjang {
+			return true
+		}
+	}
+	return false
+}
+
 // --- methods ---
 
 // RegisterStudent creates a new student user under the given school.
 // Returns the plaintext temp password exactly once in the response.
-func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, nis string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string) (*StudentRegistrationResponse, error) {
-	if name == "" || nis == "" {
+// jenjang is required; provinsiID/kotaID/kecamatanID are optional but must be
+// all-or-nothing (FR-REG-02a). kodePos is independently optional.
+func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang string, email *string, dob *time.Time, gender *string, grade *int, alamatDomisili, targetExam *string, provinsiID, kotaID, kecamatanID, kodePos *string) (*StudentRegistrationResponse, error) {
+	if name == "" || jenjang == "" {
 		return nil, ErrMissingField
 	}
 
@@ -101,14 +120,57 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, nis strin
 		return nil, ErrSchoolDeactivated
 	}
 
-	username := school.Code + "_" + nis
+	// Validate jenjang against school's SchoolTypes when types are configured.
+	if len(school.SchoolTypes) > 0 && !jenjangInSchoolTypes(jenjang, school.SchoolTypes) {
+		return nil, ErrInvalidJenjang
+	}
 
-	existing, err := s.repo.GetUserByUsername(ctx, username)
+	// All-or-nothing address validation (FR-REG-02a).
+	addrCount := 0
+	if provinsiID != nil {
+		addrCount++
+	}
+	if kotaID != nil {
+		addrCount++
+	}
+	if kecamatanID != nil {
+		addrCount++
+	}
+	if addrCount > 0 && addrCount < 3 {
+		return nil, ErrIncompleteAddress
+	}
+
+	// If all three address fields are present, validate each.
+	if addrCount == 3 {
+		prov, err := s.storeRepo.GetProvinceByID(ctx, *provinsiID)
+		if err != nil {
+			return nil, err
+		}
+		if prov == nil {
+			return nil, ErrInvalidProvinsi
+		}
+
+		city, err := s.storeRepo.GetCityByID(ctx, *kotaID)
+		if err != nil {
+			return nil, err
+		}
+		if city == nil || city.ProvinceID != *provinsiID {
+			return nil, ErrInvalidKota
+		}
+
+		district, err := s.storeRepo.GetDistrictByID(ctx, *kecamatanID)
+		if err != nil {
+			return nil, err
+		}
+		if district == nil || district.CityID != *kotaID {
+			return nil, ErrInvalidKecamatan
+		}
+	}
+
+	// Generate unique username (Task 6).
+	username, err := s.generateUniqueUsername(ctx, name)
 	if err != nil {
 		return nil, err
-	}
-	if existing != nil {
-		return nil, ErrDuplicateNIS
 	}
 
 	tempPass, err := genTempPassword()
@@ -130,7 +192,11 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, nis strin
 		SchoolID:       &schoolID,
 		Status:         "active",
 		OTPEnabled:     false,
-		NIS:            &nis,
+		Jenjang:        &jenjang,
+		ProvinsiID:     provinsiID,
+		KotaID:         kotaID,
+		KecamatanID:    kecamatanID,
+		KodePos:        kodePos,
 		DOB:            dob,
 		Gender:         gender,
 		Grade:          grade,
@@ -145,20 +211,78 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, nis strin
 		ID:           user.ID,
 		Name:         user.Name,
 		Username:     username,
-		NIS:          nis,
+		Jenjang:      jenjang,
+		ProvinsiID:   provinsiID,
+		KotaID:       kotaID,
+		KecamatanID:  kecamatanID,
+		KodePos:      kodePos,
 		Email:        email,
 		TempPassword: tempPass,
 		CreatedAt:    user.CreatedAt.Format(time.RFC3339),
 	}, nil
 }
 
+// CrossSchoolStudentResponse is the response shape for cross-school student
+// search (FR-SEARCH-01). Includes school_name so results are distinguishable.
+type CrossSchoolStudentResponse struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Username   string  `json:"username"`
+	Email      *string `json:"email"`
+	Status     string  `json:"status"`
+	Grade      *int    `json:"grade"`
+	SchoolID   string  `json:"school_id"`
+	SchoolName string  `json:"school_name"`
+	CreatedAt  string  `json:"created_at"`
+}
+
+func toCrossSchoolStudentResponse(row repository.CrossSchoolStudentRow) CrossSchoolStudentResponse {
+	return CrossSchoolStudentResponse{
+		ID:         row.ID,
+		Name:       row.Name,
+		Username:   row.Username,
+		Email:      row.Email,
+		Status:     row.Status,
+		Grade:      row.Grade,
+		SchoolID:   row.SchoolID,
+		SchoolName: row.SchoolName,
+		CreatedAt:  row.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+// SearchStudentsAcrossSchools searches students across all schools with optional
+// filters. Thin pass-through to the repository with bounded default limit.
+// This is the super_admin cross-school search (FR-SEARCH-01/03).
+func (s *Service) SearchStudentsAcrossSchools(ctx context.Context, q string, schoolID *string, grade *int, jenjang string, limit int, cursor string) ([]CrossSchoolStudentResponse, string, error) {
+	rows, nextCursor, err := s.storeRepo.SearchStudentsAcrossSchools(ctx, repository.StudentFilter{
+		Cursor:   cursor,
+		Limit:    limit,
+		Q:        q,
+		SchoolID: schoolID,
+		Grade:    grade,
+		Jenjang:  jenjang,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	students := make([]CrossSchoolStudentResponse, len(rows))
+	for i, r := range rows {
+		students[i] = toCrossSchoolStudentResponse(r)
+	}
+	return students, nextCursor, nil
+}
+
 // ListStudents returns cursor-paginated students scoped to the given school.
-func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string) ([]StudentResponse, string, error) {
+// Optional grade and jenjang filters narrow the result set.
+func (s *Service) ListStudents(ctx context.Context, schoolID string, statusFilter, q string, limit int, cursor string, grade *int, jenjang string) ([]StudentResponse, string, error) {
 	rows, nextCursor, err := s.storeRepo.ListStudentsBySchool(ctx, schoolID, repository.StudentFilter{
-		Status: statusFilter,
-		Cursor: cursor,
-		Limit:  limit,
-		Q:      q,
+		Status:  statusFilter,
+		Cursor:  cursor,
+		Limit:   limit,
+		Q:       q,
+		Grade:   grade,
+		Jenjang: jenjang,
 	})
 	if err != nil {
 		return nil, "", err

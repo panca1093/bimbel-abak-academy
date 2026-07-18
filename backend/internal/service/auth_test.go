@@ -15,6 +15,7 @@ import (
 	"akademi-bimbel/internal/model"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -86,7 +87,7 @@ func (f *fakeUserRepo) UpdatePasswordHash(_ context.Context, userID, hash string
 	return nil
 }
 
-func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error {
+func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string, jenjang, provinsiID, kotaID, kecamatanID, kodePos *string) error {
 	u, ok := f.byID[userID]
 	if !ok {
 		return errors.New("not found")
@@ -115,6 +116,24 @@ func (f *fakeUserRepo) UpdateUserProfile(_ context.Context, userID string, name,
 	if schoolID != nil {
 		u.SchoolID = schoolID
 	}
+	if unlistedSchoolName != nil {
+		u.UnlistedSchoolName = unlistedSchoolName
+	}
+	if jenjang != nil {
+		u.Jenjang = jenjang
+	}
+	if provinsiID != nil {
+		u.ProvinsiID = provinsiID
+	}
+	if kotaID != nil {
+		u.KotaID = kotaID
+	}
+	if kecamatanID != nil {
+		u.KecamatanID = kecamatanID
+	}
+	if kodePos != nil {
+		u.KodePos = kodePos
+	}
 	return nil
 }
 
@@ -142,6 +161,26 @@ func (f *fakeUserRepo) ActivateUser(_ context.Context, userID string) (bool, err
 	u.Status = "active"
 	u.OTPEnabled = false
 	return true, nil
+}
+
+func (f *fakeUserRepo) GetUsersByIDs(_ context.Context, ids []uuid.UUID) ([]model.User, error) {
+	idSet := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		idSet[id.String()] = true
+	}
+	var users []model.User
+	for _, u := range f.byID {
+		if u.Role != "student" {
+			continue
+		}
+		if idSet[u.ID] {
+			users = append(users, *u)
+		}
+	}
+	if users == nil {
+		users = []model.User{}
+	}
+	return users, nil
 }
 
 func (f *fakeUserRepo) TombstoneUser(_ context.Context, userID string) error {
@@ -188,7 +227,7 @@ func newTestService(t *testing.T, repo UserRepository) (*Service, *miniredis.Min
 func TestRegister(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("happy path creates user", func(t *testing.T) {
+	t.Run("happy path creates user with username", func(t *testing.T) {
 		repo := newFakeUserRepo()
 		svc, mr := newTestService(t, repo)
 		pending, err := svc.Register(ctx, "New@Example.com", "password123", "Budi")
@@ -211,6 +250,15 @@ func TestRegister(t *testing.T) {
 		if !mr.Exists("otp:" + u.ID) {
 			t.Error("otp key should be stored after register")
 		}
+		if u.Username == nil {
+			t.Fatal("username should be set")
+		}
+		if !strings.HasPrefix(*u.Username, "budi") {
+			t.Errorf("Username %q: want prefix 'budi'", *u.Username)
+		}
+		if len(*u.Username) != 8 {
+			t.Errorf("Username %q: want 8 chars (4 base + 4 digits), got %d", *u.Username, len(*u.Username))
+		}
 	})
 
 	t.Run("duplicate email", func(t *testing.T) {
@@ -229,6 +277,43 @@ func TestRegister(t *testing.T) {
 		_, err := svc.Register(ctx, "x@example.com", "short", "Budi")
 		if !errors.Is(err, ErrWeakPassword) {
 			t.Errorf("want ErrWeakPassword, got %v", err)
+		}
+	})
+
+	t.Run("username generation exhaustion fails account creation", func(t *testing.T) {
+		repo := &collisionRepo{fakeUserRepo: *newFakeUserRepo(), blockUntil: 99}
+		svc, _ := newTestService(t, repo)
+		_, err := svc.Register(ctx, "exhausted@example.com", "password123", "Budi Santoso")
+		if !errors.Is(err, ErrUsernameGenerationExhausted) {
+			t.Errorf("want ErrUsernameGenerationExhausted, got %v", err)
+		}
+		u, _ := repo.GetUserByEmail(ctx, "exhausted@example.com")
+		if u != nil {
+			t.Error("user should not have been created when username generation failed")
+		}
+	})
+
+	t.Run("can login with generated username (FR-SELFREG-03)", func(t *testing.T) {
+		repo := newFakeUserRepo()
+		svc, _ := newTestService(t, repo)
+		_, err := svc.Register(ctx, "loginuser@example.com", "password123", "Login User")
+		if err != nil {
+			t.Fatalf("Register: %v", err)
+		}
+		u, _ := repo.GetUserByEmail(ctx, "loginuser@example.com")
+		if u == nil || u.Username == nil {
+			t.Fatal("user/username not created")
+		}
+		_, _, pending, err := svc.Login(ctx, *u.Username, "password123")
+		if !errors.Is(err, ErrVerificationPending) {
+			t.Fatalf("Login with username: want ErrVerificationPending, got %v", err)
+		}
+		if pending == "" {
+			t.Error("Login with username: want non-empty pending_token")
+		}
+		_, _, _, err = svc.Login(ctx, *u.Username, "wrongpassword")
+		if !errors.Is(err, ErrInvalidCredentials) {
+			t.Errorf("Login with wrong password: want ErrInvalidCredentials, got %v", err)
 		}
 	})
 

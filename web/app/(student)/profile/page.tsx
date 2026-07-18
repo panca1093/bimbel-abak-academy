@@ -10,6 +10,11 @@ import {
   useUpdatePhoto,
   useUpdateProfile,
 } from "@/lib/hooks/students";
+import {
+  useCitiesByProvince,
+  useDistrictsByCity,
+  useProvinces,
+} from "@/lib/hooks/regions";
 import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
@@ -36,6 +41,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 const GRADES = ["7", "8", "9", "10", "11", "12"];
+
+// Fallback jenjang list used when the student has no real school resolved
+// (no school_id, or "unlisted" chosen). Mirrors architecture decision 29.
+const FALLBACK_JENJANG = ["SD", "SMP", "SMA", "SMK"];
+const UNLISTED_SCHOOL_VALUE = "_unlisted_";
 
 const PROFILE_INPUT_CLASS =
   "h-11 w-full rounded-md border border-line bg-surface px-3.5 text-sm text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-400 focus-visible:border-brand-400 focus-visible:ring-[3px] focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-500 read-only:bg-surface-2/60";
@@ -251,11 +261,45 @@ export default function ProfilePage() {
   const [targetExam, setTargetExam] = useState("");
   const [grade, setGrade] = useState<string>("");
   const [schoolId, setSchoolId] = useState<string>("");
+  const [unlistedSchoolName, setUnlistedSchoolName] = useState("");
+  const [jenjang, setJenjang] = useState("");
+  const [provinsiId, setProvinsiId] = useState("");
+  const [kotaId, setKotaId] = useState("");
+  const [kecamatanId, setKecamatanId] = useState("");
+  const [kodePos, setKodePos] = useState("");
   const [emailNotif, setEmailNotif] = useState(true);
   const [waNotif, setWaNotif] = useState(true);
   const [pushNotif, setPushNotif] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
+
+  // Region hooks (Task 17). Reused, not reimplemented.
+  const { data: provinces } = useProvinces();
+  const { data: cities } = useCitiesByProvince(provinsiId);
+  const { data: districts } = useDistrictsByCity(kotaId);
+
+  // The displayed school value: when in edit mode, use the user-editable
+  // schoolId; when in read-only mode, fall back to the profile's stored
+  // school_id or unlisted_school_name. This makes the read-only display
+  // correct on the first render without depending on the sync useEffect.
+  const isUnlistedSchool = schoolId === UNLISTED_SCHOOL_VALUE;
+  const displayedSchoolId = editMode
+    ? schoolId
+    : schoolId || profile?.school_id || (profile?.unlisted_school_name ? UNLISTED_SCHOOL_VALUE : "");
+  const displayedIsUnlisted = displayedSchoolId === UNLISTED_SCHOOL_VALUE;
+  // Same pattern for the cascade of optional biodata fields.
+  const displayedJenjang = editMode ? jenjang : jenjang || (profile?.jenjang ?? "");
+  const displayedProvinsiId = editMode ? provinsiId : provinsiId || (profile?.provinsi_id ?? "");
+  const displayedKotaId = editMode ? kotaId : kotaId || (profile?.kota_id ?? "");
+  const displayedKecamatanId = editMode ? kecamatanId : kecamatanId || (profile?.kecamatan_id ?? "");
+  const displayedKodePos = editMode ? kodePos : kodePos || (profile?.kode_pos ?? "");
+  const ownSchool = useMemo(() => {
+    if (displayedIsUnlisted) return undefined;
+    return schools?.find((s) => s.id === displayedSchoolId);
+  }, [schools, displayedSchoolId, displayedIsUnlisted]);
+  const jenjangOptions = ownSchool?.school_types?.length
+    ? ownSchool.school_types
+    : FALLBACK_JENJANG;
 
   const syncedVersion = useRef<string | null>(null);
   useEffect(() => {
@@ -268,7 +312,20 @@ export default function ProfilePage() {
     setAddress(profile.alamat_domisili ?? "");
     setTargetExam(profile.target_exam ?? "");
     setGrade(profile.grade != null ? String(profile.grade) : "");
-    setSchoolId(profile.school_id ?? "");
+    // Map a stored unlisted_school_name back to the synthetic value so the
+    // school selector opens on the free-text input.
+    if (profile.unlisted_school_name) {
+      setSchoolId(UNLISTED_SCHOOL_VALUE);
+      setUnlistedSchoolName(profile.unlisted_school_name);
+    } else {
+      setSchoolId(profile.school_id ?? "");
+      setUnlistedSchoolName("");
+    }
+    setJenjang(profile.jenjang ?? "");
+    setProvinsiId(profile.provinsi_id ?? "");
+    setKotaId(profile.kota_id ?? "");
+    setKecamatanId(profile.kecamatan_id ?? "");
+    setKodePos(profile.kode_pos ?? "");
     setWaNotif(!!profile.phone);
   }, [profile, editMode]);
 
@@ -288,7 +345,18 @@ export default function ProfilePage() {
       setAddress(profile.alamat_domisili ?? "");
       setTargetExam(profile.target_exam ?? "");
       setGrade(profile.grade != null ? String(profile.grade) : "");
-      setSchoolId(profile.school_id ?? "");
+      if (profile.unlisted_school_name) {
+        setSchoolId(UNLISTED_SCHOOL_VALUE);
+        setUnlistedSchoolName(profile.unlisted_school_name);
+      } else {
+        setSchoolId(profile.school_id ?? "");
+        setUnlistedSchoolName("");
+      }
+      setJenjang(profile.jenjang ?? "");
+      setProvinsiId(profile.provinsi_id ?? "");
+      setKotaId(profile.kota_id ?? "");
+      setKecamatanId(profile.kecamatan_id ?? "");
+      setKodePos(profile.kode_pos ?? "");
     }
     setEditMode(false);
   }
@@ -301,15 +369,29 @@ export default function ProfilePage() {
       toast.error("Kelas tidak valid.");
       return;
     }
+    // Build the payload incrementally so we can strip blank optional fields
+    // before sending -- the backend treats absent vs. empty-string differently
+    // for the all-or-nothing address validation (FR-FE-27).
+    const payload: Record<string, unknown> = {
+      name: name || undefined,
+      phone: phone || undefined,
+      address: address || undefined,
+      target_exam: targetExam || undefined,
+      grade: gradeNum,
+    };
+    if (isUnlistedSchool) {
+      payload.unlisted_school_name = unlistedSchoolName.trim() || undefined;
+    } else if (schoolId) {
+      payload.school_id = schoolId;
+    }
+    if (jenjang) payload.jenjang = jenjang;
+    if (provinsiId) payload.provinsi_id = provinsiId;
+    if (kotaId) payload.kota_id = kotaId;
+    if (kecamatanId) payload.kecamatan_id = kecamatanId;
+    if (kodePos) payload.kode_pos = kodePos;
+
     updateProfile.mutate(
-      {
-        name: name || undefined,
-        phone: phone || undefined,
-        address: address || undefined,
-        target_exam: targetExam || undefined,
-        grade: gradeNum,
-        school_id: schoolId || undefined,
-      },
+      payload as Parameters<typeof updateProfile.mutate>[0],
       {
         onSuccess: (updated) => {
           toast.success(t("saved"));
@@ -529,12 +611,28 @@ export default function ProfilePage() {
                   </Label>
                   {isLoading ? (
                     <Skeleton className="h-11 w-full rounded-md" />
+                  ) : displayedIsUnlisted ? (
+                    <Input
+                      id="school"
+                      value={unlistedSchoolName || profile?.unlisted_school_name || ""}
+                      onChange={(e) => setUnlistedSchoolName(e.target.value)}
+                      placeholder={t("complete_profile_school_unlisted_placeholder")}
+                      className={PROFILE_INPUT_CLASS}
+                      aria-label={t("complete_profile_school_unlisted_placeholder")}
+                      readOnly={!editMode}
+                      disabled={!editMode}
+                    />
                   ) : (
                     <Select
-                      value={schoolId || "_empty_"}
-                      onValueChange={(v) =>
-                        setSchoolId(v === "_empty_" ? "" : v)
-                      }
+                      value={displayedSchoolId || "_empty_"}
+                      onValueChange={(v) => {
+                        if (v === "_empty_") {
+                          setSchoolId("");
+                        } else {
+                          setSchoolId(v);
+                          setUnlistedSchoolName("");
+                        }
+                      }}
                       disabled={!editMode || schoolsLoading}
                     >
                       <SelectTrigger id="school" className={PROFILE_INPUT_CLASS}>
@@ -549,6 +647,9 @@ export default function ProfilePage() {
                             {s.name}
                           </SelectItem>
                         ))}
+                        <SelectItem value={UNLISTED_SCHOOL_VALUE}>
+                          {t("complete_profile_school_unlisted_label")}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   )}
@@ -582,13 +683,6 @@ export default function ProfilePage() {
                   )}
                 </div>
                 <Field
-                  id="nis"
-                  label={t("nis")}
-                  value={profile?.nis}
-                  locked
-                  isLoading={isLoading}
-                />
-                <Field
                   id="address"
                   label={t("address")}
                   value={address}
@@ -602,6 +696,150 @@ export default function ProfilePage() {
                   onChange={editMode ? setTargetExam : undefined}
                   isLoading={isLoading}
                 />
+              </div>
+
+              {/* Optional biodata (FR-FE-24..27) -- no required markers. Jenjang options
+                  come from the user's own school when resolvable, else the generic fallback
+                  list. Submitting any subset is fine; blank fields are stripped server-side. */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="jenjang" className="text-xs font-semibold text-ink-600">
+                    {t("students_field_jenjang")}
+                  </Label>
+                  {isLoading ? (
+                    <Skeleton className="h-11 w-full rounded-md" />
+                  ) : (
+                    <Select
+                      value={displayedJenjang || "_empty_"}
+                      onValueChange={(v) => setJenjang(v === "_empty_" ? "" : v)}
+                      disabled={!editMode}
+                    >
+                      <SelectTrigger id="jenjang" className={PROFILE_INPUT_CLASS}>
+                        <SelectValue placeholder={t("students_field_jenjang")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_empty_">
+                          {t("students_field_jenjang")}
+                        </SelectItem>
+                        {jenjangOptions.map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div /> {/* grid spacer to keep the next row's first col on the left */}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="provinsi" className="text-xs font-semibold text-ink-600">
+                    {t("students_field_provinsi")}
+                  </Label>
+                  {isLoading ? (
+                    <Skeleton className="h-11 w-full rounded-md" />
+                  ) : (
+                    <Select
+                      value={displayedProvinsiId || "_empty_"}
+                      onValueChange={(v) => {
+                        setProvinsiId(v === "_empty_" ? "" : v);
+                        setKotaId("");
+                        setKecamatanId("");
+                      }}
+                      disabled={!editMode}
+                    >
+                      <SelectTrigger id="provinsi" className={PROFILE_INPUT_CLASS}>
+                        <SelectValue placeholder={t("students_field_provinsi")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_empty_">
+                          {t("students_field_provinsi")}
+                        </SelectItem>
+                        {(provinces ?? []).map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="kota" className="text-xs font-semibold text-ink-600">
+                    {t("students_field_kota")}
+                  </Label>
+                  {isLoading ? (
+                    <Skeleton className="h-11 w-full rounded-md" />
+                  ) : (
+                    <Select
+                      value={displayedKotaId || "_empty_"}
+                      onValueChange={(v) => {
+                        setKotaId(v === "_empty_" ? "" : v);
+                        setKecamatanId("");
+                      }}
+                      disabled={!editMode || !displayedProvinsiId}
+                    >
+                      <SelectTrigger id="kota" className={PROFILE_INPUT_CLASS}>
+                        <SelectValue placeholder={t("students_field_kota")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_empty_">
+                          {t("students_field_kota")}
+                        </SelectItem>
+                        {(cities ?? []).map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="kecamatan" className="text-xs font-semibold text-ink-600">
+                    {t("students_field_kecamatan")}
+                  </Label>
+                  {isLoading ? (
+                    <Skeleton className="h-11 w-full rounded-md" />
+                  ) : (
+                    <Select
+                      value={displayedKecamatanId || "_empty_"}
+                      onValueChange={(v) => setKecamatanId(v === "_empty_" ? "" : v)}
+                      disabled={!editMode || !displayedKotaId}
+                    >
+                      <SelectTrigger id="kecamatan" className={PROFILE_INPUT_CLASS}>
+                        <SelectValue placeholder={t("students_field_kecamatan")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_empty_">
+                          {t("students_field_kecamatan")}
+                        </SelectItem>
+                        {(districts ?? []).map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="kode_pos" className="text-xs font-semibold text-ink-600">
+                    {t("students_field_kode_pos")}
+                  </Label>
+                  {isLoading ? (
+                    <Skeleton className="h-11 w-full rounded-md" />
+                  ) : (
+                    <Input
+                      id="kode_pos"
+                      value={displayedKodePos}
+                      onChange={editMode ? (e) => setKodePos(e.target.value) : undefined}
+                      placeholder={t("students_field_kode_pos")}
+                      className={PROFILE_INPUT_CLASS}
+                      readOnly={!editMode}
+                      disabled={!editMode}
+                    />
+                  )}
+                </div>
               </div>
 
               {editMode && (

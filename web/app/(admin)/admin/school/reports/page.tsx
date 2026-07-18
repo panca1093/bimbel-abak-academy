@@ -322,7 +322,7 @@ export default function SchoolReportsPage() {
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
               <tr>
                 <th className="px-4 py-3">{t("th_name")}</th>
-                <th className="px-4 py-3">{t("school_reports_col_nis")}</th>
+                <th className="px-4 py-3">{t("school_reports_col_username")}</th>
                 <th className="px-4 py-3">{t("school_reports_col_score")}</th>
                 <th className="px-4 py-3">{t("school_reports_col_submitted")}</th>
               </tr>
@@ -348,7 +348,7 @@ export default function SchoolReportsPage() {
                     {row.student_name}
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
-                    {row.nis ?? "-"}
+                    {row.username ?? "-"}
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-600">
                     {row.score}
@@ -511,7 +511,7 @@ function ResultDetailContent({
     <div className="space-y-4">
       {/* Student info */}
       <div className="text-sm text-ink-600">
-        <p><span className="font-semibold text-ink-900">{detail.student_name}</span> · NIS: {detail.nis ?? "-"}</p>
+        <p><span className="font-semibold text-ink-900">{detail.student_name}</span> · Username: {detail.username ?? "-"}</p>
       </div>
 
       {/* Score summary */}

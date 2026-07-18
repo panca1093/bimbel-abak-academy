@@ -11,9 +11,8 @@ import (
 )
 
 var (
-	ErrSchoolNotFound   = errors.New("school not found")
-	ErrSchoolCodeLocked = errors.New("school code cannot be changed when students exist")
-	ErrSchoolCodeTaken  = errors.New("school code already taken")
+	ErrSchoolNotFound = errors.New("school not found")
+	ErrSchoolCodeTaken = errors.New("school code already taken")
 )
 
 // SchoolResponse is the school shape returned in admin responses.
@@ -106,7 +105,7 @@ func (s *Service) CreateSchool(ctx context.Context, name, code string, npsn *str
 }
 
 // UpdateSchool patches school fields. Nil pointers leave the corresponding
-// column unchanged. Changing the code is locked when students exist.
+// column unchanged.
 func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alamat *string, schoolTypes []string, code *string) (*SchoolResponse, error) {
 	school, err := s.storeRepo.GetSchoolByID(ctx, id)
 	if err != nil {
@@ -117,13 +116,6 @@ func (s *Service) UpdateSchool(ctx context.Context, id string, name, npsn, alama
 	}
 
 	if code != nil && *code != school.Code {
-		count, err := s.storeRepo.CountStudentsBySchool(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		if count > 0 {
-			return nil, ErrSchoolCodeLocked
-		}
 		exists, err := s.storeRepo.SchoolCodeExists(ctx, *code, &id)
 		if err != nil {
 			return nil, err

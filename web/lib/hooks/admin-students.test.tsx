@@ -52,7 +52,7 @@ describe("admin-students hooks", () => {
         id: "st1",
         name: "Budi Santoso",
         username: "budi",
-        nis: "12345",
+        jenjang: "SMA",
         status: "active",
         created_at: "2026-01-01T00:00:00Z",
       },
@@ -124,14 +124,14 @@ describe("admin-students hooks", () => {
   it("useRegisterStudent posts to /admin/students, threads school_id, and invalidates list", async () => {
     const input: StudentRegistrationInput = {
       name: "Siti Aisyah",
-      nis: "67890",
+      jenjang: "SMA",
       email: "siti@test.com",
     };
     const result: StudentRegistrationResult = {
       id: "st2",
       name: "Siti Aisyah",
       username: "siti",
-      nis: "67890",
+      jenjang: "SMA",
       status: "active",
       created_at: "2026-02-01T00:00:00Z",
       temp_password: "temp123",
@@ -156,7 +156,7 @@ describe("admin-students hooks", () => {
   });
 
   it("useRegisterStudent omits school_id when schoolId is undefined", async () => {
-    const input: StudentRegistrationInput = { name: "X", nis: "1" };
+    const input: StudentRegistrationInput = { name: "X", jenjang: "SMA" };
     mockAuthFetch.mockResolvedValueOnce({} as StudentRegistrationResult);
 
     const { wrapper } = wrapperFactory();

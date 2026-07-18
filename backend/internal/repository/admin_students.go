@@ -9,29 +9,33 @@ import (
 )
 
 // StudentRow is the student shape returned in admin school student list
-// responses (no password_hash, no student-only fields beyond nis/grade).
+// responses (no password_hash, no student-only fields beyond grade).
 type StudentRow struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Username  string    `json:"username"`
-	NIS       string    `json:"nis"`
 	Email     *string   `json:"email"`
 	Status    string    `json:"status"`
 	Grade     *int      `json:"grade"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// StudentFilter carries optional filters for ListStudentsBySchool.
+// StudentFilter carries optional filters for ListStudentsBySchool and
+// SearchStudentsAcrossSchools.
 type StudentFilter struct {
-	Status string
-	Cursor string
-	Limit  int
-	Q      string
+	Status  string
+	Cursor  string
+	Limit   int
+	Q       string
+	Grade   *int    // optional grade filter
+	Jenjang string  // optional jenjang filter
+	SchoolID *string // optional school_id filter (cross-school search only)
 }
 
 // ListStudentsBySchool returns non-deleted students scoped to a school,
 // cursor-paginated (same shape as ListAdminUsers). Supports optional
-// status filter and free-text search on name/nis.
+// status filter, free-text search on name/username, grade filter, and
+// jenjang filter.
 func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, filter StudentFilter) ([]StudentRow, string, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 20
@@ -40,8 +44,8 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 		filter.Limit = 100
 	}
 
-	query := `SELECT id, name, username, nis, email, status, grade, created_at
-		FROM users WHERE school_id = $1 AND role = 'student' AND status != 'deleted'`
+	query := `SELECT id, name, username, email, status, grade, created_at
+			FROM users WHERE school_id = $1 AND role = 'student' AND status != 'deleted'`
 	args := []any{schoolID}
 	argNum := 2
 
@@ -51,8 +55,18 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 		argNum++
 	}
 	if filter.Q != "" {
-		query += fmt.Sprintf(` AND (name ILIKE $%d OR nis ILIKE $%d)`, argNum, argNum)
+		query += fmt.Sprintf(` AND name ILIKE $%d`, argNum)
 		args = append(args, "%"+filter.Q+"%")
+		argNum++
+	}
+	if filter.Grade != nil {
+		query += fmt.Sprintf(` AND grade = $%d`, argNum)
+		args = append(args, *filter.Grade)
+		argNum++
+	}
+	if filter.Jenjang != "" {
+		query += fmt.Sprintf(` AND jenjang = $%d`, argNum)
+		args = append(args, filter.Jenjang)
 		argNum++
 	}
 	if filter.Cursor != "" {
@@ -75,7 +89,7 @@ func (r *Repository) ListStudentsBySchool(ctx context.Context, schoolID string, 
 
 	for rows.Next() {
 		var s StudentRow
-		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.NIS, &s.Email, &s.Status, &s.Grade, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.CreatedAt); err != nil {
 			return nil, "", err
 		}
 		if len(students) < filter.Limit {
@@ -103,34 +117,39 @@ func (r *Repository) CreateStudent(ctx context.Context, u *model.User) error {
 		`INSERT INTO users (
 			email, username, password_hash, role, name,
 			school_id, status, otp_enabled,
-			nis, dob, gender, grade, alamat_domisili, target_exam
+			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
+			dob, gender, grade, alamat_domisili, target_exam
 		) VALUES (
 			$1, $2, $3, 'student', $4,
 			$5, 'active', false,
-			$6, $7, $8, $9, $10, $11
+			$6, $7, $8, $9, $10,
+			$11, $12, $13, $14, $15
 		) RETURNING id, created_at, updated_at`,
 		u.Email, u.Username, u.PasswordHash, u.Name,
 		u.SchoolID,
-		u.NIS, u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam,
+		u.Jenjang, u.ProvinsiID, u.KotaID, u.KecamatanID, u.KodePos,
+		u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
 // GetStudentByID returns a student by ID scoped to a specific school.
 // Returns nil, nil when not found (including when the student belongs to
-// a different school — indistinguishable from "doesn't exist").
+// a different school).
 func (r *Repository) GetStudentByID(ctx context.Context, id, schoolID string) (*model.User, error) {
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
 			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
-			nis, dob, gender, grade, alamat_domisili, target_exam
+			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
+			dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE id = $1 AND school_id = $2 AND role = 'student' AND status != 'deleted'`,
 		id, schoolID,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
 		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
-		&u.NIS, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
+		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
+		&u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -147,10 +166,100 @@ func (r *Repository) GetStudentByID(ctx context.Context, id, schoolID string) (*
 func (r *Repository) UpdateStudentStatus(ctx context.Context, id, schoolID, status string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users SET status = $1, updated_at = now()
-		WHERE id = $2 AND school_id = $3 AND role = 'student' AND status != 'deleted'`,
+			WHERE id = $2 AND school_id = $3 AND role = 'student' AND status != 'deleted'`,
 		status, id, schoolID,
 	)
 	return err
+}
+
+// CrossSchoolStudentRow extends StudentRow with school info for cross-school
+// search results. Used by SearchStudentsAcrossSchools.
+type CrossSchoolStudentRow struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Username   string    `json:"username"`
+	Email      *string   `json:"email"`
+	Status     string    `json:"status"`
+	Grade      *int      `json:"grade"`
+	SchoolID   string    `json:"school_id"`
+	SchoolName string    `json:"school_name"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// SearchStudentsAcrossSchools searches active students across all schools with
+// optional filters. When filter.SchoolID is set, narrows to that school. Joins
+// school to include school_name in each result row. Cursor-paginated with a
+// bounded default limit (FR-SEARCH-01/03).
+func (r *Repository) SearchStudentsAcrossSchools(ctx context.Context, filter StudentFilter) ([]CrossSchoolStudentRow, string, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 20
+	}
+	if filter.Limit > 100 {
+		filter.Limit = 100
+	}
+
+	query := `SELECT u.id, u.name, u.username, u.email, u.status, u.grade, u.created_at, u.school_id, s.name
+			FROM users u JOIN school s ON u.school_id = s.id
+			WHERE u.role = 'student' AND u.status != 'deleted'`
+	args := []any{}
+	argNum := 1
+
+	if filter.SchoolID != nil {
+		query += fmt.Sprintf(` AND u.school_id = $%d`, argNum)
+		args = append(args, *filter.SchoolID)
+		argNum++
+	}
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND (u.name ILIKE $%d OR u.username ILIKE $%d)`, argNum, argNum+1)
+		args = append(args, "%"+filter.Q+"%", "%"+filter.Q+"%")
+		argNum += 2
+	}
+	if filter.Grade != nil {
+		query += fmt.Sprintf(` AND u.grade = $%d`, argNum)
+		args = append(args, *filter.Grade)
+		argNum++
+	}
+	if filter.Jenjang != "" {
+		query += fmt.Sprintf(` AND u.jenjang = $%d`, argNum)
+		args = append(args, filter.Jenjang)
+		argNum++
+	}
+	if filter.Cursor != "" {
+		query += fmt.Sprintf(` AND u.id < $%d::uuid`, argNum)
+		args = append(args, filter.Cursor)
+		argNum++
+	}
+
+	query += fmt.Sprintf(` ORDER BY u.created_at DESC LIMIT $%d`, argNum)
+	args = append(args, filter.Limit+1)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	students := []CrossSchoolStudentRow{}
+	nextCursor := ""
+	seen := 0
+	for rows.Next() {
+		var s CrossSchoolStudentRow
+		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.Email, &s.Status, &s.Grade, &s.CreatedAt, &s.SchoolID, &s.SchoolName); err != nil {
+			return nil, "", err
+		}
+		if seen < filter.Limit {
+			students = append(students, s)
+		} else {
+			nextCursor = s.ID
+		}
+		seen++
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, "", err
+	}
+
+	return students, nextCursor, nil
 }
 
 // ResetStudentPasswordHash overwrites the password hash for a student,
@@ -158,7 +267,7 @@ func (r *Repository) UpdateStudentStatus(ctx context.Context, id, schoolID, stat
 func (r *Repository) ResetStudentPasswordHash(ctx context.Context, id, schoolID, hash string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE users SET password_hash = $1, updated_at = now()
-		WHERE id = $2 AND school_id = $3 AND role = 'student' AND status != 'deleted'`,
+			WHERE id = $2 AND school_id = $3 AND role = 'student' AND status != 'deleted'`,
 		hash, id, schoolID,
 	)
 	return err

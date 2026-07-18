@@ -10,8 +10,8 @@ import (
 
 func TestBuildCredentialsResultCSV(t *testing.T) {
 	rows := []StudentBulkResultRow{
-		{Name: "Budi", NIS: "1001", Username: "sch_1001", TempPassword: "abc123"},
-		{Name: "Siti", NIS: "1002", Error: "student_not_found"},
+		{Name: "Budi", Username: "sch_1001", TempPassword: "abc123"},
+		{Name: "Siti", Error: "student_not_found"},
 	}
 	data := BuildCredentialsResultCSV(rows)
 
@@ -23,19 +23,19 @@ func TestBuildCredentialsResultCSV(t *testing.T) {
 	if len(records) != 3 {
 		t.Fatalf("want 3 records (header + 2 rows), got %d", len(records))
 	}
-	wantHeader := []string{"name", "nis", "username", "temp_password", "error"}
+	wantHeader := []string{"name", "username", "temp_password", "error"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
 		}
 	}
-	wantRow1 := []string{"Budi", "1001", "sch_1001", "abc123", ""}
+	wantRow1 := []string{"Budi", "sch_1001", "abc123", ""}
 	for i, v := range wantRow1 {
 		if records[1][i] != v {
 			t.Errorf("row1[%d]: want %s, got %s", i, v, records[1][i])
 		}
 	}
-	wantRow2 := []string{"Siti", "1002", "", "", "student_not_found"}
+	wantRow2 := []string{"Siti", "", "", "student_not_found"}
 	for i, v := range wantRow2 {
 		if records[2][i] != v {
 			t.Errorf("row2[%d]: want %s, got %s", i, v, records[2][i])
@@ -49,8 +49,7 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 
 	t.Run("explicit ids: success and not-found rows coexist, batch does not abort", func(t *testing.T) {
 		schoolID := createTestSchool(t, svc)
-		nis := "b_" + uniqueSuffix()
-		reg, err := svc.RegisterStudent(ctx, schoolID, "Budi Reissue", nis, nil, nil, nil, nil, nil, nil)
+		reg, err := svc.RegisterStudent(ctx, schoolID, "Budi Reissue", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
@@ -70,14 +69,14 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 			t.Fatalf("want 3 records (header + 2 rows), got %d", len(records))
 		}
 		successRow := records[1]
-		if successRow[0] != "Budi Reissue" || successRow[1] != nis || successRow[2] == "" || successRow[3] == "" || successRow[4] != "" {
+		if successRow[0] != "Budi Reissue" || successRow[1] == "" || successRow[2] == "" || successRow[3] != "" {
 			t.Errorf("unexpected success row: %+v", successRow)
 		}
-		if successRow[3] == reg.TempPassword {
+		if successRow[2] == reg.TempPassword {
 			t.Error("reissued temp_password should differ from the original registration temp password (proves reissue, not a no-op)")
 		}
 		notFoundRow := records[2]
-		if notFoundRow[4] != "student_not_found" {
+		if notFoundRow[3] != "student_not_found" {
 			t.Errorf("want error=student_not_found for missing id, got %+v", notFoundRow)
 		}
 	})
@@ -85,7 +84,7 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 	t.Run("cross-school id is treated as not found", func(t *testing.T) {
 		schoolA := createTestSchool(t, svc)
 		schoolB := createTestSchool(t, svc)
-		reg, err := svc.RegisterStudent(ctx, schoolA, "Cross School", "b_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+		reg, err := svc.RegisterStudent(ctx, schoolA, "Cross School", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
@@ -99,7 +98,7 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read back csv: %v", err)
 		}
-		if len(records) != 2 || records[1][4] != "student_not_found" {
+		if len(records) != 2 || records[1][3] != "student_not_found" {
 			t.Errorf("want single not-found row, got %+v", records)
 		}
 	})
@@ -119,7 +118,7 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 		schoolID := createTestSchool(t, svc)
 		var regs []*StudentRegistrationResponse
 		for i := 0; i < 3; i++ {
-			reg, err := svc.RegisterStudent(ctx, schoolID, "All Student", "b_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+			reg, err := svc.RegisterStudent(ctx, schoolID, "All Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("RegisterStudent: %v", err)
 			}
@@ -138,18 +137,9 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 		if len(records) != len(regs)+1 {
 			t.Fatalf("want %d records (header + %d rows), got %d", len(regs)+1, len(regs), len(records))
 		}
-		origTempPasswordByNIS := make(map[string]string, len(regs))
-		for _, reg := range regs {
-			origTempPasswordByNIS[reg.NIS] = reg.TempPassword
-		}
 		for _, rec := range records[1:] {
-			if rec[2] == "" || rec[3] == "" || rec[4] != "" {
+			if rec[0] == "" || rec[1] == "" || rec[2] == "" || rec[3] != "" {
 				t.Errorf("unexpected row in all=true batch: %+v", rec)
-			}
-			if orig, ok := origTempPasswordByNIS[rec[1]]; !ok {
-				t.Errorf("row NIS %q not among seeded students", rec[1])
-			} else if rec[3] == orig {
-				t.Errorf("reissued temp_password for NIS %q should differ from original registration temp password", rec[1])
 			}
 		}
 	})
@@ -161,7 +151,7 @@ func TestReissueStudentCredentialsBulk_Integration(t *testing.T) {
 
 		schoolID := createTestSchool(t, svc)
 		for i := 0; i < 3; i++ {
-			if _, err := svc.RegisterStudent(ctx, schoolID, "Cap Student", "b_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil); err != nil {
+			if _, err := svc.RegisterStudent(ctx, schoolID, "Cap Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 				t.Fatalf("RegisterStudent: %v", err)
 			}
 		}

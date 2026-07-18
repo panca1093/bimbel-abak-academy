@@ -46,7 +46,7 @@ describe("admin-results hooks", () => {
       {
         session_id: "s1",
         student_name: "Budi Santoso",
-        nis: "12345",
+        username: "12345",
         score: 85,
         submitted_at: "2026-01-01T00:00:00Z",
       },
@@ -138,7 +138,7 @@ describe("admin-results hooks", () => {
     const detail: AdminResultDetail = {
       session_id: "s1",
       student_name: "Budi Santoso",
-      nis: "12345",
+      username: "12345",
       score: 85,
       submitted_at: "2026-01-01T00:00:00Z",
       result_config: "score_only",

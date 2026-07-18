@@ -33,10 +33,16 @@ export interface UpdateProfileInput {
   nis?: string;
   grade?: string | number;
   school_id?: string;
+  unlisted_school_name?: string;
   target_exam?: string;
   address?: string;
   dob?: string;
   gender?: string;
+  jenjang?: string;
+  provinsi_id?: string;
+  kota_id?: string;
+  kecamatan_id?: string;
+  kode_pos?: string;
 }
 
 export function useSchools() {

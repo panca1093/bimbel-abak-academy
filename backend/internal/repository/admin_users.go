@@ -114,14 +114,16 @@ func (r *Repository) GetAdminUserByID(ctx context.Context, id string) (*model.Us
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
 			school_id, photo_url, status, otp_enabled, auth_provider, created_at, updated_at,
-			nis, dob, gender, grade, alamat_domisili, target_exam
+			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
+			dob, gender, grade, alamat_domisili, target_exam
 		FROM users
 		WHERE id = $1 AND status != 'deleted'`,
 		id,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
 		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.CreatedAt, &u.UpdatedAt,
-		&u.NIS, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
+		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
+		&u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
 	if err != nil {
 		if isNotFound(err) {

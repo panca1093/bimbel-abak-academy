@@ -135,6 +135,43 @@ func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.O
 	return order, true, nil
 }
 
+// CreateOrderTx inserts a new cart-order row inside the caller's transaction.
+// Unlike MintCart, there is no ON CONFLICT guard — the caller always gets a
+// fresh row, appropriate for bulk orders where each creation is one-shot.
+func (r *Repository) CreateOrderTx(ctx context.Context, tx pgx.Tx, studentID uuid.UUID) (model.Order, error) {
+	order := model.Order{}
+	err := scanOrder(tx.QueryRow(ctx,
+		`INSERT INTO orders (student_id, status, subtotal, discount, shipping_cost, total)
+		 VALUES ($1, 'cart', 0, 0, 0, 0)
+		 RETURNING `+orderColumns,
+		studentID,
+	), &order)
+	return order, err
+}
+
+// InsertOrderItemTx inserts a single order item inside the caller's transaction
+// and recalculates order totals within the same transaction.
+func (r *Repository) InsertOrderItemTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, item model.OrderItem) error {
+	item.ID = uuid.New()
+	item.OrderID = orderID
+	jumlah := item.UnitPrice * float64(item.Qty)
+	_, err := tx.Exec(ctx,
+		`INSERT INTO order_item (id, order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())`,
+		item.ID, item.OrderID, item.ProductID, item.ProductType, item.Name, item.UnitPrice, item.Qty, jumlah, item.WeightGrams,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		UPDATE orders SET
+		  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+		  updated_at = now()
+		WHERE id = $1`, orderID)
+	return err
+}
+
 func (r *Repository) GetCartByStudentID(ctx context.Context, studentID uuid.UUID) (model.Order, error) {
 	order := model.Order{}
 	err := scanOrder(r.pool.QueryRow(ctx,

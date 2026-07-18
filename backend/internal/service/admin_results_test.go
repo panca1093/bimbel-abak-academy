@@ -117,7 +117,7 @@ func (f *fakeSessionRepo) ListSchoolResults(_ context.Context, examID uuid.UUID,
 		result[i] = model.AdminResultRow{
 			SessionID:   e.sessionID,
 			StudentName: name,
-			NIS:         nis,
+			Username:    nis,
 			Score:       e.score,
 			SubmittedAt: e.submittedAt,
 		}
@@ -140,7 +140,7 @@ func (f *fakeSessionRepo) GetSchoolResultSession(_ context.Context, sessionID uu
 		ExamID:      s.ExamID,
 		StudentID:   s.StudentID,
 		StudentName: name,
-		NIS:         nis,
+		Username:    nis,
 		Status:      s.Status,
 		Score:       s.Score,
 		SubmittedAt: s.SubmittedAt,
@@ -215,7 +215,7 @@ func (s *shimSessionService) GetSchoolResultDetail(ctx context.Context, sessionI
 	detail := model.AdminResultDetail{
 		SessionID:    sess.SessionID,
 		StudentName:  sess.StudentName,
-		NIS:          sess.NIS,
+		Username:     sess.Username,
 		Score:        score,
 		SubmittedAt:  sess.SubmittedAt,
 		ResultConfig: exam.ResultConfig,
@@ -594,11 +594,11 @@ func (s *shimSessionService) ExportSchoolResultsCSV(ctx context.Context, examID 
 
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"name", "nis", "score", "submitted_at"})
+	_ = w.Write([]string{"name", "username", "score", "submitted_at"})
 	for _, r := range rows {
 		nis := ""
-		if r.NIS != nil {
-			nis = *r.NIS
+		if r.Username != nil {
+			nis = *r.Username
 		}
 		scoreStr := ""
 		if r.Score != nil {
@@ -645,7 +645,7 @@ func TestExportSchoolResults_HiddenExam_OnlyHeader(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("want 1 record (header only), got %d", len(records))
 	}
-	wantHeader := []string{"name", "nis", "score", "submitted_at"}
+	wantHeader := []string{"name", "username", "score", "submitted_at"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
@@ -683,7 +683,7 @@ func TestExportSchoolResults_LockedExam_OnlyHeader(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("want 1 record (header only), got %d", len(records))
 	}
-	wantHeader := []string{"name", "nis", "score", "submitted_at"}
+	wantHeader := []string{"name", "username", "score", "submitted_at"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
@@ -762,8 +762,8 @@ func TestExportSchoolResults_PaginateThenCompare(t *testing.T) {
 			t.Errorf("row %d name: want %s, got %s", i, row.StudentName, csvRow[0])
 		}
 		nis := ""
-		if row.NIS != nil {
-			nis = *row.NIS
+		if row.Username != nil {
+			nis = *row.Username
 		}
 		if csvRow[1] != nis {
 			t.Errorf("row %d nis: want %s, got %s", i, nis, csvRow[1])

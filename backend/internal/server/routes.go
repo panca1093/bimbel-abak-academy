@@ -94,6 +94,11 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Public school list
 	v1.GET("/schools", h.ListSchools)
 
+	// Public region reference data (no auth, mirrors GET /schools)
+	v1.GET("/provinces", h.ListProvinces)
+	v1.GET("/provinces/:id/cities", h.ListCitiesByProvince)
+	v1.GET("/cities/:id/districts", h.ListDistrictsByCity)
+
 	// Avatar read-proxy (no auth; service restricts to the avatars/ prefix)
 	v1.GET("/files/*", h.ServeFile)
 
@@ -263,6 +268,23 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminUploads.Use(handler.RBACMiddleware("uploads:write"))
 	adminUploads.POST("/image", h.AdminUploadImage)
 	adminUploads.POST("/audio", h.AdminUploadAudio)
+
+	// Admin exam grant routes (super_admin only — satisfies "exam-grants:write"
+	// via the "*" wildcard; see rbac.go:29-48)
+	adminExamGrants := admin.Group("/exam-grants")
+	adminExamGrants.Use(handler.RBACMiddleware("exam-grants:write"))
+	adminExamGrants.POST("", h.AdminGrantExamAccess)
+	adminExamGrants.GET("/students/search", h.AdminSearchGrantStudents)
+
+	// Admin bulk-exam-order routes (FR-BULK-01..07). admin_school +
+	// super_admin + admin_store may all order exams; capability is
+	// "bulk-exam-orders:write".
+	adminBulkExamOrders := admin.Group("/bulk-exam-orders")
+	adminBulkExamOrders.Use(handler.RBACMiddleware("bulk-exam-orders:write"))
+	adminBulkExamOrders.GET("/exams", h.AdminListOrderableExams)
+	adminBulkExamOrders.POST("/preview", h.AdminPreviewBulkOrder)
+	adminBulkExamOrders.POST("", h.AdminCreateBulkOrder)
+	adminBulkExamOrders.POST("/:id/checkout", h.AdminCheckoutBulkOrder)
 
 	// Admin system routes (super_admin only)
 	adminSystem := admin.Group("/system")

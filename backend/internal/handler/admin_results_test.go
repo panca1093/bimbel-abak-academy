@@ -417,10 +417,11 @@ func seedUserWithSchool(t *testing.T, pool *pgxpool.Pool, role, name, schoolID s
 	ctx := context.Background()
 	var id uuid.UUID
 	email := fmt.Sprintf("%s-%s@test.local", role, uuid.NewString())
+	username := "u-" + uuid.NewString()[:8]
 	err := pool.QueryRow(ctx,
-		`INSERT INTO users (email, role, name, school_id, nis)
+		`INSERT INTO users (email, role, name, school_id, username)
 		VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		email, role, name, schoolID, "NIS-"+uuid.NewString()[:8],
+		email, role, name, schoolID, username,
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert user: %v", err)
@@ -629,7 +630,7 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 		t.Fatalf("want 3 records (header + 2 data rows), got %d", len(records))
 	}
 
-	wantHeader := []string{"name", "nis", "score", "submitted_at"}
+	wantHeader := []string{"name", "username", "score", "submitted_at"}
 	for i, h := range wantHeader {
 		if records[0][i] != h {
 			t.Errorf("header[%d]: want %s, got %s", i, h, records[0][i])
@@ -640,7 +641,7 @@ func TestAdminResult_Export_CSVContent(t *testing.T) {
 	for _, row := range records[1:] {
 		names[row[0]] = true
 		if row[1] == "" {
-			t.Errorf("row %s: expected non-empty nis", row[0])
+			t.Errorf("row %s: expected non-empty username", row[0])
 		}
 		if row[2] != "80" {
 			t.Errorf("row %s: want score 80, got %s", row[0], row[2])

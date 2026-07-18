@@ -11,6 +11,7 @@ import (
 
 	"akademi-bimbel/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -21,8 +22,9 @@ type UserRepository interface {
 	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
 	GetUserByID(ctx context.Context, id string) (*model.User, error)
+	GetUsersByIDs(ctx context.Context, ids []uuid.UUID) ([]model.User, error)
 	UpdatePasswordHash(ctx context.Context, userID, hash string) error
-	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string) error
+	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error
 	UpdateUserPhoto(ctx context.Context, userID, photoURL string) error
 	ListSchools(ctx context.Context) ([]*model.School, error)
 	ActivateUser(ctx context.Context, userID string) (bool, error)
@@ -75,8 +77,13 @@ func (s *Service) Register(ctx context.Context, email, password, name string) (p
 	if err != nil {
 		return "", err
 	}
+	username, err := s.generateUniqueUsername(ctx, name)
+	if err != nil {
+		return "", err
+	}
 	user := &model.User{
 		Email:        &email,
+		Username:     &username,
 		PasswordHash: string(hash),
 		Role:         RoleStudent,
 		Name:         name,

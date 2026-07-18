@@ -26,7 +26,7 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 		filter.Limit = 20
 	}
 
-	query := `SELECT s.id, u.name, u.nis, s.score, s.submitted_at
+	query := `SELECT s.id, u.name, u.username, s.score, s.submitted_at
 		FROM exam_session s
 		JOIN users u ON u.id = s.student_id AND u.school_id = $1 AND u.role = 'student'
 		WHERE s.exam_id = $2 AND s.status = 'submitted' AND ` + fullyGradedFilter
@@ -34,7 +34,7 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 	argIdx := 3
 
 	if filter.Q != "" {
-		query += fmt.Sprintf(` AND (u.name ILIKE $%d OR u.nis ILIKE $%d)`, argIdx, argIdx)
+		query += fmt.Sprintf(` AND (u.name ILIKE $%d OR u.username ILIKE $%d)`, argIdx, argIdx)
 		args = append(args, "%"+filter.Q+"%")
 		argIdx++
 	}
@@ -69,7 +69,7 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 	results := []model.AdminResultRow{}
 	for rows.Next() {
 		var row model.AdminResultRow
-		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.NIS, &row.Score, &row.SubmittedAt); err != nil {
+		if err := rows.Scan(&row.SessionID, &row.StudentName, &row.Username, &row.Score, &row.SubmittedAt); err != nil {
 			return nil, "", err
 		}
 		results = append(results, row)
@@ -97,13 +97,13 @@ func (r *Repository) ListSchoolResults(ctx context.Context, examID uuid.UUID, sc
 func (r *Repository) GetSchoolResultSession(ctx context.Context, sessionID uuid.UUID, schoolID string) (*model.AdminResultSession, error) {
 	var s model.AdminResultSession
 	err := r.pool.QueryRow(ctx,
-		`SELECT s.id, s.exam_id, s.student_id, u.name, u.nis, s.status, s.score, s.submitted_at
+		`SELECT s.id, s.exam_id, s.student_id, u.name, u.username, s.status, s.score, s.submitted_at
 		FROM exam_session s
 		JOIN users u ON u.id = s.student_id AND u.school_id = $2 AND u.role = 'student'
 		WHERE s.id = $1`,
 		sessionID, schoolID,
 	).Scan(
-		&s.SessionID, &s.ExamID, &s.StudentID, &s.StudentName, &s.NIS,
+		&s.SessionID, &s.ExamID, &s.StudentID, &s.StudentName, &s.Username,
 		&s.Status, &s.Score, &s.SubmittedAt,
 	)
 	if err != nil {

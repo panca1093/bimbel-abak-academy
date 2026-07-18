@@ -47,22 +47,35 @@ export interface AdminStudent {
   id: string;
   name: string;
   username: string;
-  nis: string;
+  jenjang: string;
   email?: string;
   status: string;
   grade?: number;
+  provinsi_id?: string;
+  kota_id?: string;
+  kecamatan_id?: string;
+  kode_pos?: string;
   created_at: string;
+}
+
+export interface CrossSchoolStudent extends AdminStudent {
+  school_id: string;
+  school_name: string;
 }
 
 export interface StudentRegistrationInput {
   name: string;
-  nis: string;
+  jenjang: string;
   email?: string;
   dob?: string;
   gender?: string;
   grade?: number;
   alamat_domisili?: string;
   target_exam?: string;
+  provinsi_id?: string;
+  kota_id?: string;
+  kecamatan_id?: string;
+  kode_pos?: string;
 }
 
 export interface StudentRegistrationResult extends AdminStudent {
@@ -81,6 +94,7 @@ export interface User {
   name?: string;
   role?: string;
   school_id?: string;
+  unlisted_school_name?: string | null;
   auth_provider?: "password" | "google";
   status?: string;
   otp_enabled?: boolean;
@@ -91,6 +105,11 @@ export interface User {
   alamat_domisili?: string;
   dob?: string;
   gender?: string;
+  jenjang?: string | null;
+  provinsi_id?: string | null;
+  kota_id?: string | null;
+  kecamatan_id?: string | null;
+  kode_pos?: string | null;
   photo_url?: string;
   created_at?: string;
   updated_at?: string;
@@ -919,12 +938,31 @@ export interface ExamAnalytics {
   distribution: ScoreBucket[];
 }
 
+// ── Province/city/district reference types (Task 5/17) ──────────────────────
+
+export interface Province {
+  id: string;
+  name: string;
+}
+
+export interface City {
+  id: string;
+  province_id: string;
+  name: string;
+}
+
+export interface District {
+  id: string;
+  city_id: string;
+  name: string;
+}
+
 // ── Admin Results (FR-SCHOOL-08) ───────────────────────────────────────────
 
 export interface AdminResultRow {
   session_id: string;
   student_name: string;
-  nis?: string | null;
+  username?: string | null;
   score: number;
   submitted_at: string;
 }
@@ -932,7 +970,7 @@ export interface AdminResultRow {
 export interface AdminResultDetail {
   session_id: string;
   student_name: string;
-  nis?: string | null;
+  username?: string | null;
   score: number;
   submitted_at: string;
   result_config: string;
@@ -941,4 +979,17 @@ export interface AdminResultDetail {
   empty_count: number;
   breakdown?: ResultTopicRow[];
   pembahasan?: ResultPembahasanItem[];
+}
+
+// Generic job row from the backend job table. Mirrors service.JobResponse.
+// Terminal statuses observed in worker/student_bulk.go: "succeeded" and "failed".
+export interface JobStatus {
+  id: string;
+  type: string;
+  status: "queued" | "running" | "succeeded" | "failed" | string;
+  progress: number;
+  result_url: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
 }

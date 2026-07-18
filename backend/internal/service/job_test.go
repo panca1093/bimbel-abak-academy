@@ -14,7 +14,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	schoolID := createTestSchool(t, svc)
-	reg, err := svc.RegisterStudent(ctx, schoolID, "Job Creator", "jc_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	reg, err := svc.RegisterStudent(ctx, schoolID, "Job Creator", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 	fileKey := "student-bulk/" + schoolID + "/" + uniqueSuffix() + "-students.csv"
 
 	t.Run("valid csv creates a queued job pointing at the file key", func(t *testing.T) {
-		csv := []byte("name,nis\nBudi,1001\n")
+		csv := []byte("name,school,jenjang\nBudi,SchoolName,sma\n")
 		jobID, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, csv)
 		if err != nil {
 			t.Fatalf("enqueueStudentBulkJobFromData: %v", err)
@@ -52,7 +52,7 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("csv missing name/nis header propagates ErrMissingCSVHeader, no job created", func(t *testing.T) {
+	t.Run("csv missing required headers propagates ErrMissingCSVHeader, no job created", func(t *testing.T) {
 		csv := []byte("foo,bar\nx,y\n")
 		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, csv)
 		if !errors.Is(err, ErrMissingCSVHeader) {
@@ -61,9 +61,9 @@ func TestEnqueueStudentBulkJobFromData_Integration(t *testing.T) {
 	})
 
 	t.Run("over row-limit csv propagates ErrRowLimitExceeded", func(t *testing.T) {
-		csv := "name,nis\n"
+		csv := "name,school,jenjang\n"
 		for i := 0; i < maxBulkRows+1; i++ {
-			csv += "Student,nis" + uniqueSuffix() + "\n"
+			csv += "Student,School,sma\n"
 		}
 		_, err := svc.enqueueStudentBulkJobFromData(ctx, schoolID, createdBy, fileKey, []byte(csv))
 		if !errors.Is(err, ErrRowLimitExceeded) {
@@ -78,7 +78,7 @@ func TestEnqueueStudentBulkJob_RejectsFileKeyOutsideCallersSchool_Integration(t 
 
 	schoolA := createTestSchool(t, svc)
 	schoolB := createTestSchool(t, svc)
-	reg, err := svc.RegisterStudent(ctx, schoolA, "Job Creator", "jc_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	reg, err := svc.RegisterStudent(ctx, schoolA, "Job Creator", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -95,11 +95,11 @@ func TestGetJobStatus_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	schoolID := createTestSchool(t, svc)
-	owner, err := svc.RegisterStudent(ctx, schoolID, "Job Owner", "jo_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	owner, err := svc.RegisterStudent(ctx, schoolID, "Job Owner", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
-	other, err := svc.RegisterStudent(ctx, schoolID, "Not Owner", "no_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	other, err := svc.RegisterStudent(ctx, schoolID, "Not Owner", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestGetJobStatus_SucceededWithResultURL_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	schoolID := createTestSchool(t, svc)
-	owner, err := svc.RegisterStudent(ctx, schoolID, "Result Owner", "ro_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	owner, err := svc.RegisterStudent(ctx, schoolID, "Result Owner", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestClaimNextJob_ConcurrentClaims_Integration(t *testing.T) {
 	}
 
 	schoolID := createTestSchool(t, svc)
-	owner, err := svc.RegisterStudent(ctx, schoolID, "Claimer", "cl_"+uniqueSuffix(), nil, nil, nil, nil, nil, nil)
+	owner, err := svc.RegisterStudent(ctx, schoolID, "Claimer", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}

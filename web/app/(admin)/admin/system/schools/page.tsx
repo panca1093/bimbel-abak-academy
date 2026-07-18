@@ -243,8 +243,6 @@ export default function SystemSchoolsPage() {
     );
   }
 
-  const codeLocked = (editTarget?.student_count ?? 0) > 0;
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
       <AdminPageHeader
@@ -539,17 +537,8 @@ export default function SystemSchoolsPage() {
                 value={editForm.code}
                 onChange={(e) =>
                   setEditForm((f) => ({ ...f, code: e.target.value }))}
-                disabled={codeLocked}
                 placeholder={t("schools_field_code")}
               />
-              {codeLocked && (
-                <p className="mt-1 text-[11px] text-ink-500">
-                  {t("schools_code_locked_tooltip").replace(
-                    "{count}",
-                    String(editTarget?.student_count ?? 0),
-                  )}
-                </p>
-              )}
             </div>
             <div>
               <Label>{t("schools_field_npsn")}</Label>

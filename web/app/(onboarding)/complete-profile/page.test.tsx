@@ -125,6 +125,41 @@ describe("CompleteProfilePage", () => {
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
   });
+
+  it("swaps the school select for a free-text input when the unlisted option is chosen", () => {
+    renderPage();
+
+    const [school] = screen.getAllByRole("combobox");
+    fireEvent.change(school, { target: { value: "_unlisted_" } });
+
+    // Select should be gone (or hidden), replaced by a free-text input.
+    expect(screen.queryByRole("combobox", { name: /sekolah/i })).toBeNull();
+    const freeText = screen.getByLabelText("Tulis nama sekolah Anda");
+    expect(freeText).toBeInTheDocument();
+    expect(freeText.tagName).toBe("INPUT");
+  });
+
+  it("submits unlisted_school_name (and never school_id) when the unlisted option is used", async () => {
+    renderPage();
+
+    const [school, grade] = screen.getAllByRole("combobox");
+    fireEvent.change(school, { target: { value: "_unlisted_" } });
+    fireEvent.change(grade, { target: { value: "11" } });
+    const freeText = screen.getByLabelText("Tulis nama sekolah Anda");
+    fireEvent.change(freeText, { target: { value: "SMA Maju Bersama" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lanjutkan" }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        name: "Google Student",
+        unlisted_school_name: "SMA Maju Bersama",
+        grade: 11,
+      }),
+    );
+    // The "real school" path must not also be sent on the unlisted path.
+    const callArg = mutateAsync.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArg).not.toHaveProperty("school_id");
+  });
 });
 
 function renderPage(queryClient = new QueryClient()) {

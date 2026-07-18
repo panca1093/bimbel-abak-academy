@@ -63,14 +63,20 @@ func (h *Handler) StudentUpdateProfile(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 	var req struct {
-		Name       *string `json:"name"`
-		Email      *string `json:"email"`
-		Username   *string `json:"username"`
-		Phone      *string `json:"phone"`
-		Address    *string `json:"address"`
-		TargetExam *string `json:"target_exam"`
-		Grade      *int    `json:"grade"`
-		SchoolID   *string `json:"school_id"`
+		Name               *string `json:"name"`
+		Email              *string `json:"email"`
+		Username           *string `json:"username"`
+		Phone              *string `json:"phone"`
+		Address            *string `json:"address"`
+		TargetExam         *string `json:"target_exam"`
+		Grade              *int    `json:"grade"`
+		SchoolID           *string `json:"school_id"`
+		UnlistedSchoolName *string `json:"unlisted_school_name"`
+		Jenjang            *string `json:"jenjang"`
+		ProvinsiID         *string `json:"provinsi_id"`
+		KotaID             *string `json:"kota_id"`
+		KecamatanID        *string `json:"kecamatan_id"`
+		KodePos            *string `json:"kode_pos"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -86,6 +92,12 @@ func (h *Handler) StudentUpdateProfile(c echo.Context) error {
 		req.TargetExam,
 		req.Grade,
 		req.SchoolID,
+		req.UnlistedSchoolName,
+		req.Jenjang,
+		req.ProvinsiID,
+		req.KotaID,
+		req.KecamatanID,
+		req.KodePos,
 	)
 	if err != nil {
 		return mapServiceError(c, err)

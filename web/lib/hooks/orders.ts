@@ -126,11 +126,12 @@ export function useValidatePromo() {
   });
 }
 
-export function useCheckout() {
+export function useCheckout(basePath?: string) {
   const qc = useQueryClient();
+  const pathPrefix = basePath ?? "/orders";
   return useMutation({
     mutationFn: (orderId: string) =>
-      authFetch<CheckoutResult>(`/orders/${encodeURIComponent(orderId)}/checkout`, {
+      authFetch<CheckoutResult>(`${pathPrefix}/${encodeURIComponent(orderId)}/checkout`, {
         method: "POST",
         headers: { "Idempotency-Key": crypto.randomUUID() },
       }),
