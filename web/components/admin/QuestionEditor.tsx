@@ -2,19 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
-import { ImageUploadInput } from "@/components/admin/ImageUploadInput";
 import { useSaveQuestion } from "@/lib/hooks/admin-tests";
 import {
   useCreateBankQuestion,
@@ -72,32 +73,34 @@ function BlankEditor({ blanks, onChange, disabled }: BlankEditorProps) {
   }
 
   return (
-    <div className="space-y-2">
-      {blanks.map((blank, index) => (
-        <div key={index} className="flex items-center gap-2">
-          <div className="w-8 text-sm font-mono text-muted-foreground">
-            {`{{${blank.index}}}`}
+    <div className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        {blanks.map((blank, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <div className="w-8 text-sm font-mono text-muted-foreground">
+              {`{{${blank.index}}}`}
+            </div>
+            <Input
+              aria-label={t("tests_field_correct_answer")}
+              value={blank.correct_answer}
+              onChange={(e) => update(index, { correct_answer: e.target.value })}
+              placeholder={t("tests_field_correct_answer")}
+              disabled={disabled}
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              size="icon-xs"
+              variant="ghost"
+              onClick={() => remove(index)}
+              disabled={disabled || blanks.length <= 1}
+              aria-label={t("tests_remove_option")}
+            >
+              <Trash2 className="size-3" />
+            </Button>
           </div>
-          <Input
-            aria-label={t("tests_field_correct_answer")}
-            value={blank.correct_answer}
-            onChange={(e) => update(index, { correct_answer: e.target.value })}
-            placeholder={t("tests_field_correct_answer")}
-            disabled={disabled}
-            className="flex-1"
-          />
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            onClick={() => remove(index)}
-            disabled={disabled || blanks.length <= 1}
-            aria-label={t("tests_remove_option")}
-          >
-            <Trash2 className="size-3" />
-          </Button>
-        </div>
-      ))}
+        ))}
+      </div>
       <Button
         type="button"
         size="sm"
@@ -157,77 +160,58 @@ function OptionEditor({
   }
 
   return (
-    <div className="space-y-2">
-      {options.map((opt, index) => (
-        <div key={index} className="space-y-2 rounded-lg border p-2">
-          <div className="flex items-start gap-2">
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="text-sm font-mono uppercase text-muted-foreground">
-                  {opt.key}
-                </div>
-                <label className="ml-auto flex items-center gap-1 text-sm">
-                  {isSingle ? (
-                    <input
-                      type="radio"
-                      name={`question-correct-${format}`}
-                      checked={opt.is_correct}
-                      onChange={() => setCorrect(index, true)}
-                      disabled={disabled}
-                      aria-label={t("tests_field_option_is_correct")}
-                    />
-                  ) : (
-                    <input
-                      type="checkbox"
-                      checked={opt.is_correct}
-                      onChange={(e) => setCorrect(index, e.target.checked)}
-                      disabled={disabled}
-                      aria-label={t("tests_field_option_is_correct")}
-                    />
-                  )}
-                  <span>{t("tests_field_option_is_correct")}</span>
-                </label>
-                <Button
-                  type="button"
-                  size="icon-xs"
-                  variant="ghost"
-                  onClick={() => remove(index)}
-                  disabled={disabled || options.length <= 2}
-                  aria-label={t("tests_remove_option")}
-                >
-                  <Trash2 className="size-3" />
-                </Button>
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {options.map((opt, index) => (
+          <div key={index} className="space-y-2 rounded-lg border p-2">
+            <div className="flex items-center gap-2">
+              <div className="text-sm font-mono uppercase text-muted-foreground">
+                {opt.key}
               </div>
-              <div className="grid gap-2">
-                <label htmlFor={`option-text-${index}`} className="text-xs text-muted-foreground">
-                  {t("tests_field_option_text")}
-                </label>
-                <RichTextEditor
-                  id={`option-text-${index}`}
-                  aria-label={`${t("tests_field_option_text")} ${opt.key}`}
-                  value={opt.text}
-                  onChange={(html) => update(index, { text: html })}
-                  placeholder={t("tests_field_option_text")}
-                  disabled={disabled}
-                />
-              </div>
-              <div className="grid gap-2">
-                <label htmlFor={`option-image-${index}`} className="text-xs text-muted-foreground">
-                  {t("tests_field_image_url")}
-                </label>
-                <ImageUploadInput
-                  id={`option-image-${index}`}
-                  aria-label={`${t("tests_field_image_url")} ${opt.key}`}
-                  value={opt.image_url ?? ""}
-                  onChange={(url) => update(index, { image_url: url || undefined })}
-                  placeholder="https://..."
-                  disabled={disabled}
-                />
-              </div>
+              <label className="ml-auto flex items-center gap-1 text-sm">
+                {isSingle ? (
+                  <input
+                    type="radio"
+                    name={`question-correct-${format}`}
+                    checked={opt.is_correct}
+                    onChange={() => setCorrect(index, true)}
+                    disabled={disabled}
+                    aria-label={t("tests_field_option_is_correct")}
+                  />
+                ) : (
+                  <input
+                    type="checkbox"
+                    checked={opt.is_correct}
+                    onChange={(e) => setCorrect(index, e.target.checked)}
+                    disabled={disabled}
+                    aria-label={t("tests_field_option_is_correct")}
+                  />
+                )}
+                <span>{t("tests_field_option_is_correct")}</span>
+              </label>
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => remove(index)}
+                disabled={disabled || options.length <= 2}
+                aria-label={t("tests_remove_option")}
+              >
+                <Trash2 className="size-3" />
+              </Button>
             </div>
+            <RichTextEditor
+              id={`option-text-${index}`}
+              aria-label={`${t("tests_field_option_text")} ${opt.key}`}
+              value={opt.text}
+              onChange={(html) => update(index, { text: html })}
+              placeholder={t("tests_field_option_text")}
+              disabled={disabled}
+              minHeightClassName="min-h-[60px]"
+            />
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
       <Button
         type="button"
         size="sm"
@@ -463,201 +447,208 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onCancel(); }}>
-      <DialogContent className="sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit soal" : "Soal baru"}</DialogTitle>
+      <DialogContent className="flex flex-col gap-0 p-0 sm:max-w-6xl max-h-[90vh] overflow-hidden">
+        <DialogHeader className="shrink-0 border-b px-6 py-5">
+          <DialogTitle>{isEdit ? t("tests_edit_question") : t("tests_new_question")}</DialogTitle>
+          <DialogDescription>{t("tests_editor_hint")}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          <div className="flex-1 space-y-5 overflow-y-auto p-6 sm:w-3/4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="question-format">{t("format")}</Label>
+                <select
+                  id="question-format"
+                  data-slot="select"
+                  value={format}
+                  onChange={(e) => setFormat(e.target.value as QuestionFormat)}
+                  disabled={savePending}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {ALL_FORMATS.map((f) => (
+                    <option key={f} value={f}>
+                      {t(FORMAT_LABELS[f])}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="question-topic">{t("topic")}</Label>
+                <select
+                  id="question-topic"
+                  data-slot="select"
+                  value={topicId}
+                  onChange={(e) => setTopicId(e.target.value)}
+                  disabled={savePending || topics.isLoading}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <option value="">{t("select_topic")}</option>
+                  {topicOptions.map((topic) => (
+                    <option key={topic.id} value={topic.id}>
+                      {topic.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div className="grid gap-2">
-              <Label htmlFor="question-format">{t("format")}</Label>
-              <select
-                id="question-format"
-                data-slot="select"
-                value={format}
-                onChange={(e) => setFormat(e.target.value as QuestionFormat)}
+              <Label htmlFor="question-body">{t("tests_field_body")}</Label>
+              <RichTextEditor
+                id="question-body"
+                aria-label={t("tests_field_body")}
+                value={body}
+                onChange={setBody}
+                placeholder={t("tests_field_body")}
                 disabled={savePending}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                minHeightClassName="min-h-[220px]"
+              />
+            </div>
+
+            {(showOptions || showCorrectAnswer || showBlanks) && (
+              <>
+                <Separator />
+
+                {showOptions && (
+                  <div className="grid gap-2">
+                    <Label>{t("tests_field_option_text")}</Label>
+                    <OptionEditor
+                      format={format as "mcq" | "multi_answer"}
+                      options={options}
+                      onChange={setOptions}
+                      disabled={savePending}
+                    />
+                  </div>
+                )}
+
+                {showCorrectAnswer && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="question-correct-answer">{t("tests_field_correct_answer")}</Label>
+                    <Input
+                      id="question-correct-answer"
+                      value={correctAnswer}
+                      onChange={(e) => setCorrectAnswer(e.target.value)}
+                      disabled={savePending}
+                    />
+                  </div>
+                )}
+
+                {showBlanks && (
+                  <div className="grid gap-2">
+                    <Label>{t("tests_field_correct_answer")}</Label>
+                    <BlankEditor
+                      blanks={blanks}
+                      onChange={setBlanks}
+                      disabled={savePending}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="shrink-0 space-y-5 overflow-y-auto border-t bg-muted/40 p-6 sm:w-1/4 sm:border-t-0 sm:border-l">
+            <div className="grid gap-2">
+              <Label htmlFor="question-difficulty">{t("difficulty")}</Label>
+              <select
+                id="question-difficulty"
+                value={difficulty || "none"}
+                onChange={(e) => handleDifficultyChange(e.target.value)}
+                disabled={savePending}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
               >
-                {ALL_FORMATS.map((f) => (
-                  <option key={f} value={f}>
-                    {t(FORMAT_LABELS[f])}
-                  </option>
-                ))}
+                <option value="none">—</option>
+                <option value="easy">{t("tests_field_difficulty_easy")}</option>
+                <option value="medium">{t("tests_field_difficulty_medium")}</option>
+                <option value="hard">{t("tests_field_difficulty_hard")}</option>
               </select>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="question-topic">{t("topic")}</Label>
-              <select
-                id="question-topic"
-                data-slot="select"
-                value={topicId}
-                onChange={(e) => setTopicId(e.target.value)}
-                disabled={savePending || topics.isLoading}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
-              >
-                <option value="">{t("select_topic")}</option>
-                {topicOptions.map((topic) => (
-                  <option key={topic.id} value={topic.id}>
-                    {topic.name}
-                  </option>
-                ))}
-              </select>
+
+            <div className="space-y-3">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("tests_points_panel_title")}
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="question-point-correct" className="flex items-center gap-1">
+                    <Check className="size-3.5 text-success" />
+                    {t("tests_field_point_correct")}
+                  </Label>
+                  <Input
+                    id="question-point-correct"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={pointCorrect}
+                    onChange={(e) => setPointCorrect(e.target.value)}
+                    disabled={savePending}
+                    className="bg-background"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="question-point-wrong" className="flex items-center gap-1">
+                    <X className="size-3.5 text-destructive" />
+                    {t("tests_field_point_wrong")}
+                  </Label>
+                  <Input
+                    id="question-point-wrong"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={pointWrong}
+                    onChange={(e) => setPointWrong(e.target.value)}
+                    disabled={savePending}
+                    className="bg-background"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="question-body">{t("tests_field_body")}</Label>
-            <RichTextEditor
-              id="question-body"
-              aria-label={t("tests_field_body")}
-              value={body}
-              onChange={setBody}
-              placeholder={t("tests_field_body")}
-              disabled={savePending}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="question-image-url">{t("tests_field_image_url")}</Label>
-            <Input
-              id="question-image-url"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://..."
-              disabled={savePending}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="question-audio-url">{t("tests_field_audio_url")}</Label>
-            <AudioUploadInput
-              id="question-audio-url"
-              value={audioUrl}
-              onChange={setAudioUrl}
-              placeholder="https://..."
-              disabled={savePending}
-            />
-          </div>
-
-          {showOptions && (
             <div className="grid gap-2">
-              <Label>{t("tests_field_option_text")}</Label>
-              <OptionEditor
-                format={format as "mcq" | "multi_answer"}
-                options={options}
-                onChange={setOptions}
+              <Label htmlFor="question-audio-url">{t("tests_field_audio_url")}</Label>
+              <AudioUploadInput
+                id="question-audio-url"
+                value={audioUrl}
+                onChange={setAudioUrl}
+                placeholder="https://..."
                 disabled={savePending}
               />
             </div>
-          )}
 
-          {showCorrectAnswer && (
             <div className="grid gap-2">
-              <Label htmlFor="question-correct-answer">{t("tests_field_correct_answer")}</Label>
-              <Input
-                id="question-correct-answer"
-                value={correctAnswer}
-                onChange={(e) => setCorrectAnswer(e.target.value)}
+              <Label htmlFor="question-explanation">{t("tests_field_explanation")}</Label>
+              <textarea
+                id="question-explanation"
+                value={explanation}
+                onChange={(e) => setExplanation(e.target.value)}
+                rows={4}
                 disabled={savePending}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
               />
             </div>
-          )}
-
-          {showBlanks && (
-            <div className="grid gap-2">
-              <Label>{t("tests_field_correct_answer")}</Label>
-              <BlankEditor
-                blanks={blanks}
-                onChange={setBlanks}
-                disabled={savePending}
-              />
-            </div>
-          )}
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="grid gap-2">
-            <Label htmlFor="question-difficulty">{t("difficulty")}</Label>
-            <select
-              id="question-difficulty"
-              value={difficulty || "none"}
-              onChange={(e) => handleDifficultyChange(e.target.value)}
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t px-6 py-4">
+          {errorMessage ? (
+            <p role="alert" className="text-sm text-destructive">
+              {errorMessage}
+            </p>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
               disabled={savePending}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
             >
-              <option value="none">—</option>
-              <option value="easy">{t("tests_field_difficulty_easy")}</option>
-              <option value="medium">{t("tests_field_difficulty_medium")}</option>
-              <option value="hard">{t("tests_field_difficulty_hard")}</option>
-            </select>
+              {t("cancel")}
+            </Button>
+            <Button type="button" onClick={handleSave} disabled={savePending}>
+              {savePending ? t("saving") : t("tests_save_question")}
+            </Button>
           </div>
-
-          <div className="grid gap-2">
-            <Label>{t("tests_points_panel_title")}</Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="question-point-correct">{t("tests_field_point_correct")}</Label>
-                <Input
-                  id="question-point-correct"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={pointCorrect}
-                  onChange={(e) => setPointCorrect(e.target.value)}
-                  disabled={savePending}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="question-point-wrong">{t("tests_field_point_wrong")}</Label>
-                <Input
-                  id="question-point-wrong"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={pointWrong}
-                  onChange={(e) => setPointWrong(e.target.value)}
-                  disabled={savePending}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="question-explanation">{t("tests_field_explanation")}</Label>
-            <textarea
-              id="question-explanation"
-              value={explanation}
-              onChange={(e) => setExplanation(e.target.value)}
-              rows={2}
-              disabled={savePending}
-              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
-            />
-          </div>
-        </div>
-      </div>
-
-      {errorMessage && (
-        <p role="alert" className="text-sm text-destructive">
-          {errorMessage}
-        </p>
-      )}
-
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={savePending}
-        >
-          {t("cancel")}
-        </Button>
-        <Button type="button" onClick={handleSave} disabled={savePending}>
-          {savePending ? t("saving") : t("tests_save_question")}
-        </Button>
-      </div>
         </div>
       </DialogContent>
     </Dialog>

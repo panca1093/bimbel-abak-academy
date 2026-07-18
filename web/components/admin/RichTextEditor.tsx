@@ -26,6 +26,7 @@ interface RichTextEditorProps {
   id?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  minHeightClassName?: string;
 }
 
 function isEffectivelyEmpty(html: string): boolean {
@@ -43,7 +44,7 @@ function sanitizeClipboardHtml(html: string): string {
   return DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR });
 }
 
-export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, placeholder, disabled, id, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledby, minHeightClassName = "min-h-[130px]" }: RichTextEditorProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [empty, setEmpty] = useState<boolean>(!value || isEffectivelyEmpty(value));
@@ -249,7 +250,7 @@ export function RichTextEditor({ value, onChange, placeholder, disabled, id, "ar
           onInput={sync}
           onBlur={sync}
           onPaste={handlePaste}
-          className="min-h-[130px] px-3 py-2 text-sm leading-relaxed outline-none"
+          className={cn(minHeightClassName, "px-3 py-2 text-sm leading-relaxed outline-none")}
         />
         {empty && placeholder && (
           <div className="pointer-events-none absolute left-3 top-2 text-sm text-muted-foreground">
