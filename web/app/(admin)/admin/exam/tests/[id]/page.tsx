@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { QuestionEditor } from "@/components/admin/QuestionEditor";
 import { QuestionPickerModal } from "@/components/admin/QuestionPickerModal";
+import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -458,10 +459,10 @@ export default function TestDetailPage() {
 
             <div className="grid gap-2">
               <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
-              <Input
+              <AudioUploadInput
                 id="test-audio-url"
                 value={form.audioUrl}
-                onChange={(e) => form.setAudioUrl(e.target.value)}
+                onChange={form.setAudioUrl}
                 placeholder="https://..."
                 disabled={update.isPending}
               />
