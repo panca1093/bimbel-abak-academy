@@ -975,3 +975,16 @@ export interface AdminResultDetail {
   breakdown?: ResultTopicRow[];
   pembahasan?: ResultPembahasanItem[];
 }
+
+// Generic job row from the backend job table. Mirrors service.JobResponse.
+// Terminal statuses observed in worker/student_bulk.go: "succeeded" and "failed".
+export interface JobStatus {
+  id: string;
+  type: string;
+  status: "queued" | "running" | "succeeded" | "failed" | string;
+  progress: number;
+  result_url: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
