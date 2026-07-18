@@ -467,7 +467,8 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 		Qty:         qty,
 		WeightGrams: product.WeightGrams,
 	}
-	return s.storeRepo.AddItem(ctx, oID, item)
+	clearShipping := isPhysicalType(product.Type)
+	return s.storeRepo.AddItem(ctx, oID, item, clearShipping)
 }
 
 func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID string) error {
@@ -495,7 +496,15 @@ func (s *Service) RemoveItem(ctx context.Context, studentID, orderID, itemID str
 		return ErrOrderNotFound
 	}
 
-	return s.storeRepo.RemoveItem(ctx, oID, iID)
+	clearShipping := false
+	for _, item := range order.Items {
+		if item.ID == iID && isPhysicalType(item.ProductType) {
+			clearShipping = true
+			break
+		}
+	}
+
+	return s.storeRepo.RemoveItem(ctx, oID, iID, clearShipping)
 }
 
 func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID string, qty int) error {
@@ -526,7 +535,15 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 		return ErrOrderNotEditable
 	}
 
-	return s.storeRepo.UpdateItemQty(ctx, oID, iID, qty)
+	clearShipping := false
+	for _, item := range order.Items {
+		if item.ID == iID && isPhysicalType(item.ProductType) {
+			clearShipping = true
+			break
+		}
+	}
+
+	return s.storeRepo.UpdateItemQty(ctx, oID, iID, qty, clearShipping)
 }
 
 type CartPatch struct {

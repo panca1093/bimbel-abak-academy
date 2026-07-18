@@ -17,8 +17,9 @@ var _ interface {
 	GetCartByStudentID(context.Context, uuid.UUID) (model.Order, error)
 	GetOrderByID(context.Context, uuid.UUID) (model.Order, error)
 	ListOrders(context.Context, OrderFilter) ([]model.Order, string, error)
-	AddItem(context.Context, uuid.UUID, model.OrderItem) error
-	RemoveItem(context.Context, uuid.UUID, uuid.UUID) error
+	AddItem(context.Context, uuid.UUID, model.OrderItem, bool) error
+	RemoveItem(context.Context, uuid.UUID, uuid.UUID, bool) error
+	UpdateItemQty(context.Context, uuid.UUID, uuid.UUID, int, bool) error
 	PatchCart(context.Context, uuid.UUID, OrderPatch) error
 	SetOrderStatus(context.Context, pgx.Tx, uuid.UUID, string, string) error
 	SetShipped(context.Context, uuid.UUID, string) error

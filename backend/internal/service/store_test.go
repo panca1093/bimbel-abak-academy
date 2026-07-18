@@ -869,6 +869,73 @@ func (s *shimOrderService) AddItem(ctx context.Context, studentID, orderID, prod
 		Qty:         qty,
 	}
 	order.Items = append(order.Items, item)
+
+	if isPhysicalType(product.Type) {
+		order.ShippingCost = 0
+		order.SelectedCourier = ""
+	}
+	return nil
+}
+
+func (s *shimOrderService) RemoveItem(ctx context.Context, studentID, orderID, itemID string) error {
+	sID, _ := uuid.Parse(studentID)
+	oID, _ := uuid.Parse(orderID)
+	iID, _ := uuid.Parse(itemID)
+
+	order, ok := s.fake.orders[oID.String()]
+	if !ok {
+		return ErrOrderNotFound
+	}
+	if order.StudentID != sID {
+		return ErrOrderNotFound
+	}
+
+	clearShipping := false
+	for i, item := range order.Items {
+		if item.ID == iID {
+			if isPhysicalType(item.ProductType) {
+				clearShipping = true
+			}
+			order.Items = append(order.Items[:i], order.Items[i+1:]...)
+			break
+		}
+	}
+
+	if clearShipping {
+		order.ShippingCost = 0
+		order.SelectedCourier = ""
+	}
+	return nil
+}
+
+func (s *shimOrderService) UpdateItemQty(ctx context.Context, studentID, orderID, itemID string, qty int) error {
+	sID, _ := uuid.Parse(studentID)
+	oID, _ := uuid.Parse(orderID)
+	iID, _ := uuid.Parse(itemID)
+
+	order, ok := s.fake.orders[oID.String()]
+	if !ok {
+		return ErrOrderNotFound
+	}
+	if order.StudentID != sID {
+		return ErrOrderNotFound
+	}
+
+	clearShipping := false
+	for _, item := range order.Items {
+		if item.ID == iID {
+			if isPhysicalType(item.ProductType) {
+				clearShipping = true
+			}
+			item.Qty = qty
+			break
+		}
+	}
+
+	if clearShipping {
+		order.ShippingCost = 0
+		order.SelectedCourier = ""
+	}
 	return nil
 }
 
@@ -1540,6 +1607,156 @@ func TestBuildPaymentRequest_NoShippingLineItemWhenZero(t *testing.T) {
 		if item.ID == "shipping" {
 			t.Error("shipping line item should not be present when shipping_cost = 0")
 		}
+	}
+}
+
+func TestRemoveItem_PhysicalItem_ClearsShipping(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	bookProductID := "00000000-0000-0000-0000-000000000002"
+	courseProductID := "00000000-0000-0000-0000-000000000003"
+
+	sid, _ := uuid.Parse(studentID)
+	oid := uuid.New()
+	bookPID, _ := uuid.Parse(bookProductID)
+	coursePID, _ := uuid.Parse(courseProductID)
+
+	fake.seedProduct(model.Product{
+		ID:    bookProductID,
+		Type:  "book",
+		Name:  "Book 1",
+		Stock: 100,
+		Price: 10000,
+	})
+	fake.seedProduct(model.Product{
+		ID:    courseProductID,
+		Type:  "course",
+		Name:  "Course 1",
+		Stock: 100,
+		Price: 20000,
+	})
+
+	order := model.Order{
+		ID:              oid,
+		StudentID:       sid,
+		Status:          "cart",
+		Subtotal:        30000,
+		ShippingCost:    50,
+		SelectedCourier: "JNE",
+	}
+	bookItemID := uuid.New()
+	courseItemID := uuid.New()
+	order.Items = append(order.Items, model.OrderItem{
+		ID:          bookItemID,
+		OrderID:     oid,
+		ProductID:   bookPID,
+		ProductType: "book",
+		Name:        "Book 1",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+	order.Items = append(order.Items, model.OrderItem{
+		ID:          courseItemID,
+		OrderID:     oid,
+		ProductID:   coursePID,
+		ProductType: "course",
+		Name:        "Course 1",
+		UnitPrice:   200,
+		Qty:         1,
+	})
+	fake.seedOrder(order)
+
+	// Remove physical item (book) — should clear shipping
+	err := svc.RemoveItem(ctx, studentID, oid.String(), bookItemID.String())
+	if err != nil {
+		t.Fatalf("RemoveItem: %v", err)
+	}
+
+	// Verify shipping was cleared
+	updated := fake.orders[oid.String()]
+	if updated.ShippingCost != 0 {
+		t.Errorf("want shipping_cost = 0 after removing physical item, got %v", updated.ShippingCost)
+	}
+	if updated.SelectedCourier != "" {
+		t.Errorf("want selected_courier = '' after removing physical item, got %q", updated.SelectedCourier)
+	}
+}
+
+func TestRemoveItem_DigitalItem_KeepsShipping(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeOrderRepo()
+	svc := &shimOrderService{fake: fake}
+
+	studentID := "00000000-0000-0000-0000-000000000001"
+	courseProductID := "00000000-0000-0000-0000-000000000002"
+	bookProductID := "00000000-0000-0000-0000-000000000003"
+
+	sid, _ := uuid.Parse(studentID)
+	oid := uuid.New()
+	coursePID, _ := uuid.Parse(courseProductID)
+	bookPID, _ := uuid.Parse(bookProductID)
+
+	fake.seedProduct(model.Product{
+		ID:    courseProductID,
+		Type:  "course",
+		Name:  "Course 1",
+		Stock: 100,
+		Price: 20000,
+	})
+	fake.seedProduct(model.Product{
+		ID:    bookProductID,
+		Type:  "book",
+		Name:  "Book 1",
+		Stock: 100,
+		Price: 10000,
+	})
+
+	order := model.Order{
+		ID:              oid,
+		StudentID:       sid,
+		Status:          "cart",
+		Subtotal:        30000,
+		ShippingCost:    50,
+		SelectedCourier: "JNE",
+	}
+	courseItemID := uuid.New()
+	bookItemID := uuid.New()
+	order.Items = append(order.Items, model.OrderItem{
+		ID:          courseItemID,
+		OrderID:     oid,
+		ProductID:   coursePID,
+		ProductType: "course",
+		Name:        "Course 1",
+		UnitPrice:   200,
+		Qty:         1,
+	})
+	order.Items = append(order.Items, model.OrderItem{
+		ID:          bookItemID,
+		OrderID:     oid,
+		ProductID:   bookPID,
+		ProductType: "book",
+		Name:        "Book 1",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+	fake.seedOrder(order)
+
+	// Remove digital item (course) — should keep shipping
+	err := svc.RemoveItem(ctx, studentID, oid.String(), courseItemID.String())
+	if err != nil {
+		t.Fatalf("RemoveItem: %v", err)
+	}
+
+	// Verify shipping was kept
+	updated := fake.orders[oid.String()]
+	if updated.ShippingCost != 50 {
+		t.Errorf("want shipping_cost = 50 after removing digital item, got %v", updated.ShippingCost)
+	}
+	if updated.SelectedCourier != "JNE" {
+		t.Errorf("want selected_courier = 'JNE' after removing digital item, got %q", updated.SelectedCourier)
 	}
 }
 

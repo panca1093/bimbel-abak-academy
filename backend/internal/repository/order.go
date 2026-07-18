@@ -293,7 +293,7 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 	return orders, nextCursor, nil
 }
 
-func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.OrderItem) error {
+func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.OrderItem, clearShipping bool) error {
 	item.ID = uuid.New()
 	item.OrderID = orderID
 	jumlah := item.UnitPrice * float64(item.Qty)
@@ -305,10 +305,21 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 	if err != nil {
 		return err
 	}
+	if clearShipping {
+		_, err = r.pool.Exec(ctx, `
+			UPDATE orders SET
+			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
+			  shipping_cost = 0,
+			  selected_courier = '',
+			  updated_at = now()
+			WHERE id = $1`, orderID)
+		return err
+	}
 	return r.recalcOrderTotals(ctx, orderID)
 }
 
-func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) error {
+func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID, clearShipping bool) error {
 	_, err := r.pool.Exec(ctx,
 		`DELETE FROM order_item WHERE id = $1 AND order_id = $2`,
 		itemID, orderID,
@@ -316,15 +327,37 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) 
 	if err != nil {
 		return err
 	}
+	if clearShipping {
+		_, err = r.pool.Exec(ctx, `
+			UPDATE orders SET
+			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
+			  shipping_cost = 0,
+			  selected_courier = '',
+			  updated_at = now()
+			WHERE id = $1`, orderID)
+		return err
+	}
 	return r.recalcOrderTotals(ctx, orderID)
 }
 
-func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUID, qty int) error {
+func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUID, qty int, clearShipping bool) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE order_item SET qty = $1, jumlah = unit_price * $2 WHERE id = $3 AND order_id = $4`,
 		qty, qty, itemID, orderID,
 	)
 	if err != nil {
+		return err
+	}
+	if clearShipping {
+		_, err = r.pool.Exec(ctx, `
+			UPDATE orders SET
+			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
+			  shipping_cost = 0,
+			  selected_courier = '',
+			  updated_at = now()
+			WHERE id = $1`, orderID)
 		return err
 	}
 	return r.recalcOrderTotals(ctx, orderID)
