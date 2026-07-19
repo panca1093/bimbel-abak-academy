@@ -431,6 +431,7 @@ type shimSessionService struct {
 	rdb           *redis.Client
 	mr            *miniredis.Miniredis
 	uploadCertErr error
+	storageGetErr error
 }
 
 func newShimSessionService(t *testing.T) (*shimSessionService, *miniredis.Miniredis) {

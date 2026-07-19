@@ -52,6 +52,8 @@ func generateCertificatePDF(template, studentName, examTitle string, submittedAt
 		pdf = modernLayoutGofpdf(studentName, examTitle, dateStr)
 	case "elegant":
 		pdf = elegantLayoutGofpdf(studentName, examTitle, dateStr)
+	case "custom":
+		pdf = customLayoutGofpdf(studentName, examTitle, dateStr, backgroundBytes)
 	}
 
 	var buf bytes.Buffer
@@ -290,6 +292,69 @@ func drawSeal(pdf *gofpdf.Fpdf, x, y, r float64, r8, g8, b8 int) {
 	pdf.Circle(x, y, r*0.15, "F")
 }
 
+// customLayoutGofpdf renders a custom-template certificate with an admin-provided background image.
+// The background image (if provided via backgroundBytes) is drawn full-bleed at the page rect.
+// Student name, exam title, and date are overlaid at fixed positions.
+// No seal or signature line (FR15). If backgroundBytes is empty/nil or image registration fails,
+// renders on a plain white page with the text fields (FR14 tolerance).
+func customLayoutGofpdf(name, exam, date string, backgroundBytes []byte) *gofpdf.Fpdf {
+	pdf := gofpdf.New("L", "pt", "A4", "")
+	pdf.SetCompression(false)
+	pdf.AddPage()
+
+	// Page dimensions: A4 landscape is 841.89 x 595.28 pt
+	pageWidth := 841.89
+	pageHeight := 595.28
+
+	// Try to draw the background image if provided (FR16: full-bleed with explicit width/height).
+	// On error or empty bytes, skip the image and render on plain white (FR14).
+	if len(backgroundBytes) > 0 {
+		// Detect image type from magic bytes; support PNG, JPEG, GIF.
+		imgType := detectImageType(backgroundBytes)
+		if imgType != "" {
+			reader := bytes.NewReader(backgroundBytes)
+			// Attempt to register the image. If it succeeds, draw it full-bleed.
+			opts := gofpdf.ImageOptions{
+				ImageType: imgType,
+			}
+			info := pdf.RegisterImageOptionsReader("bgimage", opts, reader)
+			if info != nil {
+				// Image registered successfully; draw it full-bleed covering the entire page.
+				pdf.Image("bgimage", 0, 0, pageWidth, pageHeight, false, "", 0, "")
+			}
+		}
+		// If detection fails or registration fails (info == nil), silently skip — render on white instead (FR14).
+	}
+
+	// Ensure the background is white if no image was drawn (or image draw failed).
+	// If an image was successfully drawn, this won't overwrite it.
+	// We'll just ensure text color and positioning are correct.
+
+	// Draw student name in a large font.
+	pdf.SetTextColor(0, 0, 0)  // Black text
+	pdf.SetFont("Helvetica", "B", 36)
+	pdf.SetXY(50, 250)
+	pdf.CellFormat(pageWidth-100, 40, name, "", 1, "C", false, 0, "")
+
+	// Draw exam title.
+	pdf.SetFont("Helvetica", "", 14)
+	pdf.SetXY(50, 300)
+	pdf.CellFormat(pageWidth-100, 20, "For successfully completing", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "B", 22)
+	pdf.SetXY(50, 320)
+	pdf.CellFormat(pageWidth-100, 25, exam, "", 1, "C", false, 0, "")
+
+	// Draw submission date.
+	pdf.SetFont("Helvetica", "", 12)
+	pdf.SetXY(50, 370)
+	pdf.CellFormat(pageWidth-100, 20, fmt.Sprintf("Date: %s", date), "", 1, "C", false, 0, "")
+
+	// No seal or signature line per FR15.
+
+	return pdf
+}
+
 // uploadCertificatePDF uploads a PDF certificate at certificates/<sessionID>.pdf
 // and returns its object key. The bucket is private, so callers presign a GET to
 // serve it — see resolveCertificateURL.
@@ -336,7 +401,28 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 
 	// Regenerate when certificate is missing or grading is newer.
 	if sess.CertificateURL == nil || sess.CertificateGeneratedAt == nil || (gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) {
-		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt, nil)
+		// Fetch background image if template is "custom" (FR12, FR14).
+		var backgroundBytes []byte
+		if exam.CertificateTemplate == "custom" && exam.CertificateBackgroundURL != nil && *exam.CertificateBackgroundURL != "" {
+			if s.storage != nil {
+				reader, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, *exam.CertificateBackgroundURL, minio.GetObjectOptions{})
+				if err != nil {
+					// Tolerate fetch errors (FR14) — proceed with nil background
+					reader = nil
+				} else {
+					// Read all bytes from the object
+					var buf bytes.Buffer
+					if _, err := buf.ReadFrom(reader); err != nil {
+						// Tolerate read errors — proceed with nil background
+						backgroundBytes = nil
+					} else {
+						backgroundBytes = buf.Bytes()
+					}
+				}
+			}
+		}
+
+		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt, backgroundBytes)
 		if err != nil {
 			return nil, fmt.Errorf("generate certificate pdf: %w", err)
 		}
@@ -378,5 +464,26 @@ func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, t
 		return nil, err
 	}
 
-	return generateCertificatePDF(tmpl, "Nama Peserta Contoh", exam.Title, time.Now(), nil)
+	// Fetch background image if template is "custom" (FR12, FR14).
+	var backgroundBytes []byte
+	if tmpl == "custom" && exam.CertificateBackgroundURL != nil && *exam.CertificateBackgroundURL != "" {
+		if s.storage != nil {
+			reader, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, *exam.CertificateBackgroundURL, minio.GetObjectOptions{})
+			if err != nil {
+				// Tolerate fetch errors (FR14) — proceed with nil background
+				reader = nil
+			} else {
+				// Read all bytes from the object
+				var buf bytes.Buffer
+				if _, err := buf.ReadFrom(reader); err != nil {
+					// Tolerate read errors — proceed with nil background
+					backgroundBytes = nil
+				} else {
+					backgroundBytes = buf.Bytes()
+				}
+			}
+		}
+	}
+
+	return generateCertificatePDF(tmpl, "Nama Peserta Contoh", exam.Title, time.Now(), backgroundBytes)
 }

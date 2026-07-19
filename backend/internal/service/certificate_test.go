@@ -34,6 +34,24 @@ func (s *shimSessionService) uploadCertificatePDF(_ context.Context, sessionID u
 	return "http://minio.example.com/certificates/" + sessionID.String() + ".pdf", nil
 }
 
+func (s *shimSessionService) getObject(_ context.Context, _, _ string) ([]byte, error) {
+	if s.storageGetErr != nil {
+		return nil, s.storageGetErr
+	}
+	// Return minimal PNG bytes by default
+	return []byte{
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+		0x54, 0x08, 0x99, 0x63, 0xF8, 0x0F, 0x00, 0x00,
+		0x01, 0x01, 0x00, 0x05, 0x18, 0x0B, 0xB3, 0x00,
+		0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+		0x42, 0x60, 0x82,
+	}, nil
+}
+
 // resolveCertificateURL mirrors the real Service.resolveCertificateURL using the fake repo
 // and a fake upload function — follows the shimSessionService convention from
 // exam_session_test.go / exam_result_test.go.
@@ -45,7 +63,18 @@ func (s *shimSessionService) resolveCertificateURL(ctx context.Context, exam *mo
 	gradedAt := latestGradedAt(answers)
 
 	if sess.CertificateURL == nil || sess.CertificateGeneratedAt == nil || (gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) {
-		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt, nil)
+		// Fetch background image if template is "custom" (FR12, FR14)
+		var backgroundBytes []byte
+		if exam.CertificateTemplate == "custom" && exam.CertificateBackgroundURL != nil && *exam.CertificateBackgroundURL != "" {
+			bgBytes, err := s.getObject(ctx, "", *exam.CertificateBackgroundURL)
+			if err != nil {
+				// Tolerate fetch errors (FR14) — proceed with nil background
+				bgBytes = nil
+			}
+			backgroundBytes = bgBytes
+		}
+
+		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt, backgroundBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -330,5 +359,141 @@ func TestResolveCertificateURL_PersistFailure_ReturnsError(t *testing.T) {
 	}
 	if url != nil {
 		t.Errorf("want nil URL on persist failure, got %q", *url)
+	}
+}
+
+// ---------- tests: generateCertificatePDF custom template ----------
+
+func TestGenerateCertificatePDF_CustomWithNilBackground_ProducesValidPDF(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	pdf, err := generateCertificatePDF("custom", "Budi", "Test Exam", now, nil)
+	if err != nil {
+		t.Fatalf("custom template with nil background: %v", err)
+	}
+	if len(pdf) == 0 {
+		t.Fatalf("want non-empty PDF, got empty")
+	}
+	if !bytes.HasPrefix(pdf, []byte("%PDF-1.")) {
+		t.Errorf("want valid PDF magic header, got %v", pdf[:10])
+	}
+}
+
+func TestGenerateCertificatePDF_CustomWithEmptyBackground_ProducesValidPDF(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	pdf, err := generateCertificatePDF("custom", "Budi", "Test Exam", now, []byte{})
+	if err != nil {
+		t.Fatalf("custom template with empty background: %v", err)
+	}
+	if len(pdf) == 0 {
+		t.Fatalf("want non-empty PDF, got empty")
+	}
+	if !bytes.HasPrefix(pdf, []byte("%PDF-1.")) {
+		t.Errorf("want valid PDF magic header, got %v", pdf[:10])
+	}
+}
+
+func TestGenerateCertificatePDF_CustomWithBackgroundBytes_ProducesValidPDF(t *testing.T) {
+	t.Parallel()
+	// Create a minimal 1x1 PNG (valid PNG header + minimal data)
+	// PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A
+	// IHDR chunk + minimal data
+	pngBytes := []byte{
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+		0x54, 0x08, 0x99, 0x63, 0xF8, 0x0F, 0x00, 0x00,
+		0x01, 0x01, 0x00, 0x05, 0x18, 0x0B, 0xB3, 0x00,
+		0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+		0x42, 0x60, 0x82,
+	}
+
+	now := time.Now()
+	pdf, err := generateCertificatePDF("custom", "Budi", "Test Exam", now, pngBytes)
+	if err != nil {
+		t.Fatalf("custom template with valid PNG: %v", err)
+	}
+	if len(pdf) == 0 {
+		t.Fatalf("want non-empty PDF, got empty")
+	}
+	if !bytes.HasPrefix(pdf, []byte("%PDF-1.")) {
+		t.Errorf("want valid PDF magic header, got %v", pdf[:10])
+	}
+}
+
+func TestGenerateCertificatePDF_CustomVsNilBackground_Distinguishable(t *testing.T) {
+	t.Parallel()
+	pngBytes := []byte{
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+		0x54, 0x08, 0x99, 0x63, 0xF8, 0x0F, 0x00, 0x00,
+		0x01, 0x01, 0x00, 0x05, 0x18, 0x0B, 0xB3, 0x00,
+		0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+		0x42, 0x60, 0x82,
+	}
+
+	now := time.Now()
+	pdfWithBg, err := generateCertificatePDF("custom", "Budi", "Test Exam", now, pngBytes)
+	if err != nil {
+		t.Fatalf("with background: %v", err)
+	}
+	pdfNoBg, err := generateCertificatePDF("custom", "Budi", "Test Exam", now, nil)
+	if err != nil {
+		t.Fatalf("without background: %v", err)
+	}
+
+	if bytes.Equal(pdfWithBg, pdfNoBg) {
+		t.Error("custom with background and without should produce different PDFs")
+	}
+}
+
+// ---------- tests: resolveCertificateURL custom template ----------
+
+// fakeStorageGetObjectErr tracks storage fetch errors for testing.
+type fakeStorageGetObjectErr struct {
+	err error
+}
+
+func TestResolveCertificateURL_CustomTemplate_StorageFetchError_StillSucceeds(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	sess := &model.ExamSession{
+		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
+		CertificateURL: nil, CertificateGeneratedAt: nil,
+	}
+	svc.repo.sessions[sess.ID] = sess
+
+	// Exam with custom template and background URL.
+	backgroundKey := "avatars/user123/bg-image.png"
+	exam := &model.Exam{
+		CertificateTemplate:    "custom",
+		CertificateBackgroundURL: &backgroundKey,
+		Title:                   "My Exam",
+	}
+
+	// Inject a storage error that will be triggered on GetObject call.
+	svc.storageGetErr = errors.New("storage unreachable")
+
+	// resolveCertificateURL should still succeed (FR14: tolerate storage fetch failures).
+	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
+	if err != nil {
+		t.Fatalf("want success despite storage error, got %v", err)
+	}
+	if url == nil {
+		t.Fatal("want non-nil URL (generated despite fetch error)")
+	}
+
+	// Session should be updated.
+	updated := svc.repo.sessions[sess.ID]
+	if updated.CertificateURL == nil {
+		t.Error("session CertificateURL should be set despite storage fetch error")
 	}
 }
