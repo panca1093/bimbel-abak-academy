@@ -346,6 +346,7 @@ describe("CartPage with Shipping", () => {
         expect.objectContaining({
           orderId: "o1",
           courier: "jne",
+          service: "OKE",
           shipping_cost: 50000,
           province_id: "prov1",
           city_id: "city1",
@@ -392,5 +393,71 @@ describe("CartPage with Shipping", () => {
 
     const checkButton = await screen.findByRole("button", { name: /check shipping cost/i });
     expect(checkButton).toBeDisabled();
+  });
+
+  it("selecting the second same-carrier service persists that rate, not the first", async () => {
+    const user = userEvent.setup();
+    const patchCartMutate = vi.fn();
+
+    const twoJneServices = [
+      { courier: "jne", service: "REG", estimated_days: 3, price: 15000 },
+      { courier: "jne", service: "YES", estimated_days: 1, price: 30000 },
+    ];
+
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 0,
+        total: 100000,
+        items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    mockUseShippingRates.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      data: twoJneServices,
+      isError: false,
+    });
+
+    mockUsePatchCart.mockReturnValue({
+      mutate: patchCartMutate,
+      isPending: false,
+      isError: false,
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    const options = await screen.findAllByRole("radio", { name: /jne/i });
+    expect(options).toHaveLength(2);
+
+    // Click the second option (YES, 30000) — must not persist the first (REG, 15000).
+    await user.click(options[1]);
+
+    await waitFor(() => {
+      expect(patchCartMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          courier: "jne",
+          service: "YES",
+          shipping_cost: 30000,
+        })
+      );
+    });
+    expect(patchCartMutate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ service: "REG" })
+    );
+
+    // Only the clicked option should be marked selected, not both same-carrier rows.
+    await waitFor(() => {
+      expect(options[1]).toHaveAttribute("aria-checked", "true");
+    });
+    expect(options[0]).toHaveAttribute("aria-checked", "false");
   });
 });

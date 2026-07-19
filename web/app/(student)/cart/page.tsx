@@ -12,7 +12,7 @@ import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoInput } from "@/components/cart/PromoInput";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
-import { CourierRateList } from "@/components/cart/CourierRateList";
+import { CourierRateList, courierRateKey } from "@/components/cart/CourierRateList";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,7 +35,7 @@ export default function CartPage() {
     kecamatan_id: "",
     kode_pos: "",
   });
-  const [selectedCourier, setSelectedCourier] = useState<string | null>(null);
+  const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
 
   const items: OrderItem[] = cart?.items ?? [];
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
@@ -58,12 +58,13 @@ export default function CartPage() {
   }, [shippingAddress, totalPhysicalWeight, shippingRates]);
 
   const handleSelectCourier = useCallback(
-    (rate: { courier: string; price: number }) => {
+    (rate: { courier: string; service: string; price: number }) => {
       if (!cart) return;
-      setSelectedCourier(rate.courier);
+      setSelectedRateKey(courierRateKey(rate));
       patchCart.mutate({
         orderId: cart.id,
         courier: rate.courier,
+        service: rate.service,
         shipping_cost: rate.price,
         province_id: shippingAddress.provinsi_id,
         city_id: shippingAddress.kota_id,
@@ -131,7 +132,7 @@ export default function CartPage() {
             {hasPhysical && shippingRates.data && (
               <CourierRateList
                 rates={shippingRates.data}
-                selectedCourier={selectedCourier}
+                selectedKey={selectedRateKey}
                 onSelect={handleSelectCourier}
                 isLoading={false}
                 isError={shippingRates.isError}

@@ -114,6 +114,57 @@ func webhookServer(t *testing.T, env *testEnv, payment service.PaymentClient) *h
 	return ts
 }
 
+// twoServiceLogisticsClient returns two rates for the same carrier at different
+// prices, to prove PatchCart matches on courier+service, not carrier alone.
+type twoServiceLogisticsClient struct{}
+
+func (twoServiceLogisticsClient) GetRates(ctx context.Context, req service.ShippingQuoteRequest) ([]service.CourierRate, error) {
+	return []service.CourierRate{
+		{Courier: "JNE", Service: "REG", EstimatedDays: 3, Price: 15000},
+		{Courier: "JNE", Service: "YES", EstimatedDays: 1, Price: 30000},
+	}, nil
+}
+
+// logisticsServer returns a test server wired with the given logistics client,
+// for tests that need to control which courier rates are quoted.
+func logisticsServer(t *testing.T, env *testEnv, logistics service.LogisticsClient) *httptest.Server {
+	t.Helper()
+	repo := repository.New(env.pool)
+	cfg := &config.Config{CORSOrigins: []string{"*"}}
+	svc := service.NewWithStore(repo, repo, env.rdb, env.signer,
+		&service.NoopOTPProvider{}, &service.NoopEmailProvider{}, &capturingPaymentClient{},
+		logistics, nil, cfg)
+	h := handler.New(svc)
+	e := echo.New()
+	e.HideBanner = true
+	server.RegisterRoutesForTest(e, h, svc, env.signer)
+	ts := httptest.NewServer(e)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// doJSONAt is doJSON against an arbitrary base URL, for tests that stand up
+// their own *httptest.Server (e.g. with a custom logistics client) instead of
+// using env.server.
+func doJSONAt(t *testing.T, baseURL, method, path string, body any, token string) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	if body != nil {
+		require.NoError(t, json.NewEncoder(&buf).Encode(body))
+	}
+	req, err := http.NewRequest(method, baseURL+path, &buf)
+	require.NoError(t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
 // drainClose discards and closes a response body.
 func drainClose(resp *http.Response) {
 	_, _ = io.Copy(io.Discard, resp.Body)
@@ -195,6 +246,7 @@ func TestCheckout(t *testing.T) {
 		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":     "JNE",
+				"service":     "REG",
 				"province_id": provinceID,
 				"city_id":     cityID,
 				"district_id": districtID,
@@ -233,6 +285,7 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 15000.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,
@@ -286,6 +339,7 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 15000.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,
@@ -329,7 +383,7 @@ func TestCheckout(t *testing.T) {
 		whResp := sendWebhookToURL(t, strict.URL,
 			"00000000-0000-0000-0000-000000000000",
 			fmt.Sprintf("key-%d", time.Now().UnixNano()),
-			"" /* omit signature_key */,
+			"", /* omit signature_key */
 			"0.00")
 		whBody := decodeBody(t, whResp)
 		require.Equal(t, http.StatusUnauthorized, whResp.StatusCode)
@@ -353,6 +407,7 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 15000.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,
@@ -468,6 +523,7 @@ func TestCheckout(t *testing.T) {
 		patchResp := testEnv.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 15000.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,
@@ -583,6 +639,7 @@ func TestCheckout(t *testing.T) {
 		patchResp2 := testEnv.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "TIKI",
+				"service":       "ONS",
 				"shipping_cost": 25000.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,
@@ -690,6 +747,7 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 15000.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,
@@ -727,6 +785,7 @@ func TestCheckout(t *testing.T) {
 		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 1.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,
@@ -800,6 +859,7 @@ func TestCheckout(t *testing.T) {
 		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 15000.0,
 				"province_id":   "",
 				"city_id":       "",
@@ -810,6 +870,86 @@ func TestCheckout(t *testing.T) {
 		require.Equal(t, http.StatusUnprocessableEntity, patchResp.StatusCode, "must be a validation error, not a 500 FK crash: %v", patchBody)
 		assert.Equal(t, "incomplete_address", patchBody["code"])
 		drainClose(patchResp)
+	})
+
+	t.Run("PR41-followup-1 matches courier+service, not carrier alone", func(t *testing.T) {
+		ls := logisticsServer(t, env, twoServiceLogisticsClient{})
+
+		userID := seedUser(t, env, "student", "active", false)
+		token := authToken(t, env, userID, "student")
+		productID := seedProduct(t, env, "book", "Buku Dua Servis JNE", 100000)
+
+		resp := doJSONAt(t, ls.URL, http.MethodPost, "/api/v1/orders", nil, token)
+		body := decodeBody(t, resp)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		orderID := body["id"].(string)
+
+		drainClose(doJSONAt(t, ls.URL, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		// twoServiceLogisticsClient quotes JNE/REG=15000 and JNE/YES=30000 for
+		// any destination. Select the SECOND service (YES) while forging
+		// shipping_cost to neither price — if the server matched on carrier
+		// alone it would silently persist the FIRST same-carrier rate (REG,
+		// 15000) instead of the one actually selected.
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
+		patchResp := doJSONAt(t, ls.URL, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{
+				"courier":       "JNE",
+				"service":       "YES",
+				"shipping_cost": 1.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token)
+		require.Equal(t, http.StatusOK, patchResp.StatusCode, "patch failed: %v", decodeBody(t, patchResp))
+		drainClose(patchResp)
+
+		var persistedCost float64
+		var persistedCourier, persistedService *string
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT shipping_cost, selected_courier, selected_service FROM orders WHERE id=$1`, orderID,
+		).Scan(&persistedCost, &persistedCourier, &persistedService))
+		require.NotNil(t, persistedCourier)
+		require.NotNil(t, persistedService)
+		assert.Equal(t, 30000.0, persistedCost, "must price the exact JNE/YES rate selected, not JNE/REG's 15000")
+		assert.Equal(t, "JNE", *persistedCourier)
+		assert.Equal(t, "YES", *persistedService)
+
+		// A second, independent cart selecting the FIRST service (REG) must
+		// persist REG's own price — proving the match isn't "always take the
+		// last/first rate" but genuinely keyed on courier+service.
+		userID2 := seedUser(t, env, "student", "active", false)
+		token2 := authToken(t, env, userID2, "student")
+		productID2 := seedProduct(t, env, "book", "Buku Dua Servis JNE 2", 100000)
+
+		resp2 := doJSONAt(t, ls.URL, http.MethodPost, "/api/v1/orders", nil, token2)
+		body2 := decodeBody(t, resp2)
+		require.Equal(t, http.StatusCreated, resp2.StatusCode)
+		orderID2 := body2["id"].(string)
+
+		drainClose(doJSONAt(t, ls.URL, http.MethodPost, "/api/v1/orders/"+orderID2+"/items",
+			map[string]any{"product_id": productID2, "qty": 1}, token2))
+
+		patchResp2 := doJSONAt(t, ls.URL, http.MethodPatch, "/api/v1/orders/"+orderID2,
+			map[string]any{
+				"courier":       "JNE",
+				"service":       "REG",
+				"shipping_cost": 1.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token2)
+		require.Equal(t, http.StatusOK, patchResp2.StatusCode, "patch failed: %v", decodeBody(t, patchResp2))
+		drainClose(patchResp2)
+
+		var persistedCost2 float64
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT shipping_cost FROM orders WHERE id=$1`, orderID2,
+		).Scan(&persistedCost2))
+		assert.Equal(t, 15000.0, persistedCost2, "must price the exact JNE/REG rate selected, not JNE/YES's 30000")
 	})
 }
 
@@ -845,6 +985,7 @@ func TestShippingPreservedAcrossDigitalItemMutations(t *testing.T) {
 	drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 		map[string]any{
 			"courier":       "JNE",
+			"service":       "REG",
 			"shipping_cost": 15000.0,
 			"province_id":   provinceID,
 			"city_id":       cityID,

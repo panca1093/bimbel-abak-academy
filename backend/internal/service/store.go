@@ -397,7 +397,7 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 }
 
 func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
-	rates, err := s.logistics.GetRates(ctx, req)
+	rates, err := s.logisticsClient().GetRates(ctx, req)
 	if err == nil && len(rates) > 0 {
 		return rates, nil
 	}
@@ -551,6 +551,7 @@ func (s *Service) UpdateItemQty(ctx context.Context, studentID, orderID, itemID 
 type CartPatch struct {
 	ShippingAddress []byte
 	Courier         string
+	Service         string
 	ShippingCost    float64
 	ProvinceID      *string
 	CityID          *string
@@ -633,6 +634,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 	repoPatch := repository.OrderPatch{
 		ShippingAddress: patch.ShippingAddress,
 		SelectedCourier: order.SelectedCourier,
+		SelectedService: order.SelectedService,
 		Discount:        order.Discount,
 		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,
@@ -669,7 +671,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 			}
 			matched := false
 			for _, rate := range rates {
-				if strings.EqualFold(rate.Courier, patch.Courier) {
+				if strings.EqualFold(rate.Courier, patch.Courier) && strings.EqualFold(rate.Service, patch.Service) {
 					repoPatch.ShippingCost = float64(rate.Price)
 					matched = true
 					break
@@ -679,6 +681,7 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 				return ErrInvalidCourierSelection
 			}
 			repoPatch.SelectedCourier = patch.Courier
+			repoPatch.SelectedService = patch.Service
 		}
 	}
 

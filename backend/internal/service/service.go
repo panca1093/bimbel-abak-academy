@@ -6,6 +6,7 @@ import (
 	"akademi-bimbel/internal/repository"
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
@@ -19,8 +20,11 @@ type Service struct {
 	otpProvider   OTPProvider
 	emailProvider EmailProvider
 	payment       PaymentClient
-	logistics     LogisticsClient
-	storage       *minio.Client
+	// logistics is swapped by ReloadLogisticsClient while quote requests read
+	// it concurrently, so it's held behind an atomic pointer rather than a
+	// plain field.
+	logistics atomic.Pointer[LogisticsClient]
+	storage   *minio.Client
 	announceRepo  AnnounceRepo
 	presignOnce   sync.Once
 	presignClient *minio.Client
@@ -70,7 +74,7 @@ func NewWithStore(
 	storage *minio.Client,
 	cfg *config.Config,
 ) *Service {
-	return &Service{
+	s := &Service{
 		repo:          repo,
 		storeRepo:     storeRepo,
 		rdb:           rdb,
@@ -78,11 +82,12 @@ func NewWithStore(
 		otpProvider:   otpProvider,
 		emailProvider: emailProvider,
 		payment:       payment,
-		logistics:     logistics,
 		storage:       storage,
 		announceRepo:  storeRepo,
 		cfg:           cfg,
 	}
+	s.logistics.Store(&logistics)
+	return s
 }
 
 type Health struct {
@@ -122,7 +127,17 @@ func (s *Service) ReloadLogisticsClient(ctx context.Context) {
 	if s.reloadLogisticsFn == nil {
 		return
 	}
-	s.logistics = s.reloadLogisticsFn(ctx)
+	client := s.reloadLogisticsFn(ctx)
+	s.logistics.Store(&client)
+}
+
+// logisticsClient returns the currently active logistics client.
+func (s *Service) logisticsClient() LogisticsClient {
+	p := s.logistics.Load()
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 func (s *Service) Health(ctx context.Context) Health {

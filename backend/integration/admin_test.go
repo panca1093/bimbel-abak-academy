@@ -247,6 +247,7 @@ func TestAdmin(t *testing.T) {
 			map[string]any{
 				"promo_code":    "PROMO25",
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 15000.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,

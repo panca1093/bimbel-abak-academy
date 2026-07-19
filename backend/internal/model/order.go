@@ -17,6 +17,7 @@ type Order struct {
 	PromoCodeID           *uuid.UUID  `json:"promo_code_id"`
 	ShippingAddress       []byte      `json:"shipping_address"`
 	SelectedCourier       string      `json:"selected_courier"`
+	SelectedService       string      `json:"selected_service"`
 	TrackingNumber        string      `json:"tracking_number"`
 	ShippedAt             *time.Time  `json:"shipped_at"`
 	GatewayRef            string      `json:"gateway_ref"`

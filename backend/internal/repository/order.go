@@ -26,6 +26,7 @@ type OrderFilter struct {
 type OrderPatch struct {
 	ShippingAddress []byte
 	SelectedCourier string
+	SelectedService string
 	PromoCodeID     *uuid.UUID
 	Discount        float64
 	ShippingCost    float64
@@ -37,7 +38,7 @@ type OrderPatch struct {
 }
 
 const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost, total,
-	promo_code_id, shipping_address, selected_courier, tracking_number, shipped_at,
+	promo_code_id, shipping_address, selected_courier, selected_service, tracking_number, shipped_at,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
 	estimated_delivery_days, checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at`
@@ -46,12 +47,12 @@ func scanOrder(row interface {
 	Scan(dest ...any) error
 }, order *model.Order) error {
 	// Nullable TEXT columns must be scanned into *string so pgx v5 can set nil for SQL NULL.
-	var selectedCourier, trackingNumber, gatewayRef, paymentMethod, invoiceURL,
+	var selectedCourier, selectedService, trackingNumber, gatewayRef, paymentMethod, invoiceURL,
 		estimatedDeliveryDays, cancellationReason *string
 	err := row.Scan(
 		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
 		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&selectedCourier, &trackingNumber, &order.ShippedAt,
+		&selectedCourier, &selectedService, &trackingNumber, &order.ShippedAt,
 		&gatewayRef, &paymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &invoiceURL,
 		&estimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
 		&order.CreatedAt, &order.UpdatedAt,
@@ -61,6 +62,9 @@ func scanOrder(row interface {
 	}
 	if selectedCourier != nil {
 		order.SelectedCourier = *selectedCourier
+	}
+	if selectedService != nil {
+		order.SelectedService = *selectedService
 	}
 	if trackingNumber != nil {
 		order.TrackingNumber = *trackingNumber
@@ -312,6 +316,7 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
 			  shipping_cost = 0,
 			  selected_courier = '',
+			  selected_service = '',
 			  updated_at = now()
 			WHERE id = $1`, orderID)
 		return err
@@ -334,6 +339,7 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID, 
 			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
 			  shipping_cost = 0,
 			  selected_courier = '',
+			  selected_service = '',
 			  updated_at = now()
 			WHERE id = $1`, orderID)
 		return err
@@ -356,6 +362,7 @@ func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUI
 			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
 			  shipping_cost = 0,
 			  selected_courier = '',
+			  selected_service = '',
 			  updated_at = now()
 			WHERE id = $1`, orderID)
 		return err
@@ -376,12 +383,12 @@ func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) e
 func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch OrderPatch) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders
-		 SET shipping_address = $1, selected_courier = $2, promo_code_id = $3,
-		     discount = $4, shipping_cost = $5, total = $6,
-		     province_id = COALESCE($7, province_id), city_id = COALESCE($8, city_id), district_id = COALESCE($9, district_id), kode_pos = COALESCE($10, kode_pos),
+		 SET shipping_address = $1, selected_courier = $2, selected_service = $3, promo_code_id = $4,
+		     discount = $5, shipping_cost = $6, total = $7,
+		     province_id = COALESCE($8, province_id), city_id = COALESCE($9, city_id), district_id = COALESCE($10, district_id), kode_pos = COALESCE($11, kode_pos),
 		     updated_at = now()
-		 WHERE id = $11`,
-		patch.ShippingAddress, patch.SelectedCourier, patch.PromoCodeID,
+		 WHERE id = $12`,
+		patch.ShippingAddress, patch.SelectedCourier, patch.SelectedService, patch.PromoCodeID,
 		patch.Discount, patch.ShippingCost, patch.Total,
 		patch.ProvinceID, patch.CityID, patch.DistrictID, patch.KodePos,
 		orderID,

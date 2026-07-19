@@ -204,8 +204,9 @@ type storeService struct {
 func newStoreService(fake *fakeStoreRepo) *storeService {
 	svc := &Service{
 		storeRepo: nil, // we'll override via storeRepoShim
-		logistics: &NoopLogisticsClient{},
 	}
+	var logistics LogisticsClient = &NoopLogisticsClient{}
+	svc.logistics.Store(&logistics)
 	return &storeService{svc: svc, fake: fake}
 }
 

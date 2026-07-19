@@ -140,6 +140,7 @@ func (h *Handler) PatchCart(c echo.Context) error {
 	var req struct {
 		ShippingAddress []byte  `json:"shipping_address"`
 		Courier         string  `json:"courier"`
+		Service         string  `json:"service"`
 		ShippingCost    float64 `json:"shipping_cost"`
 		ProvinceID      *string `json:"province_id"`
 		CityID          *string `json:"city_id"`
@@ -154,6 +155,7 @@ func (h *Handler) PatchCart(c echo.Context) error {
 	patch := service.CartPatch{
 		ShippingAddress: req.ShippingAddress,
 		Courier:         req.Courier,
+		Service:         req.Service,
 		ShippingCost:    req.ShippingCost,
 		ProvinceID:      req.ProvinceID,
 		CityID:          req.CityID,

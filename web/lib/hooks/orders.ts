@@ -175,6 +175,7 @@ export function useShippingRates() {
 interface PatchCartInput {
   orderId: string;
   courier: string;
+  service: string;
   shipping_cost: number;
   province_id: string;
   city_id: string;
@@ -186,9 +187,10 @@ interface PatchCartInput {
 export function usePatchCart() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ orderId, courier, shipping_cost, province_id, city_id, district_id, kode_pos, promo_code }: PatchCartInput) => {
+    mutationFn: ({ orderId, courier, service, shipping_cost, province_id, city_id, district_id, kode_pos, promo_code }: PatchCartInput) => {
       const body: Record<string, unknown> = {
         courier,
+        service,
         shipping_cost,
         province_id,
         city_id,

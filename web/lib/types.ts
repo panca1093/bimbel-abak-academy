@@ -195,6 +195,7 @@ export interface Order {
   promo_code_id?: string;
   shipping_address?: string;
   selected_courier?: string;
+  selected_service?: string;
   tracking_number?: string;
   shipped_at?: string;
   gateway_ref?: string;

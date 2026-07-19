@@ -7,9 +7,15 @@ import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CourierRate } from "@/lib/types";
 
+// courierRateKey uniquely identifies a quoted rate by carrier + service, since
+// a single carrier (e.g. JNE) can offer multiple services at different prices.
+export function courierRateKey(rate: { courier: string; service: string }): string {
+  return `${rate.courier}::${rate.service}`;
+}
+
 interface CourierRateListProps {
   rates: CourierRate[] | undefined;
-  selectedCourier: string | null;
+  selectedKey: string | null;
   onSelect: (rate: CourierRate) => void;
   isLoading: boolean;
   isError: boolean;
@@ -17,7 +23,7 @@ interface CourierRateListProps {
 
 export function CourierRateList({
   rates,
-  selectedCourier,
+  selectedKey,
   onSelect,
   isLoading,
   isError,
@@ -55,10 +61,10 @@ export function CourierRateList({
 
       <div className="space-y-3">
         {rates.map((rate) => {
-          const isSelected = selectedCourier === rate.courier;
+          const isSelected = selectedKey === courierRateKey(rate);
           return (
             <Card
-              key={`${rate.courier}-${rate.service}`}
+              key={courierRateKey(rate)}
               className={`cursor-pointer transition-all ${
                 isSelected
                   ? "border-brand-400 bg-brand-50"

@@ -33,6 +33,7 @@ func TestConcurrency(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 			map[string]any{
 				"courier":       "JNE",
+				"service":       "REG",
 				"shipping_cost": 15000.0,
 				"province_id":   provinceID,
 				"city_id":       cityID,
@@ -93,6 +94,7 @@ func TestConcurrency(t *testing.T) {
 			drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
 				map[string]any{
 					"courier":       "JNE",
+					"service":       "REG",
 					"shipping_cost": 15000.0,
 					"province_id":   provinceID,
 					"city_id":       cityID,

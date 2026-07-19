@@ -88,6 +88,7 @@ describe("orders hooks", () => {
         await result.current.mutateAsync({
           orderId: "o1",
           courier: "JNE",
+          service: "REG",
           shipping_cost: 15000,
           province_id: "p1",
           city_id: "c1",
@@ -100,6 +101,7 @@ describe("orders hooks", () => {
         method: "PATCH",
         body: JSON.stringify({
           courier: "JNE",
+          service: "REG",
           shipping_cost: 15000,
           province_id: "p1",
           city_id: "c1",
@@ -120,6 +122,7 @@ describe("orders hooks", () => {
         await result.current.mutateAsync({
           orderId: "o1",
           courier: "JNE",
+          service: "REG",
           shipping_cost: 15000,
           province_id: "p1",
           city_id: "c1",
@@ -141,6 +144,7 @@ describe("orders hooks", () => {
         await result.current.mutateAsync({
           orderId: "o1",
           courier: "JNE",
+          service: "REG",
           shipping_cost: 15000,
           province_id: "p1",
           city_id: "c1",
@@ -153,6 +157,7 @@ describe("orders hooks", () => {
         method: "PATCH",
         body: JSON.stringify({
           courier: "JNE",
+          service: "REG",
           shipping_cost: 15000,
           province_id: "p1",
           city_id: "c1",
@@ -172,6 +177,7 @@ describe("orders hooks", () => {
         await result.current.mutateAsync({
           orderId: "o1",
           courier: "JNE",
+          service: "REG",
           shipping_cost: 15000,
           province_id: "p1",
           city_id: "c1",
@@ -185,6 +191,7 @@ describe("orders hooks", () => {
         method: "PATCH",
         body: JSON.stringify({
           courier: "JNE",
+          service: "REG",
           shipping_cost: 15000,
           province_id: "p1",
           city_id: "c1",

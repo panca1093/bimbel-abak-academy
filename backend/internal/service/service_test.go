@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"akademi-bimbel/internal/model"
@@ -116,4 +117,35 @@ func TestNew(t *testing.T) {
 	if svc == nil {
 		t.Fatal("New: got nil service")
 	}
+}
+
+// TestReloadLogisticsClient_ConcurrentWithGetShippingRates drives admin config
+// reloads and quote requests against the same Service concurrently. Run with
+// -race: before logistics was held behind atomic.Pointer, this reliably
+// tripped the race detector because ReloadLogisticsClient wrote s.logistics
+// while GetShippingRates read it from another goroutine.
+func TestReloadLogisticsClient_ConcurrentWithGetShippingRates(t *testing.T) {
+	svc := &Service{}
+	var initial LogisticsClient = &NoopLogisticsClient{}
+	svc.logistics.Store(&initial)
+	svc.SetReloadLogisticsFn(func(ctx context.Context) LogisticsClient {
+		return &NoopLogisticsClient{}
+	})
+
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			svc.ReloadLogisticsClient(ctx)
+		}()
+		go func() {
+			defer wg.Done()
+			if _, err := svc.GetShippingRates(ctx, ShippingQuoteRequest{DestinationPostalCode: "12345", WeightGrams: 500}); err != nil {
+				t.Errorf("GetShippingRates: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
 }
