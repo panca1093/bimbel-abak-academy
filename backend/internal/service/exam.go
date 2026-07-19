@@ -1,10 +1,10 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
@@ -835,7 +835,7 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]b
 		reader, _, err := s.OpenAvatar(ctx, *user.PhotoURL)
 		if err == nil && reader != nil {
 			defer reader.Close()
-			photoBytes, _ = readAllBytes(reader)
+			photoBytes, _ = io.ReadAll(reader)
 		}
 	}
 
@@ -844,22 +844,4 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]b
 		return nil, "", err
 	}
 	return pdf, "kartu-peserta-" + detail.Token + ".pdf", nil
-}
-
-func readAllBytes(r interface{ Read([]byte) (int, error) }) ([]byte, error) {
-	var buf bytes.Buffer
-	b := make([]byte, 4096)
-	for {
-		n, err := r.Read(b)
-		if n > 0 {
-			buf.Write(b[:n])
-		}
-		if err != nil {
-			if err.Error() == "EOF" {
-				break
-			}
-			return nil, err
-		}
-	}
-	return buf.Bytes(), nil
 }
