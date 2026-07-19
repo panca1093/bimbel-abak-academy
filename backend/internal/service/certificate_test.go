@@ -45,7 +45,7 @@ func (s *shimSessionService) resolveCertificateURL(ctx context.Context, exam *mo
 	gradedAt := latestGradedAt(answers)
 
 	if sess.CertificateURL == nil || sess.CertificateGeneratedAt == nil || (gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) {
-		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt)
+		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -121,11 +121,11 @@ func TestValidateCertificateTemplate_InvalidKey(t *testing.T) {
 
 func TestGenerateCertificatePDF_DifferentTemplates_Distinguishable(t *testing.T) {
 	now := time.Now()
-	classicPDF, err := generateCertificatePDF("classic", "Budi", "Test Exam", now)
+	classicPDF, err := generateCertificatePDF("classic", "Budi", "Test Exam", now, nil)
 	if err != nil {
 		t.Fatalf("classic: %v", err)
 	}
-	modernPDF, err := generateCertificatePDF("modern", "Budi", "Test Exam", now)
+	modernPDF, err := generateCertificatePDF("modern", "Budi", "Test Exam", now, nil)
 	if err != nil {
 		t.Fatalf("modern: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestGenerateCertificatePDF_DifferentTemplates_Distinguishable(t *testing.T)
 		t.Error("classic and modern should produce different PDF bytes")
 	}
 
-	elegantPDF, err := generateCertificatePDF("elegant", "Budi", "Test Exam", now)
+	elegantPDF, err := generateCertificatePDF("elegant", "Budi", "Test Exam", now, nil)
 	if err != nil {
 		t.Fatalf("elegant: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestGenerateCertificatePDF_DifferentTemplates_Distinguishable(t *testing.T)
 }
 
 func TestGenerateCertificatePDF_InvalidTemplate(t *testing.T) {
-	_, err := generateCertificatePDF("unknown", "Budi", "Test", time.Now())
+	_, err := generateCertificatePDF("unknown", "Budi", "Test", time.Now(), nil)
 	if !errors.Is(err, ErrValidation) {
 		t.Errorf("want ErrValidation, got %v", err)
 	}

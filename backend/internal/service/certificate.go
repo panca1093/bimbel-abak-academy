@@ -5,13 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 
 	"github.com/google/uuid"
+	"github.com/jung-kurt/gofpdf"
 	"github.com/minio/minio-go/v7"
 )
 
@@ -30,18 +30,10 @@ func validateCertificateTemplate(tmpl string) error {
 	return nil
 }
 
-// pdfEscape escapes (, ), and \ in PDF literal string content.
-func pdfEscape(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `(`, `\(`)
-	s = strings.ReplaceAll(s, `)`, `\)`)
-	return s
-}
-
 // generateCertificatePDF generates a single-page A4 landscape PDF (841.89 x 595.28 pt)
-// with the given template, student name, exam title, and submission date
-// (Asia/Jakarta, no score).
-func generateCertificatePDF(template, studentName, examTitle string, submittedAt time.Time) ([]byte, error) {
+// with the given template, student name, exam title, and submission date (Asia/Jakarta, no score).
+// backgroundBytes is optional (nil for built-in templates; used only for custom template in Task 5).
+func generateCertificatePDF(template, studentName, examTitle string, submittedAt time.Time, backgroundBytes []byte) ([]byte, error) {
 	if err := validateCertificateTemplate(template); err != nil {
 		return nil, err
 	}
@@ -50,221 +42,252 @@ func generateCertificatePDF(template, studentName, examTitle string, submittedAt
 	if err != nil {
 		return nil, err
 	}
-	dateStr := pdfEscape(submittedAt.In(loc).Format("2 January 2006"))
-	name := pdfEscape(studentName)
-	exam := pdfEscape(examTitle)
+	dateStr := submittedAt.In(loc).Format("2 January 2006")
 
-	var content []byte
+	var pdf *gofpdf.Fpdf
 	switch template {
 	case "classic":
-		content = classicLayout(name, exam, dateStr)
+		pdf = classicLayoutGofpdf(studentName, examTitle, dateStr)
 	case "modern":
-		content = modernLayout(name, exam, dateStr)
+		pdf = modernLayoutGofpdf(studentName, examTitle, dateStr)
 	case "elegant":
-		content = elegantLayout(name, exam, dateStr)
+		pdf = elegantLayoutGofpdf(studentName, examTitle, dateStr)
 	}
-	return buildPDF(content), nil
-}
 
-// classicLayout renders a blue-themed certificate: light-blue background, dark-blue
-// header band, blue bordered white interior.
-func classicLayout(name, exam, date string) []byte {
-	return []byte(fmt.Sprintf(`q
-0.8 0.88 0.95 rg
-0 0 841.89 595.28 re f
-1 1 1 rg
-50 50 741.89 495.28 re f
-0.2 0.35 0.65 RG
-3 w
-50 50 741.89 495.28 re S
-0.2 0.35 0.65 rg
-50 495 741.89 50 re f
-1 1 1 rg
-BT
-/F1 26 Tf
-421 525 Td
-(CERTIFICATE OF COMPLETION) Tj
-ET
-0.2 0.35 0.65 rg
-BT
-/F1 14 Tf
-421 450 Td
-(This certificate is awarded to) Tj
-ET
-BT
-/F1 36 Tf
-421 390 Td
-(%s) Tj
-ET
-BT
-/F1 14 Tf
-421 320 Td
-(For successfully completing) Tj
-ET
-BT
-/F1 22 Tf
-421 270 Td
-(%s) Tj
-ET
-BT
-/F1 12 Tf
-421 200 Td
-(Date: %s) Tj
-ET
-Q`, name, exam, date))
-}
-
-// modernLayout renders a teal-themed certificate: white background, teal thick border,
-// teal header band with "CERTIFICATE" title.
-func modernLayout(name, exam, date string) []byte {
-	return []byte(fmt.Sprintf(`q
-1 1 1 rg
-0 0 841.89 595.28 re f
-0 0.44 0.44 RG
-4 w
-50 50 741.89 495.28 re S
-0 0.44 0.44 rg
-50 545 741.89 50 re f
-0 0.44 0.44 rg
-50 50 741.89 2 re f
-1 1 1 rg
-BT
-/F1 30 Tf
-421 570 Td
-(CERTIFICATE) Tj
-ET
-BT
-/F1 14 Tf
-421 490 Td
-(Proudly presented to) Tj
-ET
-0 0.44 0.44 rg
-BT
-/F1 40 Tf
-421 420 Td
-(%s) Tj
-ET
-BT
-/F1 14 Tf
-421 340 Td
-(For completing the examination) Tj
-ET
-0 0.44 0.44 rg
-BT
-/F1 24 Tf
-421 280 Td
-(%s) Tj
-ET
-BT
-/F1 12 Tf
-421 200 Td
-(Date: %s) Tj
-ET
-Q`, name, exam, date))
-}
-
-// elegantLayout renders a gold-toned certificate: cream background, gold double border,
-// gold accent lines.
-func elegantLayout(name, exam, date string) []byte {
-	return []byte(fmt.Sprintf(`q
-1 0.98 0.9 rg
-0 0 841.89 595.28 re f
-0.55 0.42 0.12 RG
-2 w
-50 50 741.89 495.28 re S
-0.55 0.42 0.12 RG
-1 w
-55 55 731.89 485.28 re S
-0.55 0.42 0.12 rg
-50 500 741.89 3 re f
-0.55 0.42 0.12 rg
-50 75 741.89 3 re f
-BT
-/F1 28 Tf
-421 540 Td
-(Certificate of Achievement) Tj
-ET
-BT
-/F1 12 Tf
-421 475 Td
-(This certificate is proudly presented to) Tj
-ET
-BT
-/F1 38 Tf
-421 400 Td
-(%s) Tj
-ET
-BT
-/F1 12 Tf
-421 325 Td
-(For successful completion of) Tj
-ET
-BT
-/F1 22 Tf
-421 270 Td
-(%s) Tj
-ET
-BT
-/F1 11 Tf
-421 200 Td
-(Date: %s) Tj
-ET
-Q`, name, exam, date))
-}
-
-// buildPDF wraps a content stream with the full %PDF-1.4 structure: catalog, pages,
-// page (A4 landscape), content stream, Helvetica font, xref table, trailer, startxref, %%EOF.
-func buildPDF(content []byte) []byte {
 	var buf bytes.Buffer
-
-	// Header
-	buf.WriteString("%PDF-1.4\n")
-
-	type objRef struct {
-		num    int
-		offset int
+	if err := pdf.Output(&buf); err != nil {
+		return nil, err
 	}
-	var objs []objRef
+	return buf.Bytes(), nil
+}
 
-	// 1 0 obj — Catalog
-	objs = append(objs, objRef{1, buf.Len()})
-	buf.WriteString("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+// classicLayoutGofpdf renders a gofpdf-based navy-themed certificate with decorative elements.
+// Colors from logo-tokens.css: navy-700 (#22315B).
+func classicLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
+	pdf := gofpdf.New("L", "pt", "A4", "")
+	pdf.SetCompression(false)
+	pdf.AddPage()
 
-	// 2 0 obj — Pages
-	objs = append(objs, objRef{2, buf.Len()})
-	buf.WriteString("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
+	// Navy color components (0x22315B)
+	navyR, navyG, navyB := 0x22, 0x31, 0x5B
+	lightBlueR, lightBlueG, lightBlueB := 204, 224, 242 // light blue tint
 
-	// 3 0 obj — Page (A4 landscape)
-	objs = append(objs, objRef{3, buf.Len()})
-	buf.WriteString("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 841.89 595.28] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n")
+	// Decorative background: light blue tint
+	pdf.SetFillColor(lightBlueR, lightBlueG, lightBlueB)
+	pdf.Rect(0, 0, 841.89, 595.28, "F")
 
-	// 4 0 obj — Content stream
-	objs = append(objs, objRef{4, buf.Len()})
-	buf.WriteString(fmt.Sprintf("4 0 obj\n<< /Length %d >>\nstream\n", len(content)))
-	buf.Write(content)
-	buf.WriteString("\nendstream\nendobj\n")
+	// White interior rectangle
+	pdf.SetFillColor(255, 255, 255)
+	pdf.Rect(50, 50, 741.89, 495.28, "F")
 
-	// 5 0 obj — Font (base-14 Helvetica)
-	objs = append(objs, objRef{5, buf.Len()})
-	buf.WriteString("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
+	// Navy border
+	pdf.SetDrawColor(navyR, navyG, navyB)
+	pdf.SetLineWidth(3)
+	pdf.Rect(50, 50, 741.89, 495.28, "D")
 
-	// xref table
-	xrefOffset := buf.Len()
-	buf.WriteString("xref\n")
-	buf.WriteString(fmt.Sprintf("0 %d\n", len(objs)+1))
-	buf.WriteString("0000000000 65535 f \n")
-	for _, o := range objs {
-		fmt.Fprintf(&buf, "%010d 00000 n \n", o.offset)
-	}
+	// Navy header band
+	pdf.SetFillColor(navyR, navyG, navyB)
+	pdf.Rect(50, 495, 741.89, 50, "F")
 
-	// Trailer
-	buf.WriteString("trailer\n")
-	buf.WriteString(fmt.Sprintf("<< /Size %d /Root 1 0 R >>\n", len(objs)+1))
-	buf.WriteString("startxref\n")
-	buf.WriteString(fmt.Sprintf("%d\n", xrefOffset))
-	buf.WriteString("%%EOF\n")
+	// Header title (white text on navy band)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Helvetica", "B", 26)
+	pdf.SetXY(50, 510)
+	pdf.CellFormat(741.89, 30, "CERTIFICATE OF COMPLETION", "", 0, "C", false, 0, "")
 
-	return buf.Bytes()
+	// Circular seal with concentric circles
+	drawSeal(pdf, 120, 200, 30, navyR, navyG, navyB)
+
+	// Body text (navy color)
+	pdf.SetTextColor(navyR, navyG, navyB)
+	pdf.SetFont("Helvetica", "", 14)
+	pdf.SetXY(50, 420)
+	pdf.CellFormat(741.89, 20, "This certificate is awarded to", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "B", 36)
+	pdf.SetXY(50, 360)
+	pdf.CellFormat(741.89, 40, name, "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "", 14)
+	pdf.SetXY(50, 310)
+	pdf.CellFormat(741.89, 20, "For successfully completing", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "B", 22)
+	pdf.SetXY(50, 260)
+	pdf.CellFormat(741.89, 25, exam, "", 1, "C", false, 0, "")
+
+	// Date
+	pdf.SetFont("Helvetica", "", 12)
+	pdf.SetXY(50, 200)
+	pdf.CellFormat(741.89, 20, fmt.Sprintf("Date: %s", date), "", 1, "C", false, 0, "")
+
+	// Signature line
+	pdf.SetLineWidth(1)
+	pdf.SetDrawColor(navyR, navyG, navyB)
+	pdf.Line(300, 160, 541.89, 160)
+	pdf.SetXY(50, 140)
+	pdf.CellFormat(741.89, 15, "Authorized Signature", "", 1, "C", false, 0, "")
+
+	return pdf
+}
+
+// modernLayoutGofpdf renders a gofpdf-based teal-themed certificate with decorative elements.
+// Colors from logo-tokens.css: teal-500 (#1E978A).
+func modernLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
+	pdf := gofpdf.New("L", "pt", "A4", "")
+	pdf.SetCompression(false)
+	pdf.AddPage()
+
+	// Teal color components (0x1E978A)
+	tealR, tealG, tealB := 0x1E, 0x97, 0x8A
+
+	// White background
+	pdf.SetFillColor(255, 255, 255)
+	pdf.Rect(0, 0, 841.89, 595.28, "F")
+
+	// Teal border
+	pdf.SetDrawColor(tealR, tealG, tealB)
+	pdf.SetLineWidth(4)
+	pdf.Rect(50, 50, 741.89, 495.28, "D")
+
+	// Thin teal accent lines
+	pdf.SetLineWidth(2)
+	pdf.Line(50, 55, 791.89, 55)
+	pdf.Line(50, 540, 791.89, 540)
+
+	// Teal header band with title
+	pdf.SetFillColor(tealR, tealG, tealB)
+	pdf.Rect(50, 545, 741.89, 50, "F")
+
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Helvetica", "B", 30)
+	pdf.SetXY(50, 555)
+	pdf.CellFormat(741.89, 30, "CERTIFICATE", "", 0, "C", false, 0, "")
+
+	// Circular seal with concentric circles
+	drawSeal(pdf, 120, 200, 30, tealR, tealG, tealB)
+
+	// Body text (teal color)
+	pdf.SetTextColor(tealR, tealG, tealB)
+	pdf.SetFont("Helvetica", "", 14)
+	pdf.SetXY(50, 470)
+	pdf.CellFormat(741.89, 20, "Proudly presented to", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "B", 40)
+	pdf.SetXY(50, 380)
+	pdf.CellFormat(741.89, 45, name, "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "", 14)
+	pdf.SetXY(50, 320)
+	pdf.CellFormat(741.89, 20, "For completing the examination", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "B", 24)
+	pdf.SetXY(50, 270)
+	pdf.CellFormat(741.89, 25, exam, "", 1, "C", false, 0, "")
+
+	// Date
+	pdf.SetFont("Helvetica", "", 12)
+	pdf.SetXY(50, 200)
+	pdf.CellFormat(741.89, 20, fmt.Sprintf("Date: %s", date), "", 1, "C", false, 0, "")
+
+	// Signature line
+	pdf.SetLineWidth(1)
+	pdf.SetDrawColor(tealR, tealG, tealB)
+	pdf.Line(300, 175, 541.89, 175)
+	pdf.SetXY(50, 150)
+	pdf.CellFormat(741.89, 15, "Authorized Signature", "", 1, "C", false, 0, "")
+
+	return pdf
+}
+
+// elegantLayoutGofpdf renders a gofpdf-based gold-themed certificate with decorative elements.
+// Colors from logo-tokens.css: gold-600 (#C6881F).
+func elegantLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
+	pdf := gofpdf.New("L", "pt", "A4", "")
+	pdf.SetCompression(false)
+	pdf.AddPage()
+
+	// Gold color components (0xC6881F)
+	goldR, goldG, goldB := 0xC6, 0x88, 0x1F
+	creamR, creamG, creamB := 251, 250, 246 // warm off-white background
+
+	// Cream background
+	pdf.SetFillColor(creamR, creamG, creamB)
+	pdf.Rect(0, 0, 841.89, 595.28, "F")
+
+	// Gold double border
+	pdf.SetDrawColor(goldR, goldG, goldB)
+	pdf.SetLineWidth(2)
+	pdf.Rect(50, 50, 741.89, 495.28, "D")
+
+	pdf.SetLineWidth(1)
+	pdf.Rect(55, 55, 731.89, 485.28, "D")
+
+	// Gold horizontal accent lines
+	pdf.SetLineWidth(3)
+	pdf.Line(50, 500, 791.89, 500)
+	pdf.Line(50, 95, 791.89, 95)
+
+	// Circular seal with concentric circles
+	drawSeal(pdf, 120, 200, 30, goldR, goldG, goldB)
+
+	// Body text (gold color)
+	pdf.SetTextColor(goldR, goldG, goldB)
+	pdf.SetFont("Helvetica", "B", 28)
+	pdf.SetXY(50, 520)
+	pdf.CellFormat(741.89, 25, "Certificate of Achievement", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "", 12)
+	pdf.SetXY(50, 460)
+	pdf.CellFormat(741.89, 20, "This certificate is proudly presented to", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "B", 38)
+	pdf.SetXY(50, 385)
+	pdf.CellFormat(741.89, 40, name, "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "", 12)
+	pdf.SetXY(50, 310)
+	pdf.CellFormat(741.89, 20, "For successful completion of", "", 1, "C", false, 0, "")
+
+	pdf.SetFont("Helvetica", "B", 22)
+	pdf.SetXY(50, 260)
+	pdf.CellFormat(741.89, 25, exam, "", 1, "C", false, 0, "")
+
+	// Date
+	pdf.SetFont("Helvetica", "", 11)
+	pdf.SetXY(50, 200)
+	pdf.CellFormat(741.89, 20, fmt.Sprintf("Date: %s", date), "", 1, "C", false, 0, "")
+
+	// Signature line
+	pdf.SetLineWidth(1)
+	pdf.SetDrawColor(goldR, goldG, goldB)
+	pdf.Line(300, 160, 541.89, 160)
+	pdf.SetXY(50, 135)
+	pdf.CellFormat(741.89, 15, "Authorized Signature", "", 1, "C", false, 0, "")
+
+	return pdf
+}
+
+// drawSeal draws a circular seal/emblem at position (x, y) with radius r and the given RGB color.
+func drawSeal(pdf *gofpdf.Fpdf, x, y, r float64, r8, g8, b8 int) {
+	// Outer circle (filled)
+	pdf.SetFillColor(r8, g8, b8)
+	pdf.SetDrawColor(r8, g8, b8)
+	pdf.Circle(x, y, r, "F")
+
+	// Middle concentric circle (white)
+	pdf.SetFillColor(255, 255, 255)
+	pdf.SetDrawColor(r8, g8, b8)
+	pdf.SetLineWidth(1.5)
+	pdf.Circle(x, y, r*0.7, "FD")
+
+	// Inner circle (colored, filled)
+	pdf.SetFillColor(r8, g8, b8)
+	pdf.Circle(x, y, r*0.4, "F")
+
+	// Central glyph/symbol: white dot in the middle
+	pdf.SetFillColor(255, 255, 255)
+	pdf.Circle(x, y, r*0.15, "F")
 }
 
 // uploadCertificatePDF uploads a PDF certificate at certificates/<sessionID>.pdf
@@ -313,7 +336,7 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 
 	// Regenerate when certificate is missing or grading is newer.
 	if sess.CertificateURL == nil || sess.CertificateGeneratedAt == nil || (gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) {
-		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt)
+		pdf, err := generateCertificatePDF(exam.CertificateTemplate, studentName, exam.Title, *sess.SubmittedAt, nil)
 		if err != nil {
 			return nil, fmt.Errorf("generate certificate pdf: %w", err)
 		}
@@ -355,5 +378,5 @@ func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, t
 		return nil, err
 	}
 
-	return generateCertificatePDF(tmpl, "Nama Peserta Contoh", exam.Title, time.Now())
+	return generateCertificatePDF(tmpl, "Nama Peserta Contoh", exam.Title, time.Now(), nil)
 }
