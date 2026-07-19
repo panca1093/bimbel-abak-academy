@@ -642,6 +642,11 @@ func validateExam(e model.Exam) error {
 			return err
 		}
 	}
+	if e.CertificateTemplate == "custom" {
+		if e.CertificateBackgroundURL == nil || strings.TrimSpace(*e.CertificateBackgroundURL) == "" {
+			return fmt.Errorf("%w: custom certificate template requires certificate_background_url", ErrValidation)
+		}
+	}
 	if e.CheckInWindowMinutes != nil && *e.CheckInWindowMinutes < 0 {
 		return fmt.Errorf("%w: check_in_window_minutes cannot be negative", ErrValidation)
 	}

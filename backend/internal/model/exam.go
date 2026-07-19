@@ -99,6 +99,7 @@ type Exam struct {
 	Status               string     `json:"status"`
 	CreatedAt            time.Time  `json:"created_at"`
 	CertificateTemplate  string     `json:"certificate_template"`
+	CertificateBackgroundURL *string `json:"certificate_background_url"`
 	// Mode discriminates standard vs sectioned (utbk|ielts) exams. NOT NULL DEFAULT
 	// 'standard' in the DB; omitempty no-ops since 'standard' is non-empty — admin
 	// payloads gain the key, student-facing payloads are assembled in the service.

@@ -82,6 +82,7 @@ type examPatchRequest struct {
 	GraceWindowMinutes   Nullable[int]       `json:"grace_window_minutes"`
 	MaxAttempts          Nullable[int]       `json:"max_attempts"`
 	CertificateTemplate  string              `json:"certificate_template"`
+	CertificateBackgroundURL string          `json:"certificate_background_url"`
 	IsFree               *bool               `json:"is_free"`
 	RequiresCheckin      *bool               `json:"requires_checkin"`
 	AllowLeaderboard     *bool               `json:"allow_leaderboard"`
@@ -139,6 +140,9 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	applyNullable(req.MaxAttempts, &overlay.MaxAttempts)
 	if req.CertificateTemplate != "" {
 		overlay.CertificateTemplate = req.CertificateTemplate
+	}
+	if req.CertificateBackgroundURL != "" {
+		overlay.CertificateBackgroundURL = &req.CertificateBackgroundURL
 	}
 	if req.IsFree != nil {
 		overlay.IsFree = *req.IsFree

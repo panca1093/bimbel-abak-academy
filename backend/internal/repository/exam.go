@@ -839,7 +839,7 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.CheckInWindowMinutes, &e.GraceWindowMinutes, &e.MaxAttempts,
 		&e.TimerMode, &e.DurationMinutes, &e.Randomize,
 		&e.ResultConfig, &e.ResultReleaseAt, &e.Status, &e.CreatedAt,
-		&e.CertificateTemplate, &e.Mode,
+		&e.CertificateTemplate, &e.CertificateBackgroundURL, &e.Mode,
 	)
 	if err != nil {
 		return err
@@ -857,7 +857,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.CheckInWindowMinutes, &item.GraceWindowMinutes, &item.MaxAttempts,
 		&item.TimerMode, &item.DurationMinutes, &item.Randomize,
 		&item.ResultConfig, &item.ResultReleaseAt, &item.Status, &item.CreatedAt,
-		&item.CertificateTemplate, &item.Mode,
+		&item.CertificateTemplate, &item.CertificateBackgroundURL, &item.Mode,
 		&item.HasPublishedProduct,
 	)
 }
@@ -874,14 +874,14 @@ func (r *Repository) CreateExam(ctx context.Context, e *model.Exam) error {
 		`INSERT INTO exam (title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, certificate_template, mode)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-			COALESCE(NULLIF($19, ''), 'standard'))
+			status, certificate_template, certificate_background_url, mode)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+			COALESCE(NULLIF($20, ''), 'standard'))
 		RETURNING id, created_at, mode`,
 		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt, e.CheckInWindowMinutes, e.GraceWindowMinutes,
 		e.MaxAttempts, e.TimerMode, e.DurationMinutes, e.Randomize, e.ResultConfig, e.ResultReleaseAt,
-		e.Status, e.CertificateTemplate, e.Mode,
+		e.Status, e.CertificateTemplate, e.CertificateBackgroundURL, e.Mode,
 	).Scan(&e.ID, &e.CreatedAt, &e.Mode)
 }
 
@@ -891,7 +891,7 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
-			status, created_at, certificate_template, mode
+			status, created_at, certificate_template, certificate_background_url, mode
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -912,7 +912,7 @@ func (r *Repository) GetExamsByProductID(ctx context.Context, productID uuid.UUI
 		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-			e.status, e.created_at, e.certificate_template, e.mode
+			e.status, e.created_at, e.certificate_template, e.certificate_background_url, e.mode
 		FROM exam e
 		JOIN product_exam pe ON pe.exam_id = e.id
 		WHERE pe.product_id = $1
@@ -946,7 +946,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 	query := `SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-		e.status, e.created_at, e.certificate_template, e.mode,
+		e.status, e.created_at, e.certificate_template, e.certificate_background_url, e.mode,
 		EXISTS (
 			SELECT 1 FROM product_exam pe
 			JOIN product p ON p.id = pe.product_id
@@ -999,7 +999,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
-			e.status, e.created_at, e.certificate_template, e.mode
+			e.status, e.created_at, e.certificate_template, e.certificate_background_url, e.mode
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -1064,14 +1064,14 @@ func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam
 			check_in_window_minutes = $9, grace_window_minutes = $10, max_attempts = $11,
 			timer_mode = $12, duration_minutes = $13, randomize = $14,
 			result_config = $15, result_release_at = $16, status = $17,
-			certificate_template = $18,
-			mode = COALESCE(NULLIF($19, ''), mode)
-		WHERE id = $20`,
+			certificate_template = $18, certificate_background_url = $19,
+			mode = COALESCE(NULLIF($20, ''), mode)
+		WHERE id = $21`,
 		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
 		e.TimerMode, e.DurationMinutes, e.Randomize,
-		e.ResultConfig, e.ResultReleaseAt, e.Status, e.CertificateTemplate, e.Mode, id,
+		e.ResultConfig, e.ResultReleaseAt, e.Status, e.CertificateTemplate, e.CertificateBackgroundURL, e.Mode, id,
 	)
 	if err != nil {
 		return err

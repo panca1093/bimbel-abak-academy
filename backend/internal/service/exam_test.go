@@ -663,6 +663,53 @@ func TestValidateExam_accepts_empty_mode(t *testing.T) {
 	}
 }
 
+func TestValidateExam_custom_certificate_requires_background_url(t *testing.T) {
+	// custom template with nil background URL should fail
+	e := model.Exam{Title: "Finals", CertificateTemplate: "custom", CertificateBackgroundURL: nil}
+	err := validateExam(e)
+	if err == nil || !errors.Is(err, ErrValidation) {
+		t.Errorf("custom template with nil background_url should return ErrValidation, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "certificate_background_url") {
+		t.Errorf("custom template error should mention certificate_background_url, got %q", err.Error())
+	}
+
+	// custom template with empty string should fail
+	empty := ""
+	e2 := model.Exam{Title: "Finals", CertificateTemplate: "custom", CertificateBackgroundURL: &empty}
+	err = validateExam(e2)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("custom template with empty background_url should return ErrValidation, got %v", err)
+	}
+
+	// custom template with whitespace-only should fail
+	whitespace := "   "
+	e3 := model.Exam{Title: "Finals", CertificateTemplate: "custom", CertificateBackgroundURL: &whitespace}
+	err = validateExam(e3)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("custom template with whitespace-only background_url should return ErrValidation, got %v", err)
+	}
+}
+
+func TestValidateExam_custom_certificate_with_background_url_succeeds(t *testing.T) {
+	// custom template with valid background URL should pass
+	bgURL := "avatars/user-id/uuid-filename.png"
+	e := model.Exam{Title: "Finals", CertificateTemplate: "custom", CertificateBackgroundURL: &bgURL}
+	if err := validateExam(e); err != nil {
+		t.Errorf("custom template with valid background_url should pass, got %v", err)
+	}
+}
+
+func TestValidateExam_builtin_templates_ignore_background_url(t *testing.T) {
+	// classic/modern/elegant templates should pass even without background URL
+	for _, template := range []string{"classic", "modern", "elegant"} {
+		e := model.Exam{Title: "Finals", CertificateTemplate: template, CertificateBackgroundURL: nil}
+		if err := validateExam(e); err != nil {
+			t.Errorf("template %q with nil background_url should pass, got %v", template, err)
+		}
+	}
+}
+
 // --- FR-18: section_type authoring validation ---
 
 func TestValidateTest_rejects_invalid_section_type(t *testing.T) {
@@ -1392,6 +1439,42 @@ func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
 	}
 	if exam2.Mode != "utbk" {
 		t.Errorf("CreateExam with mode=utbk should persist utbk, got %q", exam2.Mode)
+	}
+}
+
+func TestCreateExam_Integration_CustomCertificateRoundTrip(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	title := "Custom Cert Exam " + uniqueSuffix()
+	bgURL := "avatars/user-id/uuid-filename.png"
+	exam, err := svc.CreateExam(ctx, model.Exam{
+		Title:                    title,
+		CertificateTemplate:      "custom",
+		CertificateBackgroundURL: &bgURL,
+	})
+	if err != nil {
+		t.Fatalf("CreateExam with custom certificate: %v", err)
+	}
+
+	// Verify the created exam has the correct fields
+	if exam.CertificateTemplate != "custom" {
+		t.Errorf("CertificateTemplate: want custom, got %q", exam.CertificateTemplate)
+	}
+	if exam.CertificateBackgroundURL == nil || *exam.CertificateBackgroundURL != bgURL {
+		t.Errorf("CertificateBackgroundURL: want %q, got %v", bgURL, exam.CertificateBackgroundURL)
+	}
+
+	// Retrieve it via GetExamByID and verify persistence
+	retrieved, err := svc.GetExam(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetExam: %v", err)
+	}
+	if retrieved.Exam.CertificateTemplate != "custom" {
+		t.Errorf("retrieved CertificateTemplate: want custom, got %q", retrieved.Exam.CertificateTemplate)
+	}
+	if retrieved.Exam.CertificateBackgroundURL == nil || *retrieved.Exam.CertificateBackgroundURL != bgURL {
+		t.Errorf("retrieved CertificateBackgroundURL: want %q, got %v", bgURL, retrieved.Exam.CertificateBackgroundURL)
 	}
 }
 

@@ -103,7 +103,7 @@ func TestLatestGradedAt_ReturnsMax(t *testing.T) {
 // ---------- tests: validateCertificateTemplate ----------
 
 func TestValidateCertificateTemplate_ValidKeys(t *testing.T) {
-	for _, k := range []string{"classic", "modern", "elegant"} {
+	for _, k := range []string{"classic", "modern", "elegant", "custom"} {
 		if err := validateCertificateTemplate(k); err != nil {
 			t.Errorf("valid key %q: want nil, got %v", k, err)
 		}
