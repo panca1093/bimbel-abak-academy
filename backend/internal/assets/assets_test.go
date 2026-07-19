@@ -37,13 +37,9 @@ func TestLogoMarkPNG_TransparentBackground(t *testing.T) {
 		t.Fatalf("failed to decode PNG: %v", err)
 	}
 
-	// Check corner pixel for transparency (alpha channel should be 0 or very low)
-	// Corner pixels should be transparent background
-	r, g, b, a := img.At(0, 0).RGBA()
-	// RGBA returns premultiplied colors, so we need to check if alpha is 0
-	// Alpha is 16-bit, so 0 means fully transparent
+	// RGBA returns premultiplied colors; alpha is 16-bit, 0 means fully transparent.
+	_, _, _, a := img.At(0, 0).RGBA()
 	if a != 0 {
-		t.Logf("top-left corner pixel: R=%d G=%d B=%d A=%d", r, g, b, a)
-		t.Logf("Note: corner pixel is not transparent; PNG may have logo starting at edge")
+		t.Fatalf("expected transparent top-left corner pixel, got alpha=%d", a)
 	}
 }
