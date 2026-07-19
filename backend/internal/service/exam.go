@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -828,9 +829,37 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]b
 	if tenantName == "" {
 		tenantName = "Akademi Bimbel"
 	}
-	pdf, err := generateExamCardPDF(detail, studentName, tenantName)
+
+	var photoBytes []byte
+	if user != nil && user.PhotoURL != nil && *user.PhotoURL != "" {
+		reader, _, err := s.OpenAvatar(ctx, *user.PhotoURL)
+		if err == nil && reader != nil {
+			defer reader.Close()
+			photoBytes, _ = readAllBytes(reader)
+		}
+	}
+
+	pdf, err := generateExamCardPDF(detail, studentName, tenantName, photoBytes)
 	if err != nil {
 		return nil, "", err
 	}
 	return pdf, "kartu-peserta-" + detail.Token + ".pdf", nil
+}
+
+func readAllBytes(r interface{ Read([]byte) (int, error) }) ([]byte, error) {
+	var buf bytes.Buffer
+	b := make([]byte, 4096)
+	for {
+		n, err := r.Read(b)
+		if n > 0 {
+			buf.Write(b[:n])
+		}
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			return nil, err
+		}
+	}
+	return buf.Bytes(), nil
 }

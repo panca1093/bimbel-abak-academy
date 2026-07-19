@@ -1620,7 +1620,7 @@ func (s *shimExamCardService) GetExamCard(ctx context.Context, regID, studentID 
 	if err != nil {
 		return nil, "", err
 	}
-	pdf, err := generateExamCardPDF(detail, s.studentName, s.tenantName)
+	pdf, err := generateExamCardPDF(detail, s.studentName, s.tenantName, nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1678,6 +1678,169 @@ func TestGetExamCard_ReturnsPdfBytes(t *testing.T) {
 	if !wantPattern.MatchString(filename) {
 		t.Errorf("filename %q does not match kartu-peserta-<8-char-token>.pdf", filename)
 	}
+}
+
+func TestGenerateExamCardPDF_WithPhotoBytes_Nil(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeRegRepo()
+
+	studentID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	examID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	regID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+	detail := model.RegistrationDetail{}
+	detail.ExamRegistration = model.ExamRegistration{
+		ID:        regID,
+		StudentID: studentID,
+		ExamID:    examID,
+		Token:     "AB12CD34",
+		Status:    "registered",
+	}
+	detail.Exam.ID = examID
+	detail.Exam.Title = "Finals"
+	detail.Exam.RequiresCheckin = false
+	fake.seed(detail)
+
+	reg, _ := fake.GetExamRegistrationByID(ctx, regID, studentID)
+
+	pdf, err := generateExamCardPDF(reg, "TestStudent", "TestTenant", nil)
+	if err != nil {
+		t.Fatalf("generateExamCardPDF with nil photoBytes: %v", err)
+	}
+
+	if !bytes.HasPrefix(pdf, []byte("%PDF-")) {
+		t.Errorf("PDF should start with %%PDF-, got %q", string(pdf[:5]))
+	}
+	if len(pdf) < 100 {
+		t.Errorf("PDF should have content, got %d bytes", len(pdf))
+	}
+}
+
+func TestGenerateExamCardPDF_WithPhotoBytes_Present(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeRegRepo()
+
+	studentID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	examID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	regID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+	detail := model.RegistrationDetail{}
+	detail.ExamRegistration = model.ExamRegistration{
+		ID:        regID,
+		StudentID: studentID,
+		ExamID:    examID,
+		Token:     "AB12CD34",
+		Status:    "registered",
+	}
+	detail.Exam.ID = examID
+	detail.Exam.Title = "Finals"
+	detail.Exam.RequiresCheckin = false
+	fake.seed(detail)
+
+	reg, _ := fake.GetExamRegistrationByID(ctx, regID, studentID)
+
+	pdfWithPhoto, err := generateExamCardPDF(reg, "TestStudent", "TestTenant", []byte{})
+	if err != nil {
+		t.Fatalf("generateExamCardPDF with empty photoBytes: %v", err)
+	}
+
+	if !bytes.HasPrefix(pdfWithPhoto, []byte("%PDF-")) {
+		t.Errorf("PDF should start with %%PDF-, got %q", string(pdfWithPhoto[:5]))
+	}
+	if len(pdfWithPhoto) < 100 {
+		t.Errorf("PDF should have content, got %d bytes", len(pdfWithPhoto))
+	}
+}
+
+func TestGetExamCard_WithPhotoFetchError_StillSucceeds(t *testing.T) {
+	ctx := context.Background()
+	fakeReg := newFakeRegRepo()
+	fakeUsers := newFakeUserRepo()
+
+	studentIDStr := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	studentID := uuid.MustParse(studentIDStr)
+	examID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	regID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+	detail := model.RegistrationDetail{}
+	detail.ExamRegistration = model.ExamRegistration{
+		ID:        regID,
+		StudentID: studentID,
+		ExamID:    examID,
+		Token:     "AB12CD34",
+		Status:    "registered",
+	}
+	detail.Exam.ID = examID
+	detail.Exam.Title = "Finals"
+	detail.Exam.RequiresCheckin = false
+
+	photoURL := "avatars/test/photo.jpg"
+	user := &model.User{
+		ID:       studentIDStr,
+		Name:     "TestStudent",
+		PhotoURL: &photoURL,
+		Status:   "active",
+	}
+
+	fakeReg.seed(detail)
+	fakeUsers.seed(user)
+
+	svc := &shimExamCardWithPhotoService{
+		regRepo:     fakeReg,
+		userRepo:    fakeUsers,
+		tenantName:  "TestTenant",
+		photoFetcher: func(ctx context.Context, key string) ([]byte, error) {
+			return nil, errors.New("storage error")
+		},
+	}
+
+	pdf, filename, err := svc.GetExamCard(ctx, regID.String(), studentIDStr)
+	if err != nil {
+		t.Fatalf("GetExamCard should not fail on photo fetch error: %v", err)
+	}
+
+	if !bytes.HasPrefix(pdf, []byte("%PDF-")) {
+		t.Errorf("PDF should start with %%PDF-, got %q", string(pdf[:5]))
+	}
+
+	wantPattern := regexp.MustCompile(`^kartu-peserta-[A-Z0-9]{8}\.pdf$`)
+	if !wantPattern.MatchString(filename) {
+		t.Errorf("filename %q does not match kartu-peserta-<8-char-token>.pdf", filename)
+	}
+}
+
+type shimExamCardWithPhotoService struct {
+	regRepo      *fakeRegRepo
+	userRepo     *fakeUserRepo
+	tenantName   string
+	photoFetcher func(ctx context.Context, key string) ([]byte, error)
+}
+
+func (s *shimExamCardWithPhotoService) GetExamCard(ctx context.Context, regID, studentID string) ([]byte, string, error) {
+	detail, err := s.regRepo.GetExamRegistrationByID(ctx, mustParse(regID), mustParse(studentID))
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, "", ErrRegistrationNotFound
+	}
+	if err != nil {
+		return nil, "", err
+	}
+
+	studentName := ""
+	user, _ := s.userRepo.GetUserByID(ctx, studentID)
+	if user != nil {
+		studentName = user.Name
+	}
+
+	var photoBytes []byte
+	if user != nil && user.PhotoURL != nil && *user.PhotoURL != "" {
+		photoBytes, _ = s.photoFetcher(ctx, *user.PhotoURL)
+	}
+
+	pdf, err := generateExamCardPDF(detail, studentName, s.tenantName, photoBytes)
+	if err != nil {
+		return nil, "", err
+	}
+	return pdf, "kartu-peserta-" + detail.Token + ".pdf", nil
 }
 
 // --- Rich-text question body sanitization (FR-1..FR-7) ---
