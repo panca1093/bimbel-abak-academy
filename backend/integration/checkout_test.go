@@ -625,6 +625,48 @@ func TestCheckout(t *testing.T) {
 		assert.Equal(t, 25000.0, finalShippingCost, "shipping_cost should persist as 25000")
 		assert.Equal(t, 225000.0, finalTotal, "final total should still be 225000")
 	})
+
+	t.Run("FR-09 checkout rejects physical order with unset shipping_cost via real Checkout()", func(t *testing.T) {
+		userID := seedUser(t, env, "student", "active", false)
+		token := authToken(t, env, userID, "student")
+		productID := seedProduct(t, env, "book", "Buku Tanpa Ongkir", 100000)
+
+		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+		body := decodeBody(t, resp)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		orderID := body["id"].(string)
+
+		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		// No shipping quote/selection has been made — the real Service.Checkout must
+		// reject this via ErrShippingRequired (mapped to 400 invalid_request), not a shim.
+		checkoutResp := checkoutWithKey(t, env, orderID, token, fmt.Sprintf("ship-guard-%d", time.Now().UnixNano()))
+		checkoutBody := decodeBody(t, checkoutResp)
+		require.Equal(t, http.StatusBadRequest, checkoutResp.StatusCode)
+		assert.Equal(t, "invalid_request", checkoutBody["code"])
+
+		var statusAfterReject string
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT status FROM orders WHERE id=$1`, orderID,
+		).Scan(&statusAfterReject))
+		assert.Equal(t, "cart", statusAfterReject, "order must remain in cart status after a rejected checkout")
+
+		// Setting shipping_cost via the same PATCH cart path must let the real
+		// Checkout() proceed to payment_pending.
+		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
+
+		checkoutResp2 := checkoutWithKey(t, env, orderID, token, fmt.Sprintf("ship-guard-ok-%d", time.Now().UnixNano()))
+		require.Equal(t, http.StatusOK, checkoutResp2.StatusCode)
+		drainClose(checkoutResp2)
+
+		var statusAfterCheckout string
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT status FROM orders WHERE id=$1`, orderID,
+		).Scan(&statusAfterCheckout))
+		assert.Equal(t, "payment_pending", statusAfterCheckout, "order should be payment_pending once shipping_cost is set")
+	})
 }
 
 // TestShippingResponseWireFormat verifies that the /orders/shipping endpoint
