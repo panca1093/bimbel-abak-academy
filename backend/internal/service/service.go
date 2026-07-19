@@ -29,6 +29,10 @@ type Service struct {
 	// reloadPaymentFn is called by ReloadPaymentClient to rebuild the
 	// payment client from current config (DB or env). Injected by main.
 	reloadPaymentFn func(ctx context.Context) PaymentClient
+
+	// reloadLogisticsFn is called by ReloadLogisticsClient to rebuild the
+	// logistics client from current config (DB or env). Injected by main.
+	reloadLogisticsFn func(ctx context.Context) LogisticsClient
 }
 
 // NewForTest builds a Service with only a Redis client — sufficient for middleware tests.
@@ -104,6 +108,21 @@ func (s *Service) ReloadPaymentClient(ctx context.Context) {
 		return
 	}
 	s.payment = s.reloadPaymentFn(ctx)
+}
+
+// SetReloadLogisticsFn sets the callback used by ReloadLogisticsClient to
+// rebuild the logistics client from current config.
+func (s *Service) SetReloadLogisticsFn(fn func(ctx context.Context) LogisticsClient) {
+	s.reloadLogisticsFn = fn
+}
+
+// ReloadLogisticsClient replaces s.logistics by calling the injected reload
+// function. No-op when no reload function has been set.
+func (s *Service) ReloadLogisticsClient(ctx context.Context) {
+	if s.reloadLogisticsFn == nil {
+		return
+	}
+	s.logistics = s.reloadLogisticsFn(ctx)
 }
 
 func (s *Service) Health(ctx context.Context) Health {

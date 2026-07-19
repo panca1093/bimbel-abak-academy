@@ -355,4 +355,42 @@ describe("CartPage with Shipping", () => {
       );
     });
   });
+
+  it("disables Check shipping cost until province/city/district are all selected", async () => {
+    // Profile only has a postal code — province/city/district are unset, as
+    // happens for a student who never completed their address profile.
+    mockUseProfile.mockReturnValue({
+      data: {
+        id: "user1",
+        name: "Test User",
+        provinsi_id: null,
+        kota_id: null,
+        kecamatan_id: null,
+        kode_pos: "40123",
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    mockUseCart.mockReturnValue({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 0,
+        total: 100000,
+        items: [physicalItem],
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderWithQueryClient(<CartPage />);
+
+    const checkButton = await screen.findByRole("button", { name: /check shipping cost/i });
+    expect(checkButton).toBeDisabled();
+  });
 });

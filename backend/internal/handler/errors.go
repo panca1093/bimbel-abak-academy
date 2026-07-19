@@ -187,6 +187,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_grant_student", Message: err.Error()}
 	case errors.Is(err, service.ErrShippingRequired):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidCourierSelection):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	default:
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}

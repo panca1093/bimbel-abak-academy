@@ -86,13 +86,42 @@ func TestResolveBiteshipAPIKey_DBWinsOverEnv(t *testing.T) {
 	}
 }
 
-// TestResolveBiteshipAPIKey_DBPrecedenceLogicWithValidEncryption tests that DB value is used
-// when decryption is successful. This test is skipped because it requires creating encrypted
-// values, which is tested in the service layer (system_config_test.go). The precedence logic
-// is verified by testing the decryption failure path above and the env-only path above.
-// Integration testing verifies the full encryption/decryption round-trip works correctly.
+// TestResolveBiteshipAPIKey_DBPrecedenceLogicWithValidEncryption tests that the DB value wins
+// and source="db" when the stored ciphertext decrypts successfully, even though an env key is
+// also configured.
 func TestResolveBiteshipAPIKey_DBPrecedenceLogicWithValidEncryption(t *testing.T) {
-	t.Skip("DB source='db' with valid encryption is tested via integration tests and service layer tests")
+	hexKey := "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+	envKeyValue := "env-biteship-key"
+	dbKeyValue := "db-biteship-key"
+
+	ciphertext, err := service.EncryptConfigValue(hexKey, dbKeyValue)
+	if err != nil {
+		t.Fatalf("failed to encrypt fixture: %v", err)
+	}
+
+	repo := &mockConfigReader{
+		systemConfigRows: []repository.SystemConfigRow{
+			{
+				Key:      "biteship_api_key",
+				Value:    ciphertext,
+				IsSecret: true,
+			},
+		},
+	}
+
+	cfg := &config.Config{
+		BiteshipAPIKey:      envKeyValue,
+		ConfigEncryptionKey: hexKey,
+	}
+
+	apiKey, source := resolveBiteshipAPIKey(context.Background(), repo, cfg)
+
+	if apiKey != dbKeyValue {
+		t.Errorf("expected apiKey=%q (DB value), got %q", dbKeyValue, apiKey)
+	}
+	if source != "db" {
+		t.Errorf("expected source=db, got %s", source)
+	}
 }
 
 // TestResolveBiteshipAPIKey_NoConfigEncryptionKey tests fallback when ConfigEncryptionKey is empty.

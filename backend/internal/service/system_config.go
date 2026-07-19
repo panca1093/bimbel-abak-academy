@@ -81,6 +81,12 @@ func encryptConfigValue(hexKey, plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(append(nonce, ciphertext...)), nil
 }
 
+// EncryptConfigValue encrypts plaintext with AES-256-GCM.
+// hexKey is a 64-char hex string (decoded to 32 bytes).
+func EncryptConfigValue(hexKey, plaintext string) (string, error) {
+	return encryptConfigValue(hexKey, plaintext)
+}
+
 // DecryptConfigValue decrypts a base64(nonce || ciphertext+tag) string.
 // hexKey is a 64-char hex string (decoded to 32 bytes).
 func DecryptConfigValue(hexKey, encoded string) (string, error) {

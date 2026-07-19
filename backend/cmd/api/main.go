@@ -65,6 +65,9 @@ func main() {
 	svc.SetReloadPaymentFn(func(ctx context.Context) service.PaymentClient {
 		return adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
 	})
+	svc.SetReloadLogisticsFn(func(ctx context.Context) service.LogisticsClient {
+		return adapter.ResolveShippingClient(ctx, storeRepo, &cfg)
+	})
 	h := handler.New(svc)
 	e := server.New(h, svc, jwtSigner, cfg)
 

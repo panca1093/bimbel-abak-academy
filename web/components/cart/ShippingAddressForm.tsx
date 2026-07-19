@@ -193,7 +193,7 @@ export function ShippingAddressForm({
 
       <Button
         onClick={onCheckShipping}
-        disabled={!kodePos || isCheckingShipping}
+        disabled={!provinsiId || !kotaId || !kecamatanId || !kodePos || isCheckingShipping}
         className="w-full"
       >
         {isCheckingShipping ? (
@@ -201,6 +201,11 @@ export function ShippingAddressForm({
         ) : null}
         {t("cart_check_shipping_cost") || "Check Shipping Cost"}
       </Button>
+      {(!provinsiId || !kotaId || !kecamatanId) && (
+        <p className="text-xs text-ink-500">
+          {t("cart_shipping_address_incomplete") || "Select province, city, and district to check shipping cost."}
+        </p>
+      )}
     </div>
   );
 }

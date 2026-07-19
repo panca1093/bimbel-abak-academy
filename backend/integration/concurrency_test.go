@@ -29,8 +29,16 @@ func TestConcurrency(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
+			map[string]any{
+				"courier":       "JNE",
+				"shipping_cost": 15000.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token))
 
 		idempKey := fmt.Sprintf("idemp-%d", time.Now().UnixNano())
 
@@ -81,8 +89,16 @@ func TestConcurrency(t *testing.T) {
 			orderID := b["id"].(string)
 			drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 				map[string]any{"product_id": productID, "qty": 1}, token))
+			provinceID, cityID, districtID := seedRegionIDs(t, env)
 			drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-				map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
+				map[string]any{
+					"courier":       "JNE",
+					"shipping_cost": 15000.0,
+					"province_id":   provinceID,
+					"city_id":       cityID,
+					"district_id":   districtID,
+					"kode_pos":      "12345",
+				}, token))
 			return orderID
 		}
 

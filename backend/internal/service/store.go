@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,20 +16,21 @@ import (
 )
 
 var (
-	ErrForbidden              = errors.New("forbidden")
-	ErrProductNotFound        = errors.New("product not found")
-	ErrCourseNotFound         = errors.New("course not found")
-	ErrInvalidPromo           = errors.New("invalid or expired promo code")
-	ErrPromoMinOrder          = errors.New("order subtotal below promo minimum")
-	ErrOutOfStock             = errors.New("product out of stock")
-	ErrInsufficientStock      = errors.New("insufficient stock")
-	ErrOrderNotEditable       = errors.New("order not editable")
-	ErrOrderNotFound          = errors.New("order not found")
-	ErrMustShipBeforeComplete = errors.New("order has physical items — must be shipped before completing")
-	ErrInvalidSignature       = errors.New("invalid signature")
-	ErrCourseLinkRequired     = errors.New("course product requires at least one linked course")
-	ErrExamLinkRequired       = errors.New("exam product requires at least one linked exam")
-	ErrShippingRequired       = errors.New("order requires a shipping selection before checkout")
+	ErrForbidden               = errors.New("forbidden")
+	ErrProductNotFound         = errors.New("product not found")
+	ErrCourseNotFound          = errors.New("course not found")
+	ErrInvalidPromo            = errors.New("invalid or expired promo code")
+	ErrPromoMinOrder           = errors.New("order subtotal below promo minimum")
+	ErrOutOfStock              = errors.New("product out of stock")
+	ErrInsufficientStock       = errors.New("insufficient stock")
+	ErrOrderNotEditable        = errors.New("order not editable")
+	ErrOrderNotFound           = errors.New("order not found")
+	ErrMustShipBeforeComplete  = errors.New("order has physical items — must be shipped before completing")
+	ErrInvalidSignature        = errors.New("invalid signature")
+	ErrCourseLinkRequired      = errors.New("course product requires at least one linked course")
+	ErrExamLinkRequired        = errors.New("exam product requires at least one linked exam")
+	ErrShippingRequired        = errors.New("order requires a shipping selection before checkout")
+	ErrInvalidCourierSelection = errors.New("selected courier is not available for this destination")
 )
 
 type PromoValidation struct {
@@ -557,6 +559,45 @@ type CartPatch struct {
 	PromoCode       *string
 }
 
+// nilIfEmpty treats a pointer to an empty string the same as an absent field,
+// so partial address patches never write "" into a non-null FK column.
+func nilIfEmpty(p *string) *string {
+	if p != nil && *p == "" {
+		return nil
+	}
+	return p
+}
+
+// validateAddressHierarchy confirms provinceID/cityID/districtID form a valid,
+// consistent province → city → district chain before it's persisted or used
+// to price a shipment.
+func (s *Service) validateAddressHierarchy(ctx context.Context, provinceID, cityID, districtID string) error {
+	prov, err := s.storeRepo.GetProvinceByID(ctx, provinceID)
+	if err != nil {
+		return err
+	}
+	if prov == nil {
+		return ErrInvalidProvinsi
+	}
+
+	city, err := s.storeRepo.GetCityByID(ctx, cityID)
+	if err != nil {
+		return err
+	}
+	if city == nil || city.ProvinceID != provinceID {
+		return ErrInvalidKota
+	}
+
+	district, err := s.storeRepo.GetDistrictByID(ctx, districtID)
+	if err != nil {
+		return err
+	}
+	if district == nil || district.CityID != cityID {
+		return ErrInvalidKecamatan
+	}
+	return nil
+}
+
 func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patch CartPatch) error {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -581,11 +622,19 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		return ErrOrderNotEditable
 	}
 
+	patch.ProvinceID = nilIfEmpty(patch.ProvinceID)
+	patch.CityID = nilIfEmpty(patch.CityID)
+	patch.DistrictID = nilIfEmpty(patch.DistrictID)
+	patch.KodePos = nilIfEmpty(patch.KodePos)
+
+	// shipping_cost is never trusted from the client: it is either recomputed
+	// server-side from a live courier quote (below) or carried over unchanged
+	// from the persisted order, never taken from patch.ShippingCost directly.
 	repoPatch := repository.OrderPatch{
 		ShippingAddress: patch.ShippingAddress,
-		SelectedCourier: patch.Courier,
+		SelectedCourier: order.SelectedCourier,
 		Discount:        order.Discount,
-		ShippingCost:    patch.ShippingCost,
+		ShippingCost:    order.ShippingCost,
 		Total:           order.Total,
 		ProvinceID:      patch.ProvinceID,
 		CityID:          patch.CityID,
@@ -593,8 +642,48 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 		KodePos:         patch.KodePos,
 	}
 
+	if patch.Courier != "" {
+		var weightGrams int
+		hasPhysical := false
+		for _, item := range order.Items {
+			if isPhysicalType(item.ProductType) {
+				hasPhysical = true
+				weightGrams += item.WeightGrams * item.Qty
+			}
+		}
+
+		if hasPhysical {
+			if patch.ProvinceID == nil || patch.CityID == nil || patch.DistrictID == nil || patch.KodePos == nil {
+				return ErrIncompleteAddress
+			}
+			if err := s.validateAddressHierarchy(ctx, *patch.ProvinceID, *patch.CityID, *patch.DistrictID); err != nil {
+				return err
+			}
+
+			rates, err := s.GetShippingRates(ctx, ShippingQuoteRequest{
+				DestinationPostalCode: *patch.KodePos,
+				WeightGrams:           weightGrams,
+			})
+			if err != nil {
+				return err
+			}
+			matched := false
+			for _, rate := range rates {
+				if strings.EqualFold(rate.Courier, patch.Courier) {
+					repoPatch.ShippingCost = float64(rate.Price)
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return ErrInvalidCourierSelection
+			}
+			repoPatch.SelectedCourier = patch.Courier
+		}
+	}
+
 	if patch.PromoCode != nil && *patch.PromoCode != "" {
-		validation, err := s.ValidatePromo(ctx, *patch.PromoCode, order.Subtotal, patch.ShippingCost)
+		validation, err := s.ValidatePromo(ctx, *patch.PromoCode, order.Subtotal, repoPatch.ShippingCost)
 		if err != nil {
 			return err
 		}

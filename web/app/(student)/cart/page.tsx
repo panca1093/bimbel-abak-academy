@@ -50,12 +50,12 @@ export default function CartPage() {
   }, []);
 
   const handleCheckShipping = useCallback(() => {
-    if (!shippingAddress.kode_pos) return;
+    if (!shippingAddress.provinsi_id || !shippingAddress.kota_id || !shippingAddress.kecamatan_id || !shippingAddress.kode_pos) return;
     shippingRates.mutate({
       destination_postal_code: shippingAddress.kode_pos,
       weight_grams: totalPhysicalWeight,
     });
-  }, [shippingAddress.kode_pos, totalPhysicalWeight, shippingRates]);
+  }, [shippingAddress, totalPhysicalWeight, shippingRates]);
 
   const handleSelectCourier = useCallback(
     (rate: { courier: string; price: number }) => {

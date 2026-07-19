@@ -188,10 +188,18 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
-		// shipping_address is []byte in the handler (decoded as base64 JSON); send courier only to
-		// keep the test simple and avoid base64 encoding in the test body.
+		// shipping_address is []byte in the handler (decoded as base64 JSON); it's omitted to
+		// keep the test simple and avoid base64 encoding in the test body. A courier selection
+		// still requires a full destination so the server can price it, so a real address is sent.
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
 		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-			map[string]any{"courier": "JNE"}, token)
+			map[string]any{
+				"courier":     "JNE",
+				"province_id": provinceID,
+				"city_id":     cityID,
+				"district_id": districtID,
+				"kode_pos":    "12345",
+			}, token)
 		require.Equal(t, http.StatusOK, patchResp.StatusCode)
 		drainClose(patchResp)
 
@@ -221,8 +229,16 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
+			map[string]any{
+				"courier":       "JNE",
+				"shipping_cost": 15000.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token))
 
 		idempKey := fmt.Sprintf("test-checkout-%d", time.Now().UnixNano())
 		coResp := checkoutWithKey(t, env, orderID, token, idempKey)
@@ -266,8 +282,16 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
+			map[string]any{
+				"courier":       "JNE",
+				"shipping_cost": 15000.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token))
 
 		coResp := checkoutWithKey(t, env, orderID, token,
 			fmt.Sprintf("co-%d", time.Now().UnixNano()))
@@ -325,8 +349,16 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
+			map[string]any{
+				"courier":       "JNE",
+				"shipping_cost": 15000.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token))
 
 		coResp := checkoutWithKey(t, env, orderID, token,
 			fmt.Sprintf("co-%d", time.Now().UnixNano()))
@@ -654,8 +686,16 @@ func TestCheckout(t *testing.T) {
 
 		// Setting shipping_cost via the same PATCH cart path must let the real
 		// Checkout() proceed to payment_pending.
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
 		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
+			map[string]any{
+				"courier":       "JNE",
+				"shipping_cost": 15000.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token))
 
 		checkoutResp2 := checkoutWithKey(t, env, orderID, token, fmt.Sprintf("ship-guard-ok-%d", time.Now().UnixNano()))
 		require.Equal(t, http.StatusOK, checkoutResp2.StatusCode)
@@ -667,6 +707,199 @@ func TestCheckout(t *testing.T) {
 		).Scan(&statusAfterCheckout))
 		assert.Equal(t, "payment_pending", statusAfterCheckout, "order should be payment_pending once shipping_cost is set")
 	})
+
+	t.Run("PR41-01 forged shipping_cost is ignored — server recomputes from the courier quote", func(t *testing.T) {
+		userID := seedUser(t, env, "student", "active", false)
+		token := authToken(t, env, userID, "student")
+		productID := seedProduct(t, env, "book", "Buku Ongkir Forge", 100000)
+
+		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+		body := decodeBody(t, resp)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		orderID := body["id"].(string)
+
+		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		// Client selects the real "JNE" courier (noop rate = 15000) but forges a
+		// shipping_cost of 1 to try to pay almost nothing for shipping.
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
+		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{
+				"courier":       "JNE",
+				"shipping_cost": 1.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token)
+		require.Equal(t, http.StatusOK, patchResp.StatusCode)
+		drainClose(patchResp)
+
+		var persistedShippingCost float64
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT shipping_cost FROM orders WHERE id=$1`, orderID,
+		).Scan(&persistedShippingCost))
+		assert.Equal(t, 15000.0, persistedShippingCost, "server must recompute shipping_cost from the live courier quote, not trust the client")
+
+		coResp := checkoutWithKey(t, env, orderID, token, fmt.Sprintf("forge-guard-%d", time.Now().UnixNano()))
+		coBody := decodeBody(t, coResp)
+		require.Equal(t, http.StatusOK, coResp.StatusCode, "checkout failed: %v", coBody)
+
+		var finalTotal float64
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT total FROM orders WHERE id=$1`, orderID,
+		).Scan(&finalTotal))
+		assert.Equal(t, 115000.0, finalTotal, "total must reflect the real 15000 rate, not the forged 1")
+	})
+
+	t.Run("PR41-01 unknown courier name is rejected, not silently trusted", func(t *testing.T) {
+		userID := seedUser(t, env, "student", "active", false)
+		token := authToken(t, env, userID, "student")
+		productID := seedProduct(t, env, "book", "Buku Ongkir Unknown", 100000)
+
+		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+		body := decodeBody(t, resp)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		orderID := body["id"].(string)
+
+		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
+		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{
+				"courier":       "NOT-A-REAL-COURIER",
+				"shipping_cost": 1.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token)
+		patchBody := decodeBody(t, patchResp)
+		require.Equal(t, http.StatusUnprocessableEntity, patchResp.StatusCode)
+		assert.Equal(t, "invalid_courier_selection", patchBody["code"])
+		drainClose(patchResp)
+	})
+
+	t.Run("PR41-03 empty address hierarchy strings are rejected, not written as an FK-violating patch", func(t *testing.T) {
+		userID := seedUser(t, env, "student", "active", false)
+		token := authToken(t, env, userID, "student")
+		productID := seedProduct(t, env, "book", "Buku Alamat Kosong", 100000)
+
+		resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+		body := decodeBody(t, resp)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		orderID := body["id"].(string)
+
+		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		// Mirrors what an incomplete profile sends today: courier selected, but
+		// province/city/district still empty strings rather than omitted.
+		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{
+				"courier":       "JNE",
+				"shipping_cost": 15000.0,
+				"province_id":   "",
+				"city_id":       "",
+				"district_id":   "",
+				"kode_pos":      "12345",
+			}, token)
+		patchBody := decodeBody(t, patchResp)
+		require.Equal(t, http.StatusUnprocessableEntity, patchResp.StatusCode, "must be a validation error, not a 500 FK crash: %v", patchBody)
+		assert.Equal(t, "incomplete_address", patchBody["code"])
+		drainClose(patchResp)
+	})
+}
+
+// TestShippingPreservedAcrossDigitalItemMutations exercises the real, HTTP-backed
+// Service.AddItem/UpdateItemQty/RemoveItem (not a test-local shim) to prove that
+// adding, changing the quantity of, and removing a digital item on a cart that
+// already has a physical shipment quoted does not clear shipping_cost/selected_courier,
+// while mutating the physical item still clears it.
+func TestShippingPreservedAcrossDigitalItemMutations(t *testing.T) {
+	env := newTestEnv(t)
+	ctx := context.Background()
+
+	userID := seedUser(t, env, "student", "active", false)
+	token := authToken(t, env, userID, "student")
+
+	var bookID string
+	require.NoError(t, env.pool.QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status, weight_grams)
+		 VALUES ($1, $2, $3, 100, 'published', $4) RETURNING id`,
+		"book", "Buku Preserve", 100000, 500,
+	).Scan(&bookID))
+	courseID := seedProduct(t, env, "course", "Kursus Preserve", 50000)
+
+	resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+	body := decodeBody(t, resp)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	orderID := body["id"].(string)
+
+	drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+		map[string]any{"product_id": bookID, "qty": 1}, token))
+
+	provinceID, cityID, districtID := seedRegionIDs(t, env)
+	drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+		map[string]any{
+			"courier":       "JNE",
+			"shipping_cost": 15000.0,
+			"province_id":   provinceID,
+			"city_id":       cityID,
+			"district_id":   districtID,
+			"kode_pos":      "12345",
+		}, token))
+
+	assertShipping := func(wantCost float64, wantCourier string, msg string) {
+		t.Helper()
+		var cost float64
+		var courier *string
+		require.NoError(t, env.pool.QueryRow(ctx,
+			`SELECT shipping_cost, selected_courier FROM orders WHERE id=$1`, orderID,
+		).Scan(&cost, &courier))
+		assert.Equal(t, wantCost, cost, msg+" (shipping_cost)")
+		got := ""
+		if courier != nil {
+			got = *courier
+		}
+		assert.Equal(t, wantCourier, got, msg+" (selected_courier)")
+	}
+
+	assertShipping(15000.0, "JNE", "after courier selection")
+
+	// Adding a digital item must not touch the shipment already quoted for the physical item.
+	addResp := env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+		map[string]any{"product_id": courseID, "qty": 1}, token)
+	require.Equal(t, http.StatusCreated, addResp.StatusCode)
+	drainClose(addResp)
+	assertShipping(15000.0, "JNE", "after adding digital item")
+
+	var courseItemID string
+	require.NoError(t, env.pool.QueryRow(ctx,
+		`SELECT id FROM order_item WHERE order_id=$1 AND product_id=$2`, orderID, courseID,
+	).Scan(&courseItemID))
+
+	// Changing the digital item's qty must not touch shipping either.
+	qtyResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID+"/items/"+courseItemID,
+		map[string]any{"qty": 2}, token)
+	require.Equal(t, http.StatusNoContent, qtyResp.StatusCode)
+	assertShipping(15000.0, "JNE", "after changing digital item qty")
+
+	// Removing the digital item must not touch shipping either.
+	rmResp := env.doJSON(t, http.MethodDelete, "/api/v1/orders/"+orderID+"/items/"+courseItemID, nil, token)
+	require.Equal(t, http.StatusNoContent, rmResp.StatusCode)
+	assertShipping(15000.0, "JNE", "after removing digital item")
+
+	// Mutating the physical item is the one action that must clear shipping.
+	var bookItemID string
+	require.NoError(t, env.pool.QueryRow(ctx,
+		`SELECT id FROM order_item WHERE order_id=$1 AND product_id=$2`, orderID, bookID,
+	).Scan(&bookItemID))
+	rmBookResp := env.doJSON(t, http.MethodDelete, "/api/v1/orders/"+orderID+"/items/"+bookItemID, nil, token)
+	require.Equal(t, http.StatusNoContent, rmBookResp.StatusCode)
+	assertShipping(0, "", "after removing the physical item")
 }
 
 // TestShippingResponseWireFormat verifies that the /orders/shipping endpoint
