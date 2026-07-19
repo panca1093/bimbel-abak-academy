@@ -141,9 +141,9 @@ func (h *Handler) PatchCart(c echo.Context) error {
 		ShippingAddress []byte  `json:"shipping_address"`
 		Courier         string  `json:"courier"`
 		ShippingCost    float64 `json:"shipping_cost"`
-		ProvinceID      string  `json:"province_id"`
-		CityID          string  `json:"city_id"`
-		DistrictID      string  `json:"district_id"`
+		ProvinceID      *string `json:"province_id"`
+		CityID          *string `json:"city_id"`
+		DistrictID      *string `json:"district_id"`
 		KodePos         *string `json:"kode_pos"`
 		PromoCode       *string `json:"promo_code"`
 	}

@@ -221,6 +221,9 @@ func TestCheckout(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
+		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
+
 		idempKey := fmt.Sprintf("test-checkout-%d", time.Now().UnixNano())
 		coResp := checkoutWithKey(t, env, orderID, token, idempKey)
 		coBody := decodeBody(t, coResp)
@@ -262,6 +265,9 @@ func TestCheckout(t *testing.T) {
 
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
 
 		coResp := checkoutWithKey(t, env, orderID, token,
 			fmt.Sprintf("co-%d", time.Now().UnixNano()))
@@ -318,6 +324,9 @@ func TestCheckout(t *testing.T) {
 
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
+
+		drainClose(env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
+			map[string]any{"courier": "JNE", "shipping_cost": 15000.0}, token))
 
 		coResp := checkoutWithKey(t, env, orderID, token,
 			fmt.Sprintf("co-%d", time.Now().UnixNano()))

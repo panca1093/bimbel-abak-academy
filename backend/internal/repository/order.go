@@ -30,9 +30,9 @@ type OrderPatch struct {
 	Discount        float64
 	ShippingCost    float64
 	Total           float64
-	ProvinceID      string
-	CityID          string
-	DistrictID      string
+	ProvinceID      *string
+	CityID          *string
+	DistrictID      *string
 	KodePos         *string
 }
 
@@ -378,7 +378,7 @@ func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch Ord
 		`UPDATE orders
 		 SET shipping_address = $1, selected_courier = $2, promo_code_id = $3,
 		     discount = $4, shipping_cost = $5, total = $6,
-		     province_id = $7, city_id = $8, district_id = $9, kode_pos = $10,
+		     province_id = COALESCE($7, province_id), city_id = COALESCE($8, city_id), district_id = COALESCE($9, district_id), kode_pos = COALESCE($10, kode_pos),
 		     updated_at = now()
 		 WHERE id = $11`,
 		patch.ShippingAddress, patch.SelectedCourier, patch.PromoCodeID,

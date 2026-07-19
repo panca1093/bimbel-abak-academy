@@ -550,9 +550,9 @@ type CartPatch struct {
 	ShippingAddress []byte
 	Courier         string
 	ShippingCost    float64
-	ProvinceID      string
-	CityID          string
-	DistrictID      string
+	ProvinceID      *string
+	CityID          *string
+	DistrictID      *string
 	KodePos         *string
 	PromoCode       *string
 }

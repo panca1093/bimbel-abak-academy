@@ -243,7 +243,7 @@ func TestAdmin(t *testing.T) {
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
 		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-			map[string]any{"promo_code": "PROMO25"}, token)
+			map[string]any{"promo_code": "PROMO25", "courier": "JNE", "shipping_cost": 15000.0}, token)
 		require.Equal(t, http.StatusOK, patchResp.StatusCode, "PATCH promo: %v", decodeBody(t, patchResp))
 
 		coResp := checkoutWithKey(t, env, orderID, token, fmt.Sprintf("idemp-promo25-%d", time.Now().UnixNano()))
