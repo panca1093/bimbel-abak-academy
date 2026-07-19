@@ -21,6 +21,11 @@ import {
   useAdminSystemConfig,
   useUpdateSystemConfig,
 } from "@/lib/hooks/admin-config";
+import {
+  useProvinces,
+  useCitiesByProvince,
+  useDistrictsByCity,
+} from "@/lib/hooks/regions";
 
 interface ToggleProps {
   checked: boolean;
@@ -65,6 +70,10 @@ const INITIAL_APP = {
   app_logo_url: "",
   app_contact_email: "",
   app_contact_phone: "",
+  app_province_id: "",
+  app_city_id: "",
+  app_district_id: "",
+  app_kode_pos: "",
 };
 
 const INITIAL_NOTIF = {
@@ -76,6 +85,8 @@ const INITIAL_PAYMENT = {
   midtrans_server_key: "",
   midtrans_client_key: "",
   midtrans_env: "sandbox",
+  shipping_fallback_flat_rate: "",
+  biteship_api_key: "",
 };
 
 export default function SystemConfigPage() {
@@ -95,6 +106,10 @@ export default function SystemConfigPage() {
   const { data: config, isLoading, error } = useAdminSystemConfig();
   const updateConfig = useUpdateSystemConfig();
 
+  const { data: provinces } = useProvinces();
+  const { data: cities } = useCitiesByProvince(appFields.app_province_id);
+  const { data: districts } = useDistrictsByCity(appFields.app_city_id);
+
   useEffect(() => {
     if (config && !configLoaded.current) {
       configLoaded.current = true;
@@ -104,6 +119,10 @@ export default function SystemConfigPage() {
         app_logo_url: config.app_logo_url ?? "",
         app_contact_email: config.app_contact_email ?? "",
         app_contact_phone: config.app_contact_phone ?? "",
+        app_province_id: config.app_province_id ?? "",
+        app_city_id: config.app_city_id ?? "",
+        app_district_id: config.app_district_id ?? "",
+        app_kode_pos: config.app_kode_pos ?? "",
       });
       setNotifFields({
         notify_on_purchase_admin_store:
@@ -115,6 +134,8 @@ export default function SystemConfigPage() {
         midtrans_server_key: config.midtrans_server_key ?? "",
         midtrans_client_key: config.midtrans_client_key ?? "",
         midtrans_env: (config.midtrans_env as "sandbox" | "production") ?? "sandbox",
+        shipping_fallback_flat_rate: config.shipping_fallback_flat_rate ?? "",
+        biteship_api_key: config.biteship_api_key ?? "",
       });
     }
   }, [config]);
@@ -265,6 +286,100 @@ export default function SystemConfigPage() {
                   }
                 />
               </div>
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold mb-4">
+                  {t("config_shipping_origin")}
+                </h3>
+                <div className="grid gap-4">
+                  <div>
+                    <Label>{t("students_field_provinsi")}</Label>
+                    <Select
+                      value={appFields.app_province_id}
+                      onValueChange={(v) =>
+                        setAppFields((f) => ({
+                          ...f,
+                          app_province_id: v,
+                          app_city_id: "",
+                          app_district_id: "",
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(provinces ?? []).map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t("students_field_kota")}</Label>
+                    <Select
+                      value={appFields.app_city_id}
+                      onValueChange={(v) =>
+                        setAppFields((f) => ({
+                          ...f,
+                          app_city_id: v,
+                          app_district_id: "",
+                        }))
+                      }
+                      disabled={!appFields.app_province_id}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(cities ?? []).map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t("students_field_kecamatan")}</Label>
+                    <Select
+                      value={appFields.app_district_id}
+                      onValueChange={(v) =>
+                        setAppFields((f) => ({
+                          ...f,
+                          app_district_id: v,
+                        }))
+                      }
+                      disabled={!appFields.app_city_id}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(districts ?? []).map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>{t("students_field_kode_pos")}</Label>
+                    <Input
+                      value={appFields.app_kode_pos}
+                      onChange={(e) =>
+                        setAppFields((f) => ({
+                          ...f,
+                          app_kode_pos: e.target.value,
+                        }))
+                      }
+                      placeholder={t("config_general_kode_pos_placeholder")}
+                    />
+                  </div>
+                </div>
+              </div>
               <div className="flex justify-end">
                 <Button
                   onClick={handleSaveGeneral}
@@ -399,6 +514,50 @@ export default function SystemConfigPage() {
                     <SelectItem value="production">Production</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold mb-4">
+                  {t("config_shipping_settings")}
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <Label>{t("config_shipping_fallback_rate")}</Label>
+                    <Input
+                      type="number"
+                      value={paymentFields.shipping_fallback_flat_rate}
+                      onChange={(e) =>
+                        setPaymentFields((f) => ({
+                          ...f,
+                          shipping_fallback_flat_rate: e.target.value,
+                        }))
+                      }
+                      placeholder={t("config_shipping_rate_placeholder")}
+                    />
+                  </div>
+                  <div>
+                    <Label>{t("config_shipping_biteship_key")}</Label>
+                    <Input
+                      type="password"
+                      value={paymentFields.biteship_api_key}
+                      onChange={(e) =>
+                        setPaymentFields((f) => ({
+                          ...f,
+                          biteship_api_key: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        paymentFields.biteship_api_key === "***"
+                          ? "***"
+                          : t("config_shipping_key_placeholder")
+                      }
+                    />
+                    {paymentFields.biteship_api_key === "***" && (
+                      <div className="mt-1 text-xs text-ink-500">
+                        {t("config_payment_mask_hint")}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="flex justify-end">
                 <Button

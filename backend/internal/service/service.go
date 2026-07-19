@@ -6,6 +6,7 @@ import (
 	"akademi-bimbel/internal/repository"
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
@@ -19,8 +20,11 @@ type Service struct {
 	otpProvider   OTPProvider
 	emailProvider EmailProvider
 	payment       PaymentClient
-	logistics     LogisticsClient
-	storage       *minio.Client
+	// logistics is swapped by ReloadLogisticsClient while quote requests read
+	// it concurrently, so it's held behind an atomic pointer rather than a
+	// plain field.
+	logistics atomic.Pointer[LogisticsClient]
+	storage   *minio.Client
 	announceRepo  AnnounceRepo
 	presignOnce   sync.Once
 	presignClient *minio.Client
@@ -29,6 +33,10 @@ type Service struct {
 	// reloadPaymentFn is called by ReloadPaymentClient to rebuild the
 	// payment client from current config (DB or env). Injected by main.
 	reloadPaymentFn func(ctx context.Context) PaymentClient
+
+	// reloadLogisticsFn is called by ReloadLogisticsClient to rebuild the
+	// logistics client from current config (DB or env). Injected by main.
+	reloadLogisticsFn func(ctx context.Context) LogisticsClient
 }
 
 // NewForTest builds a Service with only a Redis client — sufficient for middleware tests.
@@ -66,7 +74,7 @@ func NewWithStore(
 	storage *minio.Client,
 	cfg *config.Config,
 ) *Service {
-	return &Service{
+	s := &Service{
 		repo:          repo,
 		storeRepo:     storeRepo,
 		rdb:           rdb,
@@ -74,11 +82,12 @@ func NewWithStore(
 		otpProvider:   otpProvider,
 		emailProvider: emailProvider,
 		payment:       payment,
-		logistics:     logistics,
 		storage:       storage,
 		announceRepo:  storeRepo,
 		cfg:           cfg,
 	}
+	s.logistics.Store(&logistics)
+	return s
 }
 
 type Health struct {
@@ -104,6 +113,31 @@ func (s *Service) ReloadPaymentClient(ctx context.Context) {
 		return
 	}
 	s.payment = s.reloadPaymentFn(ctx)
+}
+
+// SetReloadLogisticsFn sets the callback used by ReloadLogisticsClient to
+// rebuild the logistics client from current config.
+func (s *Service) SetReloadLogisticsFn(fn func(ctx context.Context) LogisticsClient) {
+	s.reloadLogisticsFn = fn
+}
+
+// ReloadLogisticsClient replaces s.logistics by calling the injected reload
+// function. No-op when no reload function has been set.
+func (s *Service) ReloadLogisticsClient(ctx context.Context) {
+	if s.reloadLogisticsFn == nil {
+		return
+	}
+	client := s.reloadLogisticsFn(ctx)
+	s.logistics.Store(&client)
+}
+
+// logisticsClient returns the currently active logistics client.
+func (s *Service) logisticsClient() LogisticsClient {
+	p := s.logistics.Load()
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 func (s *Service) Health(ctx context.Context) Health {

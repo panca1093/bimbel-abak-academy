@@ -177,6 +177,13 @@ export interface OrderItem {
   created_at?: string;
 }
 
+export interface CourierRate {
+  courier: string;
+  service: string;
+  estimated_days: number;
+  price: number;
+}
+
 export interface Order {
   id: string;
   student_id: string;
@@ -188,6 +195,7 @@ export interface Order {
   promo_code_id?: string;
   shipping_address?: string;
   selected_courier?: string;
+  selected_service?: string;
   tracking_number?: string;
   shipped_at?: string;
   gateway_ref?: string;

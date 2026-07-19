@@ -3,15 +3,15 @@ package service
 import "context"
 
 type ShippingQuoteRequest struct {
-	DestinationZip string
-	WeightGrams    int
+	DestinationPostalCode string
+	WeightGrams           int
 }
 
 type CourierRate struct {
-	Courier       string
-	Service       string
-	EstimatedDays int
-	Price         int64
+	Courier       string `json:"courier"`
+	Service       string `json:"service"`
+	EstimatedDays int    `json:"estimated_days"`
+	Price         int64  `json:"price"`
 }
 
 type LogisticsClient interface {

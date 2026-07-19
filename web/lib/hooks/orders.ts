@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
-import type { CheckoutResult, Order, PromoValidation } from "@/lib/types";
+import type { CheckoutResult, CourierRate, Order, PromoValidation } from "@/lib/types";
 
 export const ordersKeys = {
   all: ["orders"] as const,
@@ -153,6 +153,60 @@ export function useRetryPayment() {
     onSuccess: (data, orderId) => {
       qc.invalidateQueries({ queryKey: ordersKeys.detail(orderId) });
       qc.invalidateQueries({ queryKey: ordersKeys.list() });
+    },
+  });
+}
+
+interface ShippingRatesInput {
+  destination_postal_code: string;
+  weight_grams: number;
+}
+
+export function useShippingRates() {
+  return useMutation({
+    mutationFn: (input: ShippingRatesInput) =>
+      authFetch<{ rates: CourierRate[] }>(`/orders/shipping`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }).then((res) => res.rates),
+  });
+}
+
+interface PatchCartInput {
+  orderId: string;
+  courier: string;
+  service: string;
+  shipping_cost: number;
+  province_id: string;
+  city_id: string;
+  district_id: string;
+  kode_pos: string | null;
+  promo_code?: string;
+}
+
+export function usePatchCart() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, courier, service, shipping_cost, province_id, city_id, district_id, kode_pos, promo_code }: PatchCartInput) => {
+      const body: Record<string, unknown> = {
+        courier,
+        service,
+        shipping_cost,
+        province_id,
+        city_id,
+        district_id,
+        kode_pos,
+      };
+      if (promo_code !== undefined) {
+        body.promo_code = promo_code;
+      }
+      return authFetch<void>(`/orders/${encodeURIComponent(orderId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ordersKeys.cart() });
     },
   });
 }

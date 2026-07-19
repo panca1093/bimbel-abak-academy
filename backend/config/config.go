@@ -32,6 +32,7 @@ type Config struct {
 	MidtransServerKey   string
 	MidtransClientKey   string
 	MidtransEnv         string
+	BiteshipAPIKey      string
 
 	SMTPHost     string
 	SMTPPort     string
@@ -85,6 +86,7 @@ type fileSecrets struct {
 	FazpassAPIKey       string `yaml:"fazpass_api_key"`
 	MidtransServerKey   string `yaml:"midtrans_server_key"`
 	MidtransClientKey   string `yaml:"midtrans_client_key"`
+	BiteshipAPIKey      string `yaml:"biteship_api_key"`
 	SMTPUsername        string `yaml:"smtp_username"`
 	SMTPPassword        string `yaml:"smtp_password"`
 }
@@ -220,6 +222,7 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		FazpassAPIKey:       s.FazpassAPIKey,
 		MidtransServerKey:   s.MidtransServerKey,
 		MidtransClientKey:   s.MidtransClientKey,
+		BiteshipAPIKey:      s.BiteshipAPIKey,
 		SMTPUsername:        s.SMTPUsername,
 		SMTPPassword:        s.SMTPPassword,
 	}, nil

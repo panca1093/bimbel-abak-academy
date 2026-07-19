@@ -185,6 +185,12 @@ func (h *Handler) AdminUpdateSystemConfig(c echo.Context) error {
 			break
 		}
 	}
+	for key := range req {
+		if strings.HasPrefix(key, "biteship_") {
+			h.svc.ReloadLogisticsClient(c.Request().Context())
+			break
+		}
+	}
 
 	return c.JSON(http.StatusOK, cfg)
 }

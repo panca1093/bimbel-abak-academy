@@ -40,11 +40,17 @@ var configKeyCatalog = map[string]configKeyDef{
 	"app_logo_url":                 {group: "app", valueType: "string"},
 	"app_contact_email":            {group: "app", valueType: "string"},
 	"app_contact_phone":            {group: "app", valueType: "string"},
+	"app_province_id":              {group: "app", valueType: "string"},
+	"app_city_id":                  {group: "app", valueType: "string"},
+	"app_district_id":              {group: "app", valueType: "string"},
+	"app_kode_pos":                 {group: "app", valueType: "string"},
 	"notify_on_purchase_admin_store": {group: "notification", valueType: "bool"},
 	"notify_on_purchase_admin_exam":  {group: "notification", valueType: "bool"},
 	"midtrans_server_key":          {group: "payment", valueType: "string", secret: true},
 	"midtrans_client_key":          {group: "payment", valueType: "string", secret: true},
 	"midtrans_env":                 {group: "payment", valueType: "enum", enumValues: []string{"sandbox", "production"}},
+	"shipping_fallback_flat_rate":  {group: "shipping", valueType: "string"},
+	"biteship_api_key":             {group: "shipping", valueType: "string", secret: true},
 }
 
 // encryptConfigValue encrypts plaintext with AES-256-GCM.
@@ -73,6 +79,12 @@ func encryptConfigValue(hexKey, plaintext string) (string, error) {
 
 	ciphertext := gcm.Seal(nil, nonce, []byte(plaintext), nil)
 	return base64.StdEncoding.EncodeToString(append(nonce, ciphertext...)), nil
+}
+
+// EncryptConfigValue encrypts plaintext with AES-256-GCM.
+// hexKey is a 64-char hex string (decoded to 32 bytes).
+func EncryptConfigValue(hexKey, plaintext string) (string, error) {
+	return encryptConfigValue(hexKey, plaintext)
 }
 
 // DecryptConfigValue decrypts a base64(nonce || ciphertext+tag) string.

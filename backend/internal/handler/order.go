@@ -138,8 +138,14 @@ func (h *Handler) PatchCart(c echo.Context) error {
 	orderID := c.Param("id")
 
 	var req struct {
-		ShippingAddress []byte `json:"shipping_address"`
-		Courier         string `json:"courier"`
+		ShippingAddress []byte  `json:"shipping_address"`
+		Courier         string  `json:"courier"`
+		Service         string  `json:"service"`
+		ShippingCost    float64 `json:"shipping_cost"`
+		ProvinceID      *string `json:"province_id"`
+		CityID          *string `json:"city_id"`
+		DistrictID      *string `json:"district_id"`
+		KodePos         *string `json:"kode_pos"`
 		PromoCode       *string `json:"promo_code"`
 	}
 	if err := c.Bind(&req); err != nil {
@@ -149,6 +155,12 @@ func (h *Handler) PatchCart(c echo.Context) error {
 	patch := service.CartPatch{
 		ShippingAddress: req.ShippingAddress,
 		Courier:         req.Courier,
+		Service:         req.Service,
+		ShippingCost:    req.ShippingCost,
+		ProvinceID:      req.ProvinceID,
+		CityID:          req.CityID,
+		DistrictID:      req.DistrictID,
+		KodePos:         req.KodePos,
 		PromoCode:       req.PromoCode,
 	}
 
@@ -214,19 +226,19 @@ func (h *Handler) RetryPayment(c echo.Context) error {
 
 func (h *Handler) GetShipping(c echo.Context) error {
 	var req struct {
-		DestinationZip string `json:"destination_zip"`
-		WeightGrams    int    `json:"weight_grams"`
+		DestinationPostalCode string `json:"destination_postal_code"`
+		WeightGrams           int    `json:"weight_grams"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	if req.DestinationZip == "" || req.WeightGrams <= 0 {
-		return badRequest(c, "destination_zip and weight_grams are required")
+	if req.DestinationPostalCode == "" || req.WeightGrams <= 0 {
+		return badRequest(c, "destination_postal_code and weight_grams are required")
 	}
 
 	rates, err := h.svc.GetShippingRates(c.Request().Context(), service.ShippingQuoteRequest{
-		DestinationZip: req.DestinationZip,
-		WeightGrams:    req.WeightGrams,
+		DestinationPostalCode: req.DestinationPostalCode,
+		WeightGrams:           req.WeightGrams,
 	})
 	if err != nil {
 		return mapServiceError(c, err)
@@ -239,8 +251,9 @@ func (h *Handler) GetShipping(c echo.Context) error {
 
 func (h *Handler) ValidatePromo(c echo.Context) error {
 	var req struct {
-		Code     string  `json:"code"`
-		Subtotal float64 `json:"subtotal"`
+		Code         string  `json:"code"`
+		Subtotal     float64 `json:"subtotal"`
+		ShippingCost float64 `json:"shipping_cost"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -249,7 +262,7 @@ func (h *Handler) ValidatePromo(c echo.Context) error {
 		return badRequest(c, "code and subtotal are required")
 	}
 
-	validation, err := h.svc.ValidatePromo(c.Request().Context(), req.Code, req.Subtotal)
+	validation, err := h.svc.ValidatePromo(c.Request().Context(), req.Code, req.Subtotal, req.ShippingCost)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

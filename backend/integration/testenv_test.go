@@ -210,6 +210,27 @@ func linkProductExam(t *testing.T, env *testEnv, productID, examID string) {
 	require.NoError(t, err)
 }
 
+// seedRegionIDs returns a valid province/city/district ID triple from the
+// seeded region tables, for PatchCart calls that select a courier.
+func seedRegionIDs(t *testing.T, env *testEnv) (provinceID, cityID, districtID string) {
+	t.Helper()
+	ctx := context.Background()
+
+	require.NoError(t, env.pool.QueryRow(ctx,
+		`SELECT id FROM province LIMIT 1`,
+	).Scan(&provinceID), "must have at least one province seeded")
+
+	require.NoError(t, env.pool.QueryRow(ctx,
+		`SELECT id FROM city WHERE province_id = $1 LIMIT 1`, provinceID,
+	).Scan(&cityID), "must have at least one city for this province")
+
+	require.NoError(t, env.pool.QueryRow(ctx,
+		`SELECT id FROM district WHERE city_id = $1 LIMIT 1`, cityID,
+	).Scan(&districtID), "must have at least one district for this city")
+
+	return provinceID, cityID, districtID
+}
+
 // seedPromo inserts a promo code and returns its ID.
 func seedPromo(t *testing.T, env *testEnv, code string, discountPercent float64) string {
 	t.Helper()

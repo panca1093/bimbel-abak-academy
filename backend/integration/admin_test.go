@@ -242,8 +242,18 @@ func TestAdmin(t *testing.T) {
 		drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
+		provinceID, cityID, districtID := seedRegionIDs(t, env)
 		patchResp := env.doJSON(t, http.MethodPatch, "/api/v1/orders/"+orderID,
-			map[string]any{"promo_code": "PROMO25"}, token)
+			map[string]any{
+				"promo_code":    "PROMO25",
+				"courier":       "JNE",
+				"service":       "REG",
+				"shipping_cost": 15000.0,
+				"province_id":   provinceID,
+				"city_id":       cityID,
+				"district_id":   districtID,
+				"kode_pos":      "12345",
+			}, token)
 		require.Equal(t, http.StatusOK, patchResp.StatusCode, "PATCH promo: %v", decodeBody(t, patchResp))
 
 		coResp := checkoutWithKey(t, env, orderID, token, fmt.Sprintf("idemp-promo25-%d", time.Now().UnixNano()))

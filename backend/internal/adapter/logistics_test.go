@@ -10,8 +10,8 @@ import (
 func TestNoopLogisticsClient_GetRates(t *testing.T) {
 	client := &NoopLogisticsClient{}
 	req := service.ShippingQuoteRequest{
-		DestinationZip: "12345",
-		WeightGrams:    1000,
+		DestinationPostalCode: "12345",
+		WeightGrams:           1000,
 	}
 
 	rates, err := client.GetRates(context.Background(), req)

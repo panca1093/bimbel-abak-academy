@@ -26,14 +26,19 @@ type OrderFilter struct {
 type OrderPatch struct {
 	ShippingAddress []byte
 	SelectedCourier string
+	SelectedService string
 	PromoCodeID     *uuid.UUID
 	Discount        float64
 	ShippingCost    float64
 	Total           float64
+	ProvinceID      *string
+	CityID          *string
+	DistrictID      *string
+	KodePos         *string
 }
 
 const orderColumns = `id, student_id, status, subtotal, discount, shipping_cost, total,
-	promo_code_id, shipping_address, selected_courier, tracking_number, shipped_at,
+	promo_code_id, shipping_address, selected_courier, selected_service, tracking_number, shipped_at,
 	gateway_ref, payment_method, payment_expires_at, paid_at, invoice_url,
 	estimated_delivery_days, checked_out_at, completed_at, cancelled_at, cancellation_reason,
 	created_at, updated_at`
@@ -42,12 +47,12 @@ func scanOrder(row interface {
 	Scan(dest ...any) error
 }, order *model.Order) error {
 	// Nullable TEXT columns must be scanned into *string so pgx v5 can set nil for SQL NULL.
-	var selectedCourier, trackingNumber, gatewayRef, paymentMethod, invoiceURL,
+	var selectedCourier, selectedService, trackingNumber, gatewayRef, paymentMethod, invoiceURL,
 		estimatedDeliveryDays, cancellationReason *string
 	err := row.Scan(
 		&order.ID, &order.StudentID, &order.Status, &order.Subtotal, &order.Discount,
 		&order.ShippingCost, &order.Total, &order.PromoCodeID, &order.ShippingAddress,
-		&selectedCourier, &trackingNumber, &order.ShippedAt,
+		&selectedCourier, &selectedService, &trackingNumber, &order.ShippedAt,
 		&gatewayRef, &paymentMethod, &order.PaymentExpiresAt, &order.PaidAt, &invoiceURL,
 		&estimatedDeliveryDays, &order.CheckedOutAt, &order.CompletedAt, &order.CancelledAt, &cancellationReason,
 		&order.CreatedAt, &order.UpdatedAt,
@@ -57,6 +62,9 @@ func scanOrder(row interface {
 	}
 	if selectedCourier != nil {
 		order.SelectedCourier = *selectedCourier
+	}
+	if selectedService != nil {
+		order.SelectedService = *selectedService
 	}
 	if trackingNumber != nil {
 		order.TrackingNumber = *trackingNumber
@@ -166,7 +174,7 @@ func (r *Repository) InsertOrderItemTx(ctx context.Context, tx pgx.Tx, orderID u
 	_, err = tx.Exec(ctx, `
 		UPDATE orders SET
 		  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
-		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
 		  updated_at = now()
 		WHERE id = $1`, orderID)
 	return err
@@ -289,7 +297,7 @@ func (r *Repository) ListOrders(ctx context.Context, filter OrderFilter) ([]mode
 	return orders, nextCursor, nil
 }
 
-func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.OrderItem) error {
+func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.OrderItem, clearShipping bool) error {
 	item.ID = uuid.New()
 	item.OrderID = orderID
 	jumlah := item.UnitPrice * float64(item.Qty)
@@ -301,10 +309,22 @@ func (r *Repository) AddItem(ctx context.Context, orderID uuid.UUID, item model.
 	if err != nil {
 		return err
 	}
+	if clearShipping {
+		_, err = r.pool.Exec(ctx, `
+			UPDATE orders SET
+			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+			  shipping_cost = 0,
+			  selected_courier = '',
+			  selected_service = '',
+			  updated_at = now()
+			WHERE id = $1`, orderID)
+		return err
+	}
 	return r.recalcOrderTotals(ctx, orderID)
 }
 
-func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) error {
+func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID, clearShipping bool) error {
 	_, err := r.pool.Exec(ctx,
 		`DELETE FROM order_item WHERE id = $1 AND order_id = $2`,
 		itemID, orderID,
@@ -312,15 +332,39 @@ func (r *Repository) RemoveItem(ctx context.Context, orderID, itemID uuid.UUID) 
 	if err != nil {
 		return err
 	}
+	if clearShipping {
+		_, err = r.pool.Exec(ctx, `
+			UPDATE orders SET
+			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+			  shipping_cost = 0,
+			  selected_courier = '',
+			  selected_service = '',
+			  updated_at = now()
+			WHERE id = $1`, orderID)
+		return err
+	}
 	return r.recalcOrderTotals(ctx, orderID)
 }
 
-func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUID, qty int) error {
+func (r *Repository) UpdateItemQty(ctx context.Context, orderID, itemID uuid.UUID, qty int, clearShipping bool) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE order_item SET qty = $1, jumlah = unit_price * $2 WHERE id = $3 AND order_id = $4`,
 		qty, qty, itemID, orderID,
 	)
 	if err != nil {
+		return err
+	}
+	if clearShipping {
+		_, err = r.pool.Exec(ctx, `
+			UPDATE orders SET
+			  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
+			  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+			  shipping_cost = 0,
+			  selected_courier = '',
+			  selected_service = '',
+			  updated_at = now()
+			WHERE id = $1`, orderID)
 		return err
 	}
 	return r.recalcOrderTotals(ctx, orderID)
@@ -330,7 +374,7 @@ func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) e
 	_, err := r.pool.Exec(ctx, `
 		UPDATE orders SET
 		  subtotal   = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0),
-		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount,
+		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
 		  updated_at = now()
 		WHERE id = $1`, orderID)
 	return err
@@ -339,11 +383,15 @@ func (r *Repository) recalcOrderTotals(ctx context.Context, orderID uuid.UUID) e
 func (r *Repository) PatchCart(ctx context.Context, orderID uuid.UUID, patch OrderPatch) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE orders
-		 SET shipping_address = $1, selected_courier = $2, promo_code_id = $3,
-		     discount = $4, shipping_cost = $5, total = $6, updated_at = now()
-		 WHERE id = $7`,
-		patch.ShippingAddress, patch.SelectedCourier, patch.PromoCodeID,
-		patch.Discount, patch.ShippingCost, patch.Total, orderID,
+		 SET shipping_address = $1, selected_courier = $2, selected_service = $3, promo_code_id = $4,
+		     discount = $5, shipping_cost = $6, total = $7,
+		     province_id = COALESCE($8, province_id), city_id = COALESCE($9, city_id), district_id = COALESCE($10, district_id), kode_pos = COALESCE($11, kode_pos),
+		     updated_at = now()
+		 WHERE id = $12`,
+		patch.ShippingAddress, patch.SelectedCourier, patch.SelectedService, patch.PromoCodeID,
+		patch.Discount, patch.ShippingCost, patch.Total,
+		patch.ProvinceID, patch.CityID, patch.DistrictID, patch.KodePos,
+		orderID,
 	)
 	return err
 }
