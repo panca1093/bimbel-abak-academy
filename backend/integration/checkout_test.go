@@ -398,8 +398,8 @@ func TestCheckout(t *testing.T) {
 
 		// Extract first rate (JNE, price 15000).
 		ratesMap := rates[0].(map[string]any)
-		priceVal, ok := ratesMap["Price"]
-		require.True(t, ok, "rates must have Price field, got keys: %v", ratesMap)
+		priceVal, ok := ratesMap["price"]
+		require.True(t, ok, "rates must have price field, got keys: %v", ratesMap)
 		var selectedPrice int64
 		switch v := priceVal.(type) {
 		case float64:
@@ -535,8 +535,8 @@ func TestCheckout(t *testing.T) {
 
 		// Step 8: Re-select a different courier (TIKI, price 25000).
 		ratesMap2 := rates2[1].(map[string]any)
-		priceVal2, ok := ratesMap2["Price"]
-		require.True(t, ok, "rates must have Price field")
+		priceVal2, ok := ratesMap2["price"]
+		require.True(t, ok, "rates must have price field")
 		var selectedPrice2 int64
 		switch v := priceVal2.(type) {
 		case float64:
@@ -625,4 +625,85 @@ func TestCheckout(t *testing.T) {
 		assert.Equal(t, 25000.0, finalShippingCost, "shipping_cost should persist as 25000")
 		assert.Equal(t, 225000.0, finalTotal, "final total should still be 225000")
 	})
+}
+
+// TestShippingResponseWireFormat verifies that the /orders/shipping endpoint
+// serializes CourierRate with lowercase snake_case JSON keys ("courier", "service",
+// "estimated_days", "price"), not PascalCase. This is a regression test to catch
+// if JSON struct tags are accidentally removed from service.CourierRate.
+func TestShippingResponseWireFormat(t *testing.T) {
+	env := newTestEnv(t)
+
+	userID := seedUser(t, env, "student", "active", false)
+	token := authToken(t, env, userID, "student")
+	productID := seedProduct(t, env, "book", "Buku Wire Format Test", 50000)
+
+	// Create an order and add an item.
+	resp := env.doJSON(t, http.MethodPost, "/api/v1/orders", nil, token)
+	body := decodeBody(t, resp)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	orderID := body["id"].(string)
+
+	drainClose(env.doJSON(t, http.MethodPost, "/api/v1/orders/"+orderID+"/items",
+		map[string]any{"product_id": productID, "qty": 1}, token))
+
+	// Request shipping rates.
+	shippingResp := env.doJSON(t, http.MethodPost, "/api/v1/orders/shipping",
+		map[string]any{
+			"destination_postal_code": "12345",
+			"weight_grams":            500,
+		}, token)
+	require.Equal(t, http.StatusOK, shippingResp.StatusCode)
+
+	// Read raw response body to verify JSON structure.
+	bodyBytes, err := io.ReadAll(shippingResp.Body)
+	require.NoError(t, err)
+	shippingResp.Body.Close()
+
+	// Unmarshal into map to inspect keys as they appear in JSON.
+	var responseBody map[string]any
+	err = json.Unmarshal(bodyBytes, &responseBody)
+	require.NoError(t, err)
+
+	// Extract rates array.
+	rates, ok := responseBody["rates"].([]any)
+	require.True(t, ok, "response must have 'rates' array")
+	require.Len(t, rates, 2, "expected 2 rates from noop client")
+
+	// Verify each rate has lowercase snake_case keys, not PascalCase.
+	for i, rate := range rates {
+		rateMap, ok := rate.(map[string]any)
+		require.True(t, ok, "rate[%d] must be a map", i)
+
+		// Assert lowercase keys exist.
+		_, hasCourier := rateMap["courier"]
+		_, hasService := rateMap["service"]
+		_, hasEstimatedDays := rateMap["estimated_days"]
+		_, hasPrice := rateMap["price"]
+
+		require.True(t, hasCourier, "rate[%d] must have 'courier' key, keys: %v", i, keys(rateMap))
+		require.True(t, hasService, "rate[%d] must have 'service' key, keys: %v", i, keys(rateMap))
+		require.True(t, hasEstimatedDays, "rate[%d] must have 'estimated_days' key, keys: %v", i, keys(rateMap))
+		require.True(t, hasPrice, "rate[%d] must have 'price' key, keys: %v", i, keys(rateMap))
+
+		// Assert PascalCase keys do NOT exist (regression check).
+		_, hasPascalCourier := rateMap["Courier"]
+		_, hasPascalService := rateMap["Service"]
+		_, hasPascalEstimatedDays := rateMap["EstimatedDays"]
+		_, hasPascalPrice := rateMap["Price"]
+
+		require.False(t, hasPascalCourier, "rate[%d] must NOT have PascalCase 'Courier' key", i)
+		require.False(t, hasPascalService, "rate[%d] must NOT have PascalCase 'Service' key", i)
+		require.False(t, hasPascalEstimatedDays, "rate[%d] must NOT have PascalCase 'EstimatedDays' key", i)
+		require.False(t, hasPascalPrice, "rate[%d] must NOT have PascalCase 'Price' key", i)
+	}
+}
+
+// keys returns the keys of a map for debugging.
+func keys(m map[string]any) []string {
+	var k []string
+	for key := range m {
+		k = append(k, key)
+	}
+	return k
 }
