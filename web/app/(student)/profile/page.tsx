@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Key, Loader2, Pencil } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Camera, GraduationCap, Key, Loader2, MapPin, Pencil, UserRound } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   useChangePassword,
   usePresignUpload,
@@ -110,6 +112,33 @@ function Field({
         />
       )}
       {hint && <div className="text-xs text-ink-400">{hint}</div>}
+    </div>
+  );
+}
+
+// Groups a set of profile fields under a small icon + eyebrow label, mirroring
+// the Identity/Academic/Address section pattern from the admin Register
+// Student dialog (RegisterSection in admin/school/students/page.tsx).
+function ProfileSection({
+  icon: Icon,
+  label,
+  isFirst,
+  children,
+}: {
+  icon: LucideIcon;
+  label: string;
+  isFirst?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn("space-y-4", isFirst ? "mt-5" : "mt-6 border-t border-line pt-6")}>
+      <div className="flex items-center gap-2">
+        <Icon className="size-4 text-brand-600" />
+        <h4 className="text-[11px] font-semibold tracking-wide text-ink-500 uppercase">
+          {label}
+        </h4>
+      </div>
+      <div className="space-y-4">{children}</div>
     </div>
   );
 }
@@ -577,12 +606,8 @@ export default function ProfilePage() {
               )}
             </div>
 
-            <form
-              onSubmit={handleSave}
-              className="flex flex-col gap-4"
-              noValidate
-            >
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <form onSubmit={handleSave} className="flex flex-col" noValidate>
+              <ProfileSection icon={UserRound} label={t("students_register_section_identity")} isFirst>
                 <Field
                   id="name"
                   label={t("full_name")}
@@ -590,21 +615,26 @@ export default function ProfilePage() {
                   onChange={editMode ? setName : undefined}
                   isLoading={isLoading}
                 />
-                <Field
-                  id="phone"
-                  label={t("phone")}
-                  value={phone}
-                  onChange={editMode ? setPhone : undefined}
-                  isLoading={isLoading}
-                />
-                <Field
-                  id="email"
-                  label={t("email")}
-                  value={profile?.email}
-                  locked
-                  hint={t("email_locked")}
-                  isLoading={isLoading}
-                />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field
+                    id="phone"
+                    label={t("phone")}
+                    value={phone}
+                    onChange={editMode ? setPhone : undefined}
+                    isLoading={isLoading}
+                  />
+                  <Field
+                    id="email"
+                    label={t("email")}
+                    value={profile?.email}
+                    locked
+                    hint={t("email_locked")}
+                    isLoading={isLoading}
+                  />
+                </div>
+              </ProfileSection>
+
+              <ProfileSection icon={GraduationCap} label={t("students_register_section_academic")}>
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="school" className="text-xs font-semibold text-ink-600">
                     {t("school")}
@@ -654,41 +684,69 @@ export default function ProfilePage() {
                     </Select>
                   )}
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="grade" className="text-xs font-semibold text-ink-600">
-                    {t("grade")}
-                  </Label>
-                  {isLoading ? (
-                    <Skeleton className="h-11 w-full rounded-md" />
-                  ) : (
-                    <Select
-                      value={grade || "_empty_"}
-                      onValueChange={(v) => setGrade(v === "_empty_" ? "" : v)}
-                      disabled={!editMode}
-                    >
-                      <SelectTrigger id="grade" className={PROFILE_INPUT_CLASS}>
-                        <SelectValue placeholder={t("select_grade")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty_">
-                          {t("select_grade")}
-                        </SelectItem>
-                        {GRADES.map((g) => (
-                          <SelectItem key={g} value={g}>
-                            {g}
+
+                {/* Optional biodata (FR-FE-24..27) -- no required markers. Jenjang options
+                    come from the user's own school when resolvable, else the generic
+                    fallback list. Submitting any subset is fine; blank fields are
+                    stripped server-side. */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="jenjang" className="text-xs font-semibold text-ink-600">
+                      {t("students_field_jenjang")}
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="h-11 w-full rounded-md" />
+                    ) : (
+                      <Select
+                        value={displayedJenjang || "_empty_"}
+                        onValueChange={(v) => setJenjang(v === "_empty_" ? "" : v)}
+                        disabled={!editMode}
+                      >
+                        <SelectTrigger id="jenjang" className={PROFILE_INPUT_CLASS}>
+                          <SelectValue placeholder={t("students_field_jenjang")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_empty_">
+                            {t("students_field_jenjang")}
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                          {jenjangOptions.map((opt) => (
+                            <SelectItem key={opt} value={opt}>
+                              {opt}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="grade" className="text-xs font-semibold text-ink-600">
+                      {t("grade")}
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="h-11 w-full rounded-md" />
+                    ) : (
+                      <Select
+                        value={grade || "_empty_"}
+                        onValueChange={(v) => setGrade(v === "_empty_" ? "" : v)}
+                        disabled={!editMode}
+                      >
+                        <SelectTrigger id="grade" className={PROFILE_INPUT_CLASS}>
+                          <SelectValue placeholder={t("select_grade")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_empty_">
+                            {t("select_grade")}
+                          </SelectItem>
+                          {GRADES.map((g) => (
+                            <SelectItem key={g} value={g}>
+                              {g}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 </div>
-                <Field
-                  id="address"
-                  label={t("address")}
-                  value={address}
-                  onChange={editMode ? setAddress : undefined}
-                  isLoading={isLoading}
-                />
                 <Field
                   id="target_exam"
                   label={t("target_exam")}
@@ -696,154 +754,133 @@ export default function ProfilePage() {
                   onChange={editMode ? setTargetExam : undefined}
                   isLoading={isLoading}
                 />
-              </div>
+              </ProfileSection>
 
-              {/* Optional biodata (FR-FE-24..27) -- no required markers. Jenjang options
-                  come from the user's own school when resolvable, else the generic fallback
-                  list. Submitting any subset is fine; blank fields are stripped server-side. */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="jenjang" className="text-xs font-semibold text-ink-600">
-                    {t("students_field_jenjang")}
-                  </Label>
-                  {isLoading ? (
-                    <Skeleton className="h-11 w-full rounded-md" />
-                  ) : (
-                    <Select
-                      value={displayedJenjang || "_empty_"}
-                      onValueChange={(v) => setJenjang(v === "_empty_" ? "" : v)}
-                      disabled={!editMode}
-                    >
-                      <SelectTrigger id="jenjang" className={PROFILE_INPUT_CLASS}>
-                        <SelectValue placeholder={t("students_field_jenjang")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty_">
-                          {t("students_field_jenjang")}
-                        </SelectItem>
-                        {jenjangOptions.map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {opt}
+              <ProfileSection icon={MapPin} label={t("students_register_section_address")}>
+                <Field
+                  id="address"
+                  label={t("address")}
+                  value={address}
+                  onChange={editMode ? setAddress : undefined}
+                  isLoading={isLoading}
+                />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="provinsi" className="text-xs font-semibold text-ink-600">
+                      {t("students_field_provinsi")}
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="h-11 w-full rounded-md" />
+                    ) : (
+                      <Select
+                        value={displayedProvinsiId || "_empty_"}
+                        onValueChange={(v) => {
+                          setProvinsiId(v === "_empty_" ? "" : v);
+                          setKotaId("");
+                          setKecamatanId("");
+                        }}
+                        disabled={!editMode}
+                      >
+                        <SelectTrigger id="provinsi" className={PROFILE_INPUT_CLASS}>
+                          <SelectValue placeholder={t("students_field_provinsi")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_empty_">
+                            {t("students_field_provinsi")}
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                <div /> {/* grid spacer to keep the next row's first col on the left */}
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="provinsi" className="text-xs font-semibold text-ink-600">
-                    {t("students_field_provinsi")}
-                  </Label>
-                  {isLoading ? (
-                    <Skeleton className="h-11 w-full rounded-md" />
-                  ) : (
-                    <Select
-                      value={displayedProvinsiId || "_empty_"}
-                      onValueChange={(v) => {
-                        setProvinsiId(v === "_empty_" ? "" : v);
-                        setKotaId("");
-                        setKecamatanId("");
-                      }}
-                      disabled={!editMode}
-                    >
-                      <SelectTrigger id="provinsi" className={PROFILE_INPUT_CLASS}>
-                        <SelectValue placeholder={t("students_field_provinsi")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty_">
-                          {t("students_field_provinsi")}
-                        </SelectItem>
-                        {(provinces ?? []).map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
+                          {(provinces ?? []).map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="kota" className="text-xs font-semibold text-ink-600">
+                      {t("students_field_kota")}
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="h-11 w-full rounded-md" />
+                    ) : (
+                      <Select
+                        value={displayedKotaId || "_empty_"}
+                        onValueChange={(v) => {
+                          setKotaId(v === "_empty_" ? "" : v);
+                          setKecamatanId("");
+                        }}
+                        disabled={!editMode || !displayedProvinsiId}
+                      >
+                        <SelectTrigger id="kota" className={PROFILE_INPUT_CLASS}>
+                          <SelectValue placeholder={t("students_field_kota")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_empty_">
+                            {t("students_field_kota")}
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                          {(cities ?? []).map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="kota" className="text-xs font-semibold text-ink-600">
-                    {t("students_field_kota")}
-                  </Label>
-                  {isLoading ? (
-                    <Skeleton className="h-11 w-full rounded-md" />
-                  ) : (
-                    <Select
-                      value={displayedKotaId || "_empty_"}
-                      onValueChange={(v) => {
-                        setKotaId(v === "_empty_" ? "" : v);
-                        setKecamatanId("");
-                      }}
-                      disabled={!editMode || !displayedProvinsiId}
-                    >
-                      <SelectTrigger id="kota" className={PROFILE_INPUT_CLASS}>
-                        <SelectValue placeholder={t("students_field_kota")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty_">
-                          {t("students_field_kota")}
-                        </SelectItem>
-                        {(cities ?? []).map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="kecamatan" className="text-xs font-semibold text-ink-600">
+                      {t("students_field_kecamatan")}
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="h-11 w-full rounded-md" />
+                    ) : (
+                      <Select
+                        value={displayedKecamatanId || "_empty_"}
+                        onValueChange={(v) => setKecamatanId(v === "_empty_" ? "" : v)}
+                        disabled={!editMode || !displayedKotaId}
+                      >
+                        <SelectTrigger id="kecamatan" className={PROFILE_INPUT_CLASS}>
+                          <SelectValue placeholder={t("students_field_kecamatan")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_empty_">
+                            {t("students_field_kecamatan")}
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                          {(districts ?? []).map((d) => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="kode_pos" className="text-xs font-semibold text-ink-600">
+                      {t("students_field_kode_pos")}
+                    </Label>
+                    {isLoading ? (
+                      <Skeleton className="h-11 w-full rounded-md" />
+                    ) : (
+                      <Input
+                        id="kode_pos"
+                        value={displayedKodePos}
+                        onChange={editMode ? (e) => setKodePos(e.target.value) : undefined}
+                        placeholder={t("students_field_kode_pos")}
+                        className={PROFILE_INPUT_CLASS}
+                        readOnly={!editMode}
+                        disabled={!editMode}
+                      />
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="kecamatan" className="text-xs font-semibold text-ink-600">
-                    {t("students_field_kecamatan")}
-                  </Label>
-                  {isLoading ? (
-                    <Skeleton className="h-11 w-full rounded-md" />
-                  ) : (
-                    <Select
-                      value={displayedKecamatanId || "_empty_"}
-                      onValueChange={(v) => setKecamatanId(v === "_empty_" ? "" : v)}
-                      disabled={!editMode || !displayedKotaId}
-                    >
-                      <SelectTrigger id="kecamatan" className={PROFILE_INPUT_CLASS}>
-                        <SelectValue placeholder={t("students_field_kecamatan")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty_">
-                          {t("students_field_kecamatan")}
-                        </SelectItem>
-                        {(districts ?? []).map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="kode_pos" className="text-xs font-semibold text-ink-600">
-                    {t("students_field_kode_pos")}
-                  </Label>
-                  {isLoading ? (
-                    <Skeleton className="h-11 w-full rounded-md" />
-                  ) : (
-                    <Input
-                      id="kode_pos"
-                      value={displayedKodePos}
-                      onChange={editMode ? (e) => setKodePos(e.target.value) : undefined}
-                      placeholder={t("students_field_kode_pos")}
-                      className={PROFILE_INPUT_CLASS}
-                      readOnly={!editMode}
-                      disabled={!editMode}
-                    />
-                  )}
-                </div>
-              </div>
+              </ProfileSection>
 
               {editMode && (
-                <div className="flex flex-wrap gap-3 pt-3">
+                <div className="mt-6 flex flex-wrap gap-3 border-t border-line pt-6">
                   <Button type="submit" disabled={updateProfile.isPending}>
                     {updateProfile.isPending ? (
                       <Loader2 className="mr-2 size-4 animate-spin" />
