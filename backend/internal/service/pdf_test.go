@@ -7,8 +7,6 @@ import (
 	"image/png"
 	"os"
 	"os/exec"
-	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -50,49 +48,33 @@ func fakePNG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-var pageTypeRe = regexp.MustCompile(`/Type\s*/Page\b`)
-var mediaBoxRe = regexp.MustCompile(`/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]`)
+// cardRasterDPI is the resolution renderToPNG rasterizes at (see
+// pdftest_helper_test.go's "-r 150" pdftoppm flag).
+const cardRasterDPI = 150.0
 
-// assertSinglePageA6Landscape parses the raw (uncompressed page-object)
-// bytes of the PDF to verify exactly one page whose MediaBox is 148x105mm
-// landscape (FR-20), without depending on external tools.
+func mmToPx(mm float64) float64 { return mm * cardRasterDPI / 25.4 }
+
+// assertSinglePageA6Landscape rasterizes the PDF (renderToPNG already fails
+// on anything but exactly one page) and verifies its rendered pixel
+// dimensions match 148x105mm landscape at cardRasterDPI (FR-20). Asserting
+// on the rasterized page rather than the PDF's declared MediaBox catches
+// content-level bugs — e.g. a full Y-axis inversion — that a MediaBox check
+// alone would miss, since the page object itself stays correctly sized even
+// when what's drawn on it is flipped.
 func assertSinglePageA6Landscape(t *testing.T, pdfBytes []byte) {
 	t.Helper()
-	if !bytes.HasPrefix(pdfBytes, []byte("%PDF-")) {
-		t.Fatalf("expected PDF magic prefix, got %q", pdfBytes[:min(5, len(pdfBytes))])
+	img := renderToPNG(t, pdfBytes)
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= h {
+		t.Fatalf("expected landscape orientation, got %dx%d", w, h)
 	}
-
-	pages := pageTypeRe.FindAll(pdfBytes, -1)
-	if len(pages) != 1 {
-		t.Fatalf("expected exactly 1 page object, found %d", len(pages))
+	wantW, wantH := mmToPx(cardPageW), mmToPx(cardPageH)
+	if diff := float64(w) - wantW; diff < -6 || diff > 6 {
+		t.Errorf("page width %dpx, want ~%.0fpx (%.0fmm @%.0fdpi)", w, wantW, cardPageW, cardRasterDPI)
 	}
-
-	m := mediaBoxRe.FindSubmatch(pdfBytes)
-	if m == nil {
-		t.Fatalf("MediaBox not found in PDF bytes")
-	}
-	var box [4]float64
-	for i := 0; i < 4; i++ {
-		v, err := strconv.ParseFloat(string(m[i+1]), 64)
-		if err != nil {
-			t.Fatalf("parsing MediaBox value %q: %v", m[i+1], err)
-		}
-		box[i] = v
-	}
-	wPt := box[2] - box[0]
-	hPt := box[3] - box[1]
-	const ptPerMM = 72.0 / 25.4
-	wMM := wPt / ptPerMM
-	hMM := hPt / ptPerMM
-
-	if wMM < hMM {
-		t.Fatalf("expected landscape orientation (w>h), got %.2fx%.2fmm", wMM, hMM)
-	}
-	if diff := wMM - 148; diff < -0.5 || diff > 0.5 {
-		t.Errorf("expected page width ~148mm, got %.2fmm", wMM)
-	}
-	if diff := hMM - 105; diff < -0.5 || diff > 0.5 {
-		t.Errorf("expected page height ~105mm, got %.2fmm", hMM)
+	if diff := float64(h) - wantH; diff < -6 || diff > 6 {
+		t.Errorf("page height %dpx, want ~%.0fpx (%.0fmm @%.0fdpi)", h, wantH, cardPageH, cardRasterDPI)
 	}
 }
 
@@ -103,6 +85,33 @@ func TestGenerateExamCardPDF_PhotoNull_SinglePageA6(t *testing.T) {
 		t.Fatalf("generateExamCardPDF: %v", err)
 	}
 	assertSinglePageA6Landscape(t, pdf)
+}
+
+// TestGenerateExamCardPDF_HeaderBandRendersAtTop rasterizes the card and
+// checks the navy header band's ink is where it belongs — at the top edge,
+// not the bottom — and that the region just below it is plain background.
+// A full Y-axis inversion of the card would put the band at the bottom and
+// pass a page-count/orientation-only check; this catches that class of bug
+// on the rendered pixels (FR-30), the same class of assertion FR-31 requires
+// the certificate suite to make.
+func TestGenerateExamCardPDF_HeaderBandRendersAtTop(t *testing.T) {
+	detail := baseCardRegistration()
+	pdf, err := generateExamCardPDF(detail, "Saifullah Panca", "Akademi Bimbel", nil, nil)
+	if err != nil {
+		t.Fatalf("generateExamCardPDF: %v", err)
+	}
+	img := renderToPNG(t, pdf)
+
+	navyR, navyG, navyB := hexRGB(cardNavyHex)
+	headerR, headerG, headerB := avgColorAt(img, cardPageW, cardPageH, 120, 8)
+	if colorDistance(headerR, headerG, headerB, float64(navyR), float64(navyG), float64(navyB)) > 30*30*3 {
+		t.Errorf("header band at (120mm,8mm): got (%.0f,%.0f,%.0f), want navy (%d,%d,%d) — header band may be missing or displaced", headerR, headerG, headerB, navyR, navyG, navyB)
+	}
+
+	bgR, bgG, bgB := avgColorAt(img, cardPageW, cardPageH, 120, 20)
+	if colorDistance(bgR, bgG, bgB, 255, 255, 255) > 30*30*3 {
+		t.Errorf("background at (120mm,20mm): got (%.0f,%.0f,%.0f), want white — header band may have leaked past its 16mm height or the card is vertically inverted", bgR, bgG, bgB)
+	}
 }
 
 func TestGenerateExamCardPDF_PhotoPresent_SinglePageA6(t *testing.T) {

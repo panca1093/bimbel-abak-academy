@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"reflect"
 	"testing"
 	"time"
@@ -659,5 +661,140 @@ func TestResolveCertificateLayout_SavedLayout_UsesPersistedFields(t *testing.T) 
 	}
 	if len(layout.Fields) != 1 || layout.Fields[0].ID != "title" || layout.Fields[0].XMm != 10 {
 		t.Errorf("want the persisted layout fields, got %+v", layout.Fields)
+	}
+}
+
+// ---------- tests: rasterized certificate output (FR-30, FR-31) ----------
+//
+// These assert on the certificate's rendered pixels via renderToPNG rather
+// than on PDF byte substrings. A bytes.Contains(pdf, "(Test)")-style check
+// is blind to a fully upside-down page or a blank first page — both shipped
+// past a green byte-level suite in v1 (memory:
+// pdf-layout-needs-visual-verification).
+
+// assertA4LandscapeAspect checks the rasterized page is wider than tall and
+// close to the 297:210 A4 ratio (FR-6).
+func assertA4LandscapeAspect(t *testing.T, img image.Image, name string) {
+	t.Helper()
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= h {
+		t.Errorf("%s: expected landscape orientation, got %dx%d", name, w, h)
+	}
+	gotAspect := float64(w) / float64(h)
+	wantAspect := float64(certificatePageWidthMm) / float64(certificatePageHeightMm)
+	if diff := gotAspect - wantAspect; diff < -0.02 || diff > 0.02 {
+		t.Errorf("%s: aspect ratio %.4f, want ~%.4f (A4 landscape)", name, gotAspect, wantAspect)
+	}
+}
+
+// TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground rasterizes
+// each built-in template's output and confirms: exactly one page, A4
+// landscape aspect, and — the direct regression guard for R1's "blank first
+// page" bug — that a corner known to carry no stamped field still shows the
+// template's own background color rather than a blank/white page.
+func TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground(t *testing.T) {
+	templates := []string{"classic", "modern", "elegant"}
+	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	for _, tmpl := range templates {
+		tmpl := tmpl
+		t.Run(tmpl, func(t *testing.T) {
+			pdfBytes, err := generateCertificatePDF(tmpl, "Budi Santoso", "Ujian Matematika Dasar", submittedAt)
+			if err != nil {
+				t.Fatalf("generateCertificatePDF: %v", err)
+			}
+
+			img := renderToPNG(t, pdfBytes)
+			assertA4LandscapeAspect(t, img, tmpl)
+
+			// (5mm, 5mm) is outside every field box in all three default
+			// layouts (fields start at x=48.5mm; the logo field starts at
+			// x=138.5mm) — background-only corner.
+			srcImg, err := png.Decode(bytes.NewReader(builtinCertificateBackground(defaultLayout(tmpl).Background.Ref)))
+			if err != nil {
+				t.Fatalf("decode source background: %v", err)
+			}
+			rr, rg, rb := avgColorAt(img, certificatePageWidthMm, certificatePageHeightMm, 5, 5)
+			sr, sg, sb := avgColorAt(srcImg, certificatePageWidthMm, certificatePageHeightMm, 5, 5)
+			if colorDistance(rr, rg, rb, sr, sg, sb) > 30*30*3 {
+				t.Errorf("%s: rendered corner color (%.0f,%.0f,%.0f) does not match source background (%.0f,%.0f,%.0f) — background may be missing or misplaced", tmpl, rr, rg, rb, sr, sg, sb)
+			}
+		})
+	}
+}
+
+// TestGenerateCertificatePDF_LongAndNonASCIINames renders a ~60-character
+// name and a non-ASCII name (FR-7) on the classic template, confirming the
+// output still rasterizes to a single A4-landscape page. Centering and
+// page-edge overflow are confirmed by the required manual visual check of
+// the persisted PNGs, not by pixel assertions here (NFR-1).
+func TestGenerateCertificatePDF_LongAndNonASCIINames(t *testing.T) {
+	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name        string
+		studentName string
+	}{
+		{"long-name", "Muhammad Alexander Christopher Wijayakusuma Prabowo Setiawan"},
+		{"non-ascii-name", "Zulfikar Nurhadi Śarma"},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			pdfBytes, err := generateCertificatePDF("classic", tc.studentName, "Ujian Bahasa Indonesia", submittedAt)
+			if err != nil {
+				t.Fatalf("generateCertificatePDF: %v", err)
+			}
+			img := renderToPNG(t, pdfBytes)
+			assertA4LandscapeAspect(t, img, tc.name)
+		})
+	}
+}
+
+// noInkBrightnessThreshold is well below the ~730-765 R+G+B sum of the
+// near-white background around the classic template's text rows, and well
+// above the ~80-140 sum of its dark navy/slate field text — a region whose
+// darkest pixel sits below this line has glyph ink in it, not just
+// background paper texture.
+const noInkBrightnessThreshold = 600.0
+
+// TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions is the direct
+// regression guard for R1's off-centre/upside-down bug (FR-31): it confirms
+// stamped field ink actually lands within each field's expected mm-region,
+// not merely that the page has the right size and an untouched corner still
+// shows background (which TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground
+// checks, but which stays green even if every field's Y coordinate were
+// inverted).
+func TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions(t *testing.T) {
+	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	pdfBytes, err := generateCertificatePDF("classic", "Budi Santoso", "Ujian Matematika Dasar", submittedAt)
+	if err != nil {
+		t.Fatalf("generateCertificatePDF: %v", err)
+	}
+	img := renderToPNG(t, pdfBytes)
+
+	layout := defaultLayout("classic")
+	fieldsByID := make(map[string]LayoutField, len(layout.Fields))
+	for _, f := range layout.Fields {
+		fieldsByID[f.ID] = f
+	}
+
+	for _, id := range []string{"title", "student_name", "date"} {
+		f, ok := fieldsByID[id]
+		if !ok {
+			t.Fatalf("classic default layout has no %q field", id)
+		}
+		lineHeightMm := f.SizePt * 0.3528 * 1.15
+		// A center band well inside the field's box (avoids edge padding)
+		// and a couple mm of headroom above/below the nominal cell height
+		// (avoids being thrown off by exact vertical-centering behavior).
+		xMin, xMax := f.XMm+40, f.XMm+f.WMm-40
+		yMin, yMax := f.YMm-2, f.YMm+lineHeightMm+2
+
+		darkest := regionMinBrightness(img, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
+		if darkest >= noInkBrightnessThreshold {
+			t.Errorf("field %q: no ink found in its expected region x:[%.1f,%.1f] y:[%.1f,%.1f]mm (darkest pixel sum=%.0f, want <%.0f) — field text may be missing or mispositioned", id, xMin, xMax, yMin, yMax, darkest, noInkBrightnessThreshold)
+		}
 	}
 }
