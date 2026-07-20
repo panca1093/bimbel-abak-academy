@@ -12,7 +12,8 @@ import {
   useCertificateDesign,
   useUpdateCertificateDesign,
 } from "@/lib/hooks/admin-exams";
-import type { ExamDetail } from "@/lib/types";
+import { CertificateFieldEditor } from "@/components/admin/CertificateFieldEditor";
+import type { CertificateLayout, CertificateLayoutField, ExamDetail } from "@/lib/types";
 
 const TEMPLATE_OPTIONS = ["classic", "modern", "elegant", "custom"] as const;
 type CertificateTemplateOption = (typeof TEMPLATE_OPTIONS)[number];
@@ -38,6 +39,7 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
   const [template, setTemplate] = useState<CertificateTemplateOption>("classic");
   const [backgroundKey, setBackgroundKey] = useState<string | null>(null);
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
+  const [layout, setLayout] = useState<CertificateLayout | null>(null);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -51,8 +53,13 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
     setTemplate((data.template as CertificateTemplateOption) ?? "classic");
     setBackgroundUrl(data.background_url ?? null);
     setBackgroundKey(exam.certificate_background_key ?? null);
+    setLayout(data.layout);
     setInitialized(true);
   }, [data, initialized, exam.certificate_background_key]);
+
+  function handleFieldsChange(fields: CertificateLayoutField[]) {
+    setLayout((prev) => (prev ? { ...prev, fields } : prev));
+  }
 
   async function loadPreview(tmpl: string) {
     setPreviewLoading(true);
@@ -115,12 +122,12 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
   }
 
   async function handleSave() {
-    if (!data) return;
+    if (!data || !layout) return;
     try {
       await updateDesign.mutateAsync({
         template,
         background_key: backgroundKey,
-        layout: data.layout,
+        layout,
       });
       toast.success(t("changes_saved"));
       onSaved?.();
@@ -246,6 +253,7 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
                 —
               </div>
             )}
+            {layout && <CertificateFieldEditor layout={layout} onChange={handleFieldsChange} />}
           </div>
         </div>
       )}
