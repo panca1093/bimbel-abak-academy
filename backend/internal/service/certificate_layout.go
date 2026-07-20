@@ -9,6 +9,11 @@ package service
 
 import "fmt"
 
+// FieldID identifies a certificate layout field. It aliases string rather than
+// defining a distinct type so it drops in wherever LayoutField.ID and
+// validLayoutFieldIDs already use plain strings, with no conversion at call sites.
+type FieldID = string
+
 // certificatePageWidthMm and certificatePageHeightMm are the A4 landscape page
 // dimensions used by every certificate layout.
 const (

@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"akademi-bimbel/internal/repository"
 
 	"github.com/google/uuid"
+	"github.com/jung-kurt/gofpdf"
 	"github.com/minio/minio-go/v7"
 )
 
@@ -23,6 +25,14 @@ var validCertificateTemplates = map[string]bool{
 	"custom":  true,
 }
 
+// shrinkToFitSafetyMargin leaves headroom below the exact fitted width so
+// glyph rendering rounding doesn't tip a shrunk field back over the box edge.
+// minShrinkToFitSizePt is the floor below which shrinking stops.
+const (
+	shrinkToFitSafetyMargin = 0.97
+	minShrinkToFitSizePt    = 6.0
+)
+
 func validateCertificateTemplate(tmpl string) error {
 	if !validCertificateTemplates[tmpl] {
 		return fmt.Errorf("%w: unknown certificate template: %s", ErrValidation, tmpl)
@@ -30,17 +40,138 @@ func validateCertificateTemplate(tmpl string) error {
 	return nil
 }
 
-// pdfEscape escapes (, ), and \ in PDF literal string content.
-func pdfEscape(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `(`, `\(`)
-	s = strings.ReplaceAll(s, `)`, `\)`)
-	return s
+//go:embed assets/cert_bg_classic.png
+var certBgClassicPNG []byte
+
+//go:embed assets/cert_bg_modern.png
+var certBgModernPNG []byte
+
+//go:embed assets/cert_bg_elegant.png
+var certBgElegantPNG []byte
+
+// builtinCertificateBackground returns the embedded background PNG for a
+// built-in background ref. An unrecognised ref falls back to classic, which
+// covers the "custom template but no background key" case (FR-19) since the
+// caller passes the default layout's own ref in that situation.
+func builtinCertificateBackground(ref string) []byte {
+	switch ref {
+	case "modern":
+		return certBgModernPNG
+	case "elegant":
+		return certBgElegantPNG
+	default:
+		return certBgClassicPNG
+	}
 }
 
-// generateCertificatePDF generates a single-page A4 landscape PDF (841.89 x 595.28 pt)
-// with the given template, student name, exam title, and submission date
-// (Asia/Jakarta, no score).
+// renderCertificate is the single rendering entry point for real generation,
+// preview, and the editor (FR-4): it draws bg full-bleed on an A4 landscape
+// page, then stamps each visible field from layout with its value from vals.
+// It performs no I/O — bg is supplied by the caller, embedded asset for
+// built-ins or a downloaded object for custom (FR-8). Coordinates are passed
+// straight to SetXY with no Y-axis arithmetic (FR-1).
+func renderCertificate(layout Layout, bg []byte, vals map[FieldID]string) ([]byte, error) {
+	// gofpdf.NewCustom treats Size as the *portrait* reference and swaps it
+	// for OrientationStr "L" (see gofpdf fpdfNew). layout.Page is already
+	// expressed in landscape terms, so orientation "P" applies it unswapped.
+	pdf := gofpdf.NewCustom(&gofpdf.InitType{
+		OrientationStr: "P",
+		UnitStr:        "mm",
+		Size:           gofpdf.SizeType{Wd: layout.Page.WidthMm, Ht: layout.Page.HeightMm},
+	})
+	if err := RegisterFonts(pdf); err != nil {
+		return nil, fmt.Errorf("register fonts: %w", err)
+	}
+	// Certificates are exactly one page by construction (FR-6); gofpdf's
+	// default auto page-break would otherwise silently start a second page
+	// when a field near the bottom margin is stamped.
+	pdf.SetAutoPageBreak(false, 0)
+	pdf.AddPage()
+
+	imgOpt := gofpdf.ImageOptions{ImageType: "PNG"}
+	pdf.RegisterImageOptionsReader("certificate-background", imgOpt, bytes.NewReader(bg))
+	pdf.ImageOptions("certificate-background", 0, 0, layout.Page.WidthMm, layout.Page.HeightMm, false, imgOpt, 0, "")
+
+	for _, field := range layout.Fields {
+		if !field.Visible || field.ID == "logo" {
+			continue
+		}
+		text := vals[field.ID]
+		if text == "" {
+			continue
+		}
+
+		style := ""
+		if field.Weight == "bold" {
+			style = "B"
+		}
+		family := ResolveFontFamily(field.Font)
+		pdf.SetFont(family, style, field.SizePt)
+
+		// Shrink-to-fit: CellFormat does not wrap or clip, so a long value
+		// (e.g. a ~60-char name) at the field's nominal size can run past
+		// the page edge (FR-6). Scale the font down to the field's box
+		// width before drawing rather than let it overflow.
+		size := field.SizePt
+		if textWidth := pdf.GetStringWidth(text); textWidth > field.WMm && textWidth > 0 {
+			size = field.SizePt * (field.WMm / textWidth) * shrinkToFitSafetyMargin
+			if size < minShrinkToFitSizePt {
+				size = minShrinkToFitSizePt
+			}
+			pdf.SetFont(family, style, size)
+		}
+
+		r, g, b := hexToRGB(field.Color)
+		pdf.SetTextColor(r, g, b)
+
+		pdf.SetXY(field.XMm, field.YMm)
+		lineHeightMm := size * 0.3528 * 1.15
+		pdf.CellFormat(field.WMm, lineHeightMm, text, "", 0, alignToGofpdf(field.Align), false, 0, "")
+	}
+
+	if err := pdf.Error(); err != nil {
+		return nil, fmt.Errorf("render certificate: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := pdf.Output(&buf); err != nil {
+		return nil, fmt.Errorf("output certificate pdf: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// alignToGofpdf maps the layout schema's align values to gofpdf's CellFormat
+// alignStr codes; an unrecognised value centers, matching the field default.
+func alignToGofpdf(align string) string {
+	switch align {
+	case "left":
+		return "L"
+	case "right":
+		return "R"
+	default:
+		return "C"
+	}
+}
+
+// hexToRGB parses a "#RRGGBB" color into 0-255 components; a malformed value
+// falls back to black rather than erroring, since layout field colors are not
+// validated at parse time (see certificate_layout.go).
+func hexToRGB(hex string) (int, int, int) {
+	hex = strings.TrimPrefix(hex, "#")
+	var r, g, b int
+	if len(hex) != 6 {
+		return 0, 0, 0
+	}
+	if _, err := fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b); err != nil {
+		return 0, 0, 0
+	}
+	return r, g, b
+}
+
+// generateCertificatePDF renders a single-page A4 landscape certificate PDF
+// through renderCertificate, using the given template's default layout and
+// built-in background, with student name, exam title, and submission date
+// (Asia/Jakarta, no score) stamped in.
 func generateCertificatePDF(template, studentName, examTitle string, submittedAt time.Time) ([]byte, error) {
 	if err := validateCertificateTemplate(template); err != nil {
 		return nil, err
@@ -50,221 +181,22 @@ func generateCertificatePDF(template, studentName, examTitle string, submittedAt
 	if err != nil {
 		return nil, err
 	}
-	dateStr := pdfEscape(submittedAt.In(loc).Format("2 January 2006"))
-	name := pdfEscape(studentName)
-	exam := pdfEscape(examTitle)
+	dateStr := submittedAt.In(loc).Format("2 January 2006")
 
-	var content []byte
-	switch template {
-	case "classic":
-		content = classicLayout(name, exam, dateStr)
-	case "modern":
-		content = modernLayout(name, exam, dateStr)
-	case "elegant":
-		content = elegantLayout(name, exam, dateStr)
-	}
-	return buildPDF(content), nil
-}
+	layout := defaultLayout(template)
+	bg := builtinCertificateBackground(layout.Background.Ref)
 
-// classicLayout renders a blue-themed certificate: light-blue background, dark-blue
-// header band, blue bordered white interior.
-func classicLayout(name, exam, date string) []byte {
-	return []byte(fmt.Sprintf(`q
-0.8 0.88 0.95 rg
-0 0 841.89 595.28 re f
-1 1 1 rg
-50 50 741.89 495.28 re f
-0.2 0.35 0.65 RG
-3 w
-50 50 741.89 495.28 re S
-0.2 0.35 0.65 rg
-50 495 741.89 50 re f
-1 1 1 rg
-BT
-/F1 26 Tf
-421 525 Td
-(CERTIFICATE OF COMPLETION) Tj
-ET
-0.2 0.35 0.65 rg
-BT
-/F1 14 Tf
-421 450 Td
-(This certificate is awarded to) Tj
-ET
-BT
-/F1 36 Tf
-421 390 Td
-(%s) Tj
-ET
-BT
-/F1 14 Tf
-421 320 Td
-(For successfully completing) Tj
-ET
-BT
-/F1 22 Tf
-421 270 Td
-(%s) Tj
-ET
-BT
-/F1 12 Tf
-421 200 Td
-(Date: %s) Tj
-ET
-Q`, name, exam, date))
-}
-
-// modernLayout renders a teal-themed certificate: white background, teal thick border,
-// teal header band with "CERTIFICATE" title.
-func modernLayout(name, exam, date string) []byte {
-	return []byte(fmt.Sprintf(`q
-1 1 1 rg
-0 0 841.89 595.28 re f
-0 0.44 0.44 RG
-4 w
-50 50 741.89 495.28 re S
-0 0.44 0.44 rg
-50 545 741.89 50 re f
-0 0.44 0.44 rg
-50 50 741.89 2 re f
-1 1 1 rg
-BT
-/F1 30 Tf
-421 570 Td
-(CERTIFICATE) Tj
-ET
-BT
-/F1 14 Tf
-421 490 Td
-(Proudly presented to) Tj
-ET
-0 0.44 0.44 rg
-BT
-/F1 40 Tf
-421 420 Td
-(%s) Tj
-ET
-BT
-/F1 14 Tf
-421 340 Td
-(For completing the examination) Tj
-ET
-0 0.44 0.44 rg
-BT
-/F1 24 Tf
-421 280 Td
-(%s) Tj
-ET
-BT
-/F1 12 Tf
-421 200 Td
-(Date: %s) Tj
-ET
-Q`, name, exam, date))
-}
-
-// elegantLayout renders a gold-toned certificate: cream background, gold double border,
-// gold accent lines.
-func elegantLayout(name, exam, date string) []byte {
-	return []byte(fmt.Sprintf(`q
-1 0.98 0.9 rg
-0 0 841.89 595.28 re f
-0.55 0.42 0.12 RG
-2 w
-50 50 741.89 495.28 re S
-0.55 0.42 0.12 RG
-1 w
-55 55 731.89 485.28 re S
-0.55 0.42 0.12 rg
-50 500 741.89 3 re f
-0.55 0.42 0.12 rg
-50 75 741.89 3 re f
-BT
-/F1 28 Tf
-421 540 Td
-(Certificate of Achievement) Tj
-ET
-BT
-/F1 12 Tf
-421 475 Td
-(This certificate is proudly presented to) Tj
-ET
-BT
-/F1 38 Tf
-421 400 Td
-(%s) Tj
-ET
-BT
-/F1 12 Tf
-421 325 Td
-(For successful completion of) Tj
-ET
-BT
-/F1 22 Tf
-421 270 Td
-(%s) Tj
-ET
-BT
-/F1 11 Tf
-421 200 Td
-(Date: %s) Tj
-ET
-Q`, name, exam, date))
-}
-
-// buildPDF wraps a content stream with the full %PDF-1.4 structure: catalog, pages,
-// page (A4 landscape), content stream, Helvetica font, xref table, trailer, startxref, %%EOF.
-func buildPDF(content []byte) []byte {
-	var buf bytes.Buffer
-
-	// Header
-	buf.WriteString("%PDF-1.4\n")
-
-	type objRef struct {
-		num    int
-		offset int
-	}
-	var objs []objRef
-
-	// 1 0 obj — Catalog
-	objs = append(objs, objRef{1, buf.Len()})
-	buf.WriteString("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
-
-	// 2 0 obj — Pages
-	objs = append(objs, objRef{2, buf.Len()})
-	buf.WriteString("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
-
-	// 3 0 obj — Page (A4 landscape)
-	objs = append(objs, objRef{3, buf.Len()})
-	buf.WriteString("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 841.89 595.28] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n")
-
-	// 4 0 obj — Content stream
-	objs = append(objs, objRef{4, buf.Len()})
-	buf.WriteString(fmt.Sprintf("4 0 obj\n<< /Length %d >>\nstream\n", len(content)))
-	buf.Write(content)
-	buf.WriteString("\nendstream\nendobj\n")
-
-	// 5 0 obj — Font (base-14 Helvetica)
-	objs = append(objs, objRef{5, buf.Len()})
-	buf.WriteString("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
-
-	// xref table
-	xrefOffset := buf.Len()
-	buf.WriteString("xref\n")
-	buf.WriteString(fmt.Sprintf("0 %d\n", len(objs)+1))
-	buf.WriteString("0000000000 65535 f \n")
-	for _, o := range objs {
-		fmt.Fprintf(&buf, "%010d 00000 n \n", o.offset)
+	vals := map[FieldID]string{
+		"title":              "CERTIFICATE OF COMPLETION",
+		"subtitle":           "This certificate is proudly awarded to",
+		"student_name":       studentName,
+		"completion_text":    "for successfully completing",
+		"exam_title":         examTitle,
+		"date":               dateStr,
+		"certificate_number": "ABK/2026/000000",
 	}
 
-	// Trailer
-	buf.WriteString("trailer\n")
-	buf.WriteString(fmt.Sprintf("<< /Size %d /Root 1 0 R >>\n", len(objs)+1))
-	buf.WriteString("startxref\n")
-	buf.WriteString(fmt.Sprintf("%d\n", xrefOffset))
-	buf.WriteString("%%EOF\n")
-
-	return buf.Bytes()
+	return renderCertificate(layout, bg, vals)
 }
 
 // uploadCertificatePDF uploads a PDF certificate at certificates/<sessionID>.pdf
