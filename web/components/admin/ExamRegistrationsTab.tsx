@@ -120,7 +120,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
         <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <SnapCheckout orderId={createdOrderId} basePath="/admin/bulk-exam-orders" />
-          <Button variant="outline" onClick={handleReset}>
+          <Button variant="outline" className="rounded-full" onClick={handleReset}>
             {t("bulk_exam_order_reset")}
           </Button>
         </div>
@@ -155,7 +155,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
         )}
 
         <div className="mt-8 flex justify-center">
-          <Button variant="outline" onClick={handleReset}>
+          <Button variant="outline" className="rounded-full" onClick={handleReset}>
             {t("exam_grant_grant_again")}
           </Button>
         </div>
@@ -182,7 +182,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
       {selectedStudentIds.length > 0 && isSuperAdmin && (
         <div className="space-y-4">
-          <Button size="lg" onClick={handleGrant} disabled={grantMutation.isPending}>
+          <Button size="lg" className="rounded-full" onClick={handleGrant} disabled={grantMutation.isPending}>
             {grantMutation.isPending ? (
               <Loader2 className="mr-2 size-4 animate-spin" />
             ) : null}
@@ -197,7 +197,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
       {selectedStudentIds.length > 0 && !isSuperAdmin && (
         <div className="space-y-4">
-          <Button size="lg" onClick={handlePreview} disabled={previewMutation.isPending}>
+          <Button size="lg" className="rounded-full" onClick={handlePreview} disabled={previewMutation.isPending}>
             {previewMutation.isPending ? (
               <Loader2 className="mr-2 size-4 animate-spin" />
             ) : null}
@@ -246,7 +246,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
               <Button
                 size="lg"
-                className="w-full"
+                className="w-full rounded-full"
                 onClick={handleCreateOrder}
                 disabled={createMutation.isPending}
               >

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -22,7 +23,28 @@ var (
 	ErrInvalidProvinsi    = errors.New("invalid provinsi")
 	ErrInvalidKota        = errors.New("invalid kota")
 	ErrInvalidKecamatan   = errors.New("invalid kecamatan")
+	ErrInvalidGender      = errors.New("invalid gender: expected male or female")
 )
+
+// normalizeGender maps the API's male/female wire values to the DB's
+// users_gender_check constraint ('m'/'f' only, see migration 0002_identity).
+// Without this, RegisterStudent's INSERT fails with a raw Postgres
+// check-constraint error for every request that sets a gender at all.
+func normalizeGender(gender *string) (*string, error) {
+	if gender == nil || *gender == "" {
+		return nil, nil
+	}
+	switch strings.ToLower(*gender) {
+	case "male", "m":
+		v := "m"
+		return &v, nil
+	case "female", "f":
+		v := "f"
+		return &v, nil
+	default:
+		return nil, ErrInvalidGender
+	}
+}
 
 const tempPasswordLen = 10
 
@@ -123,6 +145,11 @@ func (s *Service) RegisterStudent(ctx context.Context, schoolID, name, jenjang s
 	// Validate jenjang against school's SchoolTypes when types are configured.
 	if len(school.SchoolTypes) > 0 && !jenjangInSchoolTypes(jenjang, school.SchoolTypes) {
 		return nil, ErrInvalidJenjang
+	}
+
+	gender, err = normalizeGender(gender)
+	if err != nil {
+		return nil, err
 	}
 
 	// All-or-nothing address validation (FR-REG-02a).

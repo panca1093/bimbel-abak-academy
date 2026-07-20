@@ -21,9 +21,12 @@ import {
 } from "@/lib/hooks/admin-students-bulk";
 import { useJobStatus } from "@/lib/hooks/jobs";
 
-const TEMPLATE_HEADER = "name,school,jenjang,provinsi,kota,kecamatan,kode_pos,email";
+// Same field set as the individual Register Student form (school is the one
+// addition, since bulk rows aren't scoped by a page-level school picker).
+const TEMPLATE_HEADER =
+  "name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
 const TEMPLATE_EXAMPLE_ROW =
-  "Budi Santoso,SMAN 1 Jakarta,sma,Jawa Barat,Bandung,Coblong,40132,budi@example.com";
+  "Budi Santoso,SMAN 1 Jakarta,sma,budi@example.com,2008-05-14,male,11,UTBK,Jl. Melati No. 3,Jawa Barat,Bandung,Coblong,40132";
 
 function buildTemplateCSV(): string {
   // One illustrative example row, per architecture decision 27.
@@ -119,7 +122,13 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
               1. {t("bulk_register_download_template")}
             </h3>
             <div className="mt-2">
-              <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={downloadTemplate}
+              >
                 <Download className="mr-2 size-4" />
                 {t("bulk_register_download_template")}
               </Button>
@@ -145,7 +154,7 @@ export function BulkImportModal({ open, onOpenChange }: BulkImportModalProps) {
                 {file && <p className="text-sm text-muted-foreground">{file.name}</p>}
               </div>
 
-              <Button type="submit" disabled={isUploading || !file}>
+              <Button type="submit" className="rounded-full" disabled={isUploading || !file}>
                 {isUploading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
                 {isUploading ? t("bulk_register_uploading") : t("bulk_register_upload")}
               </Button>

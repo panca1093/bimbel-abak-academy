@@ -6,7 +6,9 @@ import (
 	"encoding/csv"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const maxBulkRows = 1000
@@ -17,17 +19,24 @@ var (
 	ErrRowLimitExceeded    = errors.New("row limit exceeded")
 	ErrSchoolNotFoundByName = errors.New("school not found by name")
 	ErrCrossSchoolBound    = errors.New("school mismatch: row school differs from bound school")
+	ErrInvalidDOBFormat    = errors.New("invalid dob format, expected YYYY-MM-DD")
+	ErrInvalidGradeFormat  = errors.New("invalid grade, expected an integer")
 )
 
 type StudentBulkRow struct {
-	Name      string
-	School    string
-	Email     *string
-	Jenjang   string
-	Provinsi  *string
-	Kota      *string
-	Kecamatan *string
-	KodePos   *string
+	Name           string
+	School         string
+	Email          *string
+	Jenjang        string
+	DOB            *string
+	Gender         *string
+	Grade          *string
+	AlamatDomisili *string
+	TargetExam     *string
+	Provinsi       *string
+	Kota           *string
+	Kecamatan      *string
+	KodePos        *string
 }
 
 type StudentBulkResultRow struct {
@@ -41,8 +50,10 @@ type StudentBulkResultRow struct {
 }
 
 // ParseStudentBulkCSV reads a student-bulk upload. jenjang and school are
-// required; nis is ignored if present; provinsi/kota/kecamatan/kode_pos are
-// optional.
+// required; nis is ignored if present; email/dob/gender/grade/
+// alamat_domisili/target_exam/provinsi/kota/kecamatan/kode_pos are all
+// optional — same field set as single registration (RegisterStudent), minus
+// the region-name-vs-ID resolution which happens in ProcessStudentBulkRows.
 func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 	r := csv.NewReader(bytes.NewReader(data))
 
@@ -55,6 +66,7 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 	}
 
 	nameIdx, jenjangIdx, schoolIdx, emailIdx := -1, -1, -1, -1
+	dobIdx, genderIdx, gradeIdx, alamatIdx, targetExamIdx := -1, -1, -1, -1, -1
 	provinsiIdx, kotaIdx, kecamatanIdx, kodePosIdx := -1, -1, -1, -1
 	for i, h := range header {
 		switch strings.ToLower(strings.TrimSpace(h)) {
@@ -66,6 +78,16 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			schoolIdx = i
 		case "email":
 			emailIdx = i
+		case "dob":
+			dobIdx = i
+		case "gender":
+			genderIdx = i
+		case "grade":
+			gradeIdx = i
+		case "alamat_domisili":
+			alamatIdx = i
+		case "target_exam":
+			targetExamIdx = i
 		case "provinsi":
 			provinsiIdx = i
 		case "kota":
@@ -81,6 +103,14 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 		return nil, ErrMissingCSVHeader
 	}
 
+	optionalStr := func(record []string, idx int) *string {
+		if idx == -1 || record[idx] == "" {
+			return nil
+		}
+		v := record[idx]
+		return &v
+	}
+
 	var rows []StudentBulkRow
 	for {
 		record, err := r.Read()
@@ -94,32 +124,21 @@ func ParseStudentBulkCSV(data []byte) ([]StudentBulkRow, error) {
 			return nil, ErrRowLimitExceeded
 		}
 
-		row := StudentBulkRow{
-			Name:    record[nameIdx],
-			School:  record[schoolIdx],
-			Jenjang: record[jenjangIdx],
-		}
-		if emailIdx != -1 && record[emailIdx] != "" {
-			email := record[emailIdx]
-			row.Email = &email
-		}
-		if provinsiIdx != -1 && record[provinsiIdx] != "" {
-			v := record[provinsiIdx]
-			row.Provinsi = &v
-		}
-		if kotaIdx != -1 && record[kotaIdx] != "" {
-			v := record[kotaIdx]
-			row.Kota = &v
-		}
-		if kecamatanIdx != -1 && record[kecamatanIdx] != "" {
-			v := record[kecamatanIdx]
-			row.Kecamatan = &v
-		}
-		if kodePosIdx != -1 && record[kodePosIdx] != "" {
-			v := record[kodePosIdx]
-			row.KodePos = &v
-		}
-		rows = append(rows, row)
+		rows = append(rows, StudentBulkRow{
+			Name:           record[nameIdx],
+			School:         record[schoolIdx],
+			Jenjang:        record[jenjangIdx],
+			Email:          optionalStr(record, emailIdx),
+			DOB:            optionalStr(record, dobIdx),
+			Gender:         optionalStr(record, genderIdx),
+			Grade:          optionalStr(record, gradeIdx),
+			AlamatDomisili: optionalStr(record, alamatIdx),
+			TargetExam:     optionalStr(record, targetExamIdx),
+			Provinsi:       optionalStr(record, provinsiIdx),
+			Kota:           optionalStr(record, kotaIdx),
+			Kecamatan:      optionalStr(record, kecamatanIdx),
+			KodePos:        optionalStr(record, kodePosIdx),
+		})
 	}
 
 	return rows, nil
@@ -269,7 +288,37 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, schoolBound *strin
 			kodePos = r.KodePos
 		}
 
-		resp, err := s.RegisterStudent(ctx, schoolID, r.Name, r.Jenjang, r.Email, nil, nil, nil, nil, nil, provinsiID, kotaID, kecamatanID, kodePos)
+		var dob *time.Time
+		if r.DOB != nil {
+			parsed, err := time.Parse("2006-01-02", *r.DOB)
+			if err != nil {
+				result.Status = "failed"
+				result.Error = ErrInvalidDOBFormat.Error()
+				results[i] = result
+				if onProgress != nil && (i+1)%checkpoint == 0 {
+					onProgress((i + 1) * 100 / len(rows))
+				}
+				continue
+			}
+			dob = &parsed
+		}
+
+		var grade *int
+		if r.Grade != nil {
+			parsed, err := strconv.Atoi(*r.Grade)
+			if err != nil {
+				result.Status = "failed"
+				result.Error = ErrInvalidGradeFormat.Error()
+				results[i] = result
+				if onProgress != nil && (i+1)%checkpoint == 0 {
+					onProgress((i + 1) * 100 / len(rows))
+				}
+				continue
+			}
+			grade = &parsed
+		}
+
+		resp, err := s.RegisterStudent(ctx, schoolID, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos)
 		if err == nil {
 			result.Status = "success"
 			result.Username = resp.Username

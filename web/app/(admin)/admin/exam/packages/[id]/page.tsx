@@ -2,20 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   ListChecks,
-  Package,
   Pencil,
   Plus,
   Trash2,
   Trophy,
   Users,
 } from "lucide-react";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -243,17 +244,34 @@ export default function ExamPackageDetailPage() {
   }
 
   const title = data?.title ?? t("exam_packages_page_title");
-  const description = data
-    ? `${formatScheduled(data.scheduled_at)} · ${data.status ?? "draft"}`
-    : undefined;
 
   return (
     <div className="space-y-6 fade-in">
-      <AdminPageHeader
-        icon={Package}
-        title={title}
-        description={description}
-      />
+      <Link
+        href="/admin/exam/packages"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 hover:text-ink-900"
+      >
+        <ArrowLeft className="size-4" />
+        {t("exam_packages_page_title")}
+      </Link>
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-[27px] font-semibold tracking-tight text-ink-900">
+            {title}
+          </h1>
+          {data && (
+            <p className="mt-1.5 text-sm text-ink-500">
+              {formatMode(data.mode)} · {formatScheduled(data.scheduled_at)}
+            </p>
+          )}
+        </div>
+        {data && (
+          <Badge variant={data.status === "published" ? "default" : "secondary"}>
+            {data.status ?? "draft"}
+          </Badge>
+        )}
+      </div>
 
       {isLoading && (
         <div className="space-y-2">
@@ -295,7 +313,12 @@ export default function ExamPackageDetailPage() {
                   {t("admin_exam_detail_tab_overview")}
                 </h2>
                 {!isSchoolScoped && (
-                  <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setEditOpen(true)}
+                  >
                     <Pencil className="mr-1 size-4" />
                     {t("admin_exam_detail_edit")}
                   </Button>
@@ -399,6 +422,7 @@ export default function ExamPackageDetailPage() {
                         type="button"
                         size="sm"
                         variant="outline"
+                        className="rounded-full"
                         onClick={handleUtbkPreset}
                       >
                         {t("tests_preset_utbk")}
@@ -409,6 +433,7 @@ export default function ExamPackageDetailPage() {
                         type="button"
                         size="sm"
                         variant="outline"
+                        className="rounded-full"
                         onClick={handleIeltsPreset}
                       >
                         {t("tests_preset_ielts")}
@@ -445,6 +470,7 @@ export default function ExamPackageDetailPage() {
                             type="button"
                             size="icon-xs"
                             variant="ghost"
+                            className="rounded-full"
                             onClick={() => handleRemoveTest(testId)}
                             aria-label={t("admin_exam_detail_tests_remove")}
                           >
@@ -479,6 +505,7 @@ export default function ExamPackageDetailPage() {
                             type="button"
                             size="icon-xs"
                             variant="ghost"
+                            className="rounded-full"
                             onClick={() => removePendingSection(ps.id)}
                             aria-label={t("admin_exam_detail_tests_remove")}
                           >
@@ -492,6 +519,7 @@ export default function ExamPackageDetailPage() {
                 <div className="mt-4 flex justify-end">
                   <Button
                     type="button"
+                    className="rounded-full"
                     onClick={handleSaveTests}
                     disabled={replaceTests.isPending}
                   >
@@ -534,6 +562,7 @@ export default function ExamPackageDetailPage() {
                           type="button"
                           size="icon-xs"
                           variant="outline"
+                          className="rounded-full"
                           onClick={() => handleAddTest(test.id)}
                           aria-label={t("admin_exam_detail_tests_add")}
                         >
@@ -568,6 +597,7 @@ export default function ExamPackageDetailPage() {
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="rounded-full"
                     onClick={() => setSelectedSessionId(null)}
                   >
                     {t("grading_back")}
@@ -628,6 +658,7 @@ export default function ExamPackageDetailPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
+                                  className="rounded-full"
                                   onClick={() => setSelectedSessionId(session.session_id)}
                                 >
                                   {t("competition_view_detail")}
@@ -807,6 +838,7 @@ export default function ExamPackageDetailPage() {
                   <Button
                     type="button"
                     variant="outline"
+                    className="rounded-full"
                     onClick={handleLoadMore}
                     disabled={lb.isFetching}
                   >
@@ -904,7 +936,7 @@ function GradingEssayCard({
         </div>
       </div>
       <div className="flex justify-end">
-        <Button type="button" size="sm" onClick={onSave} disabled={saving}>
+        <Button type="button" size="sm" className="rounded-full" onClick={onSave} disabled={saving}>
           {saving ? t("saving") : t("grading_save")}
         </Button>
       </div>

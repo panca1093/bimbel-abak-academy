@@ -221,7 +221,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="font-serif">
               {isEdit
                 ? t("exam_packages_modal_edit_title")
                 : t("exam_packages_modal_create_title")}
@@ -447,6 +447,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="rounded-full"
                     onClick={() => backgroundInputRef.current?.click()}
                     disabled={isPending || backgroundUploading}
                   >
@@ -461,6 +462,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="rounded-full"
                 onClick={handlePreview}
                 disabled={!isEdit || isPending}
               >
@@ -535,12 +537,13 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
             <Button
               type="button"
               variant="outline"
+              className="rounded-full"
               onClick={onClose}
               disabled={isPending}
             >
               {t("exam_packages_modal_cancel")}
             </Button>
-            <Button type="submit" disabled={!canSubmit || isPending}>
+            <Button type="submit" className="rounded-full" disabled={!canSubmit || isPending}>
               {isPending ? t("saving") : t("exam_packages_modal_save")}
             </Button>
           </DialogFooter>

@@ -237,9 +237,13 @@ type ExamDetail struct {
 // RegistrationListItem is the read shape returned by GET /api/v1/exam/registrations:
 // an ExamRegistration joined with exam.title and exam.scheduled_at.
 type RegistrationListItem struct {
-	ExamRegistration `json:",inline"`
-	ExamTitle        string     `json:"exam_title"`
-	ScheduledAt      *time.Time `json:"scheduled_at"`
+	ExamRegistration     `json:",inline"`
+	ExamTitle            string     `json:"exam_title"`
+	ScheduledAt          *time.Time `json:"scheduled_at"`
+	IsFree               bool       `json:"is_free"`
+	RequiresCheckin      bool       `json:"requires_checkin"`
+	CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
+	DurationMinutes      *int       `json:"duration_minutes"`
 }
 
 // RegistrationDetail is the read shape returned by GET /api/v1/exam/registrations/:id:

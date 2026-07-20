@@ -151,3 +151,73 @@ func TestGrantExamAccess_Integration(t *testing.T) {
 		}
 	})
 }
+
+// TestGetExamRegistrations_Integration covers the student-facing exam list
+// endpoint (GET /exam/registrations) — specifically that is_free/
+// requires_checkin/check_in_window_minutes/duration_minutes now come through
+// from the joined exam row (added so the student Kompetisi page can render
+// per-registration card state without a second round-trip per exam).
+func TestGetExamRegistrations_Integration(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	var actorID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (name, role, status, username, password_hash)
+		 VALUES ($1, 'super_admin', 'active', $2, '')
+		 RETURNING id`,
+		"List Actor "+uniqueSuffix(), "l_actor_"+uniqueSuffix()[:5],
+	).Scan(&actorID)
+	if err != nil {
+		t.Fatalf("insert actor: %v", err)
+	}
+
+	windowMin := 30
+	durationMin := 90
+	var examID uuid.UUID
+	err = repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam (title, status, timer_mode, result_config, mode, is_free, requires_checkin, check_in_window_minutes, duration_minutes)
+		 VALUES ($1, 'active', 'overall', 'score_only', 'standard', true, true, $2, $3)
+		 RETURNING id`,
+		"List Exam "+uniqueSuffix(), windowMin, durationMin,
+	).Scan(&examID)
+	if err != nil {
+		t.Fatalf("insert exam: %v", err)
+	}
+
+	var studentID uuid.UUID
+	err = repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (name, role, status, username, password_hash, jenjang)
+		 VALUES ($1, 'student', 'active', $2, '', 'sma')
+		 RETURNING id`,
+		"List Student "+uniqueSuffix(), "l_stu_"+uniqueSuffix()[:6],
+	).Scan(&studentID)
+	if err != nil {
+		t.Fatalf("insert student: %v", err)
+	}
+
+	if _, err := svc.GrantExamAccess(ctx, actorID.String(), examID.String(), []uuid.UUID{studentID}); err != nil {
+		t.Fatalf("GrantExamAccess: %v", err)
+	}
+
+	items, err := svc.GetExamRegistrations(ctx, studentID.String())
+	if err != nil {
+		t.Fatalf("GetExamRegistrations: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 registration, got %d", len(items))
+	}
+	item := items[0]
+	if !item.IsFree {
+		t.Error("want IsFree=true")
+	}
+	if !item.RequiresCheckin {
+		t.Error("want RequiresCheckin=true")
+	}
+	if item.CheckInWindowMinutes == nil || *item.CheckInWindowMinutes != windowMin {
+		t.Errorf("want CheckInWindowMinutes=%d, got %v", windowMin, item.CheckInWindowMinutes)
+	}
+	if item.DurationMinutes == nil || *item.DurationMinutes != durationMin {
+		t.Errorf("want DurationMinutes=%d, got %v", durationMin, item.DurationMinutes)
+	}
+}

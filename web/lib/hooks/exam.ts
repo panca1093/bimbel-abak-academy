@@ -92,6 +92,7 @@ export function useCheckIn() {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: examKeys.details() });
+      qc.invalidateQueries({ queryKey: examKeys.lists() });
     },
   });
 }

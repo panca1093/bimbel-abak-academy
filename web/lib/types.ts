@@ -838,6 +838,10 @@ export interface RegistrationListItem {
   created_at: string;
   exam_title: string;
   scheduled_at: string | null;
+  is_free: boolean;
+  requires_checkin: boolean;
+  check_in_window_minutes: number | null;
+  duration_minutes: number | null;
 }
 
 export interface RegistrationDetail {
