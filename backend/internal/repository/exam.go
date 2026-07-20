@@ -833,7 +833,7 @@ type ExamFilter struct {
 
 func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 	err := row.Scan(
-		&e.ID, &e.Title, &e.IsFree, &e.ScheduledAt,
+		&e.ID, &e.Title, &e.IsFree, &e.ScheduledAt, &e.ScheduledEndAt,
 		&e.RequiresCheckin, &e.AllowLeaderboard, &e.CDNBundle,
 		&e.BundleURL, &e.BundleGeneratedAt,
 		&e.CheckInWindowMinutes, &e.GraceWindowMinutes, &e.MaxAttempts,
@@ -851,7 +851,7 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 // added by ListExams's query.
 func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.ExamListItem) error {
 	return row.Scan(
-		&item.ID, &item.Title, &item.IsFree, &item.ScheduledAt,
+		&item.ID, &item.Title, &item.IsFree, &item.ScheduledAt, &item.ScheduledEndAt,
 		&item.RequiresCheckin, &item.AllowLeaderboard, &item.CDNBundle,
 		&item.BundleURL, &item.BundleGeneratedAt,
 		&item.CheckInWindowMinutes, &item.GraceWindowMinutes, &item.MaxAttempts,
@@ -871,14 +871,14 @@ func (r *Repository) CreateExam(ctx context.Context, e *model.Exam) error {
 	// so existing callers that don't set Mode keep working. RETURNING mode stamps the
 	// resolved value back into the struct.
 	return r.pool.QueryRow(ctx,
-		`INSERT INTO exam (title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
+		`INSERT INTO exam (title, is_free, scheduled_at, scheduled_end_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, certificate_template, mode)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-			COALESCE(NULLIF($19, ''), 'standard'))
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+			COALESCE(NULLIF($20, ''), 'standard'))
 		RETURNING id, created_at, mode`,
-		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
+		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt, e.CheckInWindowMinutes, e.GraceWindowMinutes,
 		e.MaxAttempts, e.TimerMode, e.DurationMinutes, e.Randomize, e.ResultConfig, e.ResultReleaseAt,
 		e.Status, e.CertificateTemplate, e.Mode,
@@ -888,7 +888,7 @@ func (r *Repository) CreateExam(ctx context.Context, e *model.Exam) error {
 func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam, error) {
 	out := &model.Exam{}
 	err := scanExam(r.pool.QueryRow(ctx,
-		`SELECT id, title, is_free, scheduled_at, requires_checkin, allow_leaderboard,
+		`SELECT id, title, is_free, scheduled_at, scheduled_end_at, requires_checkin, allow_leaderboard,
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, created_at, certificate_template, mode
@@ -909,7 +909,7 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 // mirroring GetCoursesByProductID.
 func (r *Repository) GetExamsByProductID(ctx context.Context, productID uuid.UUID) ([]model.Exam, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
+		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.allow_leaderboard,
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.certificate_template, e.mode
@@ -943,7 +943,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		filter.Limit = 20
 	}
 
-	query := `SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
+	query := `SELECT e.id, e.title, e.is_free, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.allow_leaderboard,
 		e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 		e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 		e.status, e.created_at, e.certificate_template, e.mode,
@@ -996,7 +996,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.ExamDetail, error) {
 	detail := &model.ExamDetail{}
 	err := scanExam(r.pool.QueryRow(ctx,
-		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.requires_checkin, e.allow_leaderboard,
+		`SELECT e.id, e.title, e.is_free, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.allow_leaderboard,
 			e.cdn_bundle, e.bundle_url, e.bundle_generated_at, e.check_in_window_minutes, e.grace_window_minutes,
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.certificate_template, e.mode
@@ -1059,15 +1059,15 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 func (r *Repository) UpdateExam(ctx context.Context, id uuid.UUID, e *model.Exam) error {
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE exam
-		SET title = $1, is_free = $2, scheduled_at = $3, requires_checkin = $4, allow_leaderboard = $5,
-			cdn_bundle = $6, bundle_url = $7, bundle_generated_at = $8,
-			check_in_window_minutes = $9, grace_window_minutes = $10, max_attempts = $11,
-			timer_mode = $12, duration_minutes = $13, randomize = $14,
-			result_config = $15, result_release_at = $16, status = $17,
-			certificate_template = $18,
-			mode = COALESCE(NULLIF($19, ''), mode)
-		WHERE id = $20`,
-		e.Title, e.IsFree, e.ScheduledAt, e.RequiresCheckin, e.AllowLeaderboard,
+		SET title = $1, is_free = $2, scheduled_at = $3, scheduled_end_at = $4, requires_checkin = $5, allow_leaderboard = $6,
+			cdn_bundle = $7, bundle_url = $8, bundle_generated_at = $9,
+			check_in_window_minutes = $10, grace_window_minutes = $11, max_attempts = $12,
+			timer_mode = $13, duration_minutes = $14, randomize = $15,
+			result_config = $16, result_release_at = $17, status = $18,
+			certificate_template = $19,
+			mode = COALESCE(NULLIF($20, ''), mode)
+		WHERE id = $21`,
+		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
 		e.TimerMode, e.DurationMinutes, e.Randomize,
@@ -1125,7 +1125,7 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 	rows, err := r.pool.Query(ctx,
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_pdf_url,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
-			e.title, e.scheduled_at, e.is_free, e.requires_checkin,
+			e.title, e.scheduled_at, e.scheduled_end_at, e.is_free, e.requires_checkin,
 			e.check_in_window_minutes, e.duration_minutes
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
@@ -1146,7 +1146,7 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 		if err := rows.Scan(
 			&item.ID, &item.StudentID, &item.ExamID, &item.Token, &cardPDFURL,
 			&checkedInAt, &item.AttemptsUsed, &item.Status, &item.CreatedAt,
-			&item.ExamTitle, &item.ScheduledAt, &item.IsFree, &item.RequiresCheckin,
+			&item.ExamTitle, &item.ScheduledAt, &item.ScheduledEndAt, &item.IsFree, &item.RequiresCheckin,
 			&item.CheckInWindowMinutes, &item.DurationMinutes,
 		); err != nil {
 			return nil, err
@@ -1175,7 +1175,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	err := r.pool.QueryRow(ctx,
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_pdf_url,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
-			e.id, e.title, e.scheduled_at, e.requires_checkin, e.check_in_window_minutes,
+			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
 			e.timer_mode, e.duration_minutes, e.result_config
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
@@ -1184,7 +1184,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	).Scan(
 		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardPDFURL,
 		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt,
-		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.RequiresCheckin,
+		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig,
 	)
@@ -1202,6 +1202,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	}
 	return &detail, nil
 }
+
 // ---------- Session scan helpers ----------
 
 func scanExamSession(row interface{ Scan(dest ...any) error }, s *model.ExamSession) error {

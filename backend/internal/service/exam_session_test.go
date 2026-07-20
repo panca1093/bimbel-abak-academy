@@ -192,6 +192,7 @@ func (f *fakeSessionRepo) seedRegistration(detail *model.RegistrationDetail) {
 			RequiresCheckin:      detail.Exam.RequiresCheckin,
 			CheckInWindowMinutes: detail.Exam.CheckInWindowMinutes,
 			ScheduledAt:          detail.Exam.ScheduledAt,
+			ScheduledEndAt:       detail.Exam.ScheduledEndAt,
 			TimerMode:            detail.Exam.TimerMode,
 			DurationMinutes:      detail.Exam.DurationMinutes,
 			ResultConfig:         detail.Exam.ResultConfig,
@@ -474,11 +475,20 @@ func (s *shimSessionService) CheckIn(ctx context.Context, studentID, token, fp s
 		return CheckInResult{}, ErrNotCheckedIn
 	}
 
-	// Window check: now in [scheduled_at - window, scheduled_at)
+	// Window check: now in [scheduled_at - window, scheduled_at) by default, or
+	// [scheduled_at - window, scheduled_end_at] when an availability window is set.
 	if exam.ScheduledAt != nil && exam.CheckInWindowMinutes != nil {
 		now := time.Now()
 		windowStart := exam.ScheduledAt.Add(-time.Duration(*exam.CheckInWindowMinutes) * time.Minute)
-		if now.Before(windowStart) || !now.Before(*exam.ScheduledAt) {
+		closed := now.Before(windowStart)
+		if !closed {
+			if exam.ScheduledEndAt != nil {
+				closed = now.After(*exam.ScheduledEndAt)
+			} else {
+				closed = !now.Before(*exam.ScheduledAt)
+			}
+		}
+		if closed {
 			return CheckInResult{}, ErrCheckinWindowClosed
 		}
 	}
@@ -649,6 +659,76 @@ func TestCheckIn_WindowClosed_AfterScheduled(t *testing.T) {
 	}
 }
 
+// TestCheckIn_ScheduledWindow_OpenAfterScheduledAt covers the new availability-
+// window behavior (scheduled_end_at set): check-in used to close the instant
+// scheduled_at passed — with a window it stays open until scheduled_end_at.
+func TestCheckIn_ScheduledWindow_OpenAfterScheduledAt(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-10 * time.Minute) // window already started
+	scheduledEndAt := now.Add(2 * time.Hour)
+	windowMin := 30
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		ScheduledEndAt:       &scheduledEndAt,
+		CheckInWindowMinutes: &windowMin,
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.Token = "ABC123" },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	if _, err := svc.CheckIn(ctx, regDetail.StudentID.String(), "ABC123", "fp"); err != nil {
+		t.Fatalf("CheckIn should succeed within the window (past scheduled_at, before scheduled_end_at): %v", err)
+	}
+}
+
+func TestCheckIn_ScheduledWindow_ClosedAfterScheduledEndAt(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-2 * time.Hour)
+	scheduledEndAt := now.Add(-10 * time.Minute) // window already closed
+	windowMin := 30
+
+	e := &model.Exam{
+		Title:                "Finals",
+		RequiresCheckin:      true,
+		ScheduledAt:          &scheduledAt,
+		ScheduledEndAt:       &scheduledEndAt,
+		CheckInWindowMinutes: &windowMin,
+		DurationMinutes:      intptr(120),
+		TimerMode:            "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+		func(d *model.RegistrationDetail) { d.Token = "ABC123" },
+	)
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.CheckIn(ctx, regDetail.StudentID.String(), "ABC123", "fp")
+	if !errors.Is(err, ErrCheckinWindowClosed) {
+		t.Errorf("want ErrCheckinWindowClosed after scheduled_end_at, got %v", err)
+	}
+}
+
 func TestCheckIn_TokenNotFound(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
@@ -693,6 +773,18 @@ func (s *shimSessionService) StartSession(ctx context.Context, studentID, regist
 	exam, err := s.repo.GetExamForSession(ctx, detail.ExamID)
 	if err != nil {
 		return SessionStartPayload{}, err
+	}
+
+	// Availability window (scheduled_end_at set): applies regardless of
+	// requires_checkin.
+	if exam.ScheduledEndAt != nil {
+		now := time.Now()
+		if exam.ScheduledAt != nil && now.Before(*exam.ScheduledAt) {
+			return SessionStartPayload{}, ErrExamNotStarted
+		}
+		if now.After(*exam.ScheduledEndAt) {
+			return SessionStartPayload{}, ErrExamWindowClosed
+		}
 	}
 
 	// Branch on requires_checkin
@@ -983,6 +1075,106 @@ func TestStartSession_Checkin_NotStarted(t *testing.T) {
 	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
 	if !errors.Is(err, ErrExamNotStarted) {
 		t.Errorf("want ErrExamNotStarted, got %v", err)
+	}
+}
+
+// TestStartSession_ScheduledWindow_OpenBetweenStartAndEnd covers a no-checkin
+// exam that now has an availability window: start used to be unrestricted for
+// no-checkin exams, but a set scheduled_end_at gates it universally.
+func TestStartSession_ScheduledWindow_OpenBetweenStartAndEnd(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-1 * time.Hour)
+	scheduledEndAt := now.Add(1 * time.Hour)
+
+	e := &model.Exam{
+		Title:           "Open Tryout",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		ScheduledEndAt:  &scheduledEndAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	regDetail.Exam.RequiresCheckin = false
+	regDetail.Exam.TimerMode = "overall"
+	regDetail.Exam.DurationMinutes = intptr(120)
+	svc.repo.seedRegistration(&regDetail)
+
+	if _, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp"); err != nil {
+		t.Fatalf("StartSession should succeed inside the window, got %v", err)
+	}
+}
+
+func TestStartSession_ScheduledWindow_TooEarly(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(30 * time.Minute)
+	scheduledEndAt := now.Add(2 * time.Hour)
+
+	e := &model.Exam{
+		Title:           "Open Tryout",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		ScheduledEndAt:  &scheduledEndAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	regDetail.Exam.RequiresCheckin = false
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if !errors.Is(err, ErrExamNotStarted) {
+		t.Errorf("want ErrExamNotStarted before scheduled_at, got %v", err)
+	}
+}
+
+func TestStartSession_ScheduledWindow_ClosedAfterEnd(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newShimSessionService(t)
+
+	now := time.Now()
+	scheduledAt := now.Add(-2 * time.Hour)
+	scheduledEndAt := now.Add(-10 * time.Minute)
+
+	e := &model.Exam{
+		Title:           "Open Tryout",
+		RequiresCheckin: false,
+		ScheduledAt:     &scheduledAt,
+		ScheduledEndAt:  &scheduledEndAt,
+		DurationMinutes: intptr(120),
+		TimerMode:       "overall",
+	}
+	svc.repo.seedExam(e)
+
+	regDetail := newReg(
+		uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+		e.ID,
+	)
+	regDetail.Exam.RequiresCheckin = false
+	svc.repo.seedRegistration(&regDetail)
+
+	_, err := svc.StartSession(ctx, regDetail.StudentID.String(), regDetail.ID.String(), "fp")
+	if !errors.Is(err, ErrExamWindowClosed) {
+		t.Errorf("want ErrExamWindowClosed after scheduled_end_at, got %v", err)
 	}
 }
 

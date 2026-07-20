@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -661,6 +662,56 @@ func TestValidateExam_accepts_empty_mode(t *testing.T) {
 	if err := validateExam(e); err != nil {
 		t.Errorf("empty mode should pass validateExam (default/overlay happens in CreateExam/handler), got %v", err)
 	}
+}
+
+// --- scheduled_end_at (availability window) validation ---
+
+func TestValidateExam_acceptsNoScheduledEndAt(t *testing.T) {
+	e := model.Exam{Title: "Finals", ScheduledAt: timePtr(fixedNow())}
+	if err := validateExam(e); err != nil {
+		t.Errorf("nil scheduled_end_at should pass, got %v", err)
+	}
+}
+
+func TestValidateExam_rejectsScheduledEndAtWithoutScheduledAt(t *testing.T) {
+	e := model.Exam{Title: "Finals", ScheduledEndAt: timePtr(fixedNow())}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("scheduled_end_at without scheduled_at should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "scheduled_end_at requires scheduled_at") {
+		t.Errorf("msg should mention scheduled_at requirement, got %q", err.Error())
+	}
+}
+
+func TestValidateExam_rejectsScheduledEndAtNotAfterScheduledAt(t *testing.T) {
+	start := fixedNow()
+	e := model.Exam{Title: "Finals", ScheduledAt: timePtr(start), ScheduledEndAt: timePtr(start)}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("scheduled_end_at == scheduled_at should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "scheduled_end_at must be after scheduled_at") {
+		t.Errorf("msg should mention ordering, got %q", err.Error())
+	}
+
+	before := start.Add(-time.Hour)
+	e2 := model.Exam{Title: "Finals", ScheduledAt: timePtr(start), ScheduledEndAt: timePtr(before)}
+	if err := validateExam(e2); !errors.Is(err, ErrValidation) {
+		t.Errorf("scheduled_end_at before scheduled_at should return ErrValidation, got %v", err)
+	}
+}
+
+func TestValidateExam_acceptsValidScheduledWindow(t *testing.T) {
+	start := fixedNow()
+	e := model.Exam{Title: "Finals", ScheduledAt: timePtr(start), ScheduledEndAt: timePtr(start.Add(48 * time.Hour))}
+	if err := validateExam(e); err != nil {
+		t.Errorf("valid scheduled window should pass, got %v", err)
+	}
+}
+
+func fixedNow() time.Time {
+	return time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC)
 }
 
 // --- FR-18: section_type authoring validation ---
@@ -1392,6 +1443,65 @@ func TestCreateExam_Integration_DefaultsModeToStandard(t *testing.T) {
 	}
 	if exam2.Mode != "utbk" {
 		t.Errorf("CreateExam with mode=utbk should persist utbk, got %q", exam2.Mode)
+	}
+}
+
+// TestScheduledEndAt_Integration_RoundTripsThroughCreateAndUpdate proves
+// migration 0036 + the widened repository queries actually persist and
+// return scheduled_end_at through the real DB, not just in-memory shims.
+func TestScheduledEndAt_Integration_RoundTripsThroughCreateAndUpdate(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	start := time.Now().Add(24 * time.Hour).Truncate(time.Second)
+	end := start.Add(48 * time.Hour)
+
+	exam, err := svc.CreateExam(ctx, model.Exam{
+		Title:          "Open Window Exam " + uniqueSuffix(),
+		ScheduledAt:    &start,
+		ScheduledEndAt: &end,
+	})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	if exam.ScheduledEndAt == nil || !exam.ScheduledEndAt.Equal(end) {
+		t.Fatalf("CreateExam did not persist scheduled_end_at, got %v", exam.ScheduledEndAt)
+	}
+
+	fetched, err := svc.GetExam(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetExam: %v", err)
+	}
+	if fetched.ScheduledEndAt == nil || !fetched.ScheduledEndAt.Equal(end) {
+		t.Fatalf("GetExam did not return scheduled_end_at, got %v", fetched.ScheduledEndAt)
+	}
+
+	newEnd := end.Add(24 * time.Hour)
+	updateInput := fetched.Exam
+	updateInput.ScheduledEndAt = &newEnd
+	updated, err := svc.UpdateExam(ctx, exam.ID, updateInput)
+	if err != nil {
+		t.Fatalf("UpdateExam: %v", err)
+	}
+	if updated.ScheduledEndAt == nil || !updated.ScheduledEndAt.Equal(newEnd) {
+		t.Fatalf("UpdateExam did not persist the new scheduled_end_at, got %v", updated.ScheduledEndAt)
+	}
+}
+
+func TestScheduledEndAt_Integration_RejectsEndBeforeStart(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	start := time.Now().Add(24 * time.Hour)
+	before := start.Add(-time.Hour)
+
+	_, err := svc.CreateExam(ctx, model.Exam{
+		Title:          "Invalid Window Exam " + uniqueSuffix(),
+		ScheduledAt:    &start,
+		ScheduledEndAt: &before,
+	})
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("CreateExam with scheduled_end_at before scheduled_at should return ErrValidation, got %v", err)
 	}
 }
 

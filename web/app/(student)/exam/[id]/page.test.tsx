@@ -57,6 +57,7 @@ const sampleWithCheckin: RegistrationDetail = {
     id: "e-1",
     title: "Try Out UTBK Nasional",
     scheduled_at: "2026-07-15T09:00:00Z",
+    scheduled_end_at: null,
     requires_checkin: true,
     check_in_window_minutes: 30,
     timer_mode: "overall",

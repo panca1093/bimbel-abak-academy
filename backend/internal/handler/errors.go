@@ -151,6 +151,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusForbidden, APIError{Code: "device_mismatch", Message: err.Error()}
 	case errors.Is(err, service.ErrCheckinWindowClosed):
 		status, apiErr = http.StatusConflict, APIError{Code: "checkin_window_closed", Message: err.Error()}
+	case errors.Is(err, service.ErrExamWindowClosed):
+		status, apiErr = http.StatusConflict, APIError{Code: "exam_window_closed", Message: err.Error()}
 	case errors.Is(err, service.ErrNotCheckedIn):
 		status, apiErr = http.StatusConflict, APIError{Code: "not_checked_in", Message: err.Error()}
 	case errors.Is(err, service.ErrAlreadySubmitted):

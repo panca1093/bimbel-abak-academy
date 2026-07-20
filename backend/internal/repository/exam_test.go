@@ -297,8 +297,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 21 {
-		t.Fatalf("scanExam passed %d destinations, want 21", got)
+	if got := len(rec.dests); got != 22 {
+		t.Fatalf("scanExam passed %d destinations, want 22", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -313,20 +313,23 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[3].(**time.Time); !ok {
 		t.Errorf("dest[3] = %T, want **time.Time (scheduled_at, nullable pointer field)", rec.dests[3])
 	}
-	if _, ok := rec.dests[7].(**string); !ok {
-		t.Errorf("dest[7] = %T, want **string (bundle_url, nullable pointer field)", rec.dests[7])
+	if _, ok := rec.dests[4].(**time.Time); !ok {
+		t.Errorf("dest[4] = %T, want **time.Time (scheduled_end_at, nullable pointer field)", rec.dests[4])
 	}
-	if _, ok := rec.dests[13].(**int); !ok {
-		t.Errorf("dest[13] = %T, want **int (duration_minutes, nullable pointer field)", rec.dests[13])
+	if _, ok := rec.dests[8].(**string); !ok {
+		t.Errorf("dest[8] = %T, want **string (bundle_url, nullable pointer field)", rec.dests[8])
 	}
-	if _, ok := rec.dests[17].(*string); !ok {
-		t.Errorf("dest[17] = %T, want *string (status, scalar)", rec.dests[17])
+	if _, ok := rec.dests[14].(**int); !ok {
+		t.Errorf("dest[14] = %T, want **int (duration_minutes, nullable pointer field)", rec.dests[14])
 	}
-	if _, ok := rec.dests[18].(*time.Time); !ok {
-		t.Errorf("dest[18] = %T, want *time.Time (created_at)", rec.dests[18])
+	if _, ok := rec.dests[18].(*string); !ok {
+		t.Errorf("dest[18] = %T, want *string (status, scalar)", rec.dests[18])
 	}
-	if _, ok := rec.dests[20].(*string); !ok {
-		t.Errorf("dest[20] = %T, want *string (mode)", rec.dests[20])
+	if _, ok := rec.dests[19].(*time.Time); !ok {
+		t.Errorf("dest[19] = %T, want *time.Time (created_at)", rec.dests[19])
+	}
+	if _, ok := rec.dests[21].(*string); !ok {
+		t.Errorf("dest[21] = %T, want *string (mode)", rec.dests[21])
 	}
 }
 

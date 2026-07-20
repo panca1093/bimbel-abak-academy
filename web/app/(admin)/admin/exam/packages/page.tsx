@@ -106,6 +106,7 @@ export default function ExamPackagesPage() {
                     </td>
                     <td className="px-4 py-3 text-xs whitespace-nowrap text-ink-600">
                       {formatScheduled(exam.scheduled_at)}
+                      {exam.scheduled_end_at && ` – ${formatScheduled(exam.scheduled_end_at)}`}
                     </td>
                     <td className="px-4 py-3 text-xs">
                       {exam.timer_mode && (

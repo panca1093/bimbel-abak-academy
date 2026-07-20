@@ -314,4 +314,86 @@ describe("ExamModal", () => {
     expect(options).toContain("score_only");
     expect(options).toContain("score_pembahasan");
   });
+
+  it("pre-fills scheduled start and end from exam data on edit", async () => {
+    render(
+      <ExamModal
+        open={true}
+        onClose={vi.fn()}
+        exam={{
+          ...sampleExam,
+          scheduled_at: "2026-08-01T09:00:00Z",
+          scheduled_end_at: "2026-08-03T09:00:00Z",
+        }}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Mulai") as HTMLInputElement).value).not.toBe("");
+    });
+    expect((screen.getByLabelText("Berakhir") as HTMLInputElement).value).not.toBe("");
+  });
+
+  it("omits scheduled_end_at from the payload when left blank", async () => {
+    mockCreateExam.mockResolvedValue({ id: "exam-1" });
+
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    fireEvent.input(screen.getByLabelText(/judul/i), {
+      target: { value: "No Window Exam" },
+    });
+    fireEvent.click(screen.getByLabelText("Per Tes"));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockCreateExam).toHaveBeenCalledWith(
+        expect.objectContaining({ scheduled_end_at: null }),
+      );
+    });
+  });
+
+  it("includes scheduled_end_at in the payload when set after start", async () => {
+    mockCreateExam.mockResolvedValue({ id: "exam-1" });
+
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    fireEvent.input(screen.getByLabelText(/judul/i), {
+      target: { value: "Window Exam" },
+    });
+    fireEvent.click(screen.getByLabelText("Per Tes"));
+    fireEvent.input(screen.getByLabelText("Mulai"), {
+      target: { value: "2026-08-01T09:00" },
+    });
+    fireEvent.input(screen.getByLabelText("Berakhir"), {
+      target: { value: "2026-08-03T09:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockCreateExam).toHaveBeenCalledWith(
+        expect.objectContaining({ scheduled_end_at: expect.any(String) }),
+      );
+    });
+  });
+
+  it("blocks submit and shows an error when end is not after start", async () => {
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    fireEvent.input(screen.getByLabelText(/judul/i), {
+      target: { value: "Invalid Window Exam" },
+    });
+    fireEvent.input(screen.getByLabelText("Mulai"), {
+      target: { value: "2026-08-01T09:00" },
+    });
+    fireEvent.input(screen.getByLabelText("Berakhir"), {
+      target: { value: "2026-08-01T08:00" },
+    });
+
+    expect(
+      screen.getByText("Waktu berakhir harus setelah waktu mulai"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+    expect(mockCreateExam).not.toHaveBeenCalled();
+  });
 });
