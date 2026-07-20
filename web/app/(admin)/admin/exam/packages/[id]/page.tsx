@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
+import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,12 @@ import {
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
+import { useAuthStore } from "@/stores/auth";
 import type { ExamLeaderboardEntry, GradingEssayItem } from "@/lib/types";
+
+// admin_school gets a scoped view — only the exam summary + the
+// registrations action (bulk order/grant), never the content-management tabs.
+const SCHOOL_SCOPED_TABS: Tab[] = ["overview", "registrations"];
 
 // Price/status/publish for an exam-type product live on the attached Product(s),
 // managed via /admin/products (mirrors Course) — not here.
@@ -73,6 +79,9 @@ export default function ExamPackageDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
   const { t } = useTranslation();
+  const role = useAuthStore((s) => s.user?.role);
+  const isSchoolScoped = role === "admin_school";
+  const visibleTabs = isSchoolScoped ? SCHOOL_SCOPED_TABS : TAB_ORDER;
 
   const [tab, setTab] = useState<Tab>("overview");
   const [editOpen, setEditOpen] = useState(false);
@@ -263,7 +272,7 @@ export default function ExamPackageDetailPage() {
       {!isLoading && !isError && data && (
         <>
           <div className="flex flex-wrap gap-1 border-b">
-            {TAB_ORDER.map((key) => (
+            {visibleTabs.map((key) => (
               <button
                 key={key}
                 type="button"
@@ -285,10 +294,12 @@ export default function ExamPackageDetailPage() {
                 <h2 className="text-title-large font-semibold">
                   {t("admin_exam_detail_tab_overview")}
                 </h2>
-                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                  <Pencil className="mr-1 size-4" />
-                  {t("admin_exam_detail_edit")}
-                </Button>
+                {!isSchoolScoped && (
+                  <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                    <Pencil className="mr-1 size-4" />
+                    {t("admin_exam_detail_edit")}
+                  </Button>
+                )}
               </div>
               <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <OverviewRow label="Title" value={data.title} />
@@ -537,7 +548,11 @@ export default function ExamPackageDetailPage() {
           )}
 
           {tab === "registrations" && (
-            <UnderMaintenance icon={Users} title={t("admin_exam_detail_tab_registrations")} />
+            role === "admin_school" || role === "super_admin" ? (
+              <ExamRegistrationsTab examId={id} examName={data.title} />
+            ) : (
+              <UnderMaintenance icon={Users} title={t("admin_exam_detail_tab_registrations")} />
+            )
           )}
           {tab === "results" && (
             <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />

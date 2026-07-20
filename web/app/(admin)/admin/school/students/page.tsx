@@ -9,6 +9,7 @@ import {
   Search,
   Copy,
   Check,
+  FileUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
@@ -40,6 +41,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { BulkImportModal } from "@/components/admin/BulkImportModal";
 import { StatCard } from "@/components/admin/StatCard";
 import {
   useAdminStudents,
@@ -127,6 +129,9 @@ export default function SchoolStudentsPage() {
     setNextCursor(query.data.next_cursor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data]);
+
+  // Bulk import dialog
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   // Register dialog
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -319,10 +324,16 @@ export default function SchoolStudentsPage() {
         title={t("school_students_title")}
         description={t("students_subtitle")}
         actions={
-          <Button size="sm" onClick={() => setRegisterOpen(true)}>
-            <Plus className="mr-1 size-4" />
-            {t("students_register_title")}
-          </Button>
+          <>
+            <Button size="sm" variant="outline" onClick={() => setBulkImportOpen(true)}>
+              <FileUp className="mr-1 size-4" />
+              {t("bulk_register_title")}
+            </Button>
+            <Button size="sm" onClick={() => setRegisterOpen(true)}>
+              <Plus className="mr-1 size-4" />
+              {t("students_register_title")}
+            </Button>
+          </>
         }
       />
 
@@ -529,6 +540,8 @@ export default function SchoolStudentsPage() {
           </div>
         )}
       </div>
+
+      <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} />
 
       {/* Register dialog */}
       <Dialog open={registerOpen} onOpenChange={(open) => {

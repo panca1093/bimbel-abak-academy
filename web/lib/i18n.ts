@@ -970,11 +970,8 @@ export const DICT = {
     monitor_th_last_activity: "Aktivitas",
     monitor_th_active_section: "Sesi Aktif",
 
-    // Bulk exam order
-    bulk_exam_order_title: "Beli Ujian Massal",
-    bulk_exam_order_subtitle: "Pilih ujian dan peserta untuk pembelian massal.",
-    bulk_exam_order_select_exam: "Pilih ujian",
-    bulk_exam_order_no_exam: "Pilih ujian untuk melanjutkan",
+    // Bulk exam order (admin_school) / exam grant (super_admin) — merged into
+    // the exam detail page's Registrations tab.
     bulk_exam_order_pick_participants: "Pilih peserta",
     bulk_exam_order_preview: "Pratinjau Pesanan",
     bulk_exam_order_preview_title: "Pratinjau Pesanan Massal",
@@ -982,26 +979,18 @@ export const DICT = {
     bulk_exam_order_confirming: "Membuat pesanan…",
     bulk_exam_order_created: "Pesanan massal berhasil dibuat.",
     bulk_exam_order_created_desc: "Lanjutkan ke pembayaran untuk menyelesaikan pesanan.",
+    bulk_exam_order_reset: "Pesan Lagi",
     bulk_exam_order_total: "Total",
     bulk_exam_order_students_count: "{n} peserta",
     bulk_exam_order_pay: "Bayar Sekarang",
     bulk_exam_order_creating_failed: "Gagal membuat pesanan massal.",
     bulk_exam_order_preview_failed: "Gagal memuat pratinjau pesanan.",
     bulk_exam_order_empty_students: "Pilih minimal satu peserta.",
-    bulk_exam_order_empty_exam: "Pilih ujian terlebih dahulu.",
-    nav_bulk_exam_order: "Beli Ujian Massal",
-    nav_exam_grant: "Beri Akses Ujian",
-    exam_grant_title: "Beri Akses Ujian",
-    exam_grant_subtitle: "Pilih ujian dan berikan akses gratis ke siswa.",
-    exam_grant_select_exam: "Pilih ujian",
     exam_grant_grant: "Beri Akses",
     exam_grant_granting: "Memberikan akses…",
     exam_grant_success: "Akses ujian berhasil diberikan.",
     exam_grant_success_title: "Akses Diberikan",
-    exam_grant_success_desc: "Akses ujian telah diberikan untuk",
     exam_grant_success_desc_count: "Akses ujian telah diberikan kepada {n} siswa",
-    exam_grant_no_exam: "Pilih ujian untuk melanjutkan",
-    exam_grant_empty_exam: "Pilih ujian terlebih dahulu.",
     exam_grant_empty_students: "Pilih minimal satu siswa.",
     exam_grant_grant_again: "Beri Akses Lagi",
 
@@ -1009,8 +998,7 @@ export const DICT = {
     complete_profile_school_unlisted_label: "Sekolah saya tidak ada di daftar",
     complete_profile_school_unlisted_placeholder: "Tulis nama sekolah Anda",
 
-    // Bulk student-registration screen (admin_school)
-    nav_bulk_register: "Pendaftaran Massal",
+    // Bulk student-registration modal (admin_school Students page)
     bulk_register_title: "Pendaftaran Siswa Massal",
     bulk_register_subtitle: "Unggah CSV untuk mendaftarkan banyak siswa sekaligus.",
     bulk_register_download_template: "Unduh Template",
@@ -1991,10 +1979,6 @@ export const DICT = {
     monitor_th_active_section: "Active Section",
 
     // Bulk exam order
-    bulk_exam_order_title: "Bulk Exam Order",
-    bulk_exam_order_subtitle: "Select an exam and participants for bulk purchase.",
-    bulk_exam_order_select_exam: "Select exam",
-    bulk_exam_order_no_exam: "Select an exam to continue",
     bulk_exam_order_pick_participants: "Pick participants",
     bulk_exam_order_preview: "Preview Order",
     bulk_exam_order_preview_title: "Bulk Order Preview",
@@ -2002,26 +1986,18 @@ export const DICT = {
     bulk_exam_order_confirming: "Creating order…",
     bulk_exam_order_created: "Bulk order created successfully.",
     bulk_exam_order_created_desc: "Proceed to payment to complete the order.",
+    bulk_exam_order_reset: "Order Again",
     bulk_exam_order_total: "Total",
     bulk_exam_order_students_count: "{n} participants",
     bulk_exam_order_pay: "Pay Now",
     bulk_exam_order_creating_failed: "Failed to create bulk order.",
     bulk_exam_order_preview_failed: "Failed to load order preview.",
     bulk_exam_order_empty_students: "Select at least one participant.",
-    bulk_exam_order_empty_exam: "Select an exam first.",
-    nav_bulk_exam_order: "Bulk Exam Order",
-    nav_exam_grant: "Grant Exam Access",
-    exam_grant_title: "Grant Exam Access",
-    exam_grant_subtitle: "Select an exam and grant free access to students.",
-    exam_grant_select_exam: "Select exam",
     exam_grant_grant: "Grant Access",
     exam_grant_granting: "Granting…",
     exam_grant_success: "Exam access granted successfully.",
     exam_grant_success_title: "Access Granted",
-    exam_grant_success_desc: "Exam access has been granted for",
     exam_grant_success_desc_count: "Exam access has been granted to {n} students",
-    exam_grant_no_exam: "Select an exam to continue",
-    exam_grant_empty_exam: "Please select an exam first.",
     exam_grant_empty_students: "Please select at least one student.",
     exam_grant_grant_again: "Grant Again",
 
@@ -2029,8 +2005,7 @@ export const DICT = {
     complete_profile_school_unlisted_label: "My school is not on the list",
     complete_profile_school_unlisted_placeholder: "Type your school name",
 
-    // Bulk student-registration screen (admin_school)
-    nav_bulk_register: "Bulk Register",
+    // Bulk student-registration modal (admin_school Students page)
     bulk_register_title: "Bulk Student Registration",
     bulk_register_subtitle: "Upload a CSV to register many students at once.",
     bulk_register_download_template: "Download Template",
