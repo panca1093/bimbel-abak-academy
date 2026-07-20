@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
 import { toast } from "sonner";
 import { fetchCertificatePreview, useCreateExam, useUpdateExam } from "@/lib/hooks/admin-exams";
+import { usePresignUpload } from "@/lib/hooks/students";
 import type { ExamListItem, CreateExamPayload, UpdateExamPayload, ExamResultConfig } from "@/lib/types";
 
 interface ExamModalProps {
@@ -24,7 +25,7 @@ interface ExamModalProps {
 }
 
 type TimerMode = "overall" | "per_test";
-type CertificateTemplate = "classic" | "modern" | "elegant";
+type CertificateTemplate = "classic" | "modern" | "elegant" | "custom";
 
 function scheduledAtInputValue(iso?: string | null): string {
   if (!iso) return "";
@@ -66,6 +67,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [allowLeaderboard, setAllowLeaderboard] = useState(false);
   const [randomize, setRandomize] = useState(false);
   const [certificateTemplate, setCertificateTemplate] = useState<CertificateTemplate>("classic");
+  const [certificateBackgroundUrl, setCertificateBackgroundUrl] = useState("");
+  const [backgroundUploading, setBackgroundUploading] = useState(false);
   const [mode, setMode] = useState("standard");
   const [resultConfig, setResultConfig] = useState<ExamResultConfig>("hidden");
   const [resultReleaseAt, setResultReleaseAt] = useState("");
@@ -73,6 +76,8 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [graceWindow, setGraceWindow] = useState("");
   const [maxAttempts, setMaxAttempts] = useState("");
   const previewUrlRef = useRef<string | null>(null);
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
+  const presign = usePresignUpload();
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +91,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setAllowLeaderboard(Boolean(exam.allow_leaderboard));
       setRandomize(Boolean(exam.randomize));
       setCertificateTemplate((exam.certificate_template as CertificateTemplate) ?? "classic");
+      setCertificateBackgroundUrl(exam.certificate_background_url ?? "");
       setMode(exam.mode ?? "standard");
       setResultConfig((exam.result_config as ExamResultConfig) ?? "hidden");
       setResultReleaseAt(scheduledAtInputValue(exam.result_release_at));
@@ -102,6 +108,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setAllowLeaderboard(false);
       setRandomize(false);
       setCertificateTemplate("classic");
+      setCertificateBackgroundUrl("");
       setMode("standard");
       setResultConfig("hidden");
       setResultReleaseAt("");
@@ -113,12 +120,35 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
 
   const isPending = create.isPending || update.isPending;
   const durationRequired = timerMode === "overall";
+
+  async function handleBackgroundSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBackgroundUploading(true);
+    try {
+      const presigned = await presign.mutateAsync({ filename: file.name, content_type: file.type });
+      const res = await fetch(presigned.url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      setCertificateBackgroundUrl(presigned.key);
+    } catch {
+      // upload failed; leave existing background untouched
+    } finally {
+      setBackgroundUploading(false);
+      if (backgroundInputRef.current) backgroundInputRef.current.value = "";
+    }
+  }
+
   const canSubmit = useMemo(
     () =>
       title.trim() !== "" &&
       (!durationRequired || (duration !== "" && Number(duration) > 0)) &&
+      (certificateTemplate !== "custom" || certificateBackgroundUrl.trim() !== "") &&
       !isPending,
-    [title, duration, durationRequired, isPending],
+    [title, duration, durationRequired, certificateTemplate, certificateBackgroundUrl, isPending],
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -134,6 +164,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       allow_leaderboard: allowLeaderboard,
       randomize,
       certificate_template: certificateTemplate,
+      certificate_background_url: certificateBackgroundUrl || null,
       mode,
       result_config: resultConfig,
       result_release_at: scheduledAtIso(resultReleaseAt),
@@ -352,7 +383,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
 
             <div className="grid gap-2">
               <Label>{t("exam_packages_modal_certificate_template")}</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
                   <input
                     type="radio"
@@ -386,7 +417,46 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                   />
                   <span>{t("certificate_template_elegant")}</span>
                 </label>
+                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                  <input
+                    type="radio"
+                    name="certificate_template"
+                    value="custom"
+                    checked={certificateTemplate === "custom"}
+                    onChange={() => setCertificateTemplate("custom")}
+                    disabled={isPending}
+                  />
+                  <span>Custom</span>
+                </label>
               </div>
+              {certificateTemplate === "custom" && (
+                <div className="grid gap-2 rounded-md border border-input p-3">
+                  <Label htmlFor="background-upload" className="text-xs font-medium">
+                    Upload Background
+                  </Label>
+                  <input
+                    ref={backgroundInputRef}
+                    id="background-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBackgroundSelect}
+                    disabled={isPending || backgroundUploading}
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => backgroundInputRef.current?.click()}
+                    disabled={isPending || backgroundUploading}
+                  >
+                    {backgroundUploading ? "Uploading..." : "Upload"}
+                  </Button>
+                  {certificateBackgroundUrl && (
+                    <p className="text-xs text-muted-foreground">{certificateBackgroundUrl}</p>
+                  )}
+                </div>
+              )}
               <Button
                 type="button"
                 variant="outline"

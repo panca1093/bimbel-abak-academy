@@ -607,6 +607,7 @@ export interface Exam {
   result_config?: string;
   result_release_at?: string | null;
   certificate_template?: string;
+  certificate_background_url?: string | null;
   status?: string;
   mode?: string;
   created_at?: string;
@@ -647,6 +648,7 @@ export interface CreateExamPayload {
   allow_leaderboard?: boolean;
   randomize?: boolean;
   certificate_template?: string;
+  certificate_background_url?: string | null;
   mode?: string;
   result_config?: ExamResultConfig;
   result_release_at?: string | null;
@@ -665,6 +667,7 @@ export interface UpdateExamPayload {
   allow_leaderboard?: boolean;
   randomize?: boolean;
   certificate_template?: string;
+  certificate_background_url?: string | null;
   mode?: string;
   result_config?: ExamResultConfig;
   result_release_at?: string | null;

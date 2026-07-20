@@ -1,15 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ExamModal } from "./ExamModal";
 import type { ExamListItem } from "@/lib/types";
 
 const mockCreateExam = vi.fn();
 const mockUpdateExam = vi.fn();
 
+const mockPresignMutateAsync = vi.fn();
+
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useCreateExam: () => ({ mutateAsync: mockCreateExam, isPending: false }),
   useUpdateExam: () => ({ mutateAsync: mockUpdateExam, isPending: false }),
   fetchCertificatePreview: vi.fn(),
+}));
+
+vi.mock("@/lib/hooks/students", () => ({
+  usePresignUpload: () => ({ mutateAsync: mockPresignMutateAsync }),
 }));
 
 const sampleExam: ExamListItem = {
@@ -29,6 +36,7 @@ describe("ExamModal", () => {
   beforeEach(() => {
     mockCreateExam.mockReset();
     mockUpdateExam.mockReset();
+    mockPresignMutateAsync.mockReset();
   });
 
   it("pre-fills certificate template from exam data on edit", async () => {
@@ -313,5 +321,167 @@ describe("ExamModal", () => {
     expect(options).toContain("hidden");
     expect(options).toContain("score_only");
     expect(options).toContain("score_pembahasan");
+  });
+
+  it("renders custom certificate template option", () => {
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(screen.getByRole("radio", { name: "Klasik" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Modern" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Elegan" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /custom|kustom/i })).toBeInTheDocument();
+  });
+
+  it("selecting custom reveals file upload control", async () => {
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    // Initially no file input should be visible
+    expect(screen.queryByRole("button", { name: /upload|unggah/i })).not.toBeInTheDocument();
+
+    // Click custom option
+    const customRadio = screen.getByRole("radio", { name: /custom|kustom/i });
+    fireEvent.click(customRadio);
+
+    // File input and upload button should appear
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /upload|unggah/i })).toBeInTheDocument();
+    });
+  });
+
+  it("submit is blocked when custom template selected with no background", async () => {
+    mockCreateExam.mockResolvedValue({ id: "exam-1" });
+
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    fireEvent.input(screen.getByLabelText(/judul/i), {
+      target: { value: "Custom Cert Exam" },
+    });
+    fireEvent.click(screen.getByLabelText("Per Tes"));
+
+    // Select custom
+    fireEvent.click(screen.getByRole("radio", { name: /custom|kustom/i }));
+
+    // Save button should be disabled
+    const saveButton = screen.getByRole("button", { name: /^simpan$/i });
+    await waitFor(() => {
+      expect(saveButton).toBeDisabled();
+    });
+  });
+
+  it("submit is enabled after successful background upload", async () => {
+    mockCreateExam.mockResolvedValue({ id: "exam-1" });
+    mockPresignMutateAsync.mockResolvedValue({
+      url: "https://minio:9000/presigned-put-url",
+      method: "PUT",
+      key: "avatars/user-1/uuid-bg.png",
+    });
+
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    fireEvent.input(screen.getByLabelText(/judul/i), {
+      target: { value: "Custom Cert Exam" },
+    });
+    fireEvent.click(screen.getByLabelText("Per Tes"));
+
+    // Select custom
+    const customRadio = screen.getByRole("radio", { name: /custom|kustom/i });
+    fireEvent.click(customRadio);
+
+    // Find file input and upload file
+    const fileInput = await screen.findByRole("button", { name: /upload|unggah/i }).then(() =>
+      document.querySelector("#background-upload") as HTMLInputElement
+    );
+
+    const file = new File(["test"], "bg.png", { type: "image/png" });
+    await userEvent.upload(fileInput, file);
+
+    // Wait for upload to complete
+    await waitFor(() => {
+      const saveButton = screen.getByRole("button", { name: /^simpan$/i });
+      expect(saveButton).not.toBeDisabled();
+    });
+  });
+
+  it("submitted payload includes certificate_background_url when custom selected", async () => {
+    mockCreateExam.mockResolvedValue({ id: "exam-1" });
+    mockPresignMutateAsync.mockResolvedValue({
+      url: "https://minio:9000/presigned-put-url",
+      method: "PUT",
+      key: "avatars/user-1/uuid-bg.png",
+    });
+
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    fireEvent.input(screen.getByLabelText(/judul/i), {
+      target: { value: "Custom Cert Exam" },
+    });
+    fireEvent.click(screen.getByLabelText("Per Tes"));
+    fireEvent.click(screen.getByRole("radio", { name: /custom|kustom/i }));
+
+    const fileInput = await screen.findByRole("button", { name: /upload|unggah/i }).then(() =>
+      document.querySelector("#background-upload") as HTMLInputElement
+    );
+
+    const file = new File(["test"], "bg.png", { type: "image/png" });
+    await userEvent.upload(fileInput, file);
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    });
+
+    await waitFor(() => {
+      expect(mockCreateExam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          certificate_template: "custom",
+          certificate_background_url: "avatars/user-1/uuid-bg.png",
+        }),
+      );
+    });
+  });
+
+  it("preserves certificate_background_url when switching template away and back", async () => {
+    mockUpdateExam.mockResolvedValue({ id: "exam-1" });
+    mockPresignMutateAsync.mockResolvedValue({
+      url: "https://minio:9000/presigned-put-url",
+      method: "PUT",
+      key: "avatars/user-1/uuid-bg.png",
+    });
+
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(
+      <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
+    );
+
+    // Select custom
+    fireEvent.click(screen.getByRole("radio", { name: /custom|kustom/i }));
+
+    const fileInput = await screen.findByRole("button", { name: /upload|unggah/i }).then(() =>
+      document.querySelector("#background-upload") as HTMLInputElement
+    );
+
+    const file = new File(["test"], "bg.png", { type: "image/png" });
+    await userEvent.upload(fileInput, file);
+
+    // Wait for upload
+    await waitFor(() => {
+      expect(mockPresignMutateAsync).toHaveBeenCalled();
+    });
+
+    // Switch back to modern
+    fireEvent.click(screen.getByRole("radio", { name: "Modern" }));
+
+    // Switch to custom again
+    fireEvent.click(screen.getByRole("radio", { name: /custom|kustom/i }));
+
+    // Should still have the saved key and be ready to submit
+    const saveButton = screen.getByRole("button", { name: /^simpan$/i });
+    await waitFor(() => {
+      expect(saveButton).not.toBeDisabled();
+    });
   });
 });
