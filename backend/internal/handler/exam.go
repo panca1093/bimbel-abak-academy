@@ -844,9 +844,11 @@ func (h *Handler) AdminGetExamAnalytics(c echo.Context) error {
 	return c.JSON(http.StatusOK, analytics)
 }
 
-// AdminGetExamCertificatePreview streams a preview certificate PDF. An optional
-// JSON body carrying an unsaved layout lets the editor preview a change before
-// saving it; when absent, the exam's saved (or default) layout is used.
+// AdminGetExamCertificatePreview streams a preview certificate PDF. It is a POST
+// (not GET) because the optional JSON body carrying an unsaved layout lets the
+// editor preview a change before saving it — a body a real browser can send,
+// unlike a GET body which only some HTTP clients support; when absent, the
+// exam's saved (or default) layout is used.
 func (h *Handler) AdminGetExamCertificatePreview(c echo.Context) error {
 	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {

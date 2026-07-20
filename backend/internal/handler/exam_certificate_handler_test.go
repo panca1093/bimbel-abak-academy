@@ -44,7 +44,7 @@ func registerAdminExamRoutes(t *testing.T, env *testEnv, h *handler.Handler) {
 	adminExams.Use(handler.RBACMiddleware("products(exam):write"))
 	adminExams.GET("/:id/leaderboard", h.AdminGetExamLeaderboard)
 	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)
-	adminExams.GET("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
+	adminExams.POST("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
 	adminExams.GET("/:id/certificate-design", h.AdminGetExamCertificateDesign)
 	adminExams.PUT("/:id/certificate-design", h.AdminUpdateExamCertificateDesign)
 	adminExams.PATCH("/:id", h.AdminUpdateExam)
@@ -197,6 +197,19 @@ func getRequest(t *testing.T, e *echo.Echo, path, token string) *httptest.Respon
 	return rec
 }
 
+// postRequest issues a bodyless POST — used by certificate-preview when no
+// unsaved-layout override is being tested.
+func postRequest(t *testing.T, e *echo.Echo, path, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
 // patchJSONRequest issues a PATCH with JSON body.
 func patchJSONRequest(t *testing.T, e *echo.Echo, path, token string, body any) *httptest.ResponseRecorder {
 	t.Helper()
@@ -225,12 +238,13 @@ func putJSONRequest(t *testing.T, e *echo.Echo, path, token string, body any) *h
 	return rec
 }
 
-// getJSONBodyRequest issues a GET carrying a JSON body — used by the
+// postCertificatePreviewRequest issues a POST carrying a JSON body — the
+// transport a real browser can use, unlike a GET with a body — used by the
 // certificate-preview endpoint's optional unsaved-layout override.
-func getJSONBodyRequest(t *testing.T, e *echo.Echo, path, token string, body any) *httptest.ResponseRecorder {
+func postCertificatePreviewRequest(t *testing.T, e *echo.Echo, path, token string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodGet, path, bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -550,7 +564,7 @@ func TestAdminGetExamCertificatePreview_NoToken_Returns401(t *testing.T) {
 	h := handler.New(env.svc)
 	registerAdminExamRoutes(t, env, h)
 
-	rec := getRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-preview?template=classic", "")
+	rec := postRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-preview?template=classic", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -568,7 +582,7 @@ func TestAdminGetExamCertificatePreview_StudentToken_Returns403(t *testing.T) {
 	registerAdminExamRoutes(t, env, h)
 
 	token := mintToken(t, env, "student-cert-preview", service.RoleStudent)
-	rec := getRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-preview?template=classic", token)
+	rec := postRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-preview?template=classic", token)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -581,7 +595,7 @@ func TestAdminGetExamCertificatePreview_ValidToken_Returns200PDF(t *testing.T) {
 	examID := seedExam(t, env.pool, "Certificate Test Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token)
+	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -605,7 +619,7 @@ func TestAdminGetExamCertificatePreview_InvalidTemplate_Returns422(t *testing.T)
 	examID := seedExam(t, env.pool, "Cert 422 Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=invalid-template-key", token)
+	rec := postRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=invalid-template-key", token)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -621,7 +635,7 @@ func TestAdminGetExamCertificatePreview_UnknownExam_Returns404(t *testing.T) {
 	admin := seedUser(t, env.pool, "admin_exam", "Admin Cert 404")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := getRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-preview", token)
+	rec := postRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-preview", token)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
@@ -642,7 +656,7 @@ func TestAdminGetExamCertificatePreview_WithUnsavedLayout_RendersOverride(t *tes
 	examID := seedExam(t, env.pool, "Preview Override Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := getJSONBodyRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
 		map[string]any{"layout": validCertLayoutBody()},
 	)
 	if rec.Code != http.StatusOK {
@@ -660,7 +674,7 @@ func TestAdminGetExamCertificatePreview_WithInvalidUnsavedLayout_Returns422(t *t
 	examID := seedExam(t, env.pool, "Preview Bad Override Exam", false, "hidden", "classic")
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
-	rec := getJSONBodyRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
+	rec := postCertificatePreviewRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
 		map[string]any{"layout": invalidCertLayoutBody()},
 	)
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -906,6 +920,31 @@ func TestAdminUpdateExamCertificateDesign_UnknownFieldID_Rejected(t *testing.T) 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
 	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
 		map[string]any{"template": "classic", "layout": invalidCertLayoutBody()},
+	)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "validation_failed" {
+		t.Errorf("code: want validation_failed, got %v", resp["code"])
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_OmittedLayout_Rejected covers Warning
+// 4/Invariant 8: a PUT that omits `layout` entirely marshals the zero Layout
+// (page 0x0mm, nil fields) into the exam row. Before ValidateLayout checked
+// page dimensions this degenerate layout was accepted and persisted, so every
+// later certificate render for this exam would produce a zero-size page.
+func TestAdminUpdateExamCertificateDesign_OmittedLayout_Rejected(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Omitted Layout")
+
+	examID := seedExam(t, env.pool, "Design Omitted Layout Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic"},
 	)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())

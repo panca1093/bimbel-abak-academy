@@ -23,6 +23,11 @@ const TEMPLATE_CARD_BASE =
 const TEMPLATE_CARD_ON = "border-brand-400 bg-brand-50 text-brand-800";
 const TEMPLATE_CARD_OFF = "border-line text-ink-700 hover:border-ink-300";
 
+// PREVIEW_DEBOUNCE_MS trails a layout edit (drag release or a typed mm value)
+// before re-rendering the PDF preview, so a burst of edits collapses into one
+// render instead of one per change (FR-26).
+const PREVIEW_DEBOUNCE_MS = 350;
+
 interface CertificateDesignTabProps {
   examId: string;
   exam: ExamDetail;
@@ -61,10 +66,10 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
     setLayout((prev) => (prev ? { ...prev, fields } : prev));
   }
 
-  async function loadPreview(tmpl: string) {
+  async function loadPreview(tmpl: string, layoutOverride?: CertificateLayout) {
     setPreviewLoading(true);
     try {
-      const blob = await fetchCertificatePreview(examId, tmpl);
+      const blob = await fetchCertificatePreview(examId, tmpl, layoutOverride);
       const url = URL.createObjectURL(blob);
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = url;
@@ -76,13 +81,19 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
     }
   }
 
+  // Debounced so a drag release or a run of keystrokes in the mm inputs
+  // triggers one PDF render, not one per edit (FR-26). Carries the current
+  // (possibly unsaved) `layout` so the preview reflects a drag before Save.
   useEffect(() => {
     if (!initialized) return;
-    loadPreview(template);
+    const handle = setTimeout(() => {
+      loadPreview(template, layout ?? undefined);
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
     // Re-fetching on `t` change would refetch on every locale toggle; `loadPreview`
-    // only needs examId/template.
+    // only needs examId/template/layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examId, template, initialized]);
+  }, [examId, template, initialized, layout]);
 
   useEffect(() => {
     return () => {
@@ -236,24 +247,38 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-              {t("certificate_design_preview_label")}
-            </span>
-            {previewLoading && !previewUrl ? (
-              <Skeleton className="h-96 w-full" />
-            ) : previewUrl ? (
-              <iframe
-                title={t("certificate_design_preview_label")}
-                src={previewUrl}
-                className="h-96 w-full rounded-md border border-line"
-              />
-            ) : (
-              <div className="flex h-96 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-                —
-              </div>
-            )}
-            {layout && <CertificateFieldEditor layout={layout} onChange={handleFieldsChange} />}
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+                {t("certificate_design_preview_label")}
+              </span>
+              {layout && (
+                <CertificateFieldEditor
+                  layout={layout}
+                  onChange={handleFieldsChange}
+                  backgroundUrl={backgroundUrl}
+                />
+              )}
+            </div>
+
+            <div className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+                {t("certificate_design_pdf_fidelity_label")}
+              </span>
+              {previewLoading && !previewUrl ? (
+                <Skeleton className="h-64 w-full" />
+              ) : previewUrl ? (
+                <iframe
+                  title={t("certificate_design_pdf_fidelity_label")}
+                  src={previewUrl}
+                  className="h-64 w-full rounded-md border border-line"
+                />
+              ) : (
+                <div className="flex h-64 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+                  —
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

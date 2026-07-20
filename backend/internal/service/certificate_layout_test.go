@@ -67,6 +67,54 @@ func TestValidateLayout_OutOfPageBoxRejected(t *testing.T) {
 	}
 }
 
+// TestValidateLayout_ZeroPageDimensionsRejected covers Warning 4/Invariant 8:
+// a PUT that omits `layout` marshals the zero Layout (page 0x0mm, nil fields),
+// which the old bounds loop accepted as a no-op since it never checked page
+// size — every later render would then produce a zero-size page.
+func TestValidateLayout_ZeroPageDimensionsRejected(t *testing.T) {
+	cases := []struct {
+		name string
+		page Page
+	}{
+		{"zero page", Page{WidthMm: 0, HeightMm: 0}},
+		{"zero width only", Page{WidthMm: 0, HeightMm: 210}},
+		{"zero height only", Page{WidthMm: 297, HeightMm: 0}},
+		{"negative width", Page{WidthMm: -297, HeightMm: 210}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			l := Layout{Page: tc.page}
+			err := ValidateLayout(l)
+			if err == nil {
+				t.Fatal("expected error for degenerate page dimensions, got nil")
+			}
+			if !errors.Is(err, ErrValidation) {
+				t.Errorf("expected ErrValidation, got %v", err)
+			}
+		})
+	}
+}
+
+// TestValidateLayout_TextFieldNearBottomEdgeRejected covers Warning 5/FR-28: a
+// text field's box has no h_mm, so a y_mm that leaves no room for even one
+// line of its own font size runs the text off the page — the box's top-left
+// corner sitting exactly on the bottom edge is not "inside the page".
+func TestValidateLayout_TextFieldNearBottomEdgeRejected(t *testing.T) {
+	l := Layout{
+		Page: Page{WidthMm: 297, HeightMm: 210},
+		Fields: []LayoutField{
+			{ID: "certificate_number", XMm: 48.5, YMm: 210, WMm: 200, Align: "center", SizePt: 9},
+		},
+	}
+	err := ValidateLayout(l)
+	if err == nil {
+		t.Fatal("expected error for a text field with no room for its line height, got nil")
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got %v", err)
+	}
+}
+
 func TestValidateLayout_InPageBoxAccepted(t *testing.T) {
 	l := Layout{
 		Page: Page{WidthMm: 297, HeightMm: 210},
@@ -111,10 +159,15 @@ func TestDefaultLayout_RoundTripsThroughJSON(t *testing.T) {
 	}
 }
 
+// TestDefaultLayout_CoversAllClosedFieldIDs checks the default layouts cover
+// every closed field id (FR-3) except "logo": renderCertificate never stamps
+// the logo field (Warning 3), so shipping it in every default would draw a
+// draggable box in the editor for a field that can never appear on the
+// certificate — the defaults deliberately omit it.
 func TestDefaultLayout_CoversAllClosedFieldIDs(t *testing.T) {
 	want := []string{
 		"title", "subtitle", "student_name", "exam_title",
-		"completion_text", "date", "certificate_number", "logo",
+		"completion_text", "date", "certificate_number",
 	}
 	for _, tmpl := range []string{"classic", "modern", "elegant"} {
 		l := defaultLayout(tmpl)
@@ -126,6 +179,9 @@ func TestDefaultLayout_CoversAllClosedFieldIDs(t *testing.T) {
 			if !seen[id] {
 				t.Errorf("defaultLayout(%s) missing field id %q", tmpl, id)
 			}
+		}
+		if seen["logo"] {
+			t.Errorf("defaultLayout(%s) still ships a logo field, but renderCertificate never stamps it", tmpl)
 		}
 	}
 }

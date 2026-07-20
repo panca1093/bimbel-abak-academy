@@ -102,9 +102,46 @@ describe("CertificateFieldEditor", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     const fields = onChange.mock.calls[0][0];
     const dragged = fields.find((f: { id: string }) => f.id === "student_name");
-    // w_mm=200 on a 297mm-wide page -> max x_mm is 97; page height is 210mm.
+    // w_mm=200 on a 297mm-wide page -> max x_mm is 97.
     expect(dragged.x_mm).toBeCloseTo(97, 5);
-    expect(dragged.y_mm).toBeCloseTo(210, 5);
+    // size_pt=26 -> nominal line height 26*0.3528*1.15≈10.5488mm -> max y_mm
+    // is 210-10.5488≈199.4513: the box's bottom edge, not its top-left
+    // corner, must stay on the page (FR-28).
+    expect(dragged.y_mm).toBeCloseTo(199.45128, 3);
+  });
+
+  it("derives a text field's clamp from its font size so the whole line stays on the page, not just its top-left corner", () => {
+    const onChange = vi.fn();
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [
+        {
+          id: "certificate_number",
+          x_mm: 48.5,
+          y_mm: 100,
+          w_mm: 200,
+          align: "center",
+          size_pt: 9,
+          visible: true,
+        },
+      ],
+    };
+    render(<CertificateFieldEditor layout={layout} onChange={onChange} />);
+
+    const box = screen.getByTestId("certificate-field-box-certificate_number");
+    // Grab at (48.5mm,100mm) -> (194px,400px).
+    fireEvent.pointerDown(box, { pointerId: 1, clientX: 194, clientY: 400 });
+    // Drop right at the bottom edge.
+    fireEvent.pointerMove(box, { pointerId: 1, clientX: 194, clientY: 840 });
+    fireEvent.pointerUp(box, { pointerId: 1 });
+
+    const fields = onChange.mock.calls[0][0];
+    const dragged = fields.find((f: { id: string }) => f.id === "certificate_number");
+    // size_pt=9 -> nominal line height 9*0.3528*1.15≈3.6515mm -> max y_mm
+    // ≈206.3485, well short of the page's 210mm bottom edge.
+    expect(dragged.y_mm).toBeLessThan(210);
+    expect(dragged.y_mm).toBeCloseTo(206.34852, 3);
   });
 
   it("clamps a logo drop against the box's height, not just its y origin", () => {
@@ -129,6 +166,27 @@ describe("CertificateFieldEditor", () => {
     const dragged = fields.find((f: { id: string }) => f.id === "logo");
     // h_mm=20 on a 210mm-tall page -> max y_mm is 190.
     expect(dragged.y_mm).toBeCloseTo(190, 5);
+  });
+
+  it("renders the certificate artwork as the drag surface instead of an empty rectangle", () => {
+    const onChange = vi.fn();
+    render(
+      <CertificateFieldEditor
+        layout={baseLayout}
+        onChange={onChange}
+        backgroundUrl="https://cdn.example.com/cert-bg.png"
+      />,
+    );
+
+    const bg = screen.getByTestId("certificate-field-editor-background") as HTMLImageElement;
+    expect(bg.src).toBe("https://cdn.example.com/cert-bg.png");
+  });
+
+  it("falls back to a plain surface when no background is available yet", () => {
+    const onChange = vi.fn();
+    render(<CertificateFieldEditor layout={baseLayout} onChange={onChange} />);
+
+    expect(screen.queryByTestId("certificate-field-editor-background")).not.toBeInTheDocument();
   });
 
   it("lets the position be set via the numeric mm inputs as a non-drag alternative", () => {

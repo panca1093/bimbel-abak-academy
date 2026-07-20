@@ -20,6 +20,28 @@ const sampleLayout: CertificateDesign["layout"] = {
   fields: [],
 };
 
+// layoutWithField carries one visible field so the drag/debounce tests below
+// have a box to interact with; container is mocked to 1188x840px (see
+// CertificateFieldEditor.test.tsx) so 0.25mm/px holds on both axes.
+const layoutWithField: CertificateDesign["layout"] = {
+  page: { width_mm: 297, height_mm: 210 },
+  background: { kind: "builtin", ref: "classic" },
+  fields: [
+    {
+      id: "student_name",
+      x_mm: 48.5,
+      y_mm: 100,
+      w_mm: 200,
+      align: "center",
+      font: "source_serif_4",
+      weight: "bold",
+      size_pt: 26,
+      color: "#1F2A44",
+      visible: true,
+    },
+  ],
+};
+
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useCertificateDesign: () => certificateDesignState,
   useUpdateCertificateDesign: () => ({
@@ -63,11 +85,11 @@ describe("CertificateDesignTab", () => {
     URL.revokeObjectURL = vi.fn();
   });
 
-  it("loads the initial live preview for the saved template", async () => {
+  it("loads the initial live preview for the saved template, carrying the current layout", async () => {
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
 
     await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic");
+      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic", sampleLayout);
     });
   });
 
@@ -75,14 +97,95 @@ describe("CertificateDesignTab", () => {
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
 
     await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic");
+      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic", sampleLayout);
     });
 
     fireEvent.click(screen.getByLabelText("Modern"));
 
     await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "modern");
+      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "modern", sampleLayout);
     });
+  });
+
+  it("re-fetches the preview with the unsaved layout after a drag, debounced into a single request (FR-26)", async () => {
+    certificateDesignState = {
+      data: {
+        template: "classic",
+        background_url: "https://cdn.example.com/bg.png",
+        layout: layoutWithField,
+      },
+      isLoading: false,
+      isError: false,
+    };
+    vi.spyOn(HTMLDivElement.prototype, "getBoundingClientRect").mockReturnValue({
+      width: 1188,
+      height: 840,
+      left: 0,
+      top: 0,
+      right: 1188,
+      bottom: 840,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    } as DOMRect);
+
+    render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
+
+    await waitFor(() => {
+      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic", layoutWithField);
+    });
+    const callsBeforeDrag = mockFetchCertificatePreview.mock.calls.length;
+
+    const box = screen.getByTestId("certificate-field-box-student_name");
+    // Grab exactly at the box's top-left (48.5mm,100mm) -> (194px,400px), drop
+    // at (20mm,150mm) — the same drop CertificateFieldEditor.test.tsx uses.
+    fireEvent.pointerDown(box, { pointerId: 1, clientX: 194, clientY: 400 });
+    fireEvent.pointerMove(box, { pointerId: 1, clientX: 80, clientY: 600 });
+    fireEvent.pointerUp(box, { pointerId: 1 });
+
+    await waitFor(() => {
+      expect(mockFetchCertificatePreview.mock.calls.length).toBe(callsBeforeDrag + 1);
+    });
+
+    const lastCall =
+      mockFetchCertificatePreview.mock.calls[mockFetchCertificatePreview.mock.calls.length - 1];
+    expect(lastCall[0]).toBe("exam-1");
+    expect(lastCall[1]).toBe("classic");
+    const dragged = lastCall[2].fields.find((f: { id: string }) => f.id === "student_name");
+    expect(dragged.x_mm).toBeCloseTo(20, 5);
+    expect(dragged.y_mm).toBeCloseTo(150, 5);
+  });
+
+  it("debounces rapid consecutive layout edits into a single extra preview request", async () => {
+    certificateDesignState = {
+      data: {
+        template: "classic",
+        background_url: "https://cdn.example.com/bg.png",
+        layout: layoutWithField,
+      },
+      isLoading: false,
+      isError: false,
+    };
+
+    render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
+
+    await waitFor(() => {
+      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic", layoutWithField);
+    });
+    const callsBeforeEdits = mockFetchCertificatePreview.mock.calls.length;
+
+    const xInput = screen.getByLabelText("x_mm student_name");
+    fireEvent.change(xInput, { target: { value: "10" } });
+    fireEvent.change(xInput, { target: { value: "20" } });
+
+    await waitFor(() => {
+      expect(mockFetchCertificatePreview.mock.calls.length).toBe(callsBeforeEdits + 1);
+    });
+
+    const lastCall =
+      mockFetchCertificatePreview.mock.calls[mockFetchCertificatePreview.mock.calls.length - 1];
+    const dragged = lastCall[2].fields.find((f: { id: string }) => f.id === "student_name");
+    expect(dragged.x_mm).toBe(20);
   });
 
   it("uploads a background then saves with the returned object key", async () => {

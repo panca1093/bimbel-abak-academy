@@ -259,7 +259,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExams.GET("/:id/grading", h.AdminListGradingSessions)
 	adminExams.GET("/:id/leaderboard", h.AdminGetExamLeaderboard)
 	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)
-	adminExams.GET("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
+	adminExams.POST("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
 	adminExams.GET("/:id/certificate-design", h.AdminGetExamCertificateDesign)
 	adminExams.PUT("/:id/certificate-design", h.AdminUpdateExamCertificateDesign)
 

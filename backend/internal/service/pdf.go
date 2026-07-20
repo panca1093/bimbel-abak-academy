@@ -68,7 +68,7 @@ func drawCardHeaderBand(pdf *gofpdf.Fpdf, tenantName string, logoImg []byte) {
 	pdf.SetFillColor(navyR, navyG, navyB)
 	pdf.Rect(0, 0, cardPageW, 16, "F")
 
-	if registerOptionalImage(pdf, "card-logo", logoImg) {
+	if ok, _, _ := registerOptionalImage(pdf, "card-logo", logoImg); ok {
 		pdf.ImageOptions("card-logo", 6, 3, 10, 10, false, gofpdf.ImageOptions{}, 0, "")
 	}
 
@@ -98,8 +98,8 @@ func drawCardPhotoFrame(pdf *gofpdf.Fpdf, photoImg []byte) {
 	pdf.SetLineWidth(ptToMM(0.5))
 	pdf.Rect(cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, "D")
 
-	if registerOptionalImage(pdf, "card-photo", photoImg) {
-		pdf.ImageOptions("card-photo", cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, false, gofpdf.ImageOptions{}, 0, "")
+	if ok, srcW, srcH := registerOptionalImage(pdf, "card-photo", photoImg); ok {
+		drawAspectFillImage(pdf, "card-photo", cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, srcW, srcH)
 		return
 	}
 	drawCardPhotoPlaceholder(pdf, cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH)
@@ -240,26 +240,52 @@ func drawCardBorder(pdf *gofpdf.Fpdf) {
 
 // registerOptionalImage validates and registers image bytes for placement,
 // never leaving the pdf in an error state on bad input: a missing or corrupt
-// asset must not fail card generation (FR-21). It returns false for empty,
-// undecodable, or otherwise-rejected data.
-func registerOptionalImage(pdf *gofpdf.Fpdf, name string, data []byte) bool {
+// asset must not fail card generation (FR-21). It returns ok=false for empty,
+// undecodable, or otherwise-rejected data. width/height are the source
+// image's own pixel dimensions (0,0 when ok is false), letting a caller
+// aspect-fill the image into a box instead of stretching it.
+func registerOptionalImage(pdf *gofpdf.Fpdf, name string, data []byte) (ok bool, width, height int) {
 	if len(data) == 0 {
-		return false
+		return false, 0, 0
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || cfg.Width == 0 || cfg.Height == 0 {
-		return false
+		return false, 0, 0
 	}
-	tp, ok := gofpdfImageType(format)
-	if !ok {
-		return false
+	tp, supported := gofpdfImageType(format)
+	if !supported {
+		return false, 0, 0
 	}
 	pdf.RegisterImageOptionsReader(name, gofpdf.ImageOptions{ImageType: tp, ReadDpi: false}, bytes.NewReader(data))
 	if !pdf.Ok() {
 		pdf.ClearError()
-		return false
+		return false, 0, 0
 	}
-	return true
+	return true, cfg.Width, cfg.Height
+}
+
+// drawAspectFillImage draws a registered image scaled to cover a w x h mm box
+// and centre-cropped to it via ClipRect, rather than stretched to fit — a
+// non-matching source aspect ratio (e.g. a portrait phone photo on the exam
+// card's 22x28mm frame, Warning 8) never squashes the subject.
+func drawAspectFillImage(pdf *gofpdf.Fpdf, name string, x, y, w, h float64, srcW, srcH int) {
+	boxAspect := w / h
+	srcAspect := float64(srcW) / float64(srcH)
+
+	drawW, drawH := w, h
+	if srcAspect > boxAspect {
+		drawH = h
+		drawW = h * srcAspect
+	} else {
+		drawW = w
+		drawH = w / srcAspect
+	}
+	drawX := x - (drawW-w)/2
+	drawY := y - (drawH-h)/2
+
+	pdf.ClipRect(x, y, w, h, false)
+	pdf.ImageOptions(name, drawX, drawY, drawW, drawH, false, gofpdf.ImageOptions{}, 0, "")
+	pdf.ClipEnd()
 }
 
 func gofpdfImageType(format string) (string, bool) {

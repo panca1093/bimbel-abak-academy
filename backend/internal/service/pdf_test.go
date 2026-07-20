@@ -123,6 +123,61 @@ func TestGenerateExamCardPDF_PhotoPresent_SinglePageA6(t *testing.T) {
 	assertSinglePageA6Landscape(t, pdf)
 }
 
+// fakeWideStripedPNG is 200x60 (aspect ~3.33, far from the 22x28mm card
+// frame's ~0.79) with red/white/blue vertical bands, so a naive stretch
+// (old behaviour) and a centre-cropped aspect-fill (Warning 8 fix) produce
+// measurably different pixels at the frame's left/right edges: stretching
+// keeps the outer red/blue bands visible at the edges, aspect-fill crops
+// them out of frame entirely, leaving only the white centre visible.
+func fakeWideStripedPNG(t *testing.T) []byte {
+	t.Helper()
+	const w, h = 200, 60
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			switch {
+			case x < 20:
+				img.Set(x, y, color.RGBA{R: 220, G: 20, B: 20, A: 255})
+			case x >= w-20:
+				img.Set(x, y, color.RGBA{R: 20, G: 20, B: 220, A: 255})
+			default:
+				img.Set(x, y, color.RGBA{R: 250, G: 250, B: 250, A: 255})
+			}
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// TestGenerateExamCardPDF_PhotoAspectFill_NotStretched covers Warning 8: a
+// non-4:5 source photo must be aspect-filled with a centre crop, not
+// stretched to the fixed 22x28mm frame.
+func TestGenerateExamCardPDF_PhotoAspectFill_NotStretched(t *testing.T) {
+	detail := baseCardRegistration()
+	pdf, err := generateExamCardPDF(detail, "Saifullah Panca", "Akademi Bimbel", nil, fakeWideStripedPNG(t))
+	if err != nil {
+		t.Fatalf("generateExamCardPDF: %v", err)
+	}
+	img := renderToPNG(t, pdf)
+
+	leftEdgeMm := cardPhotoX + 1.5
+	rightEdgeMm := cardPhotoX + cardPhotoW - 1.5
+	midYMm := cardPhotoY + cardPhotoH/2
+
+	lr, lg, lb := avgColorAt(img, cardPageW, cardPageH, leftEdgeMm, midYMm)
+	if redDist, whiteDist := colorDistance(lr, lg, lb, 220, 20, 20), colorDistance(lr, lg, lb, 250, 250, 250); redDist < whiteDist {
+		t.Errorf("left edge of photo frame looks red (source was stretched), want the cropped-out white centre: rgb=(%.0f,%.0f,%.0f)", lr, lg, lb)
+	}
+
+	rr, rg, rb := avgColorAt(img, cardPageW, cardPageH, rightEdgeMm, midYMm)
+	if blueDist, whiteDist := colorDistance(rr, rg, rb, 20, 20, 220), colorDistance(rr, rg, rb, 250, 250, 250); blueDist < whiteDist {
+		t.Errorf("right edge of photo frame looks blue (source was stretched), want the cropped-out white centre: rgb=(%.0f,%.0f,%.0f)", rr, rg, rb)
+	}
+}
+
 func TestGenerateExamCardPDF_LongStudentName_SinglePageA6(t *testing.T) {
 	detail := baseCardRegistration()
 	longName := "Zulfikar Nurhadiningrat Wicaksono Śarma Al-Farisi bin Abdurrahman Setiawan"
@@ -239,7 +294,7 @@ func TestCardScheduleText_NilScheduledAt(t *testing.T) {
 
 func TestRegisterOptionalImage_NilBytesReturnsFalse(t *testing.T) {
 	pdf := newCardTestPDF(t)
-	if registerOptionalImage(pdf, "x", nil) {
+	if ok, _, _ := registerOptionalImage(pdf, "x", nil); ok {
 		t.Error("expected false for nil image bytes")
 	}
 	if !pdf.Ok() {
@@ -249,7 +304,7 @@ func TestRegisterOptionalImage_NilBytesReturnsFalse(t *testing.T) {
 
 func TestRegisterOptionalImage_CorruptBytesReturnsFalseAndClearsError(t *testing.T) {
 	pdf := newCardTestPDF(t)
-	if registerOptionalImage(pdf, "x", []byte("definitely not an image")) {
+	if ok, _, _ := registerOptionalImage(pdf, "x", []byte("definitely not an image")); ok {
 		t.Error("expected false for corrupt image bytes")
 	}
 	if !pdf.Ok() {
@@ -259,8 +314,12 @@ func TestRegisterOptionalImage_CorruptBytesReturnsFalseAndClearsError(t *testing
 
 func TestRegisterOptionalImage_ValidPNGReturnsTrue(t *testing.T) {
 	pdf := newCardTestPDF(t)
-	if !registerOptionalImage(pdf, "x", fakePNG(t)) {
+	ok, w, h := registerOptionalImage(pdf, "x", fakePNG(t))
+	if !ok {
 		t.Error("expected true for a valid PNG")
+	}
+	if w != 60 || h != 80 {
+		t.Errorf("expected the source's own 60x80 dimensions, got %dx%d", w, h)
 	}
 	if !pdf.Ok() {
 		t.Error("pdf must remain in an ok state after a valid registration")

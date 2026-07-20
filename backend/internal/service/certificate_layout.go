@@ -75,9 +75,24 @@ type Layout struct {
 	Fields     []LayoutField `json:"fields"`
 }
 
-// ValidateLayout rejects an unknown field id, a duplicate field id, and any field
-// box that falls outside the page. It does not validate Font (see LayoutField).
+// nominalLineHeightMm derives an approximate single-line text box height in
+// millimetres from a font size in points, mirroring the line-height factor
+// renderCertificate uses when stamping text (1pt = 0.3528mm, with a 1.15
+// leading multiplier — see renderCertificate's lineHeightMm). A text field has
+// no h_mm of its own, so this is what both the editor's clamp and this
+// validation use as the field's effective box height (FR-28).
+func nominalLineHeightMm(sizePt float64) float64 {
+	return sizePt * 0.3528 * 1.15
+}
+
+// ValidateLayout rejects a degenerate page size, an unknown field id, a
+// duplicate field id, and any field box that falls outside the page. It does
+// not validate Font (see LayoutField).
 func ValidateLayout(l Layout) error {
+	if l.Page.WidthMm <= 0 || l.Page.HeightMm <= 0 {
+		return fmt.Errorf("%w: page dimensions must be positive", ErrValidation)
+	}
+
 	seen := make(map[string]bool, len(l.Fields))
 	for _, f := range l.Fields {
 		if !validLayoutFieldIDs[f.ID] {
@@ -88,10 +103,11 @@ func ValidateLayout(l Layout) error {
 		}
 		seen[f.ID] = true
 
-		if f.XMm < 0 || f.YMm < 0 || f.XMm+f.WMm > l.Page.WidthMm || f.YMm > l.Page.HeightMm {
-			return fmt.Errorf("%w: field %s box is outside the page", ErrValidation, f.ID)
+		boxHeightMm := f.HMm
+		if f.ID != "logo" {
+			boxHeightMm = nominalLineHeightMm(f.SizePt)
 		}
-		if f.ID == "logo" && f.YMm+f.HMm > l.Page.HeightMm {
+		if f.XMm < 0 || f.YMm < 0 || f.XMm+f.WMm > l.Page.WidthMm || f.YMm+boxHeightMm > l.Page.HeightMm {
 			return fmt.Errorf("%w: field %s box is outside the page", ErrValidation, f.ID)
 		}
 	}
@@ -117,7 +133,6 @@ func defaultLayout(template string) Layout {
 				{ID: "exam_title", XMm: 48.5, YMm: 133, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#0F172A", Visible: true},
 				{ID: "date", XMm: 48.5, YMm: 158, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#334155", Visible: true},
 				{ID: "certificate_number", XMm: 48.5, YMm: 196, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#64748B", Visible: true},
-				{ID: "logo", XMm: 138.5, YMm: 14, WMm: 20, Align: "center", Color: "", Visible: true, HMm: 20},
 			},
 		}
 	case "elegant":
@@ -131,8 +146,7 @@ func defaultLayout(template string) Layout {
 				{ID: "completion_text", XMm: 48.5, YMm: 122, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
 				{ID: "exam_title", XMm: 48.5, YMm: 137, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
 				{ID: "date", XMm: 48.5, YMm: 160, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
-				{ID: "certificate_number", XMm: 48.5, YMm: 197, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#8A93A6", Visible: true},
-				{ID: "logo", XMm: 138.5, YMm: 15, WMm: 20, Align: "center", Color: "", Visible: true, HMm: 20},
+				{ID: "certificate_number", XMm: 48.5, YMm: 197, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#4A5568", Visible: true},
 			},
 		}
 	default: // "classic"
@@ -146,8 +160,7 @@ func defaultLayout(template string) Layout {
 				{ID: "completion_text", XMm: 48.5, YMm: 120, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
 				{ID: "exam_title", XMm: 48.5, YMm: 135, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#1F2A44", Visible: true},
 				{ID: "date", XMm: 48.5, YMm: 158, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
-				{ID: "certificate_number", XMm: 48.5, YMm: 195, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#8A93A6", Visible: true},
-				{ID: "logo", XMm: 138.5, YMm: 15, WMm: 20, Align: "center", Color: "", Visible: true, HMm: 20},
+				{ID: "certificate_number", XMm: 48.5, YMm: 195, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#F0CB78", Visible: true},
 			},
 		}
 	}

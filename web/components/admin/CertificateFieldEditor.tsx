@@ -8,6 +8,11 @@ import type { CertificateLayout, CertificateLayoutField } from "@/lib/types";
 interface CertificateFieldEditorProps {
   layout: CertificateLayout;
   onChange: (fields: CertificateLayoutField[]) => void;
+  // backgroundUrl is the certificate artwork (FR-26/D5): the drag surface
+  // renders it so the admin positions fields against the actual design
+  // instead of a featureless rectangle. Optional/null falls back to a plain
+  // fill so the editor still works before a background has resolved.
+  backgroundUrl?: string | null;
 }
 
 interface DragState {
@@ -35,23 +40,33 @@ function pxToMm(px: number, widthPx: number, pageWidthMm: number): number {
   return px * (pageWidthMm / widthPx);
 }
 
+// nominalLineHeightMm mirrors the backend's certificate_layout.go
+// nominalLineHeightMm (1pt = 0.3528mm, 1.15 leading): a text field has no
+// h_mm of its own, so this is what both sides use as its effective box
+// height when clamping/validating y_mm (FR-28). Keep in sync with the Go copy.
+function nominalLineHeightMm(sizePt: number | undefined): number {
+  return (sizePt ?? 0) * 0.3528 * 1.15;
+}
+
 // clampFieldPosition mirrors the backend's ValidateLayout bounds (Task 3) so
 // a drop the editor accepts never comes back as a 422 on save: x_mm,y_mm is
-// the box's top-left corner, so x clamps against the box's own width, and a
-// logo's y clamps against its height too.
+// the box's top-left corner, so x clamps against the box's own width, and y
+// clamps against the box's own height too — a logo's h_mm, or a text field's
+// derived nominal line height — so the box's bottom edge never runs off the
+// page, not just its top-left corner (FR-28).
 export function clampFieldPosition(
   field: CertificateLayoutField,
   page: CertificateLayout["page"],
 ): CertificateLayoutField {
   const maxX = Math.max(0, page.width_mm - field.w_mm);
   const x_mm = Math.min(Math.max(field.x_mm, 0), maxX);
-  const maxY =
-    field.id === "logo" ? Math.max(0, page.height_mm - (field.h_mm ?? 0)) : page.height_mm;
+  const boxHeightMm = field.id === "logo" ? (field.h_mm ?? 0) : nominalLineHeightMm(field.size_pt);
+  const maxY = Math.max(0, page.height_mm - boxHeightMm);
   const y_mm = Math.min(Math.max(field.y_mm, 0), maxY);
   return { ...field, x_mm, y_mm };
 }
 
-export function CertificateFieldEditor({ layout, onChange }: CertificateFieldEditorProps) {
+export function CertificateFieldEditor({ layout, onChange, backgroundUrl }: CertificateFieldEditorProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -122,11 +137,20 @@ export function CertificateFieldEditor({ layout, onChange }: CertificateFieldEdi
       <div
         ref={containerRef}
         data-testid="certificate-field-editor-canvas"
-        className="relative w-full select-none rounded-md border border-line bg-ink-50"
+        className={`relative w-full select-none overflow-hidden rounded-md border border-line ${backgroundUrl ? "" : "bg-ink-50"}`}
         style={{ aspectRatio: `${page.width_mm} / ${page.height_mm}` }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
+        {backgroundUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={backgroundUrl}
+            alt=""
+            data-testid="certificate-field-editor-background"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          />
+        )}
         {visibleFields.map((field) => {
           const isDragging = drag?.fieldId === field.id;
           const widthPct = (field.w_mm / page.width_mm) * 100;

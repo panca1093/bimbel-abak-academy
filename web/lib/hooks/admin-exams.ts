@@ -15,6 +15,7 @@ import type {
   ExamAnalytics,
   CertificateDesign,
   CertificateDesignInput,
+  CertificateLayout,
 } from "@/lib/types";
 
 export const adminExamsKeys = {
@@ -217,16 +218,26 @@ export function useExamAnalytics(examId: string | undefined, enabled = true) {
   });
 }
 
+// fetchCertificatePreview renders a preview PDF. It is a POST (not GET) so an
+// unsaved `layout` — the box positions the admin is currently dragging, before
+// Save — can travel as a JSON body a browser can actually send (FR-26);
+// omitting layout previews the exam's saved (or default) design instead.
 export async function fetchCertificatePreview(
   examId: string,
   template?: string,
+  layout?: CertificateLayout,
 ): Promise<Blob> {
   const token = useAuthStore.getState().token;
   const params = template ? `?template=${encodeURIComponent(template)}` : "";
   const res = await fetch(
     `${API_BASE}/admin/exams/${encodeURIComponent(examId)}/certificate-preview${params}`,
     {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(layout ? { layout } : {}),
     },
   );
   if (!res.ok) {
