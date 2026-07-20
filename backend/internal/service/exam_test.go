@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -1647,7 +1649,7 @@ func (s *shimExamCardService) GetExamCard(ctx context.Context, regID, studentID 
 	if err != nil {
 		return nil, "", err
 	}
-	pdf, err := generateExamCardPDF(detail, s.studentName, s.tenantName)
+	pdf, err := generateExamCardPDF(detail, s.studentName, s.tenantName, nil, nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1704,6 +1706,47 @@ func TestGetExamCard_ReturnsPdfBytes(t *testing.T) {
 	wantPattern := regexp.MustCompile(`^kartu-peserta-[A-Z0-9]{8}\.pdf$`)
 	if !wantPattern.MatchString(filename) {
 		t.Errorf("filename %q does not match kartu-peserta-<8-char-token>.pdf", filename)
+	}
+}
+
+// fetchCardImage (exam.go) is the I/O call site that fetches the exam-card
+// logo/photo bytes; it must never surface an error, only nil bytes, so a
+// missing or unfetchable asset can never fail card generation (FR-21).
+
+func TestFetchCardImage_EmptyURLReturnsNil(t *testing.T) {
+	if got := fetchCardImage(""); got != nil {
+		t.Errorf("expected nil for empty URL, got %d bytes", len(got))
+	}
+}
+
+func TestFetchCardImage_Success(t *testing.T) {
+	want := []byte("fake-image-bytes")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(want)
+	}))
+	defer srv.Close()
+
+	got := fetchCardImage(srv.URL)
+	if !bytes.Equal(got, want) {
+		t.Errorf("fetchCardImage() = %v, want %v", got, want)
+	}
+}
+
+func TestFetchCardImage_NonOKStatusReturnsNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	if got := fetchCardImage(srv.URL); got != nil {
+		t.Errorf("expected nil for 404 response, got %d bytes", len(got))
+	}
+}
+
+func TestFetchCardImage_UnreachableHostReturnsNil(t *testing.T) {
+	if got := fetchCardImage("http://127.0.0.1:1/does-not-exist"); got != nil {
+		t.Errorf("expected nil for unreachable host, got %d bytes", len(got))
 	}
 }
 

@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -817,23 +820,60 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]b
 		return nil, "", err
 	}
 	studentName := ""
+	photoURL := ""
 	user, err := s.Me(ctx, studentID)
 	if err == nil && user != nil {
 		studentName = user.Name
+		if user.PhotoURL != nil {
+			photoURL = *user.PhotoURL
+		}
 	}
 	tenantName := ""
+	logoURL := ""
 	cfg, err := s.GetSystemConfig(ctx)
 	if err == nil && cfg != nil {
 		if v, ok := cfg["app_name"]; ok && v != "" {
 			tenantName = v
 		}
+		if v, ok := cfg["app_logo_url"]; ok && v != "" {
+			logoURL = v
+		}
 	}
 	if tenantName == "" {
 		tenantName = "Akademi Bimbel"
 	}
-	pdf, err := generateExamCardPDF(detail, studentName, tenantName)
+	// Fetching is I/O kept out of the pure pdf.go renderer; failure here is
+	// non-fatal (nil bytes), never blocking card generation (FR-21).
+	logoImg := fetchCardImage(logoURL)
+	photoImg := fetchCardImage(photoURL)
+	pdf, err := generateExamCardPDF(detail, studentName, tenantName, logoImg, photoImg)
 	if err != nil {
 		return nil, "", err
 	}
 	return pdf, "kartu-peserta-" + detail.Token + ".pdf", nil
+}
+
+var cardImageHTTPClient = &http.Client{Timeout: 3 * time.Second}
+
+// fetchCardImage best-effort fetches image bytes for the exam card logo/photo
+// fields. Any failure (unset URL, network error, non-200, oversized body)
+// returns nil rather than an error — a missing/unfetchable asset must never
+// fail card generation (FR-21).
+func fetchCardImage(url string) []byte {
+	if url == "" {
+		return nil
+	}
+	resp, err := cardImageHTTPClient.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	if err != nil {
+		return nil
+	}
+	return data
 }
