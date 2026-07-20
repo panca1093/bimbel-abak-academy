@@ -86,7 +86,7 @@ describe("FR-FE-16: admin_exam sees only exam items under Exam", () => {
   });
 });
 
-describe("FR-FE-16: admin_school sees only school items under Exam", () => {
+describe("FR-FE-16: admin_school sees school items + a scoped Exams link under Exam", () => {
   const schoolNav = NAV_CONFIG["admin_school"];
   const schoolItems = schoolNav[0].items;
 
@@ -94,16 +94,16 @@ describe("FR-FE-16: admin_school sees only school items under Exam", () => {
     expect(schoolNav).toHaveLength(1);
   });
 
-  it("contains only school items (students, reports)", () => {
+  it("contains school items (students, reports) plus the exam list", () => {
     const hrefs = schoolItems.map((i) => i.href);
     expect(hrefs).toContain("/admin/school/students");
     expect(hrefs).toContain("/admin/school/reports");
+    expect(hrefs).toContain("/admin/exam/packages");
   });
 
-  it("does NOT contain exam items", () => {
+  it("does NOT contain the content-management exam items", () => {
     const hrefs = schoolItems.map((i) => i.href);
     expect(hrefs).not.toContain("/admin/exam/tests");
-    expect(hrefs).not.toContain("/admin/exam/packages");
     expect(hrefs).not.toContain("/admin/exam/questions");
     expect(hrefs).not.toContain("/admin/exam/monitor");
   });
@@ -131,17 +131,13 @@ describe("FR-FE-16: super_admin sees all six items under one Exam group", () => 
     expect(hrefs).toContain("/admin/school/reports");
   });
 
-  it("has the exam-grant item (FR-FE-17)", () => {
+  it("has exactly six items — bulk-exam-order/grant/bulk-register were merged into the exam detail page, not separate nav items", () => {
     expect(examGroup).toBeDefined();
     const hrefs = examGroup!.items.map((i) => i.href);
-    expect(hrefs).toContain("/admin/exam-grants");
-  });
-
-  it("has nine items in the merged group (6 original + bulk-exam-order + exam-grant + bulk-register)", () => {
-    expect(examGroup).toBeDefined();
-    const hrefs = examGroup!.items.map((i) => i.href);
-    expect(hrefs).toContain("/admin/school/bulk-register");
-    expect(examGroup!.items).toHaveLength(9);
+    expect(hrefs).not.toContain("/admin/exam-grants");
+    expect(hrefs).not.toContain("/admin/school/bulk-exam-order");
+    expect(hrefs).not.toContain("/admin/school/bulk-register");
+    expect(examGroup!.items).toHaveLength(6);
   });
 });
 

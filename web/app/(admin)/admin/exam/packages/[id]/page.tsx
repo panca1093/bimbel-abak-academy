@@ -2,19 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   ListChecks,
-  Package,
   Pencil,
   Plus,
   Trash2,
   Trophy,
   Users,
 } from "lucide-react";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
+import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +33,12 @@ import {
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
+import { useAuthStore } from "@/stores/auth";
 import type { ExamLeaderboardEntry, GradingEssayItem } from "@/lib/types";
+
+// admin_school gets a scoped view — only the exam summary + the
+// registrations action (bulk order/grant), never the content-management tabs.
+const SCHOOL_SCOPED_TABS: Tab[] = ["overview", "registrations"];
 
 // Price/status/publish for an exam-type product live on the attached Product(s),
 // managed via /admin/products (mirrors Course) — not here.
@@ -73,22 +80,29 @@ export default function ExamPackageDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
   const { t } = useTranslation();
+  const role = useAuthStore((s) => s.user?.role);
+  const isSchoolScoped = role === "admin_school";
+  const visibleTabs = isSchoolScoped ? SCHOOL_SCOPED_TABS : TAB_ORDER;
 
   const [tab, setTab] = useState<Tab>("overview");
   const [editOpen, setEditOpen] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useExam(id);
   const replaceTests = useReplaceExamTests(id);
-  const { data: availableResp, isLoading: availableLoading } = useAdminTests();
+  const { data: availableResp, isLoading: availableLoading } = useAdminTests(
+    undefined,
+    !isSchoolScoped,
+  );
   const availableTests = availableResp?.data ?? [];
 
   const [lbEntries, setLbEntries] = useState<ExamLeaderboardEntry[]>([]);
   const [lbCursor, setLbCursor] = useState<string | undefined>(undefined);
 
-  const { data: analytics, isLoading: analyticsLoading } = useExamAnalytics(id);
+  const { data: analytics, isLoading: analyticsLoading } = useExamAnalytics(id, !isSchoolScoped);
   const lb = useExamLeaderboard(
     id,
     lbCursor ? { cursor: lbCursor, limit: 20 } : { limit: 20 },
+    !isSchoolScoped,
   );
 
   interface PendingSection {
@@ -112,13 +126,13 @@ export default function ExamPackageDetailPage() {
     isLoading: gradingLoading,
     isError: gradingIsError,
     error: gradingError,
-  } = useGradingSessions(id);
+  } = useGradingSessions(id, !isSchoolScoped);
   const {
     data: essaysResp,
     isLoading: essaysLoading,
     isError: essaysIsError,
     error: essaysError,
-  } = useSessionEssays(selectedSessionId ?? undefined);
+  } = useSessionEssays(selectedSessionId ?? undefined, !isSchoolScoped);
   const gradeEssay = useGradeEssay(selectedSessionId ?? "");
 
   useEffect(() => {
@@ -234,17 +248,34 @@ export default function ExamPackageDetailPage() {
   }
 
   const title = data?.title ?? t("exam_packages_page_title");
-  const description = data
-    ? `${formatScheduled(data.scheduled_at)} · ${data.status ?? "draft"}`
-    : undefined;
 
   return (
     <div className="space-y-6 fade-in">
-      <AdminPageHeader
-        icon={Package}
-        title={title}
-        description={description}
-      />
+      <Link
+        href="/admin/exam/packages"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 hover:text-ink-900"
+      >
+        <ArrowLeft className="size-4" />
+        {t("exam_packages_page_title")}
+      </Link>
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-[27px] font-semibold tracking-tight text-ink-900">
+            {title}
+          </h1>
+          {data && (
+            <p className="mt-1.5 text-sm text-ink-500">
+              {formatMode(data.mode)} · {formatScheduled(data.scheduled_at)}
+            </p>
+          )}
+        </div>
+        {data && (
+          <Badge variant={data.status === "published" ? "default" : "secondary"}>
+            {data.status ?? "draft"}
+          </Badge>
+        )}
+      </div>
 
       {isLoading && (
         <div className="space-y-2">
@@ -263,7 +294,7 @@ export default function ExamPackageDetailPage() {
       {!isLoading && !isError && data && (
         <>
           <div className="flex flex-wrap gap-1 border-b">
-            {TAB_ORDER.map((key) => (
+            {visibleTabs.map((key) => (
               <button
                 key={key}
                 type="button"
@@ -285,10 +316,17 @@ export default function ExamPackageDetailPage() {
                 <h2 className="text-title-large font-semibold">
                   {t("admin_exam_detail_tab_overview")}
                 </h2>
-                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                  <Pencil className="mr-1 size-4" />
-                  {t("admin_exam_detail_edit")}
-                </Button>
+                {!isSchoolScoped && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setEditOpen(true)}
+                  >
+                    <Pencil className="mr-1 size-4" />
+                    {t("admin_exam_detail_edit")}
+                  </Button>
+                )}
               </div>
               <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <OverviewRow label="Title" value={data.title} />
@@ -388,6 +426,7 @@ export default function ExamPackageDetailPage() {
                         type="button"
                         size="sm"
                         variant="outline"
+                        className="rounded-full"
                         onClick={handleUtbkPreset}
                       >
                         {t("tests_preset_utbk")}
@@ -398,6 +437,7 @@ export default function ExamPackageDetailPage() {
                         type="button"
                         size="sm"
                         variant="outline"
+                        className="rounded-full"
                         onClick={handleIeltsPreset}
                       >
                         {t("tests_preset_ielts")}
@@ -434,6 +474,7 @@ export default function ExamPackageDetailPage() {
                             type="button"
                             size="icon-xs"
                             variant="ghost"
+                            className="rounded-full"
                             onClick={() => handleRemoveTest(testId)}
                             aria-label={t("admin_exam_detail_tests_remove")}
                           >
@@ -468,6 +509,7 @@ export default function ExamPackageDetailPage() {
                             type="button"
                             size="icon-xs"
                             variant="ghost"
+                            className="rounded-full"
                             onClick={() => removePendingSection(ps.id)}
                             aria-label={t("admin_exam_detail_tests_remove")}
                           >
@@ -481,6 +523,7 @@ export default function ExamPackageDetailPage() {
                 <div className="mt-4 flex justify-end">
                   <Button
                     type="button"
+                    className="rounded-full"
                     onClick={handleSaveTests}
                     disabled={replaceTests.isPending}
                   >
@@ -523,6 +566,7 @@ export default function ExamPackageDetailPage() {
                           type="button"
                           size="icon-xs"
                           variant="outline"
+                          className="rounded-full"
                           onClick={() => handleAddTest(test.id)}
                           aria-label={t("admin_exam_detail_tests_add")}
                         >
@@ -537,7 +581,11 @@ export default function ExamPackageDetailPage() {
           )}
 
           {tab === "registrations" && (
-            <UnderMaintenance icon={Users} title={t("admin_exam_detail_tab_registrations")} />
+            role === "admin_school" || role === "super_admin" ? (
+              <ExamRegistrationsTab examId={id} examName={data.title} />
+            ) : (
+              <UnderMaintenance icon={Users} title={t("admin_exam_detail_tab_registrations")} />
+            )
           )}
           {tab === "results" && (
             <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
@@ -553,6 +601,7 @@ export default function ExamPackageDetailPage() {
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="rounded-full"
                     onClick={() => setSelectedSessionId(null)}
                   >
                     {t("grading_back")}
@@ -613,6 +662,7 @@ export default function ExamPackageDetailPage() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
+                                  className="rounded-full"
                                   onClick={() => setSelectedSessionId(session.session_id)}
                                 >
                                   {t("competition_view_detail")}
@@ -792,6 +842,7 @@ export default function ExamPackageDetailPage() {
                   <Button
                     type="button"
                     variant="outline"
+                    className="rounded-full"
                     onClick={handleLoadMore}
                     disabled={lb.isFetching}
                   >
@@ -889,7 +940,7 @@ function GradingEssayCard({
         </div>
       </div>
       <div className="flex justify-end">
-        <Button type="button" size="sm" onClick={onSave} disabled={saving}>
+        <Button type="button" size="sm" className="rounded-full" onClick={onSave} disabled={saving}>
           {saving ? t("saving") : t("grading_save")}
         </Button>
       </div>

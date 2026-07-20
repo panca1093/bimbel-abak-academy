@@ -27,6 +27,13 @@ vi.mock("@/stores/ui", () => ({
   useUIStore: (selector: (s: typeof uiStore) => unknown) => selector(uiStore),
 }));
 
+let mockRole: string | undefined = undefined;
+
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: (sel: (s: { user: { role?: string } | null }) => unknown) =>
+    sel({ user: mockRole ? { role: mockRole } : null }),
+}));
+
 const sampleExams = [
   {
     id: "e1",
@@ -59,6 +66,7 @@ const sampleExams = [
 describe("ExamPackagesPage", () => {
   beforeEach(() => {
     push.mockReset();
+    mockRole = undefined;
   });
 
   it("navigates to the exam detail page when a row is clicked", async () => {
@@ -95,6 +103,24 @@ describe("ExamPackagesPage", () => {
     });
 
     expect(screen.getByRole("button", { name: /buat ujian/i })).toBeInTheDocument();
+  });
+
+  it("hides the create button for admin_school (browse-only access to place bulk orders)", async () => {
+    mockRole = "admin_school";
+    examsState = {
+      data: { data: sampleExams },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+
+    render(<ExamPackagesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: /buat ujian/i })).not.toBeInTheDocument();
   });
 
   it("shows skeleton rows while loading", () => {

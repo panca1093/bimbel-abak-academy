@@ -64,6 +64,18 @@ vi.mock("@/lib/hooks/regions", () => ({
   useDistrictsByCity: () => ({ data: [], isLoading: false }),
 }));
 
+// BulkImportModal is always mounted (Dialog just stays closed) — its hooks
+// need mocking here too, same as every other data hook on this page.
+vi.mock("@/lib/hooks/admin-students-bulk", () => ({
+  usePresignStudentBulkUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  putFileToPresignedURL: vi.fn(),
+  useEnqueueStudentBulkImport: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
+vi.mock("@/lib/hooks/jobs", () => ({
+  useJobStatus: () => ({ data: null, isLoading: false, isError: false, error: null }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
@@ -185,6 +197,19 @@ describe("SchoolStudentsPage", () => {
     expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("opens the bulk import modal from the header button", async () => {
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /pendaftaran siswa massal/i }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog")).getByText("Unduh Template"),
+    ).toBeInTheDocument();
+  });
+
   it("opens register dialog and shows credential panel on success", async () => {
     const registrationResult: StudentRegistrationResult = {
       id: "st3",
@@ -209,9 +234,11 @@ describe("SchoolStudentsPage", () => {
     const nameInput = screen.getByPlaceholderText("Nama Lengkap");
     fireEvent.input(nameInput, { target: { value: "Dewi Lestari" } });
 
-    // Select Jenjang from the required select (scoped to the dialog; jenjang is the first combobox inside)
+    // Select Jenjang from the required select (scoped to the dialog; Radix Select
+    // triggers don't expose an accessible name in jsdom, so target by order —
+    // Gender is the only combobox before Jenjang for a non-super_admin role).
     const dialogForJenjang = screen.getByRole("dialog");
-    const jenjangTrigger = within(dialogForJenjang).getAllByRole("combobox")[0];
+    const jenjangTrigger = within(dialogForJenjang).getAllByRole("combobox")[1];
     fireEvent.click(jenjangTrigger);
     const smaOption = await screen.findByRole("option", { name: "SMA" });
     fireEvent.click(smaOption);
@@ -348,9 +375,9 @@ describe("SchoolStudentsPage", () => {
     const nameInput = screen.getByPlaceholderText("Nama Lengkap");
     fireEvent.input(nameInput, { target: { value: "Gagal Student" } });
 
-    // Select Jenjang (scoped to the dialog; jenjang is the first combobox inside)
+    // Select Jenjang (scoped to the dialog; Gender is the only combobox before it)
     const dialogForJenjang2 = screen.getByRole("dialog");
-    const jenjangTrigger = within(dialogForJenjang2).getAllByRole("combobox")[0];
+    const jenjangTrigger = within(dialogForJenjang2).getAllByRole("combobox")[1];
     fireEvent.click(jenjangTrigger);
     const smaOption = await screen.findByRole("option", { name: "SMA" });
     fireEvent.click(smaOption);
@@ -391,5 +418,80 @@ describe("SchoolStudentsPage", () => {
 
     // No school combobox should exist
     expect(screen.queryByRole("combobox", { name: /sekolah/i })).not.toBeInTheDocument();
+  });
+
+  // ── School picker inside the Register Student dialog (super_admin) ──
+
+  it("shows a school picker inside the register dialog for super_admin, independent of the page-level filter", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+    schoolsState = {
+      data: {
+        data: [
+          { id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA"] },
+          { id: "s2", name: "SMAN 2 Bandung", school_types: ["SMP", "SMA"] },
+        ],
+        next_cursor: undefined,
+      },
+      isLoading: false,
+      isError: false,
+    };
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /daftarkan siswa/i }));
+
+    const dialog = screen.getByRole("dialog");
+    const jenjangTrigger = within(dialog).getAllByRole("combobox")[2];
+
+    // Jenjang is disabled until a school is picked inside the dialog.
+    expect(jenjangTrigger).toBeDisabled();
+
+    const dialogSchoolPicker = within(dialog).getByRole("combobox", { name: /sekolah/i });
+    fireEvent.click(dialogSchoolPicker);
+    fireEvent.click(await screen.findByText("SMAN 2 Bandung"));
+
+    expect(jenjangTrigger).not.toBeDisabled();
+    fireEvent.click(jenjangTrigger);
+    fireEvent.click(await screen.findByRole("option", { name: "SMP" }));
+
+    const nameInput = screen.getByPlaceholderText("Nama Lengkap");
+    fireEvent.input(nameInput, { target: { value: "Rina Wijaya" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /daftarkan siswa/i }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ name: "Rina Wijaya", jenjang: "SMP" }),
+          schoolId: "s2",
+        }),
+      );
+    });
+  });
+
+  it("requires picking a school inside the dialog for super_admin before submitting", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+    schoolsState = {
+      data: { data: [{ id: "s1", name: "SMAN 1 Jakarta", school_types: ["SMA"] }], next_cursor: undefined },
+      isLoading: false,
+      isError: false,
+    };
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /daftarkan siswa/i }));
+
+    const nameInput = screen.getByPlaceholderText("Nama Lengkap");
+    fireEvent.input(nameInput, { target: { value: "Tanpa Sekolah" } });
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /daftarkan siswa/i }));
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("Semua field harus diisi");
   });
 });

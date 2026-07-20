@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import BulkRegisterPage from "./page";
+import { BulkImportModal } from "./BulkImportModal";
 
 // ── Mutable mock state for the three bulk-upload hooks ──
 
@@ -15,9 +15,6 @@ const jobStatusState: {
   data: null,
 };
 
-// Re-render trigger so the test can flip the mock state and observe the page
-// updating. We bump a counter inside a useState in the mock on every poll so
-// the consuming component re-renders and reads the latest snapshot.
 let pollTick = 0;
 
 vi.mock("@/lib/hooks/admin-students-bulk", () => ({
@@ -34,8 +31,6 @@ vi.mock("@/lib/hooks/admin-students-bulk", () => ({
 
 vi.mock("@/lib/hooks/jobs", () => ({
   useJobStatus: () => {
-    // useState would normally subscribe; with the global tick we trigger
-    // re-renders manually in the test using `act()`.
     void pollTick;
     return {
       data: jobStatusState.data,
@@ -44,10 +39,6 @@ vi.mock("@/lib/hooks/jobs", () => ({
       error: null,
     };
   },
-}));
-
-vi.mock("@/stores/ui", () => ({
-  useUIStore: (sel: any) => sel({ lang: "id", theme: "light", toggleTheme: vi.fn(), setLang: vi.fn() }),
 }));
 
 vi.mock("@/lib/i18n", () => ({
@@ -61,7 +52,6 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-// Mock anchor click so we can observe the CSV download without actually triggering it.
 let lastDownloadedFilename: string | null = null;
 let lastDownloadedCSV: string | null = null;
 let lastCapturedBlob: Blob | null = null;
@@ -76,7 +66,7 @@ function wrapperFactory() {
   );
 }
 
-describe("BulkRegisterPage", () => {
+describe("BulkImportModal", () => {
   beforeEach(() => {
     presignMutateAsync.mockReset();
     enqueueMutateAsync.mockReset();
@@ -87,14 +77,11 @@ describe("BulkRegisterPage", () => {
     jobStatusState.data = null;
     pollTick = 0;
 
-    // Spy on anchor click to capture CSV download payload.
     document.createElement = ((tag: string) => {
       const el = originalCreateElement(tag);
       if (tag === "a") {
         (el as HTMLAnchorElement).click = vi.fn(function (this: HTMLAnchorElement) {
           lastDownloadedFilename = (this as HTMLAnchorElement).download;
-          // Read the blob that was passed to createObjectURL (JSDOM's anchor.href
-          // coerces a Blob to "[object Blob]", so we capture it at createObjectURL time).
           if (lastCapturedBlob) {
             lastCapturedBlob.text().then((t) => {
               lastDownloadedCSV = t;
@@ -105,7 +92,6 @@ describe("BulkRegisterPage", () => {
       return el;
     }) as typeof document.createElement;
 
-    // URL.createObjectURL captures the blob so the click handler can read its text.
     if (!(URL.createObjectURL as any).__mocked) {
       URL.createObjectURL = vi.fn().mockImplementation((blob: Blob) => {
         lastCapturedBlob = blob;
@@ -115,21 +101,27 @@ describe("BulkRegisterPage", () => {
     }
   });
 
-  it("renders the page header and a Download Template button", async () => {
-    render(<BulkRegisterPage />, { wrapper: wrapperFactory() });
+  it("renders nothing when closed", () => {
+    render(<BulkImportModal open={false} onOpenChange={vi.fn()} />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 
-    // The header title is rendered as h1 by AdminPageHeader.
-    expect(
-      screen.getByRole("heading", { name: /bulk_register_title/i, level: 1 }),
-    ).toBeInTheDocument();
+  it("renders the dialog title and a Download Template button when open", () => {
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
+      wrapper: wrapperFactory(),
+    });
+    expect(screen.getByText("bulk_register_title")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /bulk_register_download_template/i }),
     ).toBeInTheDocument();
   });
 
   it("clicking Download Template produces a CSV with the exact header and one example row, firing no network request", async () => {
-    // No mocks set up for presign/enqueue/put: any fetch they fire would be unhandled.
-    render(<BulkRegisterPage />, { wrapper: wrapperFactory() });
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
+      wrapper: wrapperFactory(),
+    });
 
     const downloadBtn = screen.getByRole("button", { name: /bulk_register_download_template/i });
     fireEvent.click(downloadBtn);
@@ -137,19 +129,14 @@ describe("BulkRegisterPage", () => {
     await waitFor(() => expect(lastDownloadedFilename).not.toBeNull());
     await waitFor(() => expect(lastDownloadedCSV).not.toBeNull());
 
-    // Filename ends in .csv.
     expect(lastDownloadedFilename).toMatch(/\.csv$/);
-    // Body contains the locked header order plus the example row.
     expect(lastDownloadedCSV!).toMatch(
-      /name,school,jenjang,provinsi,kota,kecamatan,kode_pos,email/,
+      /name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos/,
     );
-    // Example row is present (one illustrative row only).
     const lines = (lastDownloadedCSV ?? "").split(/\r?\n/).filter(Boolean);
     expect(lines.length).toBe(2);
-    expect(lines[0]).toBe("name,school,jenjang,provinsi,kota,kecamatan,kode_pos,email");
     expect(lines[1]).toMatch(/Budi Santoso/);
 
-    // No HTTP call fired -- presign/put/enqueue should be untouched.
     expect(presignMutateAsync).not.toHaveBeenCalled();
     expect(putFile).not.toHaveBeenCalled();
     expect(enqueueMutateAsync).not.toHaveBeenCalled();
@@ -164,7 +151,9 @@ describe("BulkRegisterPage", () => {
     enqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-1" });
     putFile.mockResolvedValueOnce(undefined);
 
-    render(<BulkRegisterPage />, { wrapper: wrapperFactory() });
+    render(<BulkImportModal open={true} onOpenChange={vi.fn()} />, {
+      wrapper: wrapperFactory(),
+    });
 
     const fileInput = screen.getByLabelText(/choose_file|file/i) as HTMLInputElement;
     const file = new File(["name,school,jenjang,provinsi,kota,kecamatan,kode_pos,email\nBudi,SMAN 1,sma,JB,Bandung,Coblong,40132,budi@example.com"], "students.csv", { type: "text/csv" });
@@ -177,7 +166,6 @@ describe("BulkRegisterPage", () => {
     await waitFor(() => expect(putFile).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(enqueueMutateAsync).toHaveBeenCalledTimes(1));
 
-    // Order: presign -> put -> enqueue.
     expect(presignMutateAsync.mock.invocationCallOrder[0]).toBeLessThan(
       putFile.mock.invocationCallOrder[0],
     );
@@ -185,7 +173,6 @@ describe("BulkRegisterPage", () => {
       enqueueMutateAsync.mock.invocationCallOrder[0],
     );
 
-    // Enqueue called with the file_key returned by presign.
     expect(enqueueMutateAsync).toHaveBeenCalledWith({
       fileKey: "student-bulk/school-1/uuid.csv",
     });
@@ -200,7 +187,10 @@ describe("BulkRegisterPage", () => {
     enqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-bad" });
     putFile.mockResolvedValueOnce(undefined);
 
-    const { rerender } = render(<BulkRegisterPage />, { wrapper: wrapperFactory() });
+    const { rerender } = render(
+      <BulkImportModal open={true} onOpenChange={vi.fn()} />,
+      { wrapper: wrapperFactory() },
+    );
 
     const fileInput = screen.getByLabelText(/choose_file|file/i) as HTMLInputElement;
     const file = new File(["x"], "x.csv", { type: "text/csv" });
@@ -211,7 +201,6 @@ describe("BulkRegisterPage", () => {
 
     await waitFor(() => expect(enqueueMutateAsync).toHaveBeenCalled());
 
-    // Simulate the job reaching a terminal-failed state with an error message.
     jobStatusState.data = {
       id: "job-bad",
       type: "student_bulk",
@@ -223,12 +212,10 @@ describe("BulkRegisterPage", () => {
       updated_at: "2026-07-18T00:01:00Z",
     };
     pollTick++;
-    rerender(<BulkRegisterPage />);
+    rerender(<BulkImportModal open={true} onOpenChange={vi.fn()} />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/unresolvable school name/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/unresolvable school name/i)).toBeInTheDocument();
     });
   });
 
@@ -241,7 +228,10 @@ describe("BulkRegisterPage", () => {
     enqueueMutateAsync.mockResolvedValueOnce({ job_id: "job-ok" });
     putFile.mockResolvedValueOnce(undefined);
 
-    const { rerender } = render(<BulkRegisterPage />, { wrapper: wrapperFactory() });
+    const { rerender } = render(
+      <BulkImportModal open={true} onOpenChange={vi.fn()} />,
+      { wrapper: wrapperFactory() },
+    );
 
     const fileInput = screen.getByLabelText(/choose_file|file/i) as HTMLInputElement;
     const file = new File(["x"], "x.csv", { type: "text/csv" });
@@ -263,7 +253,7 @@ describe("BulkRegisterPage", () => {
       updated_at: "2026-07-18T00:02:00Z",
     };
     pollTick++;
-    rerender(<BulkRegisterPage />);
+    rerender(<BulkImportModal open={true} onOpenChange={vi.fn()} />);
 
     await waitFor(() => {
       const link = screen.getByRole("link");
@@ -274,16 +264,9 @@ describe("BulkRegisterPage", () => {
   });
 
   it("does not import any direct student-CSV service path (only HTTP hooks)", async () => {
-    // Sanity: read the bundled source and grep for the service functions.
-    // This is enforced by the architecture: the screen must only use the existing
-    // presign/enqueue/poll HTTP surface, never call ParseStudentBulkCSV /
-    // ProcessStudentBulkRows directly.
     const fs = await import("fs");
     const path = await import("path");
-    const src = fs.readFileSync(
-      path.join(__dirname, "page.tsx"),
-      "utf8",
-    );
+    const src = fs.readFileSync(path.join(__dirname, "BulkImportModal.tsx"), "utf8");
     expect(src).not.toMatch(/ParseStudentBulkCSV/);
     expect(src).not.toMatch(/ProcessStudentBulkRows/);
   });

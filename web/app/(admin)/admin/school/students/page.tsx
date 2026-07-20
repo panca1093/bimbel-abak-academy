@@ -3,13 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
-  Users,
   MoreHorizontal,
   Lock,
   Search,
   Copy,
   Check,
+  FileUp,
+  UserRound,
+  GraduationCap,
+  MapPin,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -39,7 +43,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { BulkImportModal } from "@/components/admin/BulkImportModal";
 import { StatCard } from "@/components/admin/StatCard";
 import {
   useAdminStudents,
@@ -128,6 +132,9 @@ export default function SchoolStudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data]);
 
+  // Bulk import dialog
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+
   // Register dialog
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registerForm, setRegisterForm] = useState<StudentRegistrationInput>({
@@ -146,6 +153,11 @@ export default function SchoolStudentsPage() {
   });
   const [registerResult, setRegisterResult] =
     useState<StudentRegistrationResult | null>(null);
+  // Which school a super_admin is registering into — separate from the
+  // page-level school filter (selectedSchoolId) above the student list, so
+  // picking a school for this registration doesn't silently change which
+  // students you're browsing.
+  const [registerSchoolId, setRegisterSchoolId] = useState<string>("");
 
   // Reissue dialog
   const [reissueTarget, setReissueTarget] = useState<AdminStudent | null>(null);
@@ -178,19 +190,19 @@ export default function SchoolStudentsPage() {
   const { data: publicSchools } = useSchools();
   const adminOwnSchool = publicSchools?.find((s) => s.id === currentUser?.school_id);
   const adminOwnSchoolTypes = adminOwnSchool?.school_types ?? [];
-  const selectedSchoolObj = schoolsData?.data?.find((s) => s.id === selectedSchoolId);
-  const superAdminSchoolTypes = selectedSchoolObj?.school_types ?? [];
+  const registerSchoolObj = schoolsData?.data?.find((s) => s.id === registerSchoolId);
+  const superAdminSchoolTypes = registerSchoolObj?.school_types ?? [];
   const jenjangOptions = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
 
   const handleRegister = async () => {
-    if (!registerForm.name || !registerForm.jenjang) {
+    if (!registerForm.name || !registerForm.jenjang || (isSuperAdmin && !registerSchoolId)) {
       toast.error(t("accounts_toast_required"));
       return;
     }
     try {
       const result = await registerStudent.mutateAsync({
         input: registerForm,
-        schoolId: isSuperAdmin ? selectedSchoolId : undefined,
+        schoolId: isSuperAdmin ? registerSchoolId : undefined,
       });
       setRegisterResult(result);
       toast.success(t("students_register_success"));
@@ -252,6 +264,7 @@ export default function SchoolStudentsPage() {
 
   const handleCloseRegister = () => {
     setRegisterOpen(false);
+    setRegisterSchoolId("");
     // Discard plaintext credentials
     setRegisterResult(null);
     setRegisterForm({
@@ -285,11 +298,7 @@ export default function SchoolStudentsPage() {
   if (query.isLoading && accumulated.length === 0) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader
-          icon={Users}
-          title={t("school_students_title")}
-          description={t("sys_loading")}
-        />
+        <PageHeading title={t("school_students_title")} description={t("sys_loading")} />
         <div className="py-12 text-center text-ink-500">
           {t("sys_loading_data")}
         </div>
@@ -300,11 +309,7 @@ export default function SchoolStudentsPage() {
   if (query.error && accumulated.length === 0) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader
-          icon={Users}
-          title={t("school_students_title")}
-          description={t("sys_error_title")}
-        />
+        <PageHeading title={t("school_students_title")} description={t("sys_error_title")} />
         <div className="py-12 text-center text-ink-500">
           {t("sys_error_load")}
         </div>
@@ -314,15 +319,32 @@ export default function SchoolStudentsPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <AdminPageHeader
-        icon={Users}
+      <PageHeading
         title={t("school_students_title")}
         description={t("students_subtitle")}
         actions={
-          <Button size="sm" onClick={() => setRegisterOpen(true)}>
-            <Plus className="mr-1 size-4" />
-            {t("students_register_title")}
-          </Button>
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full"
+              onClick={() => setBulkImportOpen(true)}
+            >
+              <FileUp className="mr-1 size-4" />
+              {t("bulk_register_title")}
+            </Button>
+            <Button
+              size="sm"
+              className="rounded-full"
+              onClick={() => {
+                setRegisterSchoolId(selectedSchoolId);
+                setRegisterOpen(true);
+              }}
+            >
+              <Plus className="mr-1 size-4" />
+              {t("students_register_title")}
+            </Button>
+          </>
         }
       />
 
@@ -422,6 +444,8 @@ export default function SchoolStudentsPage() {
             <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
               <tr>
                 <th className="px-4 py-3">{t("students_field_name")}</th>
+                <th className="px-4 py-3">{t("students_credential_username")}</th>
+                <th className="px-4 py-3">{t("email")}</th>
                 <th className="px-4 py-3">{t("th_status")}</th>
                 <th className="px-4 py-3">{t("students_field_grade")}</th>
                 <th className="px-4 py-3">{t("accounts_th_created")}</th>
@@ -432,7 +456,7 @@ export default function SchoolStudentsPage() {
               {accumulated.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="px-4 py-8 text-center text-sm text-ink-500"
                   >
                     {t("students_empty")}
@@ -448,15 +472,14 @@ export default function SchoolStudentsPage() {
                           {initials(s.name)}
                         </AvatarFallback>
                       </Avatar>
-                      <div>
-                        <div className="font-medium text-ink-900">
-                          {s.name}
-                        </div>
-                        <div className="text-[11px] text-ink-500">
-                          @{s.username}
-                        </div>
-                      </div>
+                      <div className="font-medium text-ink-900">{s.name}</div>
                     </div>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-brand-700">
+                    @{s.username}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-ink-600">
+                    {s.email || "—"}
                   </td>
                   <td className="px-4 py-3">
                     <Badge
@@ -487,7 +510,7 @@ export default function SchoolStudentsPage() {
                   <td className="px-4 py-3 text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-xs">
+                        <Button variant="ghost" size="icon-xs" className="rounded-full">
                           <MoreHorizontal className="size-4 text-ink-500" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -521,6 +544,7 @@ export default function SchoolStudentsPage() {
             <Button
               variant="outline"
               size="sm"
+              className="rounded-full"
               onClick={handleLoadMore}
               disabled={query.isFetching}
             >
@@ -530,11 +554,13 @@ export default function SchoolStudentsPage() {
         )}
       </div>
 
+      <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} />
+
       {/* Register dialog */}
       <Dialog open={registerOpen} onOpenChange={(open) => {
         if (!open) handleCloseRegister();
       }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           {registerResult ? (
             /* Credential panel — one-time display */
             <>
@@ -556,6 +582,7 @@ export default function SchoolStudentsPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="rounded-full"
                       onClick={() =>
                         handleCopy(registerResult.username, "username")
                       }
@@ -582,6 +609,7 @@ export default function SchoolStudentsPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="rounded-full"
                       onClick={() =>
                         handleCopy(registerResult.temp_password, "password")
                       }
@@ -601,7 +629,7 @@ export default function SchoolStudentsPage() {
                 </div>
               </div>
               <DialogFooter className="mt-4">
-                <Button onClick={handleCloseRegister}>
+                <Button className="rounded-full" onClick={handleCloseRegister}>
                   {t("cancel")}
                 </Button>
               </DialogFooter>
@@ -610,19 +638,21 @@ export default function SchoolStudentsPage() {
             /* Registration form */
             <>
               <DialogHeader>
-                <DialogTitle className="font-serif">
+                <DialogTitle className="font-serif text-xl">
                   {t("students_register_title")}
                 </DialogTitle>
                 <DialogDescription>
                   {t("students_register_desc")}
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>
-                    {t("students_field_name")}{" "}
-                    <span className="text-danger">*</span>
-                  </Label>
+
+              <RegisterSection
+                icon={UserRound}
+                label={t("students_register_section_identity")}
+                delay={0}
+                isFirst
+              >
+                <FormField label={t("students_field_name")} required>
                   <Input
                     value={registerForm.name}
                     onChange={(e) =>
@@ -633,50 +663,22 @@ export default function SchoolStudentsPage() {
                     }
                     placeholder={t("students_field_name")}
                   />
-                </div>
-                <div>
-                  <Label>
-                    {t("students_field_jenjang")}{" "}
-                    <span className="text-danger">*</span>
-                  </Label>
-                  <Select
-                    value={registerForm.jenjang}
-                    onValueChange={(v) =>
-                      setRegisterForm((f) => ({
-                        ...f,
-                        jenjang: v,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t("students_field_jenjang")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {jenjangOptions.map((opt) => (
-                        <SelectItem key={opt} value={opt}>
-                          {opt}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>{t("students_field_email")}</Label>
-                  <Input
-                    type="email"
-                    value={registerForm.email ?? ""}
-                    onChange={(e) =>
-                      setRegisterForm((f) => ({
-                        ...f,
-                        email: e.target.value || undefined,
-                      }))
-                    }
-                    placeholder={t("accounts_placeholder_email")}
-                  />
-                </div>
+                </FormField>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>{t("students_field_dob")}</Label>
+                  <FormField label={t("students_field_email")}>
+                    <Input
+                      type="email"
+                      value={registerForm.email ?? ""}
+                      onChange={(e) =>
+                        setRegisterForm((f) => ({
+                          ...f,
+                          email: e.target.value || undefined,
+                        }))
+                      }
+                      placeholder={t("accounts_placeholder_email")}
+                    />
+                  </FormField>
+                  <FormField label={t("students_field_dob")}>
                     <Input
                       type="date"
                       value={registerForm.dob ?? ""}
@@ -687,37 +689,95 @@ export default function SchoolStudentsPage() {
                         }))
                       }
                     />
-                  </div>
-                  <div>
-                    <Label>{t("students_field_gender")}</Label>
+                  </FormField>
+                </div>
+                <FormField label={t("students_field_gender")}>
+                  <Select
+                    value={registerForm.gender ?? ""}
+                    onValueChange={(v) =>
+                      setRegisterForm((f) => ({
+                        ...f,
+                        gender: v || undefined,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={t("accounts_placeholder_pick_role")}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">
+                        {lang === "id" ? "Laki-laki" : "Male"}
+                      </SelectItem>
+                      <SelectItem value="female">
+                        {lang === "id" ? "Perempuan" : "Female"}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </RegisterSection>
+
+              <RegisterSection
+                icon={GraduationCap}
+                label={t("students_register_section_academic")}
+                delay={60}
+              >
+                {isSuperAdmin && (
+                  <FormField label={t("school")} required>
                     <Select
-                      value={registerForm.gender ?? ""}
+                      value={registerSchoolId}
+                      onValueChange={(v) => {
+                        setRegisterSchoolId(v);
+                        // Jenjang options depend on the chosen school — a
+                        // previously picked jenjang may no longer be valid.
+                        setRegisterForm((f) => ({ ...f, jenjang: "" }));
+                      }}
+                    >
+                      <SelectTrigger aria-label={t("school")}>
+                        <SelectValue placeholder={t("select_school")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(schoolsData?.data ?? []).map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField label={t("students_field_jenjang")} required>
+                    <Select
+                      value={registerForm.jenjang}
                       onValueChange={(v) =>
                         setRegisterForm((f) => ({
                           ...f,
-                          gender: v || undefined,
+                          jenjang: v,
                         }))
                       }
+                      disabled={isSuperAdmin && !registerSchoolId}
                     >
                       <SelectTrigger>
-                        <SelectValue
-                          placeholder={t("accounts_placeholder_pick_role")}
-                        />
+                        <SelectValue placeholder={t("students_field_jenjang")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="male">
-                          {lang === "id" ? "Laki-laki" : "Male"}
-                        </SelectItem>
-                        <SelectItem value="female">
-                          {lang === "id" ? "Perempuan" : "Female"}
-                        </SelectItem>
+                        {jenjangOptions.length === 0 ? (
+                          <div className="px-2 py-3 text-center text-xs text-ink-500">
+                            {t("students_field_jenjang_empty")}
+                          </div>
+                        ) : (
+                          jenjangOptions.map((opt) => (
+                            <SelectItem key={opt} value={opt}>
+                              {opt}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>{t("students_field_grade")}</Label>
+                  </FormField>
+                  <FormField label={t("students_field_grade")}>
                     <Input
                       value={registerForm.grade ?? ""}
                       onChange={(e) =>
@@ -728,23 +788,28 @@ export default function SchoolStudentsPage() {
                       }
                       placeholder={t("students_field_grade")}
                     />
-                  </div>
-                  <div>
-                    <Label>{t("students_field_target_exam")}</Label>
-                    <Input
-                      value={registerForm.target_exam ?? ""}
-                      onChange={(e) =>
-                        setRegisterForm((f) => ({
-                          ...f,
-                          target_exam: e.target.value || undefined,
-                        }))
-                      }
-                      placeholder={t("students_field_target_exam")}
-                    />
-                  </div>
+                  </FormField>
                 </div>
-                <div>
-                  <Label>{t("students_field_alamat_domisili")}</Label>
+                <FormField label={t("students_field_target_exam")}>
+                  <Input
+                    value={registerForm.target_exam ?? ""}
+                    onChange={(e) =>
+                      setRegisterForm((f) => ({
+                        ...f,
+                        target_exam: e.target.value || undefined,
+                      }))
+                    }
+                    placeholder={t("students_field_target_exam")}
+                  />
+                </FormField>
+              </RegisterSection>
+
+              <RegisterSection
+                icon={MapPin}
+                label={t("students_register_section_address")}
+                delay={120}
+              >
+                <FormField label={t("students_field_alamat_domisili")}>
                   <Input
                     value={registerForm.alamat_domisili ?? ""}
                     onChange={(e) =>
@@ -755,10 +820,9 @@ export default function SchoolStudentsPage() {
                     }
                     placeholder={t("students_field_alamat_domisili")}
                   />
-                </div>
+                </FormField>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>{t("students_field_provinsi")}</Label>
+                  <FormField label={t("students_field_provinsi")}>
                     <Select
                       value={registerForm.provinsi_id ?? ""}
                       onValueChange={(v) =>
@@ -781,9 +845,8 @@ export default function SchoolStudentsPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div>
-                    <Label>{t("students_field_kota")}</Label>
+                  </FormField>
+                  <FormField label={t("students_field_kota")}>
                     <Select
                       value={registerForm.kota_id ?? ""}
                       onValueChange={(v) =>
@@ -806,11 +869,10 @@ export default function SchoolStudentsPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
+                  </FormField>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>{t("students_field_kecamatan")}</Label>
+                  <FormField label={t("students_field_kecamatan")}>
                     <Select
                       value={registerForm.kecamatan_id ?? ""}
                       onValueChange={(v) =>
@@ -832,9 +894,8 @@ export default function SchoolStudentsPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div>
-                    <Label>{t("students_field_kode_pos")}</Label>
+                  </FormField>
+                  <FormField label={t("students_field_kode_pos")}>
                     <Input
                       value={registerForm.kode_pos ?? ""}
                       onChange={(e) =>
@@ -845,14 +906,16 @@ export default function SchoolStudentsPage() {
                       }
                       placeholder={t("students_field_kode_pos")}
                     />
-                  </div>
+                  </FormField>
                 </div>
-              </div>
-              <DialogFooter className="mt-4">
-                <Button variant="outline" onClick={handleCloseRegister}>
+              </RegisterSection>
+
+              <DialogFooter className="mt-6 border-t border-line pt-4">
+                <Button variant="outline" className="rounded-full" onClick={handleCloseRegister}>
                   {t("cancel")}
                 </Button>
                 <Button
+                  className="rounded-full"
                   onClick={handleRegister}
                   disabled={registerStudent.isPending}
                 >
@@ -895,6 +958,7 @@ export default function SchoolStudentsPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="rounded-full"
                       onClick={() =>
                         handleCopy(reissueResult.username, "username")
                       }
@@ -921,6 +985,7 @@ export default function SchoolStudentsPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="rounded-full"
                       onClick={() =>
                         handleCopy(reissueResult.temp_password, "password")
                       }
@@ -940,7 +1005,7 @@ export default function SchoolStudentsPage() {
                 </div>
               </div>
               <DialogFooter className="mt-4">
-                <Button onClick={handleCloseReissue}>
+                <Button className="rounded-full" onClick={handleCloseReissue}>
                   {t("cancel")}
                 </Button>
               </DialogFooter>
@@ -957,10 +1022,11 @@ export default function SchoolStudentsPage() {
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter className="mt-4">
-                <Button variant="outline" onClick={handleCloseReissue}>
+                <Button variant="outline" className="rounded-full" onClick={handleCloseReissue}>
                   {t("cancel")}
                 </Button>
                 <Button
+                  className="rounded-full"
                   onClick={handleReissue}
                   disabled={reissueCreds.isPending}
                 >
@@ -973,6 +1039,35 @@ export default function SchoolStudentsPage() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// Serif page title + muted subline + right-aligned actions, matching the
+// abak design mockup's plain PageHead (no icon badge, unlike AdminPageHeader
+// used elsewhere in the admin shell) — scoped to this page by design.
+function PageHeading({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description?: string;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 className="font-serif text-[27px] font-semibold tracking-tight text-ink-900">
+          {title}
+        </h1>
+        {description && (
+          <p className="mt-1.5 text-sm text-ink-500">{description}</p>
+        )}
+      </div>
+      {actions && (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      )}
     </div>
   );
 }
@@ -998,5 +1093,58 @@ function FilterChip({
     >
       {children}
     </button>
+  );
+}
+
+// Groups a set of fields in the Register Student dialog under a small
+// icon + eyebrow label, with a staggered fade-in on open (delay in ms).
+function RegisterSection({
+  icon: Icon,
+  label,
+  delay,
+  isFirst,
+  children,
+}: {
+  icon: LucideIcon;
+  label: string;
+  delay: number;
+  isFirst?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "fade-in space-y-4",
+        isFirst ? "mt-5" : "mt-6 border-t border-line pt-6",
+      )}
+      style={{ animationDelay: `${delay}ms`, animationFillMode: "backwards" }}
+    >
+      <div className="flex items-center gap-2">
+        <Icon className="size-4 text-brand-600" />
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+          {label}
+        </h4>
+      </div>
+      <div className="space-y-4">{children}</div>
+    </div>
+  );
+}
+
+function FormField({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>
+        {label} {required && <span className="text-danger">*</span>}
+      </Label>
+      {children}
+    </div>
   );
 }

@@ -76,6 +76,15 @@ func TestHasCapability_adminSchool(t *testing.T) {
 	}
 }
 
+func TestHasCapability_adminSchoolExamReadOnly(t *testing.T) {
+	if !HasCapability(RoleAdminSchool, "products(exam):read") {
+		t.Error("HasCapability(admin_school, products(exam):read): want true — needed for the Registrations tab")
+	}
+	if HasCapability(RoleAdminSchool, "products(exam):write") {
+		t.Error("HasCapability(admin_school, products(exam):write): want false — admin_school must not manage exam content")
+	}
+}
+
 func TestHasCapability_studentSatisfiesNothing(t *testing.T) {
 	caps := []string{"questions:read", "orders:read", "students:read", "*"}
 	for _, c := range caps {

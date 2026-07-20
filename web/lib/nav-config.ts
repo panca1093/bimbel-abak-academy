@@ -19,9 +19,6 @@ import {
   Building,
   Settings,
   ShieldCheck,
-  ShoppingCart,
-  GraduationCap,
-  FileUp,
 } from "lucide-react";
 
 export type UserRole =
@@ -92,8 +89,6 @@ const EXAM_NAV_ITEMS: NavItem[] = [
 const SCHOOL_NAV_ITEMS: NavItem[] = [
   { labelKey: "students", href: "/admin/school/students", icon: Users },
   { labelKey: "reports", href: "/admin/school/reports", icon: FileText },
-  { labelKey: "nav_bulk_exam_order", href: "/admin/school/bulk-exam-order", icon: ShoppingCart },
-  { labelKey: "nav_bulk_register", href: "/admin/school/bulk-register", icon: FileUp },
 ];
 
 export const CONTENT_MANAGER_NAV: RoleNavConfig = [
@@ -121,7 +116,10 @@ export const ADMIN_EXAM_NAV: RoleNavConfig = [
 export const ADMIN_SCHOOL_NAV: RoleNavConfig = [
   {
     titleKey: "nav_group_exam",
-    items: SCHOOL_NAV_ITEMS,
+    items: [
+      ...SCHOOL_NAV_ITEMS,
+      { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar },
+    ],
   },
 ];
 
@@ -147,7 +145,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   SUPER_ADMIN_STORE_ITEMS,
   {
     titleKey: "nav_group_exam",
-    items: [...EXAM_NAV_ITEMS, ...SCHOOL_NAV_ITEMS, { labelKey: "nav_exam_grant", href: "/admin/exam-grants", icon: GraduationCap }],
+    items: [...EXAM_NAV_ITEMS, ...SCHOOL_NAV_ITEMS],
   },
   {
     titleKey: "system",

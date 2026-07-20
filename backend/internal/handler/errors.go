@@ -121,6 +121,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusNotFound, APIError{Code: "student_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidJenjang):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_jenjang", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidGender):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_gender", Message: err.Error()}
 	case errors.Is(err, service.ErrIncompleteAddress):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "incomplete_address", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidProvinsi):

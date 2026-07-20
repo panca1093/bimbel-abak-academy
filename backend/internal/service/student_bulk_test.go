@@ -111,6 +111,46 @@ func TestParseStudentBulkCSV(t *testing.T) {
 		}
 	})
 
+	t.Run("optional dob/gender/grade/alamat_domisili/target_exam columns parsed when present", func(t *testing.T) {
+		data := []byte("name,school,jenjang,dob,gender,grade,alamat_domisili,target_exam\nBudi,SMAN 1 Jakarta,sma,2008-05-14,male,11,Jl. Melati No. 3,UTBK\n")
+		rows, err := ParseStudentBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d", len(rows))
+		}
+		if rows[0].DOB == nil || *rows[0].DOB != "2008-05-14" {
+			t.Errorf("want dob '2008-05-14', got %v", rows[0].DOB)
+		}
+		if rows[0].Gender == nil || *rows[0].Gender != "male" {
+			t.Errorf("want gender 'male', got %v", rows[0].Gender)
+		}
+		if rows[0].Grade == nil || *rows[0].Grade != "11" {
+			t.Errorf("want grade '11', got %v", rows[0].Grade)
+		}
+		if rows[0].AlamatDomisili == nil || *rows[0].AlamatDomisili != "Jl. Melati No. 3" {
+			t.Errorf("want alamat_domisili 'Jl. Melati No. 3', got %v", rows[0].AlamatDomisili)
+		}
+		if rows[0].TargetExam == nil || *rows[0].TargetExam != "UTBK" {
+			t.Errorf("want target_exam 'UTBK', got %v", rows[0].TargetExam)
+		}
+	})
+
+	t.Run("optional dob/gender/grade/alamat_domisili/target_exam columns absent not an error", func(t *testing.T) {
+		data := []byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n")
+		rows, err := ParseStudentBulkCSV(data)
+		if err != nil {
+			t.Fatalf("ParseStudentBulkCSV: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d", len(rows))
+		}
+		if rows[0].DOB != nil || rows[0].Gender != nil || rows[0].Grade != nil || rows[0].AlamatDomisili != nil || rows[0].TargetExam != nil {
+			t.Errorf("optional fields should be nil when columns absent, got %+v", rows[0])
+		}
+	})
+
 	t.Run("optional address columns absent not an error", func(t *testing.T) {
 		data := []byte("name,school,jenjang\nBudi,SMAN 1 Jakarta,sma\n")
 		rows, err := ParseStudentBulkCSV(data)
@@ -250,6 +290,89 @@ func TestProcessStudentBulkRows_Integration(t *testing.T) {
 		}
 		if len(progressCalls) == 0 || progressCalls[len(progressCalls)-1] != 100 {
 			t.Errorf("want progress calls ending at 100, got %v", progressCalls)
+		}
+	})
+
+	t.Run("dob/gender/grade/alamat_domisili/target_exam persisted, same as single registration", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		schoolName := schoolNameByID(t, repo, schoolID)
+		schoolBound := &schoolID
+		dob := "2008-05-14"
+		gender := "male"
+		grade := "11"
+		alamat := "Jl. Melati No. 3"
+		targetExam := "UTBK"
+		rows := []StudentBulkRow{
+			{Name: "Fields", School: schoolName, Jenjang: "sma", DOB: &dob, Gender: &gender, Grade: &grade, AlamatDomisili: &alamat, TargetExam: &targetExam},
+		}
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 1 || results[0].Status != "success" {
+			t.Fatalf("want success, got %+v", results[0])
+		}
+
+		student, err := repo.GetUserByUsername(ctx, results[0].Username)
+		if err != nil || student == nil {
+			t.Fatalf("GetUserByUsername(%s): %v", results[0].Username, err)
+		}
+		if student.DOB == nil || student.DOB.Format("2006-01-02") != dob {
+			t.Errorf("want dob %s, got %v", dob, student.DOB)
+		}
+		// Persisted as 'm', not 'male' — RegisterStudent normalizes gender to
+		// match users_gender_check (see normalizeGender in admin_students.go).
+		if student.Gender == nil || *student.Gender != "m" {
+			t.Errorf("want gender 'm', got %v", student.Gender)
+		}
+		if student.Grade == nil || *student.Grade != 11 {
+			t.Errorf("want grade 11, got %v", student.Grade)
+		}
+		if student.AlamatDomisili == nil || *student.AlamatDomisili != alamat {
+			t.Errorf("want alamat_domisili %q, got %v", alamat, student.AlamatDomisili)
+		}
+		if student.TargetExam == nil || *student.TargetExam != targetExam {
+			t.Errorf("want target_exam %q, got %v", targetExam, student.TargetExam)
+		}
+	})
+
+	t.Run("invalid dob format produces row-level error, not a batch abort", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		schoolName := schoolNameByID(t, repo, schoolID)
+		schoolBound := &schoolID
+		badDOB := "14-05-2008"
+		rows := []StudentBulkRow{
+			{Name: "BadDOB", School: schoolName, Jenjang: "sma", DOB: &badDOB},
+		}
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 0 {
+			t.Errorf("want successCount=0 for invalid dob, got %d", successCount)
+		}
+		if results[0].Status != "failed" || results[0].Error != ErrInvalidDOBFormat.Error() {
+			t.Errorf("want failed with ErrInvalidDOBFormat, got %+v", results[0])
+		}
+	})
+
+	t.Run("non-numeric grade produces row-level error, not a batch abort", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		schoolName := schoolNameByID(t, repo, schoolID)
+		schoolBound := &schoolID
+		badGrade := "sepuluh"
+		rows := []StudentBulkRow{
+			{Name: "BadGrade", School: schoolName, Jenjang: "sma", Grade: &badGrade},
+		}
+		results, successCount, err := svc.ProcessStudentBulkRows(ctx, schoolBound, rows, nil)
+		if err != nil {
+			t.Fatalf("ProcessStudentBulkRows: %v", err)
+		}
+		if successCount != 0 {
+			t.Errorf("want successCount=0 for invalid grade, got %d", successCount)
+		}
+		if results[0].Status != "failed" || results[0].Error != ErrInvalidGradeFormat.Error() {
+			t.Errorf("want failed with ErrInvalidGradeFormat, got %+v", results[0])
 		}
 	})
 

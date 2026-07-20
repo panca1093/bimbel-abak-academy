@@ -226,6 +226,49 @@ func TestRegisterStudent_Integration(t *testing.T) {
 			t.Error("ProvinsiID should be nil when not provided")
 		}
 	})
+
+	// The frontend's Gender select sends "male"/"female" (see
+	// students_field_gender in web/app/(admin)/admin/school/students/page.tsx),
+	// but users_gender_check (migration 0002_identity) only allows 'm'/'f' —
+	// without normalizeGender, every registration with a gender set at all
+	// fails with a raw Postgres check-constraint error.
+	t.Run("gender 'male'/'female' from the frontend is normalized to 'm'/'f' before insert", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		male := "male"
+		resp, err := svc.RegisterStudent(ctx, schoolID, "Budi Gender", "sma", nil, nil, &male, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("RegisterStudent with gender=male: %v", err)
+		}
+		u, err := repo.GetUserByUsername(ctx, resp.Username)
+		if err != nil || u == nil {
+			t.Fatalf("GetUserByUsername: %v", err)
+		}
+		if u.Gender == nil || *u.Gender != "m" {
+			t.Errorf("want persisted gender 'm', got %v", u.Gender)
+		}
+
+		female := "female"
+		resp2, err := svc.RegisterStudent(ctx, schoolID, "Siti Gender", "sma", nil, nil, &female, nil, nil, nil, nil, nil, nil, nil)
+		if err != nil {
+			t.Fatalf("RegisterStudent with gender=female: %v", err)
+		}
+		u2, err := repo.GetUserByUsername(ctx, resp2.Username)
+		if err != nil || u2 == nil {
+			t.Fatalf("GetUserByUsername: %v", err)
+		}
+		if u2.Gender == nil || *u2.Gender != "f" {
+			t.Errorf("want persisted gender 'f', got %v", u2.Gender)
+		}
+	})
+
+	t.Run("unrecognized gender value returns ErrInvalidGender", func(t *testing.T) {
+		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
+		bogus := "other"
+		_, err := svc.RegisterStudent(ctx, schoolID, "Bogus Gender", "sma", nil, nil, &bogus, nil, nil, nil, nil, nil, nil, nil)
+		if !errors.Is(err, ErrInvalidGender) {
+			t.Errorf("want ErrInvalidGender, got %v", err)
+		}
+	})
 }
 
 func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
