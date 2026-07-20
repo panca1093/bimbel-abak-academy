@@ -69,6 +69,7 @@ func classicLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
 	pdf := gofpdf.New("L", "pt", "A4", "")
 	pdf.SetCompression(false)
 	pdf.AddPage()
+	pdf.SetAutoPageBreak(false, 0)
 
 	// Navy color components (0x22315B)
 	navyR, navyG, navyB := 0x22, 0x31, 0x5B
@@ -87,47 +88,47 @@ func classicLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
 	pdf.SetLineWidth(3)
 	pdf.Rect(50, 50, 741.89, 495.28, "D")
 
-	// Navy header band
+	// Navy header band (flush with the page's top edge)
 	pdf.SetFillColor(navyR, navyG, navyB)
-	pdf.Rect(50, 495, 741.89, 50, "F")
+	pdf.Rect(50, 50, 741.89, 50, "F")
 
 	// Header title (white text on navy band)
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFont("Helvetica", "B", 26)
-	pdf.SetXY(50, 510)
+	pdf.SetXY(50, 55)
 	pdf.CellFormat(741.89, 30, "CERTIFICATE OF COMPLETION", "", 0, "C", false, 0, "")
 
 	// Circular seal with concentric circles
-	drawSeal(pdf, 120, 200, 30, navyR, navyG, navyB)
+	drawSeal(pdf, 120, 395, 30, navyR, navyG, navyB)
 
 	// Body text (navy color)
 	pdf.SetTextColor(navyR, navyG, navyB)
 	pdf.SetFont("Helvetica", "", 14)
-	pdf.SetXY(50, 420)
+	pdf.SetXY(50, 155)
 	pdf.CellFormat(741.89, 20, "This certificate is awarded to", "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "B", 36)
-	pdf.SetXY(50, 360)
+	pdf.SetXY(50, 195)
 	pdf.CellFormat(741.89, 40, name, "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "", 14)
-	pdf.SetXY(50, 310)
+	pdf.SetXY(50, 265)
 	pdf.CellFormat(741.89, 20, "For successfully completing", "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "B", 22)
-	pdf.SetXY(50, 260)
+	pdf.SetXY(50, 310)
 	pdf.CellFormat(741.89, 25, exam, "", 1, "C", false, 0, "")
 
 	// Date
 	pdf.SetFont("Helvetica", "", 12)
-	pdf.SetXY(50, 200)
+	pdf.SetXY(50, 375)
 	pdf.CellFormat(741.89, 20, fmt.Sprintf("Date: %s", date), "", 1, "C", false, 0, "")
 
 	// Signature line
 	pdf.SetLineWidth(1)
 	pdf.SetDrawColor(navyR, navyG, navyB)
-	pdf.Line(300, 160, 541.89, 160)
-	pdf.SetXY(50, 140)
+	pdf.Line(300, 435, 541.89, 435)
+	pdf.SetXY(50, 440)
 	pdf.CellFormat(741.89, 15, "Authorized Signature", "", 1, "C", false, 0, "")
 
 	return pdf
@@ -139,6 +140,7 @@ func modernLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
 	pdf := gofpdf.New("L", "pt", "A4", "")
 	pdf.SetCompression(false)
 	pdf.AddPage()
+	pdf.SetAutoPageBreak(false, 0)
 
 	// Teal color components (0x1E978A)
 	tealR, tealG, tealB := 0x1E, 0x97, 0x8A
@@ -154,49 +156,49 @@ func modernLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
 
 	// Thin teal accent lines
 	pdf.SetLineWidth(2)
-	pdf.Line(50, 55, 791.89, 55)
 	pdf.Line(50, 540, 791.89, 540)
+	pdf.Line(50, 55, 791.89, 55)
 
-	// Teal header band with title
+	// Teal header band (flush with the page's top edge)
 	pdf.SetFillColor(tealR, tealG, tealB)
-	pdf.Rect(50, 545, 741.89, 50, "F")
+	pdf.Rect(50, 0, 741.89, 50, "F")
 
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFont("Helvetica", "B", 30)
-	pdf.SetXY(50, 555)
+	pdf.SetXY(50, 10)
 	pdf.CellFormat(741.89, 30, "CERTIFICATE", "", 0, "C", false, 0, "")
 
 	// Circular seal with concentric circles
-	drawSeal(pdf, 120, 200, 30, tealR, tealG, tealB)
+	drawSeal(pdf, 120, 395, 30, tealR, tealG, tealB)
 
 	// Body text (teal color)
 	pdf.SetTextColor(tealR, tealG, tealB)
 	pdf.SetFont("Helvetica", "", 14)
-	pdf.SetXY(50, 470)
+	pdf.SetXY(50, 105)
 	pdf.CellFormat(741.89, 20, "Proudly presented to", "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "B", 40)
-	pdf.SetXY(50, 380)
+	pdf.SetXY(50, 170)
 	pdf.CellFormat(741.89, 45, name, "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "", 14)
-	pdf.SetXY(50, 320)
+	pdf.SetXY(50, 255)
 	pdf.CellFormat(741.89, 20, "For completing the examination", "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "B", 24)
-	pdf.SetXY(50, 270)
+	pdf.SetXY(50, 300)
 	pdf.CellFormat(741.89, 25, exam, "", 1, "C", false, 0, "")
 
 	// Date
 	pdf.SetFont("Helvetica", "", 12)
-	pdf.SetXY(50, 200)
+	pdf.SetXY(50, 375)
 	pdf.CellFormat(741.89, 20, fmt.Sprintf("Date: %s", date), "", 1, "C", false, 0, "")
 
 	// Signature line
 	pdf.SetLineWidth(1)
 	pdf.SetDrawColor(tealR, tealG, tealB)
-	pdf.Line(300, 175, 541.89, 175)
-	pdf.SetXY(50, 150)
+	pdf.Line(300, 420, 541.89, 420)
+	pdf.SetXY(50, 430)
 	pdf.CellFormat(741.89, 15, "Authorized Signature", "", 1, "C", false, 0, "")
 
 	return pdf
@@ -208,6 +210,7 @@ func elegantLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
 	pdf := gofpdf.New("L", "pt", "A4", "")
 	pdf.SetCompression(false)
 	pdf.AddPage()
+	pdf.SetAutoPageBreak(false, 0)
 
 	// Gold color components (0xC6881F)
 	goldR, goldG, goldB := 0xC6, 0x88, 0x1F
@@ -227,44 +230,44 @@ func elegantLayoutGofpdf(name, exam, date string) *gofpdf.Fpdf {
 
 	// Gold horizontal accent lines
 	pdf.SetLineWidth(3)
-	pdf.Line(50, 500, 791.89, 500)
 	pdf.Line(50, 95, 791.89, 95)
+	pdf.Line(50, 500, 791.89, 500)
 
 	// Circular seal with concentric circles
-	drawSeal(pdf, 120, 200, 30, goldR, goldG, goldB)
+	drawSeal(pdf, 120, 395, 30, goldR, goldG, goldB)
 
 	// Body text (gold color)
 	pdf.SetTextColor(goldR, goldG, goldB)
 	pdf.SetFont("Helvetica", "B", 28)
-	pdf.SetXY(50, 520)
+	pdf.SetXY(50, 50)
 	pdf.CellFormat(741.89, 25, "Certificate of Achievement", "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "", 12)
-	pdf.SetXY(50, 460)
+	pdf.SetXY(50, 115)
 	pdf.CellFormat(741.89, 20, "This certificate is proudly presented to", "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "B", 38)
-	pdf.SetXY(50, 385)
+	pdf.SetXY(50, 170)
 	pdf.CellFormat(741.89, 40, name, "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "", 12)
-	pdf.SetXY(50, 310)
+	pdf.SetXY(50, 265)
 	pdf.CellFormat(741.89, 20, "For successful completion of", "", 1, "C", false, 0, "")
 
 	pdf.SetFont("Helvetica", "B", 22)
-	pdf.SetXY(50, 260)
+	pdf.SetXY(50, 310)
 	pdf.CellFormat(741.89, 25, exam, "", 1, "C", false, 0, "")
 
 	// Date
 	pdf.SetFont("Helvetica", "", 11)
-	pdf.SetXY(50, 200)
+	pdf.SetXY(50, 375)
 	pdf.CellFormat(741.89, 20, fmt.Sprintf("Date: %s", date), "", 1, "C", false, 0, "")
 
 	// Signature line
 	pdf.SetLineWidth(1)
 	pdf.SetDrawColor(goldR, goldG, goldB)
-	pdf.Line(300, 160, 541.89, 160)
-	pdf.SetXY(50, 135)
+	pdf.Line(300, 435, 541.89, 435)
+	pdf.SetXY(50, 445)
 	pdf.CellFormat(741.89, 15, "Authorized Signature", "", 1, "C", false, 0, "")
 
 	return pdf
@@ -301,6 +304,7 @@ func customLayoutGofpdf(name, exam, date string, backgroundBytes []byte) *gofpdf
 	pdf := gofpdf.New("L", "pt", "A4", "")
 	pdf.SetCompression(false)
 	pdf.AddPage()
+	pdf.SetAutoPageBreak(false, 0)
 
 	// Page dimensions: A4 landscape is 841.89 x 595.28 pt
 	pageWidth := 841.89
