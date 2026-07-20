@@ -16,11 +16,11 @@ import (
 )
 
 var (
-	ErrTestNotFound          = errors.New("test not found")
-	ErrQuestionNotFound      = errors.New("question not found")
-	ErrExamNotFound          = errors.New("exam not found")
-	ErrRegistrationNotFound  = errors.New("registration not found")
-	ErrValidation            = errors.New("validation failed")
+	ErrTestNotFound         = errors.New("test not found")
+	ErrQuestionNotFound     = errors.New("question not found")
+	ErrExamNotFound         = errors.New("exam not found")
+	ErrRegistrationNotFound = errors.New("registration not found")
+	ErrValidation           = errors.New("validation failed")
 )
 
 var validQuestionFormats = map[string]bool{
@@ -599,7 +599,7 @@ func (s *Service) ListBankQuestions(ctx context.Context, filter repository.Quest
 }
 
 var validTimerModes = map[string]bool{
-	"overall":      true,
+	"overall":  true,
 	"per_test": true,
 }
 
@@ -650,6 +650,14 @@ func validateExam(e model.Exam) error {
 	}
 	if e.MaxAttempts != nil && *e.MaxAttempts < 0 {
 		return fmt.Errorf("%w: max_attempts cannot be negative", ErrValidation)
+	}
+	if e.ScheduledEndAt != nil {
+		if e.ScheduledAt == nil {
+			return fmt.Errorf("%w: scheduled_end_at requires scheduled_at", ErrValidation)
+		}
+		if !e.ScheduledEndAt.After(*e.ScheduledAt) {
+			return fmt.Errorf("%w: scheduled_end_at must be after scheduled_at", ErrValidation)
+		}
 	}
 	return nil
 }

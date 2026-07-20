@@ -54,6 +54,7 @@ const freeUpcoming: RegistrationListItem = {
   created_at: "2026-06-01T00:00:00Z",
   exam_title: "Try Out UTBK Gratis #12",
   scheduled_at: "2026-07-15T09:00:00Z",
+  scheduled_end_at: null,
   is_free: true,
   requires_checkin: false,
   check_in_window_minutes: null,
@@ -72,6 +73,7 @@ const paidNoSchedule: RegistrationListItem = {
   created_at: "2026-06-02T00:00:00Z",
   exam_title: "Ujian Akhir Matematika",
   scheduled_at: null,
+  scheduled_end_at: null,
   is_free: false,
   requires_checkin: true,
   check_in_window_minutes: 15,
@@ -143,6 +145,55 @@ describe("ExamPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Anda belum terdaftar pada ujian apapun")).toBeInTheDocument();
     });
+  });
+
+  it("keeps check-in open past scheduled_at when scheduled_end_at is set (availability window)", async () => {
+    const windowedReg: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-3",
+      exam_title: "Tryout Terbuka",
+      scheduled_at: new Date(Date.now() - 60 * 60_000).toISOString(), // 1h ago
+      scheduled_end_at: new Date(Date.now() + 60 * 60_000).toISOString(), // 1h from now
+    };
+    registrationsState = {
+      data: [windowedReg],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout Terbuka")).toBeInTheDocument();
+    });
+    // Without a window this would already show "Kadaluarsa" (expired) since
+    // scheduled_at is in the past — the window keeps check-in open instead.
+    expect(screen.getByPlaceholderText("Token dari kartu ujian")).toBeInTheDocument();
+    expect(screen.queryByText("Kadaluarsa")).not.toBeInTheDocument();
+  });
+
+  it("shows expired once scheduled_end_at has passed", async () => {
+    const expiredWindowReg: RegistrationListItem = {
+      ...paidNoSchedule,
+      id: "reg-4",
+      exam_title: "Tryout Sudah Tutup",
+      scheduled_at: new Date(Date.now() - 3 * 60 * 60_000).toISOString(), // 3h ago
+      scheduled_end_at: new Date(Date.now() - 60 * 60_000).toISOString(), // 1h ago
+    };
+    registrationsState = {
+      data: [expiredWindowReg],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tryout Sudah Tutup")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Kadaluarsa").length).toBeGreaterThan(0);
   });
 
   it("shows an error state with a retry action", async () => {

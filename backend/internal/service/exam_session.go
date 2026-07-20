@@ -19,8 +19,8 @@ import (
 // ---------- Session result types ----------
 
 type CheckInResult struct {
-	RegistrationID uuid.UUID `json:"registration_id"`
-	ExamTitle      string    `json:"exam_title"`
+	RegistrationID uuid.UUID  `json:"registration_id"`
+	ExamTitle      string     `json:"exam_title"`
 	ScheduledAt    *time.Time `json:"scheduled_at"`
 }
 
@@ -51,14 +51,14 @@ type SessionStartPayload struct {
 }
 
 type SessionQuestion struct {
-	ID        uuid.UUID        `json:"id"`
-	TestID    uuid.UUID        `json:"test_id"`
-	Format    string           `json:"format"`
-	Body      string           `json:"body"`
-	Options   []SessionOption  `json:"options"`
-	AudioURL  *string          `json:"audio_url,omitempty"`
-	Blanks    []int            `json:"blanks,omitempty"`
-	SortOrder int              `json:"sort_order"`
+	ID        uuid.UUID       `json:"id"`
+	TestID    uuid.UUID       `json:"test_id"`
+	Format    string          `json:"format"`
+	Body      string          `json:"body"`
+	Options   []SessionOption `json:"options"`
+	AudioURL  *string         `json:"audio_url,omitempty"`
+	Blanks    []int           `json:"blanks,omitempty"`
+	SortOrder int             `json:"sort_order"`
 }
 
 type SessionOption struct {
@@ -69,12 +69,12 @@ type SessionOption struct {
 }
 
 type SessionStatePayload struct {
-	SessionID        uuid.UUID                `json:"session_id"`
-	Status           string                   `json:"status"`
-	RemainingSeconds int64                    `json:"remaining_seconds"`
-	TimerMode        string                   `json:"timer_mode"`
-	DurationMinutes  *int                     `json:"duration_minutes"`
-	Tests            []SessionTestPayload     `json:"tests"`
+	SessionID        uuid.UUID                 `json:"session_id"`
+	Status           string                    `json:"status"`
+	RemainingSeconds int64                     `json:"remaining_seconds"`
+	TimerMode        string                    `json:"timer_mode"`
+	DurationMinutes  *int                      `json:"duration_minutes"`
+	Tests            []SessionTestPayload      `json:"tests"`
 	Answers          []model.ExamSessionAnswer `json:"answers"`
 	// Sectioned-exam fields (FR-16). omitempty keeps standard-mode JSON byte-compatible.
 	Mode         string     `json:"mode,omitempty"`
@@ -249,11 +249,22 @@ func (s *Service) CheckIn(ctx context.Context, studentID, token, fp string) (Che
 		return CheckInResult{}, ErrNotCheckedIn
 	}
 
-	// Window check: now ∈ [scheduled_at − window, scheduled_at)
+	// Window check: now ∈ [scheduled_at − window, scheduled_at) by default, or
+	// now ∈ [scheduled_at − window, scheduled_end_at] when the exam has an
+	// availability window (ScheduledEndAt set) — check-in stays open through
+	// the whole window instead of closing the instant the exam "starts".
 	if exam.ScheduledAt != nil && exam.CheckInWindowMinutes != nil {
 		now := time.Now()
 		windowStart := exam.ScheduledAt.Add(-time.Duration(*exam.CheckInWindowMinutes) * time.Minute)
-		if now.Before(windowStart) || !now.Before(*exam.ScheduledAt) {
+		closed := now.Before(windowStart)
+		if !closed {
+			if exam.ScheduledEndAt != nil {
+				closed = now.After(*exam.ScheduledEndAt)
+			} else {
+				closed = !now.Before(*exam.ScheduledAt)
+			}
+		}
+		if closed {
 			return CheckInResult{}, ErrCheckinWindowClosed
 		}
 	}
@@ -315,6 +326,19 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 	exam, err := s.storeRepo.GetExamForSession(ctx, detail.ExamID)
 	if err != nil {
 		return SessionStartPayload{}, err
+	}
+
+	// Availability window (ScheduledEndAt set): applies regardless of
+	// requires_checkin — a window exam is only startable within
+	// [scheduled_at, scheduled_end_at], same bound the CheckIn window check uses.
+	if exam.ScheduledEndAt != nil {
+		now := time.Now()
+		if exam.ScheduledAt != nil && now.Before(*exam.ScheduledAt) {
+			return SessionStartPayload{}, ErrExamNotStarted
+		}
+		if now.After(*exam.ScheduledEndAt) {
+			return SessionStartPayload{}, ErrExamWindowClosed
+		}
 	}
 
 	// requires_checkin branch
@@ -906,6 +930,7 @@ func (s *Service) ForceSubmitSession(ctx context.Context, sessionID string) (Sub
 		Score:  &score,
 	}, nil
 }
+
 // ---------- Session monitor helpers ----------
 
 // effectiveDeadline computes the overdue threshold for a session.

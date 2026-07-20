@@ -601,6 +601,7 @@ export interface Exam {
   title: string;
   is_free?: boolean;
   scheduled_at?: string | null;
+  scheduled_end_at?: string | null;
   requires_checkin?: boolean;
   allow_leaderboard?: boolean;
   cdn_bundle?: boolean;
@@ -648,6 +649,7 @@ export type ExamResultConfig = "hidden" | "score_only" | "score_pembahasan";
 export interface CreateExamPayload {
   title: string;
   scheduled_at?: string | null;
+  scheduled_end_at?: string | null;
   timer_mode?: string;
   duration_minutes?: number | null;
   is_free?: boolean;
@@ -666,6 +668,7 @@ export interface CreateExamPayload {
 export interface UpdateExamPayload {
   title?: string;
   scheduled_at?: string | null;
+  scheduled_end_at?: string | null;
   timer_mode?: string;
   duration_minutes?: number | null;
   is_free?: boolean;
@@ -843,6 +846,7 @@ export interface RegistrationListItem {
   created_at: string;
   exam_title: string;
   scheduled_at: string | null;
+  scheduled_end_at: string | null;
   is_free: boolean;
   requires_checkin: boolean;
   check_in_window_minutes: number | null;
@@ -863,6 +867,7 @@ export interface RegistrationDetail {
     id: string;
     title: string;
     scheduled_at: string | null;
+    scheduled_end_at: string | null;
     requires_checkin: boolean;
     check_in_window_minutes: number | null;
     timer_mode: string;

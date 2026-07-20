@@ -79,10 +79,14 @@ type QuestionBlank struct {
 // be sold via product — M:N through product_exam (mirrors Course/product_course), so a
 // Product can attach more than one Exam and an Exam has no direct product reference.
 type Exam struct {
-	ID                   uuid.UUID  `json:"id"`
-	Title                string     `json:"title"`
-	IsFree               bool       `json:"is_free"`
-	ScheduledAt          *time.Time `json:"scheduled_at"`
+	ID          uuid.UUID  `json:"id"`
+	Title       string     `json:"title"`
+	IsFree      bool       `json:"is_free"`
+	ScheduledAt *time.Time `json:"scheduled_at"`
+	// ScheduledEndAt, when set, turns ScheduledAt into the start of an
+	// availability window rather than a single fixed instant — students may
+	// check in/start any time in [ScheduledAt, ScheduledEndAt].
+	ScheduledEndAt       *time.Time `json:"scheduled_end_at"`
 	RequiresCheckin      bool       `json:"requires_checkin"`
 	AllowLeaderboard     bool       `json:"allow_leaderboard"`
 	CDNBundle            bool       `json:"cdn_bundle"`
@@ -129,21 +133,21 @@ type ExamRegistration struct {
 // ExamSession is one in-flight attempt by a student; multiple sessions per registration
 // are numbered by AttemptNumber.
 type ExamSession struct {
-	ID             uuid.UUID  `json:"id"`
-	RegistrationID uuid.UUID  `json:"registration_id"`
-	StudentID      uuid.UUID  `json:"student_id"`
-	ExamID         uuid.UUID  `json:"exam_id"`
-	AttemptNumber  int        `json:"attempt_number"`
-	StartedAt      time.Time  `json:"started_at"`
-	SubmittedAt    *time.Time `json:"submitted_at"`
-	ExtendedUntil  *time.Time `json:"extended_until"`
-	AdminSubmitted bool       `json:"admin_submitted"`
-	Score          *float64   `json:"score"`
-	CertificateURL      *string    `json:"certificate_url"`
+	ID                     uuid.UUID  `json:"id"`
+	RegistrationID         uuid.UUID  `json:"registration_id"`
+	StudentID              uuid.UUID  `json:"student_id"`
+	ExamID                 uuid.UUID  `json:"exam_id"`
+	AttemptNumber          int        `json:"attempt_number"`
+	StartedAt              time.Time  `json:"started_at"`
+	SubmittedAt            *time.Time `json:"submitted_at"`
+	ExtendedUntil          *time.Time `json:"extended_until"`
+	AdminSubmitted         bool       `json:"admin_submitted"`
+	Score                  *float64   `json:"score"`
+	CertificateURL         *string    `json:"certificate_url"`
 	CertificateGeneratedAt *time.Time `json:"certificate_generated_at"`
-	LastSavedAt         *time.Time `json:"last_saved_at"`
-	Status         string     `json:"status"`
-	CreatedAt      time.Time  `json:"created_at"`
+	LastSavedAt            *time.Time `json:"last_saved_at"`
+	Status                 string     `json:"status"`
+	CreatedAt              time.Time  `json:"created_at"`
 }
 
 // ExamSessionAnswer is one answer record per (session, question) — composite PK.
@@ -239,6 +243,7 @@ type RegistrationListItem struct {
 	ExamRegistration     `json:",inline"`
 	ExamTitle            string     `json:"exam_title"`
 	ScheduledAt          *time.Time `json:"scheduled_at"`
+	ScheduledEndAt       *time.Time `json:"scheduled_end_at"`
 	IsFree               bool       `json:"is_free"`
 	RequiresCheckin      bool       `json:"requires_checkin"`
 	CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
@@ -253,6 +258,7 @@ type RegistrationDetail struct {
 		ID                   uuid.UUID  `json:"id"`
 		Title                string     `json:"title"`
 		ScheduledAt          *time.Time `json:"scheduled_at"`
+		ScheduledEndAt       *time.Time `json:"scheduled_end_at"`
 		RequiresCheckin      bool       `json:"requires_checkin"`
 		CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
 		TimerMode            string     `json:"timer_mode"`
@@ -362,17 +368,17 @@ type AdminResultSession struct {
 // (FR-SCHOOL-08-13/14/15/16). It does NOT embed SessionResult (which carries
 // a non-omitempty Rank field). No rank, no certificate_url.
 type AdminResultDetail struct {
-	SessionID    uuid.UUID                `json:"session_id"`
-	StudentName  string                   `json:"student_name"`
-	Username    *string                  `json:"username"`
-	Score        float64                  `json:"score"`
-	SubmittedAt  *time.Time               `json:"submitted_at"`
-	ResultConfig string                   `json:"result_config"`
-	CorrectCount int                      `json:"correct_count"`
-	WrongCount   int                      `json:"wrong_count"`
-	EmptyCount   int                      `json:"empty_count"`
-	Breakdown    []ResultTopicRow         `json:"breakdown,omitempty"`
-	Pembahasan   []ResultPembahasanItem   `json:"pembahasan,omitempty"`
+	SessionID    uuid.UUID              `json:"session_id"`
+	StudentName  string                 `json:"student_name"`
+	Username     *string                `json:"username"`
+	Score        float64                `json:"score"`
+	SubmittedAt  *time.Time             `json:"submitted_at"`
+	ResultConfig string                 `json:"result_config"`
+	CorrectCount int                    `json:"correct_count"`
+	WrongCount   int                    `json:"wrong_count"`
+	EmptyCount   int                    `json:"empty_count"`
+	Breakdown    []ResultTopicRow       `json:"breakdown,omitempty"`
+	Pembahasan   []ResultPembahasanItem `json:"pembahasan,omitempty"`
 }
 
 // ScoreBucket is one band of the exam analytics score distribution.
@@ -383,8 +389,8 @@ type ScoreBucket struct {
 
 // ExamAnalytics is the read shape for GET /admin/exams/:id/analytics.
 type ExamAnalytics struct {
-	AverageScore   float64      `json:"average_score"`
-	CompletionRate float64      `json:"completion_rate"`
+	AverageScore   float64       `json:"average_score"`
+	CompletionRate float64       `json:"completion_rate"`
 	Distribution   []ScoreBucket `json:"distribution"`
 }
 
@@ -393,25 +399,25 @@ type ExamAnalytics struct {
 // The Active* fields are populated only for sectioned (utbk|ielts) sessions where a
 // section is currently active; all are nil for standard-mode sessions.
 type SessionMonitorRow struct {
-	RegistrationID  uuid.UUID  `json:"registration_id"`
-	StudentID       uuid.UUID  `json:"student_id"`
-	StudentName     string     `json:"student_name"`
-	SchoolName      *string    `json:"school_name"`
-	SessionID       *uuid.UUID `json:"session_id"`
-	SessionStatus   *string    `json:"session_status"`
-	StartedAt       *time.Time `json:"started_at"`
-	ExtendedUntil   *time.Time `json:"extended_until"`
-	AdminSubmitted  bool       `json:"admin_submitted"`
-	CheckedInAt     *time.Time `json:"checked_in_at"`
-	LastSavedAt     *time.Time `json:"last_saved_at"`
-	AnswersSaved    int        `json:"answers_saved"`
-	TotalQuestions  int        `json:"total_questions"`
-	ViolationCount  int        `json:"violation_count"`
-	Status          string     `json:"status"`
-	ActiveSectionTestID          *uuid.UUID `json:"active_section_test_id,omitempty"`
-	ActiveSectionTitle           *string    `json:"active_section_title,omitempty"`
-	ActiveSectionStartedAt       *time.Time `json:"active_section_started_at,omitempty"`
-	ActiveSectionDurationMinutes *int       `json:"active_section_duration_minutes,omitempty"`
+	RegistrationID                uuid.UUID  `json:"registration_id"`
+	StudentID                     uuid.UUID  `json:"student_id"`
+	StudentName                   string     `json:"student_name"`
+	SchoolName                    *string    `json:"school_name"`
+	SessionID                     *uuid.UUID `json:"session_id"`
+	SessionStatus                 *string    `json:"session_status"`
+	StartedAt                     *time.Time `json:"started_at"`
+	ExtendedUntil                 *time.Time `json:"extended_until"`
+	AdminSubmitted                bool       `json:"admin_submitted"`
+	CheckedInAt                   *time.Time `json:"checked_in_at"`
+	LastSavedAt                   *time.Time `json:"last_saved_at"`
+	AnswersSaved                  int        `json:"answers_saved"`
+	TotalQuestions                int        `json:"total_questions"`
+	ViolationCount                int        `json:"violation_count"`
+	Status                        string     `json:"status"`
+	ActiveSectionTestID           *uuid.UUID `json:"active_section_test_id,omitempty"`
+	ActiveSectionTitle            *string    `json:"active_section_title,omitempty"`
+	ActiveSectionStartedAt        *time.Time `json:"active_section_started_at,omitempty"`
+	ActiveSectionDurationMinutes  *int       `json:"active_section_duration_minutes,omitempty"`
 	ActiveSectionExtendedUntil    *time.Time `json:"active_section_extended_until,omitempty"`
 	ActiveSectionRemainingSeconds int64      `json:"active_section_remaining_seconds,omitempty"`
 }
@@ -420,14 +426,14 @@ type SessionMonitorRow struct {
 // session (FR-3). (session_id, test_id) is the composite PK; sort_order and
 // duration_minutes are snapshots taken at session start. status is pending|active|submitted.
 type ExamSessionSection struct {
-	SessionID      uuid.UUID  `json:"session_id"`
-	TestID         uuid.UUID  `json:"test_id"`
-	SortOrder      int        `json:"sort_order"`
-	DurationMinutes int       `json:"duration_minutes"`
-	Status         string     `json:"status"`
-	StartedAt      *time.Time `json:"started_at,omitempty"`
-	SubmittedAt    *time.Time `json:"submitted_at,omitempty"`
-	ExtendedUntil  *time.Time `json:"extended_until,omitempty"`
+	SessionID       uuid.UUID  `json:"session_id"`
+	TestID          uuid.UUID  `json:"test_id"`
+	SortOrder       int        `json:"sort_order"`
+	DurationMinutes int        `json:"duration_minutes"`
+	Status          string     `json:"status"`
+	StartedAt       *time.Time `json:"started_at,omitempty"`
+	SubmittedAt     *time.Time `json:"submitted_at,omitempty"`
+	ExtendedUntil   *time.Time `json:"extended_until,omitempty"`
 }
 
 // SessionMonitorExam is the exam summary block in the monitor response.
@@ -451,7 +457,7 @@ type ViolationRecent struct {
 
 // SessionMonitorResponse is the top-level response for the session monitor endpoint.
 type SessionMonitorResponse struct {
-	Exam             SessionMonitorExam   `json:"exam"`
-	Rows             []SessionMonitorRow  `json:"rows"`
-	ViolationsRecent []ViolationRecent    `json:"violations_recent"`
+	Exam             SessionMonitorExam  `json:"exam"`
+	Rows             []SessionMonitorRow `json:"rows"`
+	ViolationsRecent []ViolationRecent   `json:"violations_recent"`
 }

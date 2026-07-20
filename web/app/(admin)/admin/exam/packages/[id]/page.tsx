@@ -330,7 +330,14 @@ export default function ExamPackageDetailPage() {
               </div>
               <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <OverviewRow label="Title" value={data.title} />
-                <OverviewRow label="Scheduled" value={formatScheduled(data.scheduled_at)} />
+                <OverviewRow
+                  label="Scheduled"
+                  value={
+                    data.scheduled_end_at
+                      ? `${formatScheduled(data.scheduled_at)} – ${formatScheduled(data.scheduled_end_at)}`
+                      : formatScheduled(data.scheduled_at)
+                  }
+                />
                 <OverviewRow label="Mode" value={formatMode(data.mode)} />
                 <OverviewRow label="Timer mode" value={data.timer_mode ?? "—"} />
                 <OverviewRow
