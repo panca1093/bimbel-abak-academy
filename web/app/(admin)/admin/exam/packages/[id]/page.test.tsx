@@ -22,6 +22,27 @@ vi.mock("sonner", () => ({
   },
 }));
 
+// Default: unauthenticated/no-role, matching the real store's default state —
+// existing tests below rely on this to see all six tabs (unscoped behavior).
+let mockRole: string | undefined = undefined;
+
+vi.mock("@/stores/auth", () => ({
+  useAuthStore: (sel: (s: { user: { role?: string } | null }) => unknown) =>
+    sel({ user: mockRole ? { role: mockRole } : null }),
+}));
+
+vi.mock("@/components/admin/ExamRegistrationsTab", () => ({
+  ExamRegistrationsTab: ({ examId, examName }: { examId: string; examName: string }) => (
+    <div data-testid="exam-registrations-tab">
+      {examId}:{examName}
+    </div>
+  ),
+}));
+
+beforeEach(() => {
+  mockRole = undefined;
+});
+
 const mockReplaceTests = vi.fn();
 const mockGradeEssay = vi.fn();
 
@@ -628,5 +649,87 @@ describe("ExamPackageDetailPage — preset buttons in tests tab", () => {
       expect(screen.getByText(/Literasi Bahasa Indonesia/)).toBeInTheDocument();
       expect(screen.getByText(/Literasi Bahasa Inggris/)).toBeInTheDocument();
     });
+  });
+});
+
+describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    examState = {
+      data: sampleExam,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  });
+
+  it("admin_school sees only Overview and Registrations tabs, no Edit button", async () => {
+    mockRole = "admin_school";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /^ringkasan$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^pendaftaran$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^tes$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^penilaian$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
+  });
+
+  it("super_admin still sees all six tabs and the Edit button", async () => {
+    mockRole = "super_admin";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /^tes$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Leaderboard" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+  });
+
+  it("renders ExamRegistrationsTab for admin_school on the Registrations tab", async () => {
+    mockRole = "admin_school";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^pendaftaran$/i }));
+
+    expect(screen.getByTestId("exam-registrations-tab")).toHaveTextContent(
+      `exam-1:${sampleExam.title}`,
+    );
+  });
+
+  it("renders ExamRegistrationsTab for super_admin on the Registrations tab", async () => {
+    mockRole = "super_admin";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^pendaftaran$/i }));
+
+    expect(screen.getByTestId("exam-registrations-tab")).toHaveTextContent(
+      `exam-1:${sampleExam.title}`,
+    );
+  });
+
+  it("admin_exam (unscoped, non-super_admin) still sees the under-development stub on Registrations", async () => {
+    mockRole = "admin_exam";
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^pendaftaran$/i }));
+
+    expect(screen.queryByTestId("exam-registrations-tab")).not.toBeInTheDocument();
   });
 });

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useTranslation } from "@/lib/i18n";
+import { useAuthStore } from "@/stores/auth";
 import type { ExamListItem } from "@/lib/types";
 
 // Selling an exam (price/status/publish) is managed on the attached Product(s)
@@ -27,6 +28,7 @@ function formatScheduled(iso?: string | null): string {
 export default function ExamPackagesPage() {
   const { t } = useTranslation();
   const router = useRouter();
+  const role = useAuthStore((s) => s.user?.role);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<ExamListItem | null>(null);
 
@@ -40,9 +42,11 @@ export default function ExamPackagesPage() {
         title={t("exam_packages_page_title")}
         description={t("exam_packages_page_description")}
         actions={
-          <Button onClick={() => setShowCreate(true)}>
-            {t("exam_packages_create")}
-          </Button>
+          role === "admin_school" ? undefined : (
+            <Button onClick={() => setShowCreate(true)}>
+              {t("exam_packages_create")}
+            </Button>
+          )
         }
       />
 

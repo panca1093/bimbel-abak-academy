@@ -64,6 +64,18 @@ vi.mock("@/lib/hooks/regions", () => ({
   useDistrictsByCity: () => ({ data: [], isLoading: false }),
 }));
 
+// BulkImportModal is always mounted (Dialog just stays closed) — its hooks
+// need mocking here too, same as every other data hook on this page.
+vi.mock("@/lib/hooks/admin-students-bulk", () => ({
+  usePresignStudentBulkUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  putFileToPresignedURL: vi.fn(),
+  useEnqueueStudentBulkImport: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
+vi.mock("@/lib/hooks/jobs", () => ({
+  useJobStatus: () => ({ data: null, isLoading: false, isError: false, error: null }),
+}));
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
@@ -183,6 +195,19 @@ describe("SchoolStudentsPage", () => {
       expect(screen.getByText("2")).toBeInTheDocument();
     });
     expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("opens the bulk import modal from the header button", async () => {
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /pendaftaran siswa massal/i }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("dialog")).getByText("Unduh Template"),
+    ).toBeInTheDocument();
   });
 
   it("opens register dialog and shows credential panel on success", async () => {
