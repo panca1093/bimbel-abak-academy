@@ -1,31 +1,28 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, Trophy } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  AlertCircle,
+  CalendarDays,
+  Clock,
+  Download,
+  KeyRound,
+  Play,
+  Trophy,
+  XCircle,
+} from "lucide-react";
+import { toast } from "sonner";
 
-import { useRegistrations } from "@/lib/hooks/exam";
+import { downloadCard, useCheckIn, useRegistrations, useStartSession } from "@/lib/hooks/exam";
 import { useTranslation } from "@/lib/i18n";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RegistrationListItem } from "@/lib/types";
-
-type DerivedStatus = "upcoming" | "ongoing" | "completed";
-
-const STATUS_BADGE_CLASSES: Record<DerivedStatus, string> = {
-  upcoming: "bg-brand-50 text-brand-700 border-brand-100",
-  ongoing: "bg-warning-bg text-warning border-warning/30",
-  completed: "bg-surface-2 text-ink-500 border-line",
-};
-
-function deriveStatus(scheduledAt: string | null): DerivedStatus {
-  if (!scheduledAt) return "upcoming";
-  const now = Date.now();
-  const t = new Date(scheduledAt).getTime();
-  if (t > now + 60 * 60 * 1000) return "upcoming";
-  if (t < now - 60 * 60 * 1000) return "completed";
-  return "ongoing";
-}
 
 function formatScheduled(scheduledAt: string | null): string {
   if (!scheduledAt) return "—";
@@ -40,9 +37,54 @@ function formatScheduled(scheduledAt: string | null): string {
   }).format(d);
 }
 
+// "6 hari 7 jam" / "45 menit" style countdown, matching the mockup's PkgCard.
+function formatCountdown(ms: number, lang: "id" | "en"): string {
+  if (ms <= 0) return lang === "id" ? "Segera" : "Any moment";
+  const totalMinutes = Math.floor(ms / 60_000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  const dayLabel = lang === "id" ? "hari" : "d";
+  const hourLabel = lang === "id" ? "jam" : "h";
+  const minLabel = lang === "id" ? "menit" : "m";
+  if (days > 0) return `${days} ${dayLabel} ${hours} ${hourLabel}`;
+  if (hours > 0) return `${hours} ${hourLabel} ${minutes} ${minLabel}`;
+  return `${minutes} ${minLabel}`;
+}
+
+type CardState =
+  | { kind: "start" }
+  | { kind: "locked"; opensAt: Date }
+  | { kind: "checkin" }
+  | { kind: "in_progress" }
+  | { kind: "expired" };
+
+// Mirrors design-app-abak's PkgCard state machine (stateMeta: free/locked/
+// checkin/checkedin/inprogress/expired), driven by real fields instead of
+// mock data. "submitted" isn't derivable here — exam_registration.status
+// never advances past 'in_progress' on submit (score lives on exam_session,
+// which this list endpoint doesn't join) — see registration detail page for
+// the same gap. in_progress renders as a link to the detail page instead of
+// a fabricated "view result" action.
+function computeCardState(reg: RegistrationListItem, now: number): CardState {
+  if (reg.status === "in_progress") return { kind: "in_progress" };
+  if (reg.status === "checked_in") return { kind: "start" };
+  if (!reg.requires_checkin) return { kind: "start" };
+  if (!reg.scheduled_at) return { kind: "checkin" };
+  const scheduledAt = new Date(reg.scheduled_at).getTime();
+  const windowMin = reg.check_in_window_minutes ?? 15;
+  const opensAt = scheduledAt - windowMin * 60_000;
+  if (now < opensAt) return { kind: "locked", opensAt: new Date(opensAt) };
+  if (now < scheduledAt) return { kind: "checkin" };
+  return { kind: "expired" };
+}
+
 export default function ExamPage() {
   const { t } = useTranslation();
   const { data, isLoading, isError, error, refetch } = useRegistrations();
+
+  const free = data?.filter((r) => r.is_free) ?? [];
+  const mine = data?.filter((r) => !r.is_free) ?? [];
 
   return (
     <div>
@@ -50,9 +92,7 @@ export default function ExamPage() {
         <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
           {t("comp_title")}
         </h1>
-        <p className="mt-2 text-sm text-ink-500">
-          {t("competition_list_subtitle")}
-        </p>
+        <p className="mt-2 text-sm text-ink-500">{t("comp_sub")}</p>
       </header>
 
       {isError && (
@@ -63,7 +103,7 @@ export default function ExamPage() {
               {t("competition_error")}
               {error instanceof Error && error.message ? ` ${error.message}` : ""}
             </div>
-            <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <Button variant="outline" size="sm" className="rounded-full" onClick={() => refetch()}>
               {t("retry")}
             </Button>
           </div>
@@ -73,52 +113,226 @@ export default function ExamPage() {
       {isLoading ? (
         <ExamSkeleton />
       ) : data && data.length > 0 ? (
-        <div className="space-y-3">
-          {data.map((reg) => (
-            <RegistrationRow key={reg.id} reg={reg} />
-          ))}
-        </div>
+        <>
+          <PkgSection title={t("free_packages")} items={free} />
+          <PkgSection title={t("my_packages")} items={mine} className="mt-9" />
+        </>
       ) : (
-        <EmptyExam />
+        !isError && <EmptyExam />
       )}
     </div>
   );
 }
 
-function RegistrationRow({ reg }: { reg: RegistrationListItem }) {
+function PkgSection({
+  title,
+  items,
+  className,
+}: {
+  title: string;
+  items: RegistrationListItem[];
+  className?: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className={className}>
+      <h2 className="mb-3 text-[13px] font-bold tracking-wide text-ink-500 uppercase">
+        {title}
+      </h2>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {items.map((reg) => (
+          <PkgCard key={reg.id} reg={reg} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PkgCard({ reg }: { reg: RegistrationListItem }) {
   const { t, lang } = useTranslation();
-  const status = deriveStatus(reg.scheduled_at);
+  const router = useRouter();
+  const [token, setToken] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const checkInMutation = useCheckIn();
+  const startSessionMutation = useStartSession();
+
+  const state = computeCardState(reg, now);
+
+  const handleCheckIn = () => {
+    if (!token.trim()) return;
+    checkInMutation.mutate(
+      { token: token.trim() },
+      {
+        onSuccess: () => {
+          toast.success(t("checkin_success"));
+          setToken("");
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : t("invalid_token"));
+        },
+      },
+    );
+  };
+
+  const handleStart = async () => {
+    try {
+      const result = await startSessionMutation.mutateAsync(reg.id);
+      router.push(`/exam/sessions/${result.session_id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("competition_error"));
+    }
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      await downloadCard(reg.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("competition_error"));
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
-    <Card className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-serif text-lg font-semibold text-ink-900">
-            {reg.exam_title}
-          </h2>
-          <span
-            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[status]}`}
-          >
-            {t(
-              status === "upcoming"
-                ? "competition_status_upcoming"
-                : status === "ongoing"
-                ? "competition_status_ongoing"
-                : "competition_status_completed"
-            )}
-          </span>
+    <Card className="gap-0 p-[18px]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
+          <Trophy className="size-5" />
         </div>
-        <p className="mt-1 text-sm text-ink-500">
-          {t("competition_detail_scheduled_at")}: {formatScheduled(reg.scheduled_at)}
-          {lang === "id" ? " WIB" : ""}
-        </p>
+        {reg.is_free ? (
+          <Badge className="rounded-full">{t("free")}</Badge>
+        ) : (
+          <StateBadge state={state} />
+        )}
       </div>
-      <Button asChild variant="outline" size="sm" className="shrink-0">
-        <Link href={`/exam/${reg.id}`}>
-          {t("competition_view_detail")}
-        </Link>
-      </Button>
+
+      <h3 className="mt-3 text-[15px] leading-snug font-semibold text-ink-900">
+        {reg.exam_title}
+      </h3>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500">
+        {reg.duration_minutes != null && (
+          <span className="inline-flex items-center gap-1">
+            <Clock className="size-3" />
+            {reg.duration_minutes} {t("minutes")}
+          </span>
+        )}
+        {reg.scheduled_at && (
+          <span className="inline-flex items-center gap-1">
+            <CalendarDays className="size-3" />
+            {formatScheduled(reg.scheduled_at)}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3.5 border-t border-line pt-3.5">
+        {state.kind === "start" && (
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1 text-xs text-ink-500">
+              {t("attempts").replace("{n}", String(reg.attempts_used))}
+            </div>
+            <Button
+              size="sm"
+              className="shrink-0 rounded-full"
+              onClick={handleStart}
+              disabled={startSessionMutation.isPending}
+            >
+              <Play className="mr-1 size-3.5" />
+              {startSessionMutation.isPending ? t("sys_loading") : t("start_exam")}
+            </Button>
+          </div>
+        )}
+
+        {state.kind === "locked" && (
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-ink-500">
+                {t("checkin_opens")} {formatScheduled(state.opensAt.toISOString())}
+              </div>
+              <div className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-info">
+                <Clock className="size-3" />
+                {formatCountdown(state.opensAt.getTime() - now, lang)}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 rounded-full"
+              onClick={handleDownload}
+              disabled={downloading}
+            >
+              <Download className="mr-1 size-3.5" />
+              {t("download_card")}
+            </Button>
+          </div>
+        )}
+
+        {state.kind === "checkin" && (
+          <div>
+            <label className="text-xs font-semibold text-ink-600">{t("enter_token")}</label>
+            <div className="mt-1.5 flex gap-2">
+              <Input
+                value={token}
+                onChange={(e) => setToken(e.target.value.toUpperCase())}
+                placeholder={t("token_placeholder")}
+                className="font-mono uppercase"
+              />
+              <Button
+                size="sm"
+                className="shrink-0 rounded-full"
+                onClick={handleCheckIn}
+                disabled={!token.trim() || checkInMutation.isPending}
+              >
+                {checkInMutation.isPending ? t("sys_loading") : t("check_in")}
+              </Button>
+            </div>
+            <div className="mt-1.5 flex items-center gap-1 text-xs text-ink-500">
+              <KeyRound className="size-3" />
+              {t("token_hint")}
+            </div>
+          </div>
+        )}
+
+        {state.kind === "in_progress" && (
+          <Button asChild size="sm" variant="outline" className="w-full rounded-full">
+            <Link href={`/exam/${reg.id}`}>{t("competition_view_detail")}</Link>
+          </Button>
+        )}
+
+        {state.kind === "expired" && (
+          <div className="flex items-center gap-1.5 text-xs text-ink-500">
+            <XCircle className="size-3.5 text-danger" />
+            {t("st_expired")}
+          </div>
+        )}
+      </div>
     </Card>
+  );
+}
+
+function StateBadge({ state }: { state: CardState }) {
+  const { t } = useTranslation();
+  const labelKey =
+    state.kind === "locked"
+      ? "st_locked"
+      : state.kind === "checkin"
+        ? "st_checkin"
+        : state.kind === "in_progress"
+          ? "st_inprogress"
+          : state.kind === "expired"
+            ? "st_expired"
+            : "st_checkedin";
+  return (
+    <Badge variant="outline" className="rounded-full">
+      {t(labelKey)}
+    </Badge>
   );
 }
 
@@ -141,9 +355,9 @@ function ExamSkeleton() {
         <Skeleton className="h-9 w-48" />
         <Skeleton className="h-4 w-72" />
       </div>
-      <div className="space-y-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full rounded-lg" />
+          <Skeleton key={i} className="h-44 w-full rounded-lg" />
         ))}
       </div>
     </div>

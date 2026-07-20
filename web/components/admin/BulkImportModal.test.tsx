@@ -131,7 +131,7 @@ describe("BulkImportModal", () => {
 
     expect(lastDownloadedFilename).toMatch(/\.csv$/);
     expect(lastDownloadedCSV!).toMatch(
-      /name,school,jenjang,provinsi,kota,kecamatan,kode_pos,email/,
+      /name,school,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos/,
     );
     const lines = (lastDownloadedCSV ?? "").split(/\r?\n/).filter(Boolean);
     expect(lines.length).toBe(2);

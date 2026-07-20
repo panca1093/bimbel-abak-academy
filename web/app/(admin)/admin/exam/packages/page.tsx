@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Layers } from "lucide-react";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { ChevronRight } from "lucide-react";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,18 +36,19 @@ export default function ExamPackagesPage() {
 
   return (
     <div className="space-y-6 fade-in">
-      <AdminPageHeader
-        icon={Layers}
-        title={t("exam_packages_page_title")}
-        description={t("exam_packages_page_description")}
-        actions={
-          role === "admin_school" ? undefined : (
-            <Button onClick={() => setShowCreate(true)}>
-              {t("exam_packages_create")}
-            </Button>
-          )
-        }
-      />
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-[27px] font-semibold tracking-tight text-ink-900">
+            {t("exam_packages_page_title")}
+          </h1>
+          <p className="mt-1.5 text-sm text-ink-500">{t("exam_packages_page_description")}</p>
+        </div>
+        {role !== "admin_school" && (
+          <Button className="rounded-full" onClick={() => setShowCreate(true)}>
+            {t("exam_packages_create")}
+          </Button>
+        )}
+      </div>
 
       {isLoading && (
         <div className="space-y-2">
@@ -70,40 +70,62 @@ export default function ExamPackagesPage() {
             {t("exam_packages_empty")}
           </div>
         ) : (
-          <div className="md-card-outlined divide-y">
-            {items.map((exam) => (
-              <div
-                key={exam.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => router.push(`/admin/exam/packages/${exam.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/admin/exam/packages/${exam.id}`);
-                  }
-                }}
-                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-ink-900">{exam.title}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>{formatScheduled(exam.scheduled_at)}</span>
-                    {exam.duration_minutes ? (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span>{exam.duration_minutes} min</span>
-                      </>
-                    ) : null}
-                    {exam.is_free ? (
-                      <Badge variant="secondary" className="ml-1">
-                        {t("exam_packages_modal_is_free")}
+          <div className="md-card-outlined overflow-hidden p-0!">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left text-xs font-semibold uppercase tracking-wide text-ink-500">
+                  <th className="px-4 py-3">{t("exam_packages_page_title")}</th>
+                  <th className="px-4 py-3">{t("exam_packages_col_scheduled")}</th>
+                  <th className="px-4 py-3">Timer</th>
+                  <th className="px-4 py-3">{t("th_status")}</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {items.map((exam) => (
+                  <tr
+                    key={exam.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/admin/exam/packages/${exam.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/admin/exam/packages/${exam.id}`);
+                      }
+                    }}
+                    className="cursor-pointer transition-colors hover:bg-surface-2"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-ink-900">{exam.title}</span>
+                        {exam.is_free && (
+                          <Badge variant="secondary">{t("exam_packages_modal_is_free")}</Badge>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap text-ink-600">
+                      {formatScheduled(exam.scheduled_at)}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {exam.timer_mode && (
+                        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-brand-700">
+                          {exam.timer_mode}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={exam.status === "published" ? "default" : "secondary"}>
+                        {exam.status ?? "draft"}
                       </Badge>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ))}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <ChevronRight className="ml-auto size-4 text-ink-400" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )
       )}

@@ -78,6 +78,19 @@ body {
   }
 }
 
+/* Radix Select's Content always disables outside pointer-events while open
+   (@radix-ui/react-select hardcodes this — there's no prop to opt out).
+   Radix's shared dismissable-layer stack then marks every OTHER already-open
+   layer (e.g. an ancestor Dialog) as the "shadowed" layer and sets its
+   content to pointer-events:none too — so a field next to an open Select
+   inside a Dialog looks clickable but isn't; the click falls through to
+   <html>, which both the Select AND the Dialog see as "outside" and both
+   dismiss. Force dialog content to stay interactive so only the Select
+   itself closes on that click, not its parent dialog. */
+[data-slot="dialog-content"] {
+  pointer-events: auto !important;
+}
+
 /* page entrance — matches design-app-abak/source/styles.css .fade-in */
 .fade-in {
   animation: fadeIn 0.28s ease;
