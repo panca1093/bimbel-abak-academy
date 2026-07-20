@@ -798,3 +798,44 @@ func TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions(t *testing.T) {
 		}
 	}
 }
+
+// TestDefaultLayout_CertificateNumberColorContrastsWithBackground is the
+// regression guard for the "certificate_number recolored for contrast" fix:
+// classic's number sits on the navy footer band (needs a light color) and
+// elegant's sits on the cream page fill (needs a dark color) — a pixel-average
+// ink-presence check can't distinguish "adequately contrasting" from "the old
+// low-contrast gray" here, because gray is still measurably different from
+// either background by raw color distance even though it reads as washed-out
+// against navy (both were verified as false-negative against a manual
+// mutation back to the original gray, which this equality check does catch).
+// This pins the specific color the fix chose for each template so a revert to
+// a same-hue value is caught deterministically, not by ambiguous pixel math.
+func TestDefaultLayout_CertificateNumberColorContrastsWithBackground(t *testing.T) {
+	cases := []struct {
+		tmpl      string
+		wantColor string
+	}{
+		{"classic", "#F0CB78"}, // gold on the navy footer band
+		{"elegant", "#4A5568"}, // slate on the cream page fill
+	}
+	for _, tc := range cases {
+		t.Run(tc.tmpl, func(t *testing.T) {
+			layout := defaultLayout(tc.tmpl)
+			var got string
+			found := false
+			for _, f := range layout.Fields {
+				if f.ID == "certificate_number" {
+					got = f.Color
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("%s default layout has no certificate_number field", tc.tmpl)
+			}
+			if got != tc.wantColor {
+				t.Errorf("%s certificate_number color = %q, want %q (contrast fix)", tc.tmpl, got, tc.wantColor)
+			}
+		})
+	}
+}
