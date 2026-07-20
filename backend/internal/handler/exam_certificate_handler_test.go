@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
@@ -42,6 +45,8 @@ func registerAdminExamRoutes(t *testing.T, env *testEnv, h *handler.Handler) {
 	adminExams.GET("/:id/leaderboard", h.AdminGetExamLeaderboard)
 	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)
 	adminExams.GET("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
+	adminExams.GET("/:id/certificate-design", h.AdminGetExamCertificateDesign)
+	adminExams.PUT("/:id/certificate-design", h.AdminUpdateExamCertificateDesign)
 	adminExams.PATCH("/:id", h.AdminUpdateExam)
 }
 
@@ -68,6 +73,41 @@ type testEnvWithStore struct {
 }
 
 func newTestEnvWithStore(t *testing.T) *testEnvWithStore {
+	t.Helper()
+	return newTestEnvWithStoreCfg(t, nil, &config.Config{
+		JWTSecret:       "test-secret",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 168 * time.Hour,
+		OTPTTL:          5 * time.Minute,
+	})
+}
+
+// newTestEnvWithStoreAndStorage is like newTestEnvWithStore but wires a real
+// MinIO client so certificate-design tests can assert on presigned URLs
+// (FR-18). Region is set explicitly so presigning never needs a reachable
+// endpoint — it's a pure local computation once region is known (see
+// presignStorage's own comment on why).
+func newTestEnvWithStoreAndStorage(t *testing.T) *testEnvWithStore {
+	t.Helper()
+	client, err := minio.New("localhost:9000", &minio.Options{
+		Creds:  credentials.NewStaticV4("test-access", "test-secret", ""),
+		Secure: false,
+		Region: "us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("minio.New: %v", err)
+	}
+	return newTestEnvWithStoreCfg(t, client, &config.Config{
+		JWTSecret:               "test-secret",
+		AccessTokenTTL:          15 * time.Minute,
+		RefreshTokenTTL:         168 * time.Hour,
+		OTPTTL:                  5 * time.Minute,
+		ObjectStorageBucketName: "test-bucket",
+		ObjectStorageRegion:     "us-east-1",
+	})
+}
+
+func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Config) *testEnvWithStore {
 	t.Helper()
 	ctx := context.Background()
 
@@ -112,19 +152,13 @@ func newTestEnvWithStore(t *testing.T) *testEnvWithStore {
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	cfg := &config.Config{
-		JWTSecret:       "test-secret",
-		AccessTokenTTL:  15 * time.Minute,
-		RefreshTokenTTL: 168 * time.Hour,
-		OTPTTL:          5 * time.Minute,
-	}
 	signer := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 
 	svc := service.NewWithStore(
 		store, store, rdb, signer,
 		&service.NoopOTPProvider{}, &service.NoopEmailProvider{},
 		&service.NoopPaymentClient{}, &service.NoopLogisticsClient{},
-		nil, cfg,
+		storage, cfg,
 	)
 
 	h := handler.New(svc)
@@ -168,6 +202,35 @@ func patchJSONRequest(t *testing.T, e *echo.Echo, path, token string, body any) 
 	t.Helper()
 	b, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPatch, path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+// putJSONRequest issues a PUT with JSON body.
+func putJSONRequest(t *testing.T, e *echo.Echo, path, token string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPut, path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+// getJSONBodyRequest issues a GET carrying a JSON body — used by the
+// certificate-preview endpoint's optional unsaved-layout override.
+func getJSONBodyRequest(t *testing.T, e *echo.Echo, path, token string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodGet, path, bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -566,6 +629,304 @@ func TestAdminGetExamCertificatePreview_UnknownExam_Returns404(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&resp)
 	if resp["code"] != "exam_not_found" {
 		t.Errorf("code: want exam_not_found, got %v", resp["code"])
+	}
+}
+
+// TestAdminGetExamCertificatePreview_WithUnsavedLayout_RendersOverride proves
+// the editor can preview a change before saving: an optional body layout still
+// renders through the same engine as real generation.
+func TestAdminGetExamCertificatePreview_WithUnsavedLayout_RendersOverride(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Override")
+
+	examID := seedExam(t, env.pool, "Preview Override Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getJSONBodyRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
+		map[string]any{"layout": validCertLayoutBody()},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF")) {
+		t.Errorf("expected a PDF body, got %q", string(rec.Body.Bytes()[:min(len(rec.Body.Bytes()), 10)]))
+	}
+}
+
+func TestAdminGetExamCertificatePreview_WithInvalidUnsavedLayout_Returns422(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Preview Bad Override")
+
+	examID := seedExam(t, env.pool, "Preview Bad Override Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getJSONBodyRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-preview?template=classic", token,
+		map[string]any{"layout": invalidCertLayoutBody()},
+	)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AdminGetExamCertificateDesign / AdminUpdateExamCertificateDesign tests (Task 8)
+// ---------------------------------------------------------------------------
+
+// validCertLayoutBody is a minimal layout JSON body that passes ValidateLayout:
+// a real A4-landscape page and one known field id inside its bounds.
+func validCertLayoutBody() map[string]any {
+	return map[string]any{
+		"page":       map[string]any{"width_mm": 297, "height_mm": 210},
+		"background": map[string]any{"kind": "builtin", "ref": "classic"},
+		"fields": []map[string]any{
+			{"id": "title", "x_mm": 48.5, "y_mm": 42, "w_mm": 200, "align": "center", "visible": true},
+		},
+	}
+}
+
+// invalidCertLayoutBody carries an unknown field id, which ValidateLayout (Task 3)
+// must reject.
+func invalidCertLayoutBody() map[string]any {
+	return map[string]any{
+		"page":       map[string]any{"width_mm": 297, "height_mm": 210},
+		"background": map[string]any{"kind": "builtin", "ref": "classic"},
+		"fields": []map[string]any{
+			{"id": "not_a_real_field", "x_mm": 10, "y_mm": 10, "w_mm": 50, "align": "center", "visible": true},
+		},
+	}
+}
+
+func TestAdminGetExamCertificateDesign_NoToken_Returns401(t *testing.T) {
+	env := newTestEnv(t)
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-design", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminGetExamCertificateDesign_StudentToken_Returns403(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "student-cert-design",
+		Email:  strptr("student-cert-design@test.com"),
+		Role:   service.RoleStudent,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	token := mintToken(t, env, "student-cert-design", service.RoleStudent)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-design", token)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminUpdateExamCertificateDesign_NoToken_Returns401(t *testing.T) {
+	env := newTestEnv(t)
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-design", "",
+		map[string]any{"template": "classic", "layout": validCertLayoutBody()},
+	)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminUpdateExamCertificateDesign_StudentToken_Returns403(t *testing.T) {
+	env := newTestEnv(t)
+	env.repo.seed(&model.User{
+		ID:     "student-cert-design-put",
+		Email:  strptr("student-cert-design-put@test.com"),
+		Role:   service.RoleStudent,
+		Status: "active",
+	})
+	h := handler.New(env.svc)
+	registerAdminExamRoutes(t, env, h)
+
+	token := mintToken(t, env, "student-cert-design-put", service.RoleStudent)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-000000000000/certificate-design", token,
+		map[string]any{"template": "classic", "layout": validCertLayoutBody()},
+	)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminGetExamCertificateDesign_UntouchedExam_ReturnsBuiltinDefaultLayout(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Default")
+
+	examID := seedExam(t, env.pool, "Design Default Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Template      string  `json:"template"`
+		BackgroundURL *string `json:"background_url"`
+		Layout        struct {
+			Fields []struct {
+				ID string `json:"id"`
+			} `json:"fields"`
+		} `json:"layout"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Template != "classic" {
+		t.Errorf("template: want classic, got %q", resp.Template)
+	}
+	if resp.BackgroundURL != nil {
+		t.Errorf("background_url: want nil for an untouched exam, got %v", *resp.BackgroundURL)
+	}
+	if len(resp.Layout.Fields) == 0 {
+		t.Fatal("expected the built-in default layout, got zero fields")
+	}
+}
+
+func TestAdminGetExamCertificateDesign_UnknownExam_Returns404(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design 404")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-design", token)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAdminGetExamCertificateDesign_CustomBackground_ReturnsPresignedURLNotRawKey
+// proves FR-18: the DB stores only the object key, and reads always sign a fresh
+// time-limited GET rather than ever returning the key or a raw URL.
+func TestAdminGetExamCertificateDesign_CustomBackground_ReturnsPresignedURLNotRawKey(t *testing.T) {
+	env := newTestEnvWithStoreAndStorage(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Presign")
+
+	examID := seedExam(t, env.pool, "Design Presign Exam", false, "hidden", "custom")
+	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE exam SET certificate_background_key = $1 WHERE id = $2`, key, examID,
+	); err != nil {
+		t.Fatalf("seed certificate_background_key: %v", err)
+	}
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		BackgroundURL *string `json:"background_url"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.BackgroundURL == nil {
+		t.Fatal("expected a non-nil background_url")
+	}
+	if *resp.BackgroundURL == key {
+		t.Errorf("background_url must be presigned, not the raw key: got %q", *resp.BackgroundURL)
+	}
+	if !strings.Contains(*resp.BackgroundURL, "X-Amz-Signature") {
+		t.Errorf("expected a presigned URL (X-Amz-Signature query param), got %q", *resp.BackgroundURL)
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_ValidPUT_PersistsAndBumpsTimestamp proves
+// a valid PUT persists template/background_key/layout and bumps
+// certificate_design_updated_at (FR-14/C3), reusing UpdateExam's own wiring.
+func TestAdminUpdateExamCertificateDesign_ValidPUT_PersistsAndBumpsTimestamp(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design PUT")
+
+	examID := seedExam(t, env.pool, "Design PUT Exam", false, "hidden", "classic")
+
+	var before *time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&before); err != nil {
+		t.Fatalf("query certificate_design_updated_at (before): %v", err)
+	}
+	if before != nil {
+		t.Fatalf("want certificate_design_updated_at initially NULL, got %v", *before)
+	}
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "custom", "background_key": key, "layout": validCertLayoutBody()},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var persistedTemplate string
+	var persistedKey *string
+	var persistedLayout []byte
+	var after *time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_template, certificate_background_key, certificate_layout, certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&persistedTemplate, &persistedKey, &persistedLayout, &after); err != nil {
+		t.Fatalf("query persisted design: %v", err)
+	}
+	if persistedTemplate != "custom" {
+		t.Errorf("certificate_template: want custom, got %q", persistedTemplate)
+	}
+	if persistedKey == nil || *persistedKey != key {
+		t.Errorf("certificate_background_key: want %q, got %v", key, persistedKey)
+	}
+	if len(persistedLayout) == 0 {
+		t.Error("expected certificate_layout to be persisted")
+	}
+	if after == nil {
+		t.Fatal("expected certificate_design_updated_at to be bumped, got NULL")
+	}
+}
+
+// TestAdminUpdateExamCertificateDesign_UnknownFieldID_Rejected proves the
+// editor is not the security boundary: an unknown layout field id is rejected
+// server-side (Task 3's ValidateLayout), even though the request otherwise
+// looks well-formed.
+func TestAdminUpdateExamCertificateDesign_UnknownFieldID_Rejected(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Bad Field")
+
+	examID := seedExam(t, env.pool, "Design Bad Field Exam", false, "hidden", "classic")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/certificate-design", token,
+		map[string]any{"template": "classic", "layout": invalidCertLayoutBody()},
+	)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["code"] != "validation_failed" {
+		t.Errorf("code: want validation_failed, got %v", resp["code"])
+	}
+}
+
+func TestAdminUpdateExamCertificateDesign_UnknownExam_Returns404(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design PUT 404")
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := putJSONRequest(t, env.e, "/api/v1/admin/exams/00000000-0000-0000-0000-0000000000aa/certificate-design", token,
+		map[string]any{"template": "classic", "layout": validCertLayoutBody()},
+	)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

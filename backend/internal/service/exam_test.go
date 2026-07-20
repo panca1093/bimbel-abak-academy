@@ -14,9 +14,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
@@ -2039,5 +2042,130 @@ func TestCertificateDesignChanged(t *testing.T) {
 				t.Errorf("certificateDesignChanged(%+v, %+v) = %v, want %v", tc.old, tc.new, got, tc.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task 8: certificate design endpoints (validateExam layout gate, GetCertificateDesign,
+// GetCertificatePreviewWithLayout)
+// ---------------------------------------------------------------------------
+
+func TestValidateExam_rejects_unknown_certificate_layout_field_id(t *testing.T) {
+	raw := json.RawMessage(`{"page":{"width_mm":297,"height_mm":210},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"not_a_real_field","x_mm":10,"y_mm":10,"w_mm":50,"align":"center","visible":true}]}`)
+	e := model.Exam{Title: "Layout Exam", CertificateLayout: &raw}
+	err := validateExam(e)
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("unknown field id should return ErrValidation, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "unknown field id") {
+		t.Errorf("error should mention 'unknown field id', got %q", err.Error())
+	}
+}
+
+func TestValidateExam_accepts_valid_certificate_layout(t *testing.T) {
+	raw := json.RawMessage(`{"page":{"width_mm":297,"height_mm":210},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"title","x_mm":10,"y_mm":10,"w_mm":50,"align":"center","visible":true}]}`)
+	e := model.Exam{Title: "Layout Exam", CertificateLayout: &raw}
+	if err := validateExam(e); err != nil {
+		t.Errorf("valid layout should pass, got %v", err)
+	}
+}
+
+func TestGetCertificateDesign_Integration_UntouchedExam_ReturnsBuiltinDefaultLayout(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Design Default Exam " + uniqueSuffix(), CertificateTemplate: "classic"})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+
+	design, err := svc.GetCertificateDesign(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetCertificateDesign: %v", err)
+	}
+	if design.Template != "classic" {
+		t.Errorf("Template: want classic, got %q", design.Template)
+	}
+	if design.BackgroundURL != nil {
+		t.Errorf("BackgroundURL: want nil for an untouched exam, got %v", *design.BackgroundURL)
+	}
+	if len(design.Layout.Fields) == 0 {
+		t.Fatal("expected the built-in default layout, got zero fields")
+	}
+}
+
+func TestGetCertificateDesign_Integration_UnknownExam_ReturnsErrExamNotFound(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	_, err := svc.GetCertificateDesign(context.Background(), uuid.New())
+	if !errors.Is(err, ErrExamNotFound) {
+		t.Errorf("want ErrExamNotFound, got %v", err)
+	}
+}
+
+// TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNotRawKey
+// proves FR-18: the DB stores only the object key, and GetCertificateDesign
+// always signs a fresh time-limited GET rather than ever returning the key itself.
+func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNotRawKey(t *testing.T) {
+	_, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	// Presigning is a pure local computation once Region is set explicitly (see
+	// presignStorage's comment on why): it never needs a reachable endpoint.
+	client, err := minio.New("localhost:9000", &minio.Options{
+		Creds:  credentials.NewStaticV4("test-access", "test-secret", ""),
+		Secure: false,
+		Region: "us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("minio.New: %v", err)
+	}
+	svc := NewWithStore(
+		repo, repo, nil, nil,
+		&NoopOTPProvider{}, &NoopEmailProvider{}, nil, nil,
+		client, &config.Config{ObjectStorageBucketName: "test-bucket", ObjectStorageRegion: "us-east-1"},
+	)
+
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Design Presign Exam " + uniqueSuffix(), CertificateTemplate: "custom"})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
+	exam.CertificateBackgroundKey = &key
+	if _, err := svc.UpdateExam(ctx, exam.ID, exam); err != nil {
+		t.Fatalf("UpdateExam: %v", err)
+	}
+
+	design, err := svc.GetCertificateDesign(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetCertificateDesign: %v", err)
+	}
+	if design.BackgroundURL == nil {
+		t.Fatal("expected a non-nil BackgroundURL for a custom background")
+	}
+	if *design.BackgroundURL == key {
+		t.Errorf("BackgroundURL must be presigned, not the raw key: got %q", *design.BackgroundURL)
+	}
+	if !strings.Contains(*design.BackgroundURL, "X-Amz-Signature") {
+		t.Errorf("expected a presigned URL (X-Amz-Signature query param), got %q", *design.BackgroundURL)
+	}
+}
+
+func TestGetCertificatePreviewWithLayout_Integration_InvalidOverride_ReturnsValidationError(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Preview Override Exam " + uniqueSuffix(), CertificateTemplate: "classic"})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+
+	badLayout := Layout{
+		Page:       Page{WidthMm: 297, HeightMm: 210},
+		Background: Background{Kind: "builtin", Ref: "classic"},
+		Fields:     []LayoutField{{ID: "not_a_real_field", XMm: 10, YMm: 10, WMm: 50, Align: "center", Visible: true}},
+	}
+	_, err = svc.GetCertificatePreviewWithLayout(ctx, exam.ID, "", &badLayout)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("want ErrValidation for an unknown field id, got %v", err)
 	}
 }

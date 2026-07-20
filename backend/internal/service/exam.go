@@ -646,6 +646,15 @@ func validateExam(e model.Exam) error {
 			return err
 		}
 	}
+	if e.CertificateLayout != nil {
+		var layout Layout
+		if err := json.Unmarshal(*e.CertificateLayout, &layout); err != nil {
+			return fmt.Errorf("%w: invalid certificate layout json", ErrValidation)
+		}
+		if err := ValidateLayout(layout); err != nil {
+			return err
+		}
+	}
 	if e.CheckInWindowMinutes != nil && *e.CheckInWindowMinutes < 0 {
 		return fmt.Errorf("%w: check_in_window_minutes cannot be negative", ErrValidation)
 	}
@@ -748,6 +757,96 @@ func rawMessagePtrEqual(a, b *json.RawMessage) bool {
 		return a == b
 	}
 	return string(*a) == string(*b)
+}
+
+// CertificateDesignResponse is the admin editor's read model for GET
+// certificate-design: the current template, a freshly presigned background URL
+// (never the raw key, FR-18), and the resolved layout — the built-in default
+// when the admin has not saved one yet (FR-29).
+type CertificateDesignResponse struct {
+	Template      string  `json:"template"`
+	BackgroundURL *string `json:"background_url"`
+	Layout        Layout  `json:"layout"`
+}
+
+// GetCertificateDesign returns the certificate design the admin editor renders:
+// template, a presigned URL for any custom background, and the resolved layout.
+func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*CertificateDesignResponse, error) {
+	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
+		return nil, err
+	}
+
+	layout, err := resolveCertificateLayout(exam)
+	if err != nil {
+		return nil, err
+	}
+
+	var bgURL *string
+	if exam.CertificateBackgroundKey != nil {
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *exam.CertificateBackgroundKey, time.Hour)
+		if err != nil {
+			return nil, fmt.Errorf("presign certificate background: %w", err)
+		}
+		bgURL = &signed
+	}
+
+	return &CertificateDesignResponse{
+		Template:      exam.CertificateTemplate,
+		BackgroundURL: bgURL,
+		Layout:        layout,
+	}, nil
+}
+
+// GetCertificatePreviewWithLayout previews a certificate like GetCertificatePreview,
+// but lets the editor supply an unsaved layout so an admin can see a change before
+// saving it (still through the Task 5 render engine, FR-4). A nil override delegates
+// to GetCertificatePreview unchanged.
+func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uuid.UUID, templateOverride string, layoutOverride *Layout) ([]byte, error) {
+	if layoutOverride == nil {
+		return s.GetCertificatePreview(ctx, examID, templateOverride)
+	}
+	if err := ValidateLayout(*layoutOverride); err != nil {
+		return nil, err
+	}
+
+	exam, err := s.storeRepo.GetExamByID(ctx, examID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
+		return nil, err
+	}
+
+	tmpl := templateOverride
+	if tmpl == "" {
+		tmpl = exam.CertificateTemplate
+	}
+	if err := validateCertificateTemplate(tmpl); err != nil {
+		return nil, err
+	}
+
+	previewExam := *exam
+	previewExam.CertificateTemplate = tmpl
+	if templateOverride != "" && templateOverride != exam.CertificateTemplate {
+		previewExam.CertificateBackgroundKey = nil
+	}
+
+	bg, err := s.resolveCertificateBackground(ctx, &previewExam)
+	if err != nil {
+		return nil, fmt.Errorf("resolve certificate background: %w", err)
+	}
+
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return nil, err
+	}
+	vals := certificateFieldValues(exam.Title, "Nama Peserta Contoh", time.Now().In(loc).Format("2 January 2006"), "ABK/2026/000000")
+
+	return renderCertificate(*layoutOverride, bg, vals)
 }
 
 func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {

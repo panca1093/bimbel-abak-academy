@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -843,19 +844,92 @@ func (h *Handler) AdminGetExamAnalytics(c echo.Context) error {
 	return c.JSON(http.StatusOK, analytics)
 }
 
-// AdminGetExamCertificatePreview streams a preview certificate PDF.
+// AdminGetExamCertificatePreview streams a preview certificate PDF. An optional
+// JSON body carrying an unsaved layout lets the editor preview a change before
+// saving it; when absent, the exam's saved (or default) layout is used.
 func (h *Handler) AdminGetExamCertificatePreview(c echo.Context) error {
 	examID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return badRequest(c, "invalid id")
 	}
 	template := c.QueryParam("template")
-	pdf, err := h.svc.GetCertificatePreview(c.Request().Context(), examID, template)
+
+	var body struct {
+		Layout *service.Layout `json:"layout"`
+	}
+	if err := c.Bind(&body); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	pdf, err := h.svc.GetCertificatePreviewWithLayout(c.Request().Context(), examID, template, body.Layout)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 	c.Response().Header().Set("Content-Type", "application/pdf")
 	return c.Stream(http.StatusOK, "application/pdf", bytes.NewReader(pdf))
+}
+
+// certificateDesignRequest is the PUT body for AdminUpdateExamCertificateDesign:
+// the full certificate design triplet (FR-17/FR-18/FR-26-29), replaced wholesale
+// — unlike AdminUpdateExam's PATCH, there is no partial-overlay semantics here.
+type certificateDesignRequest struct {
+	Template      string         `json:"template"`
+	BackgroundKey *string        `json:"background_key"`
+	Layout        service.Layout `json:"layout"`
+}
+
+// AdminGetExamCertificateDesign returns the admin editor's read model: template,
+// a presigned background URL (never the raw key, FR-18), and the resolved layout
+// — the built-in default when nothing has been saved yet (FR-29).
+func (h *Handler) AdminGetExamCertificateDesign(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	resp, err := h.svc.GetCertificateDesign(c.Request().Context(), id)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+// AdminUpdateExamCertificateDesign persists the certificate design triplet the
+// editor saves: template, background object key (never a URL, FR-18), and layout
+// (validated server-side against Task 3's rules — the editor is not the security
+// boundary). It overlays only these three fields onto the existing exam and
+// reuses UpdateExam's staleness-bump wiring (FR-14/C3), mirroring AdminUpdateExam.
+func (h *Handler) AdminUpdateExamCertificateDesign(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+
+	existing, err := h.svc.GetExam(c.Request().Context(), id)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+
+	var req certificateDesignRequest
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+
+	layoutJSON, err := json.Marshal(req.Layout)
+	if err != nil {
+		return badRequest(c, "invalid layout")
+	}
+	raw := json.RawMessage(layoutJSON)
+
+	overlay := existing.Exam
+	overlay.CertificateTemplate = req.Template
+	overlay.CertificateBackgroundKey = req.BackgroundKey
+	overlay.CertificateLayout = &raw
+
+	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, out)
 }
 
 // AdminGetSessionMonitor returns the session monitor payload for an exam: exam summary,
