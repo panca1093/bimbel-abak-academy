@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -1976,5 +1977,67 @@ func TestProcessQuestionImportRows_sanitizes_option_text(t *testing.T) {
 	}
 	if !strings.Contains(fetched.Options[0].Text, "4") {
 		t.Errorf("option text must preserve plain text, got %q", fetched.Options[0].Text)
+	}
+}
+
+// ---------- tests: certificateDesignChanged (FR-14/C3) ----------
+
+func TestCertificateDesignChanged(t *testing.T) {
+	layoutA := json.RawMessage(`{"fields":[]}`)
+	layoutB := json.RawMessage(`{"fields":[{"id":"title"}]}`)
+	keyA := "certificates/bg/a.png"
+	keyB := "certificates/bg/b.png"
+
+	cases := []struct {
+		name string
+		old  model.Exam
+		new  model.Exam
+		want bool
+	}{
+		{
+			name: "identical exam",
+			old:  model.Exam{CertificateTemplate: "classic", CertificateBackgroundKey: &keyA, CertificateLayout: &layoutA},
+			new:  model.Exam{CertificateTemplate: "classic", CertificateBackgroundKey: &keyA, CertificateLayout: &layoutA},
+			want: false,
+		},
+		{
+			name: "template changed",
+			old:  model.Exam{CertificateTemplate: "classic"},
+			new:  model.Exam{CertificateTemplate: "modern"},
+			want: true,
+		},
+		{
+			name: "background key changed",
+			old:  model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: &keyA},
+			new:  model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: &keyB},
+			want: true,
+		},
+		{
+			name: "background key cleared",
+			old:  model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: &keyA},
+			new:  model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: nil},
+			want: true,
+		},
+		{
+			name: "layout changed",
+			old:  model.Exam{CertificateTemplate: "classic", CertificateLayout: &layoutA},
+			new:  model.Exam{CertificateTemplate: "classic", CertificateLayout: &layoutB},
+			want: true,
+		},
+		{
+			name: "unrelated field only (title)",
+			old:  model.Exam{CertificateTemplate: "classic", Title: "Old Title"},
+			new:  model.Exam{CertificateTemplate: "classic", Title: "New Title"},
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := certificateDesignChanged(tc.old, tc.new)
+			if got != tc.want {
+				t.Errorf("certificateDesignChanged(%+v, %+v) = %v, want %v", tc.old, tc.new, got, tc.want)
+			}
+		})
 	}
 }

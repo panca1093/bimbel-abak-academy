@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -704,6 +705,15 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 	}
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
+	// C3/FR-14: one timestamp covers all three certificate design axes — bump
+	// it only when template, background key, or layout actually changed, so an
+	// unrelated field edit doesn't falsely mark the design stale.
+	if certificateDesignChanged(*existing, m) {
+		now := time.Now()
+		m.CertificateDesignUpdatedAt = &now
+	} else {
+		m.CertificateDesignUpdatedAt = existing.CertificateDesignUpdatedAt
+	}
 	if err := s.storeRepo.UpdateExam(ctx, id, &m); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return model.Exam{}, ErrExamNotFound
@@ -711,6 +721,33 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 		return model.Exam{}, err
 	}
 	return m, nil
+}
+
+// certificateDesignChanged reports whether template, background key, or
+// layout differ between the previously persisted exam and an incoming update
+// — the three axes that share one staleness timestamp (C3/FR-14).
+func certificateDesignChanged(old, updated model.Exam) bool {
+	if old.CertificateTemplate != updated.CertificateTemplate {
+		return true
+	}
+	if !strPtrEqual(old.CertificateBackgroundKey, updated.CertificateBackgroundKey) {
+		return true
+	}
+	return !rawMessagePtrEqual(old.CertificateLayout, updated.CertificateLayout)
+}
+
+func strPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func rawMessagePtrEqual(a, b *json.RawMessage) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return string(*a) == string(*b)
 }
 
 func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {

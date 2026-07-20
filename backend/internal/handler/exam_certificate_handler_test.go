@@ -820,6 +820,78 @@ func TestAdminUpdateExam_OmittedFieldPreservesCheckInWindow(t *testing.T) {
 	}
 }
 
+// TestAdminUpdateExam_CertificateTemplateChange_BumpsDesignUpdatedAt proves FR-14:
+// a write that changes certificate_template bumps certificate_design_updated_at,
+// which is what makes resolveCertificateURL's staleness check (FR-13) fire.
+func TestAdminUpdateExam_CertificateTemplateChange_BumpsDesignUpdatedAt(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Bump")
+
+	examID := seedExam(t, env.pool, "Design Bump Exam", false, "hidden", "classic")
+
+	var before *time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&before); err != nil {
+		t.Fatalf("query certificate_design_updated_at (before): %v", err)
+	}
+	if before != nil {
+		t.Fatalf("want certificate_design_updated_at initially NULL, got %v", *before)
+	}
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String(), token,
+		map[string]string{"certificate_template": "modern"},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var after *time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&after); err != nil {
+		t.Fatalf("query certificate_design_updated_at (after): %v", err)
+	}
+	if after == nil {
+		t.Fatal("certificate_design_updated_at should be set after a template change")
+	}
+}
+
+// TestAdminUpdateExam_UnrelatedFieldChange_PreservesDesignUpdatedAt proves the
+// inverse of FR-14: a PATCH that does not touch template/background/layout
+// must not bump certificate_design_updated_at.
+func TestAdminUpdateExam_UnrelatedFieldChange_PreservesDesignUpdatedAt(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, "admin_exam", "Admin Design Preserve")
+
+	examID := seedExam(t, env.pool, "Design Preserve Exam", false, "hidden", "classic")
+	seededAt := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := env.pool.Exec(context.Background(),
+		`UPDATE exam SET certificate_design_updated_at = $1 WHERE id = $2`, seededAt, examID,
+	); err != nil {
+		t.Fatalf("seed certificate_design_updated_at: %v", err)
+	}
+
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
+	rec := patchJSONRequest(t, env.e, "/api/v1/admin/exams/"+examID.String(), token,
+		map[string]string{"title": "Design Preserve Exam Renamed"},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var after time.Time
+	if err := env.pool.QueryRow(context.Background(),
+		`SELECT certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&after); err != nil {
+		t.Fatalf("query certificate_design_updated_at: %v", err)
+	}
+	if !after.Equal(seededAt) {
+		t.Errorf("certificate_design_updated_at: want preserved %v, got %v", seededAt, after)
+	}
+}
+
 func seedTestRow(t *testing.T, pool *pgxpool.Pool, title string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
