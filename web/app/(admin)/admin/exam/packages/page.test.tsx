@@ -23,6 +23,10 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+vi.mock("@/lib/hooks/students", () => ({
+  usePresignUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/stores/ui", () => ({
   useUIStore: (selector: (s: typeof uiStore) => unknown) => selector(uiStore),
 }));

@@ -98,6 +98,10 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useExamLeaderboard: () => leaderboardState,
 }));
 
+vi.mock("@/lib/hooks/students", () => ({
+  usePresignUpload: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/lib/hooks/admin-tests", () => ({
   useAdminTests: () => ({
     data: { data: [] as Test[] },
