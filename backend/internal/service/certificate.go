@@ -20,6 +20,7 @@ var validCertificateTemplates = map[string]bool{
 	"classic": true,
 	"modern":  true,
 	"elegant": true,
+	"custom":  true,
 }
 
 func validateCertificateTemplate(tmpl string) error {

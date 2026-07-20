@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -208,6 +209,22 @@ func TestExamStruct(t *testing.T) {
 	jsonTag(t, v, "Status", "status")
 	jsonTag(t, v, "CreatedAt", "created_at")
 	jsonTag(t, v, "CertificateTemplate", "certificate_template")
+	jsonTag(t, v, "CertificateBackgroundKey", "certificate_background_key")
+	jsonTag(t, v, "CertificateLayout", "certificate_layout")
+	jsonTag(t, v, "CertificateDesignUpdatedAt", "certificate_design_updated_at")
+
+	fieldKind(t, v, "CertificateBackgroundKey", reflect.Ptr)
+	if mustField(t, v, "CertificateBackgroundKey").Type.Elem().Kind() != reflect.String {
+		t.Errorf("Exam.CertificateBackgroundKey pointer base type should be string")
+	}
+	fieldKind(t, v, "CertificateLayout", reflect.Ptr)
+	if mustField(t, v, "CertificateLayout").Type != reflect.TypeOf((*json.RawMessage)(nil)) {
+		t.Errorf("Exam.CertificateLayout should be *json.RawMessage, got %s", mustField(t, v, "CertificateLayout").Type)
+	}
+	fieldKind(t, v, "CertificateDesignUpdatedAt", reflect.Ptr)
+	if mustField(t, v, "CertificateDesignUpdatedAt").Type != reflect.TypeOf((*time.Time)(nil)) {
+		t.Errorf("Exam.CertificateDesignUpdatedAt should be *time.Time, got %s", mustField(t, v, "CertificateDesignUpdatedAt").Type)
+	}
 
 	fieldType(t, v, "ID", reflect.TypeOf(uuid.UUID{}))
 	fieldKind(t, v, "CertificateTemplate", reflect.String)
@@ -312,6 +329,7 @@ func TestExamSessionStruct(t *testing.T) {
 	jsonTag(t, v, "Score", "score")
 	jsonTag(t, v, "CertificateURL", "certificate_url")
 	jsonTag(t, v, "CertificateGeneratedAt", "certificate_generated_at")
+	jsonTag(t, v, "CertificateNumber", "certificate_number")
 	jsonTag(t, v, "LastSavedAt", "last_saved_at")
 	jsonTag(t, v, "Status", "status")
 	jsonTag(t, v, "CreatedAt", "created_at")
@@ -343,6 +361,50 @@ func TestExamSessionStruct(t *testing.T) {
 	fieldKind(t, v, "CertificateURL", reflect.Ptr)
 	if mustField(t, v, "CertificateURL").Type.Elem().Kind() != reflect.String {
 		t.Errorf("ExamSession.CertificateURL pointer base type should be string")
+	}
+	fieldKind(t, v, "CertificateNumber", reflect.Ptr)
+	if mustField(t, v, "CertificateNumber").Type.Elem().Kind() != reflect.String {
+		t.Errorf("ExamSession.CertificateNumber pointer base type should be string")
+	}
+}
+
+// TestExamCertificateLayoutJSONRoundTrip proves CertificateLayout serializes as raw
+// JSON (not base64, as a plain []byte would) and round-trips through marshal/unmarshal,
+// per memory go-json-tags-verification-blindspot: assert on marshalled bytes, not by
+// eyeballing the struct.
+func TestExamCertificateLayoutJSONRoundTrip(t *testing.T) {
+	raw := json.RawMessage(`{"student_name":{"x_mm":10,"y_mm":20}}`)
+	e := Exam{CertificateLayout: &raw}
+
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatalf("Unmarshal envelope: %v", err)
+	}
+	layout, ok := decoded["certificate_layout"].(map[string]any)
+	if !ok {
+		t.Fatalf("certificate_layout is not a nested JSON object (want raw pass-through, got %T: %v)", decoded["certificate_layout"], decoded["certificate_layout"])
+	}
+	if _, ok := layout["student_name"]; !ok {
+		t.Errorf("certificate_layout missing student_name key: %v", layout)
+	}
+
+	// nil layout marshals as JSON null, never omitted or base64.
+	var e2 Exam
+	b2, err := json.Marshal(e2)
+	if err != nil {
+		t.Fatalf("Marshal nil layout: %v", err)
+	}
+	var decoded2 map[string]any
+	if err := json.Unmarshal(b2, &decoded2); err != nil {
+		t.Fatalf("Unmarshal nil-layout envelope: %v", err)
+	}
+	if v, ok := decoded2["certificate_layout"]; !ok || v != nil {
+		t.Errorf("nil CertificateLayout should marshal to JSON null, got %v (present=%v)", v, ok)
 	}
 }
 

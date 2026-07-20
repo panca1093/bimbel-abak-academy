@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -107,6 +108,16 @@ type Exam struct {
 	// 'standard' in the DB; omitempty no-ops since 'standard' is non-empty — admin
 	// payloads gain the key, student-facing payloads are assembled in the service.
 	Mode string `json:"mode,omitempty"`
+	// CertificateBackgroundKey is the private-bucket object key of an uploaded custom
+	// background (never a raw or presigned URL). Nil when no custom background is set.
+	CertificateBackgroundKey *string `json:"certificate_background_key"`
+	// CertificateLayout is the persisted field-position JSON for the certificate editor
+	// (FR-26/FR-27). Nil until an admin has dragged and saved a layout.
+	CertificateLayout *json.RawMessage `json:"certificate_layout"`
+	// CertificateDesignUpdatedAt is bumped whenever template, background key, or layout
+	// changes (C3/FR-14) — the single staleness timestamp compared against a session's
+	// certificate_generated_at.
+	CertificateDesignUpdatedAt *time.Time `json:"certificate_design_updated_at"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -145,9 +156,12 @@ type ExamSession struct {
 	Score                  *float64   `json:"score"`
 	CertificateURL         *string    `json:"certificate_url"`
 	CertificateGeneratedAt *time.Time `json:"certificate_generated_at"`
-	LastSavedAt            *time.Time `json:"last_saved_at"`
-	Status                 string     `json:"status"`
-	CreatedAt              time.Time  `json:"created_at"`
+	// CertificateNumber is allocated once (ABK/YYYY/NNNNNN) on first certificate
+	// generation and reused thereafter; nil until allocated (FR-9/FR-10).
+	CertificateNumber *string    `json:"certificate_number"`
+	LastSavedAt       *time.Time `json:"last_saved_at"`
+	Status            string     `json:"status"`
+	CreatedAt         time.Time  `json:"created_at"`
 }
 
 // ExamSessionAnswer is one answer record per (session, question) — composite PK.
