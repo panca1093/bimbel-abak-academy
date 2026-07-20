@@ -426,13 +426,13 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                     onChange={() => setCertificateTemplate("custom")}
                     disabled={isPending}
                   />
-                  <span>Custom</span>
+                  <span>{t("certificate_template_custom")}</span>
                 </label>
               </div>
               {certificateTemplate === "custom" && (
                 <div className="grid gap-2 rounded-md border border-input p-3">
                   <Label htmlFor="background-upload" className="text-xs font-medium">
-                    Upload Background
+                    {t("certificate_background_upload_label")}
                   </Label>
                   <input
                     ref={backgroundInputRef}
@@ -450,7 +450,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                     onClick={() => backgroundInputRef.current?.click()}
                     disabled={isPending || backgroundUploading}
                   >
-                    {backgroundUploading ? "Uploading..." : "Upload"}
+                    {backgroundUploading ? t("certificate_background_uploading") : t("certificate_background_upload_button")}
                   </Button>
                   {certificateBackgroundUrl && (
                     <p className="text-xs text-muted-foreground">{certificateBackgroundUrl}</p>
