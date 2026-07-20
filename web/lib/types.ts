@@ -616,6 +616,9 @@ export interface Exam {
   result_config?: string;
   result_release_at?: string | null;
   certificate_template?: string;
+  certificate_background_key?: string | null;
+  certificate_layout?: CertificateLayout | null;
+  certificate_design_updated_at?: string | null;
   status?: string;
   mode?: string;
   created_at?: string;
@@ -656,7 +659,6 @@ export interface CreateExamPayload {
   requires_checkin?: boolean;
   allow_leaderboard?: boolean;
   randomize?: boolean;
-  certificate_template?: string;
   mode?: string;
   result_config?: ExamResultConfig;
   result_release_at?: string | null;
@@ -675,13 +677,48 @@ export interface UpdateExamPayload {
   requires_checkin?: boolean;
   allow_leaderboard?: boolean;
   randomize?: boolean;
-  certificate_template?: string;
   mode?: string;
   result_config?: ExamResultConfig;
   result_release_at?: string | null;
   check_in_window_minutes?: number | null;
   grace_window_minutes?: number | null;
   max_attempts?: number | null;
+}
+
+// ── Certificate design (admin editor, FR-17/18/25) ───────────────────────
+// Mirrors service.Layout / service.LayoutField / service.CertificateDesignResponse
+// in the backend (internal/service/certificate_layout.go, internal/service/exam.go).
+
+export interface CertificateLayoutField {
+  id: string;
+  x_mm: number;
+  y_mm: number;
+  w_mm: number;
+  align: string;
+  font?: string;
+  weight?: string;
+  size_pt?: number;
+  color?: string;
+  visible: boolean;
+  h_mm?: number;
+}
+
+export interface CertificateLayout {
+  page: { width_mm: number; height_mm: number };
+  background: { kind: string; ref: string };
+  fields: CertificateLayoutField[];
+}
+
+export interface CertificateDesign {
+  template: string;
+  background_url: string | null;
+  layout: CertificateLayout;
+}
+
+export interface CertificateDesignInput {
+  template: string;
+  background_key: string | null;
+  layout: CertificateLayout;
 }
 
 // ── Session engine types (FR26) ──────────────────────────────────────────

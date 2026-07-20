@@ -13,6 +13,8 @@ import type {
   GradingEssayItem,
   ExamLeaderboardEntry,
   ExamAnalytics,
+  CertificateDesign,
+  CertificateDesignInput,
 } from "@/lib/types";
 
 export const adminExamsKeys = {
@@ -29,6 +31,8 @@ export const adminExamsKeys = {
   leaderboardLists: () => [...adminExamsKeys.all, "leaderboard"] as const,
   leaderboard: (examId: string, filter?: AdminExamsFilters) =>
     [...adminExamsKeys.leaderboardLists(), examId, filter ?? {}] as const,
+  certificateDesign: (examId: string) =>
+    [...adminExamsKeys.detail(examId), "certificate-design"] as const,
 };
 
 export interface GradeEssayInput {
@@ -94,6 +98,35 @@ export function useUpdateExam(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminExamsKeys.lists() });
       qc.invalidateQueries({ queryKey: adminExamsKeys.detail(id) });
+    },
+  });
+}
+
+export function useCertificateDesign(examId: string | undefined) {
+  return useQuery({
+    queryKey: adminExamsKeys.certificateDesign(examId ?? ""),
+    queryFn: () =>
+      authFetch<CertificateDesign>(
+        `/admin/exams/${encodeURIComponent(examId!)}/certificate-design`,
+      ),
+    enabled: Boolean(examId),
+  });
+}
+
+export function useUpdateCertificateDesign(examId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CertificateDesignInput) =>
+      authFetch<CertificateDesign>(
+        `/admin/exams/${encodeURIComponent(examId)}/certificate-design`,
+        {
+          method: "PUT",
+          body: JSON.stringify(input),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminExamsKeys.certificateDesign(examId) });
+      qc.invalidateQueries({ queryKey: adminExamsKeys.detail(examId) });
     },
   });
 }
