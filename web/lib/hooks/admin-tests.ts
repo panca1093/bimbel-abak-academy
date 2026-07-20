@@ -41,10 +41,11 @@ function buildListPath(filters?: AdminTestsFilters): string {
   return query ? `/admin/tests?${query}` : "/admin/tests";
 }
 
-export function useAdminTests(filters?: AdminTestsFilters) {
+export function useAdminTests(filters?: AdminTestsFilters, enabled = true) {
   return useQuery({
     queryKey: [...adminTestsKeys.list(), filters ?? {}] as const,
     queryFn: () => authFetch<{ data: Test[]; next_cursor?: string }>(buildListPath(filters)),
+    enabled,
   });
 }
 

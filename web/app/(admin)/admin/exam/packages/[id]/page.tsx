@@ -89,16 +89,20 @@ export default function ExamPackageDetailPage() {
 
   const { data, isLoading, isError, error, refetch } = useExam(id);
   const replaceTests = useReplaceExamTests(id);
-  const { data: availableResp, isLoading: availableLoading } = useAdminTests();
+  const { data: availableResp, isLoading: availableLoading } = useAdminTests(
+    undefined,
+    !isSchoolScoped,
+  );
   const availableTests = availableResp?.data ?? [];
 
   const [lbEntries, setLbEntries] = useState<ExamLeaderboardEntry[]>([]);
   const [lbCursor, setLbCursor] = useState<string | undefined>(undefined);
 
-  const { data: analytics, isLoading: analyticsLoading } = useExamAnalytics(id);
+  const { data: analytics, isLoading: analyticsLoading } = useExamAnalytics(id, !isSchoolScoped);
   const lb = useExamLeaderboard(
     id,
     lbCursor ? { cursor: lbCursor, limit: 20 } : { limit: 20 },
+    !isSchoolScoped,
   );
 
   interface PendingSection {
@@ -122,13 +126,13 @@ export default function ExamPackageDetailPage() {
     isLoading: gradingLoading,
     isError: gradingIsError,
     error: gradingError,
-  } = useGradingSessions(id);
+  } = useGradingSessions(id, !isSchoolScoped);
   const {
     data: essaysResp,
     isLoading: essaysLoading,
     isError: essaysIsError,
     error: essaysError,
-  } = useSessionEssays(selectedSessionId ?? undefined);
+  } = useSessionEssays(selectedSessionId ?? undefined, !isSchoolScoped);
   const gradeEssay = useGradeEssay(selectedSessionId ?? "");
 
   useEffect(() => {

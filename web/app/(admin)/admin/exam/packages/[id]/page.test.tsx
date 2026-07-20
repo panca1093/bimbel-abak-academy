@@ -46,6 +46,15 @@ beforeEach(() => {
 const mockReplaceTests = vi.fn();
 const mockGradeEssay = vi.fn();
 
+// PR review P2: these 5 hooks back the tabs school-scoped admins never see
+// (tests/grading/leaderboard/analytics). Spy on them so we can assert they're
+// called with enabled=false — i.e. never actually fetch — for admin_school.
+const useAdminTestsSpy = vi.fn();
+const useGradingSessionsSpy = vi.fn();
+const useSessionEssaysSpy = vi.fn();
+const useExamAnalyticsSpy = vi.fn();
+const useExamLeaderboardSpy = vi.fn();
+
 let examState: {
   data: ExamDetail | undefined;
   isLoading: boolean;
@@ -112,18 +121,33 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useReplaceExamTests: () => ({ mutateAsync: mockReplaceTests, isPending: false }),
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useGradingSessions: () => gradingSessionsState,
-  useSessionEssays: () => sessionEssaysState,
+  useGradingSessions: (...args: unknown[]) => {
+    useGradingSessionsSpy(...args);
+    return gradingSessionsState;
+  },
+  useSessionEssays: (...args: unknown[]) => {
+    useSessionEssaysSpy(...args);
+    return sessionEssaysState;
+  },
   useGradeEssay: () => gradeEssayState,
-  useExamAnalytics: () => analyticsState,
-  useExamLeaderboard: () => leaderboardState,
+  useExamAnalytics: (...args: unknown[]) => {
+    useExamAnalyticsSpy(...args);
+    return analyticsState;
+  },
+  useExamLeaderboard: (...args: unknown[]) => {
+    useExamLeaderboardSpy(...args);
+    return leaderboardState;
+  },
 }));
 
 vi.mock("@/lib/hooks/admin-tests", () => ({
-  useAdminTests: () => ({
-    data: { data: [] as Test[] },
-    isLoading: false,
-  }),
+  useAdminTests: (...args: unknown[]) => {
+    useAdminTestsSpy(...args);
+    return {
+      data: { data: [] as Test[] },
+      isLoading: false,
+    };
+  },
 }));
 
 const sampleExam: ExamDetail = {
@@ -691,6 +715,51 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.getByRole("button", { name: /^tes$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Leaderboard" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+  });
+
+  it("admin_school never fires the tests/analytics/leaderboard/grading queries (PR review P2)", async () => {
+    mockRole = "admin_school";
+    useAdminTestsSpy.mockClear();
+    useExamAnalyticsSpy.mockClear();
+    useExamLeaderboardSpy.mockClear();
+    useGradingSessionsSpy.mockClear();
+    useSessionEssaysSpy.mockClear();
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    expect(useAdminTestsSpy).toHaveBeenLastCalledWith(undefined, false);
+    expect(useExamAnalyticsSpy).toHaveBeenLastCalledWith("exam-1", false);
+    expect(useExamLeaderboardSpy).toHaveBeenLastCalledWith(
+      "exam-1",
+      { limit: 20 },
+      false,
+    );
+    expect(useGradingSessionsSpy).toHaveBeenLastCalledWith("exam-1", false);
+    expect(useSessionEssaysSpy).toHaveBeenLastCalledWith(undefined, false);
+  });
+
+  it("super_admin does fire the tests/analytics/leaderboard/grading queries", async () => {
+    mockRole = "super_admin";
+    useAdminTestsSpy.mockClear();
+    useExamAnalyticsSpy.mockClear();
+    useExamLeaderboardSpy.mockClear();
+    useGradingSessionsSpy.mockClear();
+    useSessionEssaysSpy.mockClear();
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    expect(useAdminTestsSpy).toHaveBeenLastCalledWith(undefined, true);
+    expect(useExamAnalyticsSpy).toHaveBeenLastCalledWith("exam-1", true);
+    expect(useGradingSessionsSpy).toHaveBeenLastCalledWith("exam-1", true);
+    expect(useSessionEssaysSpy).toHaveBeenLastCalledWith(undefined, true);
   });
 
   it("renders ExamRegistrationsTab for admin_school on the Registrations tab", async () => {

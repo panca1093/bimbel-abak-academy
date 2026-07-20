@@ -113,25 +113,25 @@ export function useReplaceExamTests(id: string) {
   });
 }
 
-export function useGradingSessions(examId: string | undefined) {
+export function useGradingSessions(examId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: adminExamsKeys.grading(examId ?? ""),
     queryFn: () =>
       authFetch<{ data: GradingSessionItem[] }>(
         `/admin/exams/${encodeURIComponent(examId!)}/grading`,
       ),
-    enabled: Boolean(examId),
+    enabled: Boolean(examId) && enabled,
   });
 }
 
-export function useSessionEssays(sessionId: string | undefined) {
+export function useSessionEssays(sessionId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: adminExamsKeys.sessionEssays(sessionId ?? ""),
     queryFn: () =>
       authFetch<{ data: GradingEssayItem[] }>(
         `/admin/sessions/${encodeURIComponent(sessionId!)}/essays`,
       ),
-    enabled: Boolean(sessionId),
+    enabled: Boolean(sessionId) && enabled,
   });
 }
 
@@ -157,6 +157,7 @@ export function useGradeEssay(sessionId: string) {
 export function useExamLeaderboard(
   examId: string | undefined,
   filter?: AdminExamsFilters,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: adminExamsKeys.leaderboard(examId ?? "", filter),
@@ -168,18 +169,18 @@ export function useExamLeaderboard(
       if (filter.limit !== undefined) params.set("limit", String(filter.limit));
       return authFetch<{ data: ExamLeaderboardEntry[]; next_cursor?: string }>(`${base}?${params.toString()}`);
     },
-    enabled: Boolean(examId),
+    enabled: Boolean(examId) && enabled,
   });
 }
 
-export function useExamAnalytics(examId: string | undefined) {
+export function useExamAnalytics(examId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: [...adminExamsKeys.all, "analytics", examId ?? ""] as const,
     queryFn: () =>
       authFetch<ExamAnalytics>(
         `/admin/exams/${encodeURIComponent(examId!)}/analytics`,
       ),
-    enabled: Boolean(examId),
+    enabled: Boolean(examId) && enabled,
   });
 }
 

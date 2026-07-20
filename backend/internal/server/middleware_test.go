@@ -252,3 +252,71 @@ func TestRBACMiddleware_UploadsWrite_AdminExamAllowed(t *testing.T) {
 		t.Errorf("want 200, got %d", rec.Code)
 	}
 }
+
+// PR review P1: admin_school needs GET /admin/exams and GET /admin/exams/:id
+// (the sibling read-only route group, gated on "products(exam):read") to use
+// the Registrations tab on the exam detail page.
+func TestRBACMiddleware_ProductsExamRead_AdminSchoolAllowed(t *testing.T) {
+	signer, svc, mr := newTestDeps(t)
+
+	tokenStr, jti, err := signer.SignAccess("school1", service.RoleAdminSchool, nil, nil)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	mr.Set("session:access:"+jti, "school1")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTMiddleware(svc, signer)
+	rbac := RBACMiddleware("products(exam):read")
+
+	chain := mw(rbac(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	}))
+	err = chain(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rec.Code)
+	}
+}
+
+// PR review P1 (negative case): admin_school must NOT gain exam write access
+// — only the scoped read capability was granted, matching the review's
+// explicit instruction not to grant products(exam):write.
+func TestRBACMiddleware_ProductsExamWrite_AdminSchoolForbidden(t *testing.T) {
+	signer, svc, mr := newTestDeps(t)
+
+	tokenStr, jti, err := signer.SignAccess("school1", service.RoleAdminSchool, nil, nil)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	mr.Set("session:access:"+jti, "school1")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	mw := JWTMiddleware(svc, signer)
+	rbac := RBACMiddleware("products(exam):write")
+
+	chain := mw(rbac(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	}))
+	err = chain(c)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d", rec.Code)
+	}
+}

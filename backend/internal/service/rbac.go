@@ -14,7 +14,7 @@ var roleCapabilities = map[string][]string{
 	RoleStudent:     {},
 	RoleAdminExam:   {"questions:*", "tests:*", "products(exam):*", "sessions:*", "uploads:write"},
 	RoleAdminStore:  {"products(book|course):write", "sections:*", "orders:*", "promos:*", "revenue:read", "notifications:*", "uploads:write"},
-	RoleAdminSchool: {"students:*", "results:read", "bulk-exam-orders:write"},
+	RoleAdminSchool: {"students:*", "results:read", "bulk-exam-orders:write", "products(exam):read"},
 	RoleSuperAdmin:  {"*", "schools:write"},
 }
 

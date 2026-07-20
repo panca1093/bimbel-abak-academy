@@ -253,15 +253,21 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// how course-type products work.
 	adminExams := admin.Group("/exams")
 	adminExams.Use(handler.RBACMiddleware("products(exam):write"))
-	adminExams.GET("", h.AdminListExams)
 	adminExams.POST("", h.AdminCreateExam)
-	adminExams.GET("/:id", h.AdminGetExam)
 	adminExams.PATCH("/:id", h.AdminUpdateExam)
 	adminExams.PUT("/:id/tests", h.AdminReplaceExamTests)
 	adminExams.GET("/:id/grading", h.AdminListGradingSessions)
 	adminExams.GET("/:id/leaderboard", h.AdminGetExamLeaderboard)
 	adminExams.GET("/:id/analytics", h.AdminGetExamAnalytics)
 	adminExams.GET("/:id/certificate-preview", h.AdminGetExamCertificatePreview)
+
+	// Admin exam routes — read-only group (sibling, same path prefix). admin_school
+	// needs list/detail to use the Registrations tab on the exam detail page, but
+	// not the content-management sub-resources above (those stay write-gated).
+	adminExamsRead := admin.Group("/exams")
+	adminExamsRead.Use(handler.RBACMiddleware("products(exam):read"))
+	adminExamsRead.GET("", h.AdminListExams)
+	adminExamsRead.GET("/:id", h.AdminGetExam)
 
 	// Admin upload routes (image + audio presigning)
 	adminUploads := admin.Group("/uploads")
