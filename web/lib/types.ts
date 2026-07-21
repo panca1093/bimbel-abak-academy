@@ -904,6 +904,8 @@ export interface RegistrationDetail {
   attempts_used: number;
   status: string;
   created_at: string;
+  participant_number: number | null;
+  participant_no: string;
   exam: {
     id: string;
     title: string;

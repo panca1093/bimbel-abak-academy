@@ -962,6 +962,18 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrRegistrationNotFound
 	}
+	if err == nil && detail != nil && detail.ParticipantNumber != nil {
+		// Prefix by the exam's scheduled date (WIB), falling back to the
+		// registration date when the exam is not yet scheduled.
+		prefix := detail.CreatedAt
+		if detail.Exam.ScheduledAt != nil {
+			prefix = *detail.Exam.ScheduledAt
+		}
+		if wib, e := time.LoadLocation("Asia/Jakarta"); e == nil {
+			prefix = prefix.In(wib)
+		}
+		detail.ParticipantNo = fmt.Sprintf("%s-%06d", prefix.Format("060102"), *detail.ParticipantNumber)
+	}
 	return detail, err
 }
 

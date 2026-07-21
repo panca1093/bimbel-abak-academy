@@ -1114,9 +1114,24 @@ func (r *Repository) ReplaceExamTestsTx(ctx context.Context, tx pgx.Tx, examID u
 // re-delivery (same OrderPaid event processed twice) collapses to a no-op when
 // (student_id, exam_id) already exists. RowsAffected == 0 is success, not error.
 func (r *Repository) CreateExamRegistration(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
+	// Serialize participant-number assignment per exam so concurrent
+	// registrations (outbox fan-out, admin grant) can't compute the same
+	// MAX(participant_number)+1 and collide on uq_examregistration_participant.
+	// The advisory lock is held to end-of-tx and is re-entrant within one tx
+	// (fan-out loops register several students under the same lock).
+	if _, err := tx.Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtext('exam_participant_number'), hashtext($1::text))`,
+		reg.ExamID,
+	); err != nil {
+		return err
+	}
+	// ON CONFLICT DO NOTHING keeps re-delivery idempotent; when it skips, the
+	// MAX+1 subquery result is simply discarded so no number is consumed.
 	_, err := tx.Exec(ctx,
-		`INSERT INTO exam_registration (student_id, exam_id, token, status)
-		VALUES ($1, $2, $3, $4)
+		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number)
+		VALUES ($1, $2, $3, $4,
+			(SELECT COALESCE(MAX(participant_number), 0) + 1
+			 FROM exam_registration WHERE exam_id = $2))
 		ON CONFLICT (student_id, exam_id) DO NOTHING`,
 		reg.StudentID, reg.ExamID, reg.Token, reg.Status,
 	)
@@ -1184,7 +1199,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	var checkedInAt *time.Time
 	err := r.pool.QueryRow(ctx,
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_pdf_url,
-			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
+			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
 			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
 			e.timer_mode, e.duration_minutes, e.result_config
 		FROM exam_registration reg
@@ -1193,7 +1208,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		regID, studentID,
 	).Scan(
 		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardPDFURL,
-		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt,
+		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig,

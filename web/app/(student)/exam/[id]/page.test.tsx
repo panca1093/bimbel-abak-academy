@@ -53,6 +53,8 @@ const sampleWithCheckin: RegistrationDetail = {
   attempts_used: 0,
   status: "registered",
   created_at: "2026-06-01T00:00:00Z",
+  participant_number: 1,
+  participant_no: "260715-000001",
   exam: {
     id: "e-1",
     title: "Try Out UTBK Nasional",

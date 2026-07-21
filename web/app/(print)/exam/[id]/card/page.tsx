@@ -67,11 +67,7 @@ export default function ExamCardPrintPage() {
     schools?.find((s) => s.id === student?.school_id)?.name ||
     DASH;
 
-  // Interim participant number — a per-exam number should be generated at
-  // registration time; until then fall back to the student's NIS or reg id.
-  const participantNumber =
-    student?.nis?.trim() ||
-    reg.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12).toUpperCase();
+  const participantNumber = reg.participant_no || DASH;
 
   const start = fmtTime(exam.scheduled_at);
   const end = fmtTime(exam.scheduled_end_at);

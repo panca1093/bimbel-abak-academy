@@ -139,6 +139,9 @@ type ExamRegistration struct {
 	AttemptsUsed int        `json:"attempts_used"`
 	Status       string     `json:"status"`
 	CreatedAt    time.Time  `json:"created_at"`
+	// ParticipantNumber is a per-exam sequence assigned at registration (nil for
+	// rows predating the column until backfilled). Displayed as ParticipantNo.
+	ParticipantNumber *int `json:"participant_number"`
 }
 
 // ExamSession is one in-flight attempt by a student; multiple sessions per registration
@@ -268,7 +271,11 @@ type RegistrationListItem struct {
 // an ExamRegistration joined with the nested exam config needed by the student detail page.
 type RegistrationDetail struct {
 	ExamRegistration `json:",inline"`
-	Exam             struct {
+	// ParticipantNo is the display form of ParticipantNumber, "YYMMDD-NNNNNN"
+	// where YYMMDD is the exam's scheduled start date (falls back to the
+	// registration date if the exam is not yet scheduled). Empty if unassigned.
+	ParticipantNo string `json:"participant_no"`
+	Exam          struct {
 		ID                   uuid.UUID  `json:"id"`
 		Title                string     `json:"title"`
 		ScheduledAt          *time.Time `json:"scheduled_at"`
