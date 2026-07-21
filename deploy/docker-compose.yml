@@ -56,6 +56,18 @@ services:
       exit 0;
       "
 
+  # Chromium-as-a-service: renders certificate/card HTML → PDF. Keeps Chromium
+  # out of the api image; reached at gotenberg_url (http://gotenberg:3000).
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build:
       context: ../backend
@@ -74,6 +86,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      gotenberg:
+        condition: service_healthy
 
   worker:
     build:
