@@ -227,10 +227,10 @@ func (r *Repository) ReplaceProductCourses(ctx context.Context, tx pgx.Tx, produ
 // CreateProductWithCourses inserts a product and its product_course links in one transaction.
 func (r *Repository) CreateProductWithCourses(ctx context.Context, tx pgx.Tx, p *model.Product, courseIDs []uuid.UUID) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, available_from, available_until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL,
+		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, p.AvailableFrom, p.AvailableUntil,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return err
@@ -273,10 +273,10 @@ func (r *Repository) ReplaceProductExams(ctx context.Context, tx pgx.Tx, product
 // mirroring CreateProductWithCourses.
 func (r *Repository) CreateProductWithExams(ctx context.Context, tx pgx.Tx, p *model.Product, examIDs []uuid.UUID) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, available_from, available_until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL,
+		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, p.AvailableFrom, p.AvailableUntil,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return err
