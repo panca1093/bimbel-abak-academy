@@ -1,0 +1,128 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"akademi-bimbel/internal/repository"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+)
+
+// newCheckoutTestService builds a real-DB Service with redis + a noop payment
+// client, for exercising the Checkout gates end to end.
+func newCheckoutTestService(t *testing.T) (*Service, *repository.Repository) {
+	t.Helper()
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	return svc, repo
+}
+
+func insertCheckoutStudent(t *testing.T, repo *repository.Repository, name, prefix string) string {
+	t.Helper()
+	var id string
+	if err := repo.Pool().QueryRow(context.Background(),
+		`INSERT INTO users (name, role, status, username, password_hash)
+		 VALUES ($1, 'student', 'active', $2, '') RETURNING id`,
+		name, prefix+uniqueSuffix(),
+	).Scan(&id); err != nil {
+		t.Fatalf("insert student: %v", err)
+	}
+	return id
+}
+
+// TestCheckout_FreeOrder_SkipsGateway verifies a zero-total order settles
+// directly (Free=true, no gateway ref, status paid) without the payment client.
+func TestCheckout_FreeOrder_SkipsGateway(t *testing.T) {
+	svc, repo := newCheckoutTestService(t)
+	ctx := context.Background()
+
+	// Free digital product (course → no shipping, not gated on biodata).
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status)
+		 VALUES ('course', $1, 0, 0, 'published') RETURNING id`,
+		"Free Course "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Free Student", "freestu_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "free-key-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+	if !result.Free {
+		t.Error("want result.Free = true for a zero-total order")
+	}
+	if result.GatewayRef != "" {
+		t.Errorf("want empty GatewayRef (gateway skipped), got %q", result.GatewayRef)
+	}
+
+	got, err := svc.GetStudentOrder(ctx, studentID, order.ID.String())
+	if err != nil {
+		t.Fatalf("GetStudentOrder: %v", err)
+	}
+	if got.Status != "paid" {
+		t.Errorf("want order status paid, got %q", got.Status)
+	}
+}
+
+// TestCheckout_ExamRequiresBiodata verifies a student self-purchasing an exam is
+// blocked until school/class/dob are complete.
+func TestCheckout_ExamRequiresBiodata(t *testing.T) {
+	svc, repo := newCheckoutTestService(t)
+	ctx := context.Background()
+
+	examID := createTestExamForBulk(t, repo)
+	productID := createTestExamProductForBulk(t, repo, examID, 50000)
+
+	studentID := insertCheckoutStudent(t, repo, "Biodata Student", "biostu_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	// Incomplete biodata → blocked.
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-key-1-"+uniqueSuffix()); !errors.Is(err, ErrBiodataIncomplete) {
+		t.Fatalf("want ErrBiodataIncomplete, got %v", err)
+	}
+
+	// Complete biodata (unlisted school avoids needing a school row) → allowed.
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE users SET unlisted_school_name = 'SMA Test', grade = 12, dob = '2008-01-01' WHERE id = $1`,
+		studentID,
+	); err != nil {
+		t.Fatalf("set biodata: %v", err)
+	}
+
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "bio-key-2-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout after biodata complete: %v", err)
+	}
+	if result.GatewayRef == "" {
+		t.Error("want a gateway ref once biodata is complete (payment proceeds)")
+	}
+}
