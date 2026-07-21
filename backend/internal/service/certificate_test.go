@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"image"
+	"image/color"
 	"image/png"
 	"reflect"
 	"testing"
@@ -864,5 +865,54 @@ func TestDefaultLayout_CertificateNumberColorContrastsWithBackground(t *testing.
 				t.Errorf("%s certificate_number color = %q, want %q (contrast fix)", tc.tmpl, got, tc.wantColor)
 			}
 		})
+	}
+}
+
+// solidDarkPNG returns a small opaque dark-blue PNG usable as a stand-in
+// signature/stamp image for render assertions.
+func solidDarkPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{R: 20, G: 30, B: 80, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// TestRenderCertificate_SignatureImageStampsAtFieldBoxOnlyWhenPresent covers the
+// signature-upload feature: a visible "signature" field draws the uploaded image
+// in its box, and only when an image is supplied. Uses a baseline diff so the
+// decorative background can't fool the ink check.
+func TestRenderCertificate_SignatureImageStampsAtFieldBoxOnlyWhenPresent(t *testing.T) {
+	page := Page{WidthMm: certificatePageWidthMm, HeightMm: certificatePageHeightMm}
+	bg := builtinCertificateBackground("elegant")
+	sigField := LayoutField{ID: "signature", XMm: 190, YMm: 150, WMm: 60, HMm: 22, Align: "center", Visible: true}
+	layout := Layout{Page: page, Background: Background{Kind: "builtin", Ref: "elegant"}, Fields: []LayoutField{sigField}}
+
+	// Baseline: same visible signature field but no image supplied.
+	basePDF, err := renderCertificateWithImages(layout, bg, nil, nil)
+	if err != nil {
+		t.Fatalf("render (no image): %v", err)
+	}
+	baseImg := renderToPNG(t, basePDF)
+
+	sigPDF, err := renderCertificateWithImages(layout, bg, map[FieldID][]byte{"signature": solidDarkPNG(t, 300, 110)}, nil)
+	if err != nil {
+		t.Fatalf("render (with image): %v", err)
+	}
+	sigImg := renderToPNG(t, sigPDF)
+
+	// Inside the signature box: the image adds substantial dark ink.
+	xMin, yMin, xMax, yMax := 195.0, 153.0, 245.0, 170.0
+	before := regionMinBrightness(baseImg, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
+	after := regionMinBrightness(sigImg, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
+	if before-after < 80.0 {
+		t.Errorf("signature image did not stamp in its box: brightness diff=%.0f, want >=80", before-after)
 	}
 }

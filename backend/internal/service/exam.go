@@ -766,6 +766,7 @@ func rawMessagePtrEqual(a, b *json.RawMessage) bool {
 type CertificateDesignResponse struct {
 	Template      string  `json:"template"`
 	BackgroundURL *string `json:"background_url"`
+	SignatureURL  *string `json:"signature_url"`
 	Layout        Layout  `json:"layout"`
 }
 
@@ -794,9 +795,19 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		bgURL = &signed
 	}
 
+	var sigURL *string
+	if layout.SignatureKey != nil && *layout.SignatureKey != "" {
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *layout.SignatureKey, time.Hour)
+		if err != nil {
+			return nil, fmt.Errorf("presign certificate signature: %w", err)
+		}
+		sigURL = &signed
+	}
+
 	return &CertificateDesignResponse{
 		Template:      exam.CertificateTemplate,
 		BackgroundURL: bgURL,
+		SignatureURL:  sigURL,
 		Layout:        layout,
 	}, nil
 }
@@ -846,7 +857,11 @@ func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uu
 	}
 	vals := certificateFieldValues(exam.Title, "Nama Peserta Contoh", time.Now().In(loc).Format("2 January 2006"), "ABK/2026/000000")
 
-	return renderCertificate(*layoutOverride, bg, vals)
+	images, err := s.resolveCertificateSignatureImages(ctx, *layoutOverride)
+	if err != nil {
+		return nil, err
+	}
+	return renderCertificateWithImages(*layoutOverride, bg, images, vals)
 }
 
 func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {

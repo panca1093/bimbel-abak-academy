@@ -66,13 +66,20 @@ func builtinCertificateBackground(ref string) []byte {
 	}
 }
 
-// renderCertificate is the single rendering entry point for real generation,
-// preview, and the editor (FR-4): it draws bg full-bleed on an A4 landscape
-// page, then stamps each visible field from layout with its value from vals.
-// It performs no I/O — bg is supplied by the caller, embedded asset for
-// built-ins or a downloaded object for custom (FR-8). Coordinates are passed
-// straight to SetXY with no Y-axis arithmetic (FR-1).
+// renderCertificate renders with no foreground images (text + background only).
+// Callers that stamp an uploaded signature use renderCertificateWithImages.
 func renderCertificate(layout Layout, bg []byte, vals map[FieldID]string) ([]byte, error) {
+	return renderCertificateWithImages(layout, bg, nil, vals)
+}
+
+// renderCertificateWithImages is the single rendering entry point for real
+// generation, preview, and the editor (FR-4): it draws bg full-bleed on an A4
+// landscape page, stamps each visible text field from layout with its value from
+// vals, and stamps foreground image fields (currently "signature") from images.
+// It performs no I/O — bg and images are supplied by the caller (embedded asset
+// for built-in backgrounds, downloaded objects for custom, FR-8). Coordinates
+// are passed straight to SetXY with no Y-axis arithmetic (FR-1).
+func renderCertificateWithImages(layout Layout, bg []byte, images map[FieldID][]byte, vals map[FieldID]string) ([]byte, error) {
 	// gofpdf.NewCustom treats Size as the *portrait* reference and swaps it
 	// for OrientationStr "L" (see gofpdf fpdfNew). layout.Page is already
 	// expressed in landscape terms, so orientation "P" applies it unswapped.
@@ -96,6 +103,12 @@ func renderCertificate(layout Layout, bg []byte, vals map[FieldID]string) ([]byt
 
 	for _, field := range layout.Fields {
 		if !field.Visible || field.ID == "logo" {
+			continue
+		}
+		if field.ID == "signature" {
+			if img := images["signature"]; len(img) > 0 {
+				drawCertificateImageField(pdf, "certificate-signature", img, field)
+			}
 			continue
 		}
 		text := vals[field.ID]
@@ -140,6 +153,29 @@ func renderCertificate(layout Layout, bg []byte, vals map[FieldID]string) ([]byt
 		return nil, fmt.Errorf("output certificate pdf: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// drawCertificateImageField stamps an uploaded image (e.g. a signature) inside a
+// field's box, scaled to fit (contain) and centred, so it is never cropped or
+// stretched. Bad/undecodable image bytes are skipped, never failing the render.
+func drawCertificateImageField(pdf *gofpdf.Fpdf, name string, data []byte, field LayoutField) {
+	ok, srcW, srcH := registerOptionalImage(pdf, name, data)
+	if !ok || field.WMm <= 0 || field.HMm <= 0 {
+		return
+	}
+	boxAspect := field.WMm / field.HMm
+	srcAspect := float64(srcW) / float64(srcH)
+	drawW, drawH := field.WMm, field.HMm
+	if srcAspect > boxAspect {
+		drawW = field.WMm
+		drawH = field.WMm / srcAspect
+	} else {
+		drawH = field.HMm
+		drawW = field.HMm * srcAspect
+	}
+	x := field.XMm + (field.WMm-drawW)/2
+	y := field.YMm + (field.HMm-drawH)/2
+	pdf.ImageOptions(name, x, y, drawW, drawH, false, gofpdf.ImageOptions{}, 0, "")
 }
 
 // alignToGofpdf maps the layout schema's align values to gofpdf's CellFormat
@@ -229,6 +265,20 @@ func resolveCertificateLayout(exam *model.Exam) (Layout, error) {
 // downloadCertificateBackground fetches an uploaded custom background from the
 // private bucket by its object key — never a raw or presigned URL is stored
 // (FR-18), so every render downloads fresh.
+// resolveCertificateSignatureImages downloads the layout's uploaded signature
+// image (if any) into the foreground-image map renderCertificateWithImages
+// consumes. Returns nil when no signature key is set.
+func (s *Service) resolveCertificateSignatureImages(ctx context.Context, layout Layout) (map[FieldID][]byte, error) {
+	if layout.SignatureKey == nil || *layout.SignatureKey == "" {
+		return nil, nil
+	}
+	img, err := s.downloadCertificateBackground(ctx, *layout.SignatureKey)
+	if err != nil {
+		return nil, fmt.Errorf("download certificate signature: %w", err)
+	}
+	return map[FieldID][]byte{"signature": img}, nil
+}
+
 func (s *Service) downloadCertificateBackground(ctx context.Context, key string) ([]byte, error) {
 	if s.storage == nil {
 		return nil, errors.New("storage not configured")
@@ -404,5 +454,9 @@ func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, t
 	}
 	vals := certificateFieldValues(exam.Title, "Nama Peserta Contoh", time.Now().In(loc).Format("2 January 2006"), "ABK/2026/000000")
 
-	return renderCertificate(layout, bg, vals)
+	images, err := s.resolveCertificateSignatureImages(ctx, layout)
+	if err != nil {
+		return nil, err
+	}
+	return renderCertificateWithImages(layout, bg, images, vals)
 }

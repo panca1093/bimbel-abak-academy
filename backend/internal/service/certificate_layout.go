@@ -31,7 +31,12 @@ var validLayoutFieldIDs = map[string]bool{
 	"date":               true,
 	"certificate_number": true,
 	"logo":               true,
+	"signature":          true,
 }
+
+// imageFieldIDs are the fields drawn from an uploaded image rather than text;
+// they carry an explicit HMm box height instead of a font-derived line height.
+var imageFieldIDs = map[string]bool{"logo": true, "signature": true}
 
 // Page is the layout's page size in millimetres.
 type Page struct {
@@ -73,6 +78,10 @@ type Layout struct {
 	Page       Page          `json:"page"`
 	Background Background    `json:"background"`
 	Fields     []LayoutField `json:"fields"`
+	// SignatureKey is the private-bucket object key of an uploaded signature
+	// image; nil until an admin uploads one. The image is stamped at the
+	// "signature" field's box when that field is visible.
+	SignatureKey *string `json:"signature_key,omitempty"`
 }
 
 // nominalLineHeightMm derives an approximate single-line text box height in
@@ -104,7 +113,7 @@ func ValidateLayout(l Layout) error {
 		seen[f.ID] = true
 
 		boxHeightMm := f.HMm
-		if f.ID != "logo" {
+		if !imageFieldIDs[f.ID] {
 			boxHeightMm = nominalLineHeightMm(f.SizePt)
 		}
 		if f.XMm < 0 || f.YMm < 0 || f.XMm+f.WMm > l.Page.WidthMm || f.YMm+boxHeightMm > l.Page.HeightMm {
@@ -135,6 +144,7 @@ func defaultLayout(template string) Layout {
 				{ID: "exam_title", XMm: 55, YMm: 137, WMm: 228, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
 				{ID: "date", XMm: 55, YMm: 160, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
 				{ID: "certificate_number", XMm: 55, YMm: 196, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#157A6E", Visible: true},
+				{ID: "signature", XMm: 205, YMm: 150, WMm: 62, HMm: 22, Align: "center", Visible: false},
 			},
 		}
 	case "elegant":
@@ -149,6 +159,7 @@ func defaultLayout(template string) Layout {
 				{ID: "exam_title", XMm: 48.5, YMm: 139, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
 				{ID: "date", XMm: 48.5, YMm: 162, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12.5, Color: "#6B5B34", Visible: true},
 				{ID: "certificate_number", XMm: 48.5, YMm: 182, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#8A6A16", Visible: true},
+				{ID: "signature", XMm: 205, YMm: 150, WMm: 62, HMm: 22, Align: "center", Visible: false},
 			},
 		}
 	default: // "classic"
@@ -163,6 +174,7 @@ func defaultLayout(template string) Layout {
 				{ID: "exam_title", XMm: 48.5, YMm: 145, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
 				{ID: "date", XMm: 48.5, YMm: 166, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
 				{ID: "certificate_number", XMm: 48.5, YMm: 193, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#F0CB78", Visible: true},
+				{ID: "signature", XMm: 205, YMm: 150, WMm: 62, HMm: 22, Align: "center", Visible: false},
 			},
 		}
 	}
