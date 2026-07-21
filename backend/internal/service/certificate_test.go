@@ -774,12 +774,40 @@ func TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions(t *testing.T) {
 	}
 	img := renderToPNG(t, pdfBytes)
 
+	// Baseline: the same background with no text stamped. Every region check
+	// below is a stamped-vs-baseline brightness diff, not a raw "is there ink
+	// here" threshold — the classic background's decorative songket bands and
+	// gold keyline are dark enough to trip a raw check on their own, which
+	// would let a Y-inverted render pass (the field's own region keeps showing
+	// background ink even when its text has moved away). Diffing isolates ink
+	// the field's text itself introduced. See the companion
+	// TestRenderCertificate_FieldDraggedToLowerLeft... for the same technique.
+	page := Page{WidthMm: certificatePageWidthMm, HeightMm: certificatePageHeightMm}
+	bg := Background{Kind: "builtin", Ref: "classic"}
+	baselinePDF, err := renderCertificate(Layout{Page: page, Background: bg}, builtinCertificateBackground("classic"), nil)
+	if err != nil {
+		t.Fatalf("renderCertificate (baseline): %v", err)
+	}
+	baselineImg := renderToPNG(t, baselinePDF)
+
+	// A region whose stamped-vs-baseline brightness differs by less than this
+	// has no new text ink; glyph strokes darken a region by hundreds of units.
+	const newInkDiffThreshold = 80.0
+	newInk := func(xMin, yMin, xMax, yMax float64) float64 {
+		before := regionMinBrightness(baselineImg, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
+		after := regionMinBrightness(img, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
+		return before - after
+	}
+
 	layout := defaultLayout("classic")
 	fieldsByID := make(map[string]LayoutField, len(layout.Fields))
 	for _, f := range layout.Fields {
 		fieldsByID[f.ID] = f
 	}
 
+	// "date" is the discriminating field: under a Y-axis inversion it moves to
+	// the top of the page and no other field lands in its region, so the diff
+	// there drops to ~0 and this check fails — which is exactly R1 recurring.
 	for _, id := range []string{"title", "student_name", "date"} {
 		f, ok := fieldsByID[id]
 		if !ok {
@@ -792,9 +820,8 @@ func TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions(t *testing.T) {
 		xMin, xMax := f.XMm+40, f.XMm+f.WMm-40
 		yMin, yMax := f.YMm-2, f.YMm+lineHeightMm+2
 
-		darkest := regionMinBrightness(img, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
-		if darkest >= noInkBrightnessThreshold {
-			t.Errorf("field %q: no ink found in its expected region x:[%.1f,%.1f] y:[%.1f,%.1f]mm (darkest pixel sum=%.0f, want <%.0f) — field text may be missing or mispositioned", id, xMin, xMax, yMin, yMax, darkest, noInkBrightnessThreshold)
+		if diff := newInk(xMin, yMin, xMax, yMax); diff < newInkDiffThreshold {
+			t.Errorf("field %q: no new text ink in its expected region x:[%.1f,%.1f] y:[%.1f,%.1f]mm (brightness diff vs baseline=%.0f, want >=%.0f) — field text may be missing or mispositioned (Y-axis flip = R1 recurring)", id, xMin, xMax, yMin, yMax, diff, newInkDiffThreshold)
 		}
 	}
 }
@@ -816,7 +843,7 @@ func TestDefaultLayout_CertificateNumberColorContrastsWithBackground(t *testing.
 		wantColor string
 	}{
 		{"classic", "#F0CB78"}, // gold on the navy footer band
-		{"elegant", "#4A5568"}, // slate on the cream page fill
+		{"elegant", "#8A6A16"}, // dark gold on the cream page fill
 	}
 	for _, tc := range cases {
 		t.Run(tc.tmpl, func(t *testing.T) {

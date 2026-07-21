@@ -122,17 +122,19 @@ func defaultLayout(template string) Layout {
 
 	switch template {
 	case "modern":
+		// Asymmetric: a navy songket band occupies the left ~46mm, so text is
+		// centred in the remaining field (x 55..283, centre ~169), not the page.
 		return Layout{
 			Page:       page,
 			Background: Background{Kind: "builtin", Ref: "modern"},
 			Fields: []LayoutField{
-				{ID: "title", XMm: 48.5, YMm: 42, WMm: 200, Align: "center", Font: "playfair_display", Weight: "bold", SizePt: 30, Color: "#0F172A", Visible: true},
-				{ID: "subtitle", XMm: 48.5, YMm: 75, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 13, Color: "#334155", Visible: true},
-				{ID: "student_name", XMm: 48.5, YMm: 98, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "bold", SizePt: 32, Color: "#0F172A", Visible: true},
-				{ID: "completion_text", XMm: 48.5, YMm: 118, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#334155", Visible: true},
-				{ID: "exam_title", XMm: 48.5, YMm: 133, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#0F172A", Visible: true},
-				{ID: "date", XMm: 48.5, YMm: 158, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#334155", Visible: true},
-				{ID: "certificate_number", XMm: 48.5, YMm: 196, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#64748B", Visible: true},
+				{ID: "title", XMm: 55, YMm: 44, WMm: 228, Align: "center", Font: "playfair_display", Weight: "bold", SizePt: 29, Color: "#22315B", Visible: true},
+				{ID: "subtitle", XMm: 55, YMm: 76, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#157A6E", Visible: true},
+				{ID: "student_name", XMm: 55, YMm: 100, WMm: 228, Align: "center", Font: "cormorant_garamond", Weight: "bold", SizePt: 34, Color: "#22315B", Visible: true},
+				{ID: "completion_text", XMm: 55, YMm: 122, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
+				{ID: "exam_title", XMm: 55, YMm: 137, WMm: 228, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
+				{ID: "date", XMm: 55, YMm: 160, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
+				{ID: "certificate_number", XMm: 55, YMm: 196, WMm: 228, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#157A6E", Visible: true},
 			},
 		}
 	case "elegant":
@@ -140,13 +142,13 @@ func defaultLayout(template string) Layout {
 			Page:       page,
 			Background: Background{Kind: "builtin", Ref: "elegant"},
 			Fields: []LayoutField{
-				{ID: "title", XMm: 48.5, YMm: 44, WMm: 200, Align: "center", Font: "cinzel", Weight: "bold", SizePt: 28, Color: "#22315B", Visible: true},
-				{ID: "subtitle", XMm: 48.5, YMm: 78, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 14, Color: "#4A5568", Visible: true},
-				{ID: "student_name", XMm: 48.5, YMm: 102, WMm: 200, Align: "center", Font: "great_vibes", Weight: "regular", SizePt: 38, Color: "#22315B", Visible: true},
-				{ID: "completion_text", XMm: 48.5, YMm: 122, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
-				{ID: "exam_title", XMm: 48.5, YMm: 137, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
-				{ID: "date", XMm: 48.5, YMm: 160, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
-				{ID: "certificate_number", XMm: 48.5, YMm: 197, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#4A5568", Visible: true},
+				{ID: "title", XMm: 48.5, YMm: 56, WMm: 200, Align: "center", Font: "cinzel", Weight: "bold", SizePt: 26, Color: "#22315B", Visible: true},
+				{ID: "subtitle", XMm: 48.5, YMm: 82, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 14, Color: "#6B5B34", Visible: true},
+				{ID: "student_name", XMm: 48.5, YMm: 104, WMm: 200, Align: "center", Font: "great_vibes", Weight: "regular", SizePt: 40, Color: "#22315B", Visible: true},
+				{ID: "completion_text", XMm: 48.5, YMm: 124, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12, Color: "#6B5B34", Visible: true},
+				{ID: "exam_title", XMm: 48.5, YMm: 139, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
+				{ID: "date", XMm: 48.5, YMm: 162, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "regular", SizePt: 12.5, Color: "#6B5B34", Visible: true},
+				{ID: "certificate_number", XMm: 48.5, YMm: 182, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#8A6A16", Visible: true},
 			},
 		}
 	default: // "classic"
@@ -154,13 +156,13 @@ func defaultLayout(template string) Layout {
 			Page:       page,
 			Background: Background{Kind: "builtin", Ref: "classic"},
 			Fields: []LayoutField{
-				{ID: "title", XMm: 48.5, YMm: 42, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "bold", SizePt: 28, Color: "#1F2A44", Visible: true},
-				{ID: "subtitle", XMm: 48.5, YMm: 76, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 13, Color: "#4A5568", Visible: true},
-				{ID: "student_name", XMm: 48.5, YMm: 100, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "bold", SizePt: 26, Color: "#1F2A44", Visible: true},
-				{ID: "completion_text", XMm: 48.5, YMm: 120, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
-				{ID: "exam_title", XMm: 48.5, YMm: 135, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#1F2A44", Visible: true},
-				{ID: "date", XMm: 48.5, YMm: 158, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
-				{ID: "certificate_number", XMm: 48.5, YMm: 195, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#F0CB78", Visible: true},
+				{ID: "title", XMm: 48.5, YMm: 66, WMm: 200, Align: "center", Font: "cinzel", Weight: "bold", SizePt: 25, Color: "#22315B", Visible: true},
+				{ID: "subtitle", XMm: 48.5, YMm: 90, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
+				{ID: "student_name", XMm: 48.5, YMm: 108, WMm: 200, Align: "center", Font: "cormorant_garamond", Weight: "bold", SizePt: 40, Color: "#22315B", Visible: true},
+				{ID: "completion_text", XMm: 48.5, YMm: 130, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 12, Color: "#4A5568", Visible: true},
+				{ID: "exam_title", XMm: 48.5, YMm: 145, WMm: 200, Align: "center", Font: "source_serif_4", Weight: "regular", SizePt: 15, Color: "#22315B", Visible: true},
+				{ID: "date", XMm: 48.5, YMm: 166, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 11, Color: "#4A5568", Visible: true},
+				{ID: "certificate_number", XMm: 48.5, YMm: 193, WMm: 200, Align: "center", Font: "public_sans", Weight: "regular", SizePt: 9, Color: "#F0CB78", Visible: true},
 			},
 		}
 	}
