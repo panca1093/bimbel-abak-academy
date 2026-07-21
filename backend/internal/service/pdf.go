@@ -57,7 +57,6 @@ func generateExamCardPDF(reg *model.RegistrationDetail, studentName, tenantName 
 	drawCardDetailColumn(pdf, reg, studentName)
 	drawCardTokenBand(pdf, reg.Token)
 	drawCardFooterNote(pdf, reg)
-	drawCardBorder(pdf)
 
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
@@ -66,8 +65,8 @@ func generateExamCardPDF(reg *model.RegistrationDetail, studentName, tenantName 
 	return buf.Bytes(), nil
 }
 
-// drawCardBackdrop lays a soft teal-tint field behind the body and a gold accent
-// rail down the left edge, so the card reads as a bright admission pass rather
+// drawCardBackdrop lays a soft teal-tint field behind the body with a white
+// content panel over it, so the card reads as a bright admission pass rather
 // than a plain white sheet.
 func drawCardBackdrop(pdf *gofpdf.Fpdf) {
 	tr, tg, tb := hexRGB(cardTealTintHex)
@@ -75,9 +74,6 @@ func drawCardBackdrop(pdf *gofpdf.Fpdf) {
 	pdf.Rect(0, 18, cardPageW, cardPageH-18, "F")
 	pdf.SetFillColor(255, 255, 255)
 	pdf.RoundedRect(6, 22, cardPageW-12, 58, 3, "1234", "F")
-	gr, gg, gb := hexRGB(cardGoldHex)
-	pdf.SetFillColor(gr, gg, gb)
-	pdf.Rect(0, 18, 2.4, cardPageH-18, "F")
 }
 
 func drawCardHeaderBand(pdf *gofpdf.Fpdf, tenantName string, logoImg []byte) {
@@ -87,9 +83,6 @@ func drawCardHeaderBand(pdf *gofpdf.Fpdf, tenantName string, logoImg []byte) {
 
 	// navy → teal (blue → green) gradient, matching the app's brand gradient
 	pdf.LinearGradient(0, 0, cardPageW, 18, navyR, navyG, navyB, tealR, tealG, tealB, 0, 0, 1, 0.3)
-	// gold underline seam
-	pdf.SetFillColor(goldR, goldG, goldB)
-	pdf.Rect(0, 18, cardPageW, 1.1, "F")
 
 	if ok, _, _ := registerOptionalImage(pdf, "card-logo", logoImg); ok {
 		pdf.SetFillColor(255, 255, 255)
@@ -130,11 +123,6 @@ func drawCardPhotoFrame(pdf *gofpdf.Fpdf, photoImg []byte, studentName string) {
 	} else {
 		drawCardInitialsAvatar(pdf, cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, studentName)
 	}
-
-	goldR, goldG, goldB := hexRGB(cardGoldHex)
-	pdf.SetDrawColor(goldR, goldG, goldB)
-	pdf.SetLineWidth(ptToMM(0.6))
-	pdf.Rect(cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, "D")
 }
 
 // drawCardInitialsAvatar fills the photo frame with a brand-tint avatar showing
@@ -320,13 +308,6 @@ func drawCardFooterNote(pdf *gofpdf.Fpdf, reg *model.RegistrationDetail) {
 		note = "Akses bebas pada waktu yang ditentukan."
 	}
 	pdf.MultiCell(cardFooterW, 3.2, note, "", "L", false)
-}
-
-func drawCardBorder(pdf *gofpdf.Fpdf) {
-	tealR, tealG, tealB := hexRGB(cardTealHex)
-	pdf.SetDrawColor(tealR, tealG, tealB)
-	pdf.SetLineWidth(ptToMM(0.7))
-	pdf.RoundedRect(3, 3, cardPageW-6, cardPageH-6, 3.5, "1234", "D")
 }
 
 // registerOptionalImage validates and registers image bytes for placement,
