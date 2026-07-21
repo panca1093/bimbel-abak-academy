@@ -137,7 +137,7 @@ type ExamRegistration struct {
 	StudentID    uuid.UUID  `json:"student_id"`
 	ExamID       uuid.UUID  `json:"exam_id"`
 	Token        string     `json:"token"`
-	CardPDFURL   *string    `json:"card_pdf_url"`
+	CardKey      *string    `json:"card_key"`
 	CheckedInAt  *time.Time `json:"checked_in_at"`
 	AttemptsUsed int        `json:"attempts_used"`
 	Status       string     `json:"status"`

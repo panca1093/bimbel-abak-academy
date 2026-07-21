@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/minio/minio-go/v7"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -990,11 +992,25 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 // examPlatformDefault is used when the exam_platform system-config key is unset.
 const examPlatformDefault = "exam.abakacademy.id"
 
+// GetExamCard serves the exam card PDF, generating it once via Gotenberg and
+// caching the object key thereafter (FR-30): a registration with a CardKey
+// already set skips straight to a re-download of the cached PDF, so a
+// repeated download never re-renders.
 func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]byte, string, error) {
 	detail, err := s.GetExamRegistration(ctx, regID, studentID)
 	if err != nil {
 		return nil, "", err
 	}
+	filename := "kartu-peserta-" + detail.Token + ".pdf"
+
+	if detail.CardKey != nil && *detail.CardKey != "" {
+		pdf, err := s.downloadCardPDF(ctx, *detail.CardKey)
+		if err != nil {
+			return nil, "", err
+		}
+		return pdf, filename, nil
+	}
+
 	studentName := ""
 	photoURL := ""
 	user, err := s.Me(ctx, studentID)
@@ -1018,15 +1034,64 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]b
 	if tenantName == "" {
 		tenantName = "Akademi Bimbel"
 	}
-	// Fetching is I/O kept out of the pure pdf.go renderer; failure here is
+	// Fetching is I/O kept out of the pure card_html.go builder; failure here is
 	// non-fatal (nil bytes), never blocking card generation (FR-21).
 	logoImg := fetchCardImage(logoURL)
 	photoImg := fetchCardImage(photoURL)
-	pdf, err := generateExamCardPDF(detail, studentName, tenantName, logoImg, photoImg)
+
+	html, err := buildCardHTML(detail, studentName, tenantName, logoImg, photoImg)
 	if err != nil {
 		return nil, "", err
 	}
-	return pdf, "kartu-peserta-" + detail.Token + ".pdf", nil
+	pdf, err := s.renderer.RenderHTML(ctx, html)
+	if err != nil {
+		return nil, "", fmt.Errorf("generate card pdf: %w", err)
+	}
+	regUUID, err := uuid.Parse(regID)
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: invalid registration id", ErrValidation)
+	}
+	key, err := s.uploadCardPDF(ctx, regUUID, pdf)
+	if err != nil {
+		return nil, "", fmt.Errorf("upload card pdf: %w", err)
+	}
+	if err := s.storeRepo.UpdateRegistrationCard(ctx, regUUID, key); err != nil {
+		return nil, "", fmt.Errorf("persist card key: %w", err)
+	}
+	return pdf, filename, nil
+}
+
+// uploadCardPDF uploads the rendered card PDF at cards/<regID>.pdf and returns
+// its object key. The bucket is private (mirrors uploadCertificatePDF).
+func (s *Service) uploadCardPDF(ctx context.Context, regID uuid.UUID, pdf []byte) (string, error) {
+	if s.storage == nil {
+		return "", errors.New("storage not configured")
+	}
+	bucket := s.cfg.ObjectStorageBucketName
+	key := fmt.Sprintf("cards/%s.pdf", regID.String())
+	if _, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(pdf), int64(len(pdf)), minio.PutObjectOptions{
+		ContentType: "application/pdf",
+	}); err != nil {
+		return "", err
+	}
+	return key, nil
+}
+
+// downloadCardPDF fetches a previously-generated card PDF from the private
+// bucket by its object key (mirrors downloadCertificateBackground).
+func (s *Service) downloadCardPDF(ctx context.Context, key string) ([]byte, error) {
+	if s.storage == nil {
+		return nil, errors.New("storage not configured")
+	}
+	obj, err := s.storage.GetObject(ctx, s.cfg.ObjectStorageBucketName, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+	if _, err := obj.Stat(); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(obj)
 }
 
 var cardImageHTTPClient = &http.Client{Timeout: 3 * time.Second}

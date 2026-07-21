@@ -280,7 +280,7 @@ func TestExamRegistrationStruct(t *testing.T) {
 	jsonTag(t, v, "StudentID", "student_id")
 	jsonTag(t, v, "ExamID", "exam_id")
 	jsonTag(t, v, "Token", "token")
-	jsonTag(t, v, "CardPDFURL", "card_pdf_url")
+	jsonTag(t, v, "CardKey", "card_key")
 	jsonTag(t, v, "CheckedInAt", "checked_in_at")
 	jsonTag(t, v, "AttemptsUsed", "attempts_used")
 	jsonTag(t, v, "Status", "status")
@@ -293,9 +293,9 @@ func TestExamRegistrationStruct(t *testing.T) {
 	fieldKind(t, v, "AttemptsUsed", reflect.Int)
 	fieldKind(t, v, "Status", reflect.String)
 
-	fieldKind(t, v, "CardPDFURL", reflect.Ptr)
-	if mustField(t, v, "CardPDFURL").Type.Elem().Kind() != reflect.String {
-		t.Errorf("ExamRegistration.CardPDFURL pointer base type should be string")
+	fieldKind(t, v, "CardKey", reflect.Ptr)
+	if mustField(t, v, "CardKey").Type.Elem().Kind() != reflect.String {
+		t.Errorf("ExamRegistration.CardKey pointer base type should be string")
 	}
 	fieldKind(t, v, "CheckedInAt", reflect.Ptr)
 	if mustField(t, v, "CheckedInAt").Type != reflect.TypeOf((*time.Time)(nil)) {

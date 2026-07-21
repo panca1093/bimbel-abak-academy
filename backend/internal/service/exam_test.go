@@ -1700,12 +1700,66 @@ func TestGetExamRegistration_ParticipantNoFormat_IncludesExamNumber(t *testing.T
 	}
 }
 
+// UpdateRegistrationCard fakes the repository persist call (FR-30): finds the
+// seeded registration by ID (regardless of which studentID key it was seeded
+// under) and stamps its CardKey.
+func (f *fakeRegRepo) UpdateRegistrationCard(_ context.Context, regID uuid.UUID, key string) error {
+	for _, v := range f.regsByIDStudent {
+		if v.ExamRegistration.ID == regID {
+			v.CardKey = &key
+			return nil
+		}
+	}
+	return repository.ErrNotFound
+}
+
+// fakeCardRenderer stands in for the Gotenberg-backed certificateRenderer so
+// GetExamCard's lazy generate-once/reuse logic can be tested without a live
+// Gotenberg — tracks call count so a cache-hit can assert it never re-renders.
+type fakeCardRenderer struct {
+	calls int
+	err   error
+	pdf   []byte
+}
+
+func (f *fakeCardRenderer) RenderHTML(_ context.Context, _ []byte) ([]byte, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.pdf, nil
+}
+
+var fakeCardPDFBytes = []byte("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF")
+
 // shimExamCardService mirrors Service.GetExamCard against a fakeRegRepo; injected
-// studentName and tenantName stand in for the system_config + Me lookups.
+// studentName and tenantName stand in for the system_config + Me lookups, and
+// stored/uploadCalls/downloadCalls stand in for the private GCS bucket so the
+// lazy generate-once/reuse cache path (FR-30) can be exercised without real
+// object storage.
 type shimExamCardService struct {
-	fake        *fakeRegRepo
-	studentName string
-	tenantName  string
+	fake          *fakeRegRepo
+	studentName   string
+	tenantName    string
+	renderer      *fakeCardRenderer
+	stored        map[string][]byte
+	uploadCalls   int
+	downloadCalls int
+}
+
+func (s *shimExamCardService) uploadCardPDF(_ context.Context, regID uuid.UUID, pdf []byte) (string, error) {
+	s.uploadCalls++
+	if s.stored == nil {
+		s.stored = map[string][]byte{}
+	}
+	key := "cards/" + regID.String() + ".pdf"
+	s.stored[key] = pdf
+	return key, nil
+}
+
+func (s *shimExamCardService) downloadCardPDF(_ context.Context, key string) ([]byte, error) {
+	s.downloadCalls++
+	return s.stored[key], nil
 }
 
 func (s *shimExamCardService) GetExamCard(ctx context.Context, regID, studentID string) ([]byte, string, error) {
@@ -1716,11 +1770,33 @@ func (s *shimExamCardService) GetExamCard(ctx context.Context, regID, studentID 
 	if err != nil {
 		return nil, "", err
 	}
-	pdf, err := generateExamCardPDF(detail, s.studentName, s.tenantName, nil, nil)
+	filename := "kartu-peserta-" + detail.Token + ".pdf"
+
+	if detail.CardKey != nil && *detail.CardKey != "" {
+		pdf, err := s.downloadCardPDF(ctx, *detail.CardKey)
+		if err != nil {
+			return nil, "", err
+		}
+		return pdf, filename, nil
+	}
+
+	html, err := buildCardHTML(detail, s.studentName, s.tenantName, nil, nil)
 	if err != nil {
 		return nil, "", err
 	}
-	return pdf, "kartu-peserta-" + detail.Token + ".pdf", nil
+	pdf, err := s.renderer.RenderHTML(ctx, html)
+	if err != nil {
+		return nil, "", err
+	}
+	rid := mustParse(regID)
+	key, err := s.uploadCardPDF(ctx, rid, pdf)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := s.fake.UpdateRegistrationCard(ctx, rid, key); err != nil {
+		return nil, "", err
+	}
+	return pdf, filename, nil
 }
 
 func mustParse(s string) uuid.UUID {
@@ -1729,6 +1805,15 @@ func mustParse(s string) uuid.UUID {
 		panic(err)
 	}
 	return v
+}
+
+func newShimExamCardService(fake *fakeRegRepo) *shimExamCardService {
+	return &shimExamCardService{
+		fake:        fake,
+		studentName: "Saifullah",
+		tenantName:  "Akademi Bimbel",
+		renderer:    &fakeCardRenderer{pdf: fakeCardPDFBytes},
+	}
 }
 
 func TestGetExamCard_ReturnsPdfBytes(t *testing.T) {
@@ -1752,11 +1837,7 @@ func TestGetExamCard_ReturnsPdfBytes(t *testing.T) {
 	detail.Exam.RequiresCheckin = false
 	fake.seed(detail)
 
-	svc := &shimExamCardService{
-		fake:        fake,
-		studentName: "Saifullah",
-		tenantName:  "Akademi Bimbel",
-	}
+	svc := newShimExamCardService(fake)
 
 	pdf, filename, err := svc.GetExamCard(ctx, regID.String(), studentID.String())
 	if err != nil {
@@ -1773,6 +1854,57 @@ func TestGetExamCard_ReturnsPdfBytes(t *testing.T) {
 	wantPattern := regexp.MustCompile(`^kartu-peserta-[A-Z0-9]{8}\.pdf$`)
 	if !wantPattern.MatchString(filename) {
 		t.Errorf("filename %q does not match kartu-peserta-<8-char-token>.pdf", filename)
+	}
+	if svc.renderer.calls != 1 {
+		t.Errorf("expected exactly 1 render call, got %d", svc.renderer.calls)
+	}
+	if svc.uploadCalls != 1 {
+		t.Errorf("expected exactly 1 upload call, got %d", svc.uploadCalls)
+	}
+}
+
+// TestGetExamCard_SecondCallReusesCachedKey covers the lazy generate-once/
+// reuse contract (FR-30): once card_key is persisted, a repeat download must
+// not re-render via Gotenberg, only re-fetch the cached PDF.
+func TestGetExamCard_SecondCallReusesCachedKey(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeRegRepo()
+
+	studentID := uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd")
+	regID := uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+
+	detail := model.RegistrationDetail{}
+	detail.ExamRegistration = model.ExamRegistration{
+		ID:        regID,
+		StudentID: studentID,
+		Token:     "XY98ZZ11",
+		Status:    "registered",
+	}
+	detail.Exam.Title = "Finals"
+	fake.seed(detail)
+
+	svc := newShimExamCardService(fake)
+
+	first, _, err := svc.GetExamCard(ctx, regID.String(), studentID.String())
+	if err != nil {
+		t.Fatalf("first GetExamCard: %v", err)
+	}
+	second, _, err := svc.GetExamCard(ctx, regID.String(), studentID.String())
+	if err != nil {
+		t.Fatalf("second GetExamCard: %v", err)
+	}
+
+	if svc.renderer.calls != 1 {
+		t.Errorf("expected the renderer to be called exactly once across both downloads, got %d", svc.renderer.calls)
+	}
+	if svc.uploadCalls != 1 {
+		t.Errorf("expected exactly 1 upload call across both downloads, got %d", svc.uploadCalls)
+	}
+	if svc.downloadCalls != 1 {
+		t.Errorf("expected exactly 1 cache-hit download call, got %d", svc.downloadCalls)
+	}
+	if !bytes.Equal(first, second) {
+		t.Errorf("expected the cached download to return the same bytes as the original render")
 	}
 }
 

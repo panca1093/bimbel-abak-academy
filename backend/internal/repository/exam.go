@@ -1149,7 +1149,7 @@ func (r *Repository) StampOrderItemFulfilledAt(ctx context.Context, tx pgx.Tx, o
 
 func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentID uuid.UUID) ([]model.RegistrationListItem, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_pdf_url,
+		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
 			e.title, e.scheduled_at, e.scheduled_end_at, e.is_free, e.requires_checkin,
 			e.check_in_window_minutes, e.duration_minutes
@@ -1167,18 +1167,18 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 	var items []model.RegistrationListItem
 	for rows.Next() {
 		var item model.RegistrationListItem
-		var cardPDFURL *string
+		var cardKey *string
 		var checkedInAt *time.Time
 		if err := rows.Scan(
-			&item.ID, &item.StudentID, &item.ExamID, &item.Token, &cardPDFURL,
+			&item.ID, &item.StudentID, &item.ExamID, &item.Token, &cardKey,
 			&checkedInAt, &item.AttemptsUsed, &item.Status, &item.CreatedAt,
 			&item.ExamTitle, &item.ScheduledAt, &item.ScheduledEndAt, &item.IsFree, &item.RequiresCheckin,
 			&item.CheckInWindowMinutes, &item.DurationMinutes,
 		); err != nil {
 			return nil, err
 		}
-		if cardPDFURL != nil {
-			item.CardPDFURL = cardPDFURL
+		if cardKey != nil {
+			item.CardKey = cardKey
 		}
 		if checkedInAt != nil {
 			item.CheckedInAt = checkedInAt
@@ -1196,10 +1196,10 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 
 func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, studentID uuid.UUID) (*model.RegistrationDetail, error) {
 	var detail model.RegistrationDetail
-	var cardPDFURL *string
+	var cardKey *string
 	var checkedInAt *time.Time
 	err := r.pool.QueryRow(ctx,
-		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_pdf_url,
+		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
 			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
 			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
@@ -1213,7 +1213,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		WHERE reg.id = $1 AND reg.student_id = $2`,
 		regID, studentID,
 	).Scan(
-		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardPDFURL,
+		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardKey,
 		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
@@ -1225,8 +1225,8 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		}
 		return nil, err
 	}
-	if cardPDFURL != nil {
-		detail.CardPDFURL = cardPDFURL
+	if cardKey != nil {
+		detail.CardKey = cardKey
 	}
 	if checkedInAt != nil {
 		detail.CheckedInAt = checkedInAt
@@ -1258,16 +1258,16 @@ func scanExamSessionAnswer(row interface{ Scan(dest ...any) error }, a *model.Ex
 // Returns ErrNotFound when no match exists.
 func (r *Repository) GetExamRegistrationByToken(ctx context.Context, studentID uuid.UUID, token string) (*model.ExamRegistration, error) {
 	var reg model.ExamRegistration
-	var cardPDFURL *string
+	var cardKey *string
 	var checkedInAt *time.Time
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, student_id, exam_id, token, card_pdf_url, checked_in_at, attempts_used, status, created_at
+		`SELECT id, student_id, exam_id, token, card_key, checked_in_at, attempts_used, status, created_at
 		FROM exam_registration
 		WHERE student_id = $1 AND token = $2`,
 		studentID, token,
 	).Scan(
 		&reg.ID, &reg.StudentID, &reg.ExamID, &reg.Token,
-		&cardPDFURL, &checkedInAt, &reg.AttemptsUsed, &reg.Status, &reg.CreatedAt,
+		&cardKey, &checkedInAt, &reg.AttemptsUsed, &reg.Status, &reg.CreatedAt,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -1275,8 +1275,8 @@ func (r *Repository) GetExamRegistrationByToken(ctx context.Context, studentID u
 		}
 		return nil, err
 	}
-	if cardPDFURL != nil {
-		reg.CardPDFURL = cardPDFURL
+	if cardKey != nil {
+		reg.CardKey = cardKey
 	}
 	if checkedInAt != nil {
 		reg.CheckedInAt = checkedInAt
@@ -1755,6 +1755,15 @@ func (r *Repository) UpdateSessionCertificate(ctx context.Context, sessionID uui
 	_, err := r.pool.Exec(ctx,
 		`UPDATE exam_session SET certificate_key = $1, certificate_generated_at = $2 WHERE id = $3`,
 		key, generatedAt, sessionID,
+	)
+	return err
+}
+
+// UpdateRegistrationCard persists a card PDF object key for a registration (FR-30).
+func (r *Repository) UpdateRegistrationCard(ctx context.Context, regID uuid.UUID, key string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE exam_registration SET card_key = $1 WHERE id = $2`,
+		key, regID,
 	)
 	return err
 }

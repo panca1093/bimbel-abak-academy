@@ -886,7 +886,7 @@ export interface RegistrationListItem {
   student_id: string;
   exam_id: string;
   token: string;
-  card_pdf_url: string | null;
+  card_key: string | null;
   checked_in_at: string | null;
   attempts_used: number;
   status: string;
@@ -905,7 +905,7 @@ export interface RegistrationDetail {
   student_id: string;
   exam_id: string;
   token: string;
-  card_pdf_url: string | null;
+  card_key: string | null;
   checked_in_at: string | null;
   attempts_used: number;
   status: string;

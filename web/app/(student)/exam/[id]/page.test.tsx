@@ -22,7 +22,6 @@ const { toastSuccess, toastError } = vi.hoisted(() => ({
   toastError: vi.fn(),
 }));
 
-const downloadCardMock = vi.fn();
 const checkInMutate = vi.fn();
 const startSessionMutate = vi.fn();
 
@@ -36,7 +35,6 @@ let registrationState = {
 
 vi.mock("@/lib/hooks/exam", () => ({
   useRegistration: () => registrationState,
-  downloadCard: (...args: unknown[]) => downloadCardMock(...args),
   useCheckIn: () => ({ mutate: checkInMutate, isPending: false }),
   useStartSession: () => ({ mutateAsync: startSessionMutate, isPending: false }),
 }));
@@ -50,7 +48,7 @@ const sampleWithCheckin: RegistrationDetail = {
   student_id: "s-1",
   exam_id: "e-1",
   token: "AB12CD34",
-  card_pdf_url: null,
+  card_key: null,
   checked_in_at: null,
   attempts_used: 0,
   status: "registered",
@@ -81,7 +79,6 @@ describe("ExamDetailPage", () => {
   beforeEach(() => {
     uiStore = { lang: "id" };
     mockPush.mockReset();
-    downloadCardMock.mockReset();
     checkInMutate.mockReset();
     startSessionMutate.mockReset();
     toastSuccess.mockReset();
