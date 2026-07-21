@@ -20,12 +20,12 @@ import (
 
 // ---------- fakeSessionRepo: certificate extensions ----------
 
-func (f *fakeSessionRepo) UpdateSessionCertificate(_ context.Context, sessionID uuid.UUID, url string, generatedAt time.Time) error {
+func (f *fakeSessionRepo) UpdateSessionCertificate(_ context.Context, sessionID uuid.UUID, key string, generatedAt time.Time) error {
 	s, ok := f.sessions[sessionID]
 	if !ok {
 		return repository.ErrNotFound
 	}
-	s.CertificateURL = &url
+	s.CertificateKey = &key
 	s.CertificateGeneratedAt = &generatedAt
 	return nil
 }
@@ -59,7 +59,7 @@ func (s *shimSessionService) uploadCertificatePDF(_ context.Context, sessionID u
 
 // downloadCertificateBackground fakes the private-bucket download for a custom
 // background: returns a real embedded PNG (the classic built-in bytes stand in
-// for "whatever was uploaded") so renderCertificate can embed it for real.
+// for "whatever was uploaded") so buildCertificateHTML can embed it for real.
 func (s *shimSessionService) downloadCertificateBackground(_ context.Context, _ string) ([]byte, error) {
 	return certBgClassicPNG, nil
 }
@@ -80,7 +80,7 @@ func (s *shimSessionService) resolveCertificateBackground(ctx context.Context, e
 // resolveCertificateURL mirrors the real Service.resolveCertificateURL using the fake repo
 // and fake I/O boundaries — follows the shimSessionService convention from
 // exam_session_test.go / exam_result_test.go. resolveCertificateLayout and
-// renderCertificate are pure package functions, so this calls them for real
+// buildCertificateHTML are pure package functions, so this calls them for real
 // rather than faking them.
 func (s *shimSessionService) resolveCertificateURL(ctx context.Context, exam *model.Exam, sess *model.ExamSession, answers []model.ExamSessionAnswer, studentName string) (*string, error) {
 	if sess.Status != "submitted" {
@@ -91,7 +91,7 @@ func (s *shimSessionService) resolveCertificateURL(ctx context.Context, exam *mo
 	designStale := exam.CertificateDesignUpdatedAt != nil && sess.CertificateGeneratedAt != nil &&
 		exam.CertificateDesignUpdatedAt.After(*sess.CertificateGeneratedAt)
 
-	if sess.CertificateURL == nil || sess.CertificateGeneratedAt == nil ||
+	if sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
 		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) || designStale {
 
 		number, err := s.repo.AllocateCertificateNumber(ctx, sess.ID)
@@ -114,23 +114,27 @@ func (s *shimSessionService) resolveCertificateURL(ctx context.Context, exam *mo
 		dateStr := sess.SubmittedAt.In(loc).Format("2 January 2006")
 		vals := certificateFieldValues(exam.Title, studentName, dateStr, number)
 
-		pdf, err := renderCertificate(layout, bg, vals)
+		// This shim exercises the plumbing (staleness/allocation/persist), not the
+		// real HTML->PDF conversion, so buildCertificateHTML's output stands in
+		// directly for the renderer's PDF bytes (mirrors the real Service passing
+		// buildCertificateHTML's output through s.renderer.RenderHTML).
+		pdf, err := buildCertificateHTML(layout, vals, bg, nil)
 		if err != nil {
 			return nil, err
 		}
-		url, err := s.uploadCertificatePDF(ctx, sess.ID, pdf)
+		key, err := s.uploadCertificatePDF(ctx, sess.ID, pdf)
 		if err != nil {
 			return nil, err
 		}
 		now := time.Now()
-		if err := s.repo.UpdateSessionCertificate(ctx, sess.ID, url, now); err != nil {
+		if err := s.repo.UpdateSessionCertificate(ctx, sess.ID, key, now); err != nil {
 			return nil, err
 		}
 		sess.CertificateNumber = &number
-		return &url, nil
+		return &key, nil
 	}
 
-	return sess.CertificateURL, nil
+	return sess.CertificateKey, nil
 }
 
 // GetCertificatePreview mirrors the real Service.GetCertificatePreview: no
@@ -175,7 +179,7 @@ func (s *shimSessionService) GetCertificatePreview(ctx context.Context, examID u
 	}
 	vals := certificateFieldValues(exam.Title, "Nama Peserta Contoh", time.Now().In(loc).Format("2 January 2006"), "ABK/2026/000000")
 
-	return renderCertificate(layout, bg, vals)
+	return buildCertificateHTML(layout, vals, bg, nil)
 }
 
 // ---------- tests: latestGradedAt ----------
@@ -232,39 +236,21 @@ func TestValidateCertificateTemplate_InvalidKey(t *testing.T) {
 	}
 }
 
-// ---------- tests: generateCertificatePDF ----------
+// ---------- tests: generateCertificatePDF (removed in Task 6 — gofpdf renderer gone) ----------
+//
+// generateCertificatePDF and the gofpdf renderCertificate/renderCertificateWithImages
+// path it exercised were deleted in Task 6 (certificates now render via
+// buildCertificateHTML + Gotenberg). Distinguishability across templates and
+// invalid-template handling are re-asserted on the HTML pipeline in Task 9;
+// TestValidateCertificateTemplate_InvalidKey above already covers the
+// validation error path directly.
 
 func TestGenerateCertificatePDF_DifferentTemplates_Distinguishable(t *testing.T) {
-	now := time.Now()
-	classicPDF, err := generateCertificatePDF("classic", "Budi", "Test Exam", now)
-	if err != nil {
-		t.Fatalf("classic: %v", err)
-	}
-	modernPDF, err := generateCertificatePDF("modern", "Budi", "Test Exam", now)
-	if err != nil {
-		t.Fatalf("modern: %v", err)
-	}
-	if bytes.Equal(classicPDF, modernPDF) {
-		t.Error("classic and modern should produce different PDF bytes")
-	}
-
-	elegantPDF, err := generateCertificatePDF("elegant", "Budi", "Test Exam", now)
-	if err != nil {
-		t.Fatalf("elegant: %v", err)
-	}
-	if bytes.Equal(elegantPDF, classicPDF) {
-		t.Error("elegant and classic should produce different PDF bytes")
-	}
-	if bytes.Equal(elegantPDF, modernPDF) {
-		t.Error("elegant and modern should produce different PDF bytes")
-	}
+	t.Skip("rewritten as HTML tests in Task 9")
 }
 
 func TestGenerateCertificatePDF_InvalidTemplate(t *testing.T) {
-	_, err := generateCertificatePDF("unknown", "Budi", "Test", time.Now())
-	if !errors.Is(err, ErrValidation) {
-		t.Errorf("want ErrValidation, got %v", err)
-	}
+	t.Skip("rewritten as HTML tests in Task 9")
 }
 
 // ---------- tests: resolveCertificateURL ----------
@@ -275,7 +261,7 @@ func TestResolveCertificateURL_NotSubmitted(t *testing.T) {
 
 	sess := &model.ExamSession{
 		ID: uuid.New(), Status: "in_progress",
-		SubmittedAt: nil, CertificateURL: nil, CertificateGeneratedAt: nil,
+		SubmittedAt: nil, CertificateKey: nil, CertificateGeneratedAt: nil,
 	}
 	svc.repo.sessions[sess.ID] = sess
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "Test"}
@@ -288,8 +274,8 @@ func TestResolveCertificateURL_NotSubmitted(t *testing.T) {
 		t.Errorf("want nil for non-submitted session, got %q", *url)
 	}
 	// No side effects on an in_progress session.
-	if svc.repo.sessions[sess.ID].CertificateURL != nil {
-		t.Error("CertificateURL should remain nil")
+	if svc.repo.sessions[sess.ID].CertificateKey != nil {
+		t.Error("CertificateKey should remain nil")
 	}
 	if svc.uploadCertCalls != 0 {
 		t.Errorf("non-submitted session must generate nothing, got %d upload calls", svc.uploadCertCalls)
@@ -303,7 +289,7 @@ func TestResolveCertificateURL_FirstTimeGeneration(t *testing.T) {
 	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 	sess := &model.ExamSession{
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
-		CertificateURL: nil, CertificateGeneratedAt: nil,
+		CertificateKey: nil, CertificateGeneratedAt: nil,
 	}
 	svc.repo.sessions[sess.ID] = sess
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
@@ -321,8 +307,8 @@ func TestResolveCertificateURL_FirstTimeGeneration(t *testing.T) {
 	}
 	// Session was updated.
 	updated := svc.repo.sessions[sess.ID]
-	if updated.CertificateURL == nil || *updated.CertificateURL != wantURL {
-		t.Error("session CertificateURL should be set")
+	if updated.CertificateKey == nil || *updated.CertificateKey != wantURL {
+		t.Error("session CertificateKey should be set")
 	}
 	if updated.CertificateGeneratedAt == nil {
 		t.Error("session CertificateGeneratedAt should be set")
@@ -338,7 +324,7 @@ func TestResolveCertificateURL_NoRegenerationWhenNotStale(t *testing.T) {
 	oldURL := "http://old.url/cert.pdf"
 	sess := &model.ExamSession{
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
-		CertificateURL: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
+		CertificateKey: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
@@ -359,8 +345,8 @@ func TestResolveCertificateURL_NoRegenerationWhenNotStale(t *testing.T) {
 	}
 	// No regeneration occurred — session fields unchanged.
 	updated := svc.repo.sessions[sess.ID]
-	if updated.CertificateURL == nil || *updated.CertificateURL != oldURL {
-		t.Error("session CertificateURL should still be the old URL")
+	if updated.CertificateKey == nil || *updated.CertificateKey != oldURL {
+		t.Error("session CertificateKey should still be the old URL")
 	}
 }
 
@@ -373,7 +359,7 @@ func TestResolveCertificateURL_RegenerationWhenStale(t *testing.T) {
 	oldURL := "http://old.url/cert.pdf"
 	sess := &model.ExamSession{
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
-		CertificateURL: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
+		CertificateKey: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
@@ -397,8 +383,8 @@ func TestResolveCertificateURL_RegenerationWhenStale(t *testing.T) {
 	}
 	// Session was updated.
 	updated := svc.repo.sessions[sess.ID]
-	if updated.CertificateURL == nil || *updated.CertificateURL == oldURL {
-		t.Error("session CertificateURL should have been updated")
+	if updated.CertificateKey == nil || *updated.CertificateKey == oldURL {
+		t.Error("session CertificateKey should have been updated")
 	}
 	if updated.CertificateGeneratedAt == nil {
 		t.Error("session CertificateGeneratedAt should be set")
@@ -413,7 +399,7 @@ func TestResolveCertificateURL_UploadFailure_ReturnsError(t *testing.T) {
 	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
 	sess := &model.ExamSession{
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
-		CertificateURL: nil, CertificateGeneratedAt: nil,
+		CertificateKey: nil, CertificateGeneratedAt: nil,
 	}
 	svc.repo.sessions[sess.ID] = sess
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
@@ -425,7 +411,7 @@ func TestResolveCertificateURL_UploadFailure_ReturnsError(t *testing.T) {
 	if url != nil {
 		t.Errorf("want nil URL on upload failure, got %q", *url)
 	}
-	if svc.repo.sessions[sess.ID].CertificateURL != nil {
+	if svc.repo.sessions[sess.ID].CertificateKey != nil {
 		t.Error("must not persist a certificate URL when upload failed")
 	}
 }
@@ -438,7 +424,7 @@ func TestResolveCertificateURL_PersistFailure_ReturnsError(t *testing.T) {
 	// Session NOT seeded in the repo → UpdateSessionCertificate returns ErrNotFound.
 	sess := &model.ExamSession{
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
-		CertificateURL: nil, CertificateGeneratedAt: nil,
+		CertificateKey: nil, CertificateGeneratedAt: nil,
 	}
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
 
@@ -463,7 +449,7 @@ func TestResolveCertificateURL_RegenerationWhenDesignStale(t *testing.T) {
 	oldURL := "http://old.url/cert.pdf"
 	sess := &model.ExamSession{
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
-		CertificateURL: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
+		CertificateKey: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam", CertificateDesignUpdatedAt: &designUpdatedAt}
@@ -494,7 +480,7 @@ func TestResolveCertificateURL_NoRegenerationWhenDesignNotStaleOrChanged(t *test
 	oldURL := "http://old.url/cert.pdf"
 	sess := &model.ExamSession{
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
-		CertificateURL: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
+		CertificateKey: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
 	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam", CertificateDesignUpdatedAt: &designUpdatedAt}
@@ -689,142 +675,23 @@ func assertA4LandscapeAspect(t *testing.T, img image.Image, name string) {
 	}
 }
 
-// TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground rasterizes
-// each built-in template's output and confirms: exactly one page, A4
-// landscape aspect, and — the direct regression guard for R1's "blank first
-// page" bug — that a corner known to carry no stamped field still shows the
-// template's own background color rather than a blank/white page.
+// TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground,
+// TestGenerateCertificatePDF_LongAndNonASCIINames, and
+// TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions rasterized gofpdf
+// output (generateCertificatePDF/renderCertificate, deleted in Task 6). The
+// equivalent regression guards (one page, A4 landscape, background present,
+// field ink at the correct mm position — the direct guard for R1's
+// off-centre/upside-down bug) are Task 9's job on the HTML pipeline.
 func TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground(t *testing.T) {
-	templates := []string{"classic", "modern", "elegant"}
-	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
-
-	for _, tmpl := range templates {
-		tmpl := tmpl
-		t.Run(tmpl, func(t *testing.T) {
-			pdfBytes, err := generateCertificatePDF(tmpl, "Budi Santoso", "Ujian Matematika Dasar", submittedAt)
-			if err != nil {
-				t.Fatalf("generateCertificatePDF: %v", err)
-			}
-
-			img := renderToPNG(t, pdfBytes)
-			assertA4LandscapeAspect(t, img, tmpl)
-
-			// (5mm, 5mm) is outside every field box in all three default
-			// layouts (fields start at x=48.5mm; the logo field starts at
-			// x=138.5mm) — background-only corner.
-			srcImg, err := png.Decode(bytes.NewReader(builtinCertificateBackground(defaultLayout(tmpl).Background.Ref)))
-			if err != nil {
-				t.Fatalf("decode source background: %v", err)
-			}
-			rr, rg, rb := avgColorAt(img, certificatePageWidthMm, certificatePageHeightMm, 5, 5)
-			sr, sg, sb := avgColorAt(srcImg, certificatePageWidthMm, certificatePageHeightMm, 5, 5)
-			if colorDistance(rr, rg, rb, sr, sg, sb) > 30*30*3 {
-				t.Errorf("%s: rendered corner color (%.0f,%.0f,%.0f) does not match source background (%.0f,%.0f,%.0f) — background may be missing or misplaced", tmpl, rr, rg, rb, sr, sg, sb)
-			}
-		})
-	}
+	t.Skip("rewritten as HTML tests in Task 9")
 }
 
-// TestGenerateCertificatePDF_LongAndNonASCIINames renders a ~60-character
-// name and a non-ASCII name (FR-7) on the classic template, confirming the
-// output still rasterizes to a single A4-landscape page. Centering and
-// page-edge overflow are confirmed by the required manual visual check of
-// the persisted PNGs, not by pixel assertions here (NFR-1).
 func TestGenerateCertificatePDF_LongAndNonASCIINames(t *testing.T) {
-	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
-	cases := []struct {
-		name        string
-		studentName string
-	}{
-		{"long-name", "Muhammad Alexander Christopher Wijayakusuma Prabowo Setiawan"},
-		{"non-ascii-name", "Zulfikar Nurhadi Śarma"},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			pdfBytes, err := generateCertificatePDF("classic", tc.studentName, "Ujian Bahasa Indonesia", submittedAt)
-			if err != nil {
-				t.Fatalf("generateCertificatePDF: %v", err)
-			}
-			img := renderToPNG(t, pdfBytes)
-			assertA4LandscapeAspect(t, img, tc.name)
-		})
-	}
+	t.Skip("rewritten as HTML tests in Task 9")
 }
 
-// noInkBrightnessThreshold is well below the ~730-765 R+G+B sum of the
-// near-white background around the classic template's text rows, and well
-// above the ~80-140 sum of its dark navy/slate field text — a region whose
-// darkest pixel sits below this line has glyph ink in it, not just
-// background paper texture.
-const noInkBrightnessThreshold = 600.0
-
-// TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions is the direct
-// regression guard for R1's off-centre/upside-down bug (FR-31): it confirms
-// stamped field ink actually lands within each field's expected mm-region,
-// not merely that the page has the right size and an untouched corner still
-// shows background (which TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground
-// checks, but which stays green even if every field's Y coordinate were
-// inverted).
 func TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions(t *testing.T) {
-	submittedAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
-	pdfBytes, err := generateCertificatePDF("classic", "Budi Santoso", "Ujian Matematika Dasar", submittedAt)
-	if err != nil {
-		t.Fatalf("generateCertificatePDF: %v", err)
-	}
-	img := renderToPNG(t, pdfBytes)
-
-	// Baseline: the same background with no text stamped. Every region check
-	// below is a stamped-vs-baseline brightness diff, not a raw "is there ink
-	// here" threshold — the classic background's decorative songket bands and
-	// gold keyline are dark enough to trip a raw check on their own, which
-	// would let a Y-inverted render pass (the field's own region keeps showing
-	// background ink even when its text has moved away). Diffing isolates ink
-	// the field's text itself introduced. See the companion
-	// TestRenderCertificate_FieldDraggedToLowerLeft... for the same technique.
-	page := Page{WidthMm: certificatePageWidthMm, HeightMm: certificatePageHeightMm}
-	bg := Background{Kind: "builtin", Ref: "classic"}
-	baselinePDF, err := renderCertificate(Layout{Page: page, Background: bg}, builtinCertificateBackground("classic"), nil)
-	if err != nil {
-		t.Fatalf("renderCertificate (baseline): %v", err)
-	}
-	baselineImg := renderToPNG(t, baselinePDF)
-
-	// A region whose stamped-vs-baseline brightness differs by less than this
-	// has no new text ink; glyph strokes darken a region by hundreds of units.
-	const newInkDiffThreshold = 80.0
-	newInk := func(xMin, yMin, xMax, yMax float64) float64 {
-		before := regionMinBrightness(baselineImg, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
-		after := regionMinBrightness(img, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
-		return before - after
-	}
-
-	layout := defaultLayout("classic")
-	fieldsByID := make(map[string]LayoutField, len(layout.Fields))
-	for _, f := range layout.Fields {
-		fieldsByID[f.ID] = f
-	}
-
-	// "date" is the discriminating field: under a Y-axis inversion it moves to
-	// the top of the page and no other field lands in its region, so the diff
-	// there drops to ~0 and this check fails — which is exactly R1 recurring.
-	for _, id := range []string{"title", "student_name", "date"} {
-		f, ok := fieldsByID[id]
-		if !ok {
-			t.Fatalf("classic default layout has no %q field", id)
-		}
-		lineHeightMm := f.SizePt * 0.3528 * 1.15
-		// A center band well inside the field's box (avoids edge padding)
-		// and a couple mm of headroom above/below the nominal cell height
-		// (avoids being thrown off by exact vertical-centering behavior).
-		xMin, xMax := f.XMm+40, f.XMm+f.WMm-40
-		yMin, yMax := f.YMm-2, f.YMm+lineHeightMm+2
-
-		if diff := newInk(xMin, yMin, xMax, yMax); diff < newInkDiffThreshold {
-			t.Errorf("field %q: no new text ink in its expected region x:[%.1f,%.1f] y:[%.1f,%.1f]mm (brightness diff vs baseline=%.0f, want >=%.0f) — field text may be missing or mispositioned (Y-axis flip = R1 recurring)", id, xMin, xMax, yMin, yMax, diff, newInkDiffThreshold)
-		}
-	}
+	t.Skip("rewritten as HTML tests in Task 9")
 }
 
 // TestDefaultLayout_CertificateNumberColorContrastsWithBackground is the
@@ -885,34 +752,10 @@ func solidDarkPNG(t *testing.T, w, h int) []byte {
 	return buf.Bytes()
 }
 
-// TestRenderCertificate_SignatureImageStampsAtFieldBoxOnlyWhenPresent covers the
-// signature-upload feature: a visible "signature" field draws the uploaded image
-// in its box, and only when an image is supplied. Uses a baseline diff so the
-// decorative background can't fool the ink check.
+// TestRenderCertificate_SignatureImageStampsAtFieldBoxOnlyWhenPresent covered
+// the signature-upload feature via renderCertificateWithImages (deleted in
+// Task 6). The HTML-pipeline equivalent (buildCertificateHTML's image field
+// handling) is Task 9's job.
 func TestRenderCertificate_SignatureImageStampsAtFieldBoxOnlyWhenPresent(t *testing.T) {
-	page := Page{WidthMm: certificatePageWidthMm, HeightMm: certificatePageHeightMm}
-	bg := builtinCertificateBackground("elegant")
-	sigField := LayoutField{ID: "signature", XMm: 190, YMm: 150, WMm: 60, HMm: 22, Align: "center", Visible: true}
-	layout := Layout{Page: page, Background: Background{Kind: "builtin", Ref: "elegant"}, Fields: []LayoutField{sigField}}
-
-	// Baseline: same visible signature field but no image supplied.
-	basePDF, err := renderCertificateWithImages(layout, bg, nil, nil)
-	if err != nil {
-		t.Fatalf("render (no image): %v", err)
-	}
-	baseImg := renderToPNG(t, basePDF)
-
-	sigPDF, err := renderCertificateWithImages(layout, bg, map[FieldID][]byte{"signature": solidDarkPNG(t, 300, 110)}, nil)
-	if err != nil {
-		t.Fatalf("render (with image): %v", err)
-	}
-	sigImg := renderToPNG(t, sigPDF)
-
-	// Inside the signature box: the image adds substantial dark ink.
-	xMin, yMin, xMax, yMax := 195.0, 153.0, 245.0, 170.0
-	before := regionMinBrightness(baseImg, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
-	after := regionMinBrightness(sigImg, certificatePageWidthMm, certificatePageHeightMm, xMin, yMin, xMax, yMax)
-	if before-after < 80.0 {
-		t.Errorf("signature image did not stamp in its box: brightness diff=%.0f, want >=80", before-after)
-	}
+	t.Skip("rewritten as HTML tests in Task 9")
 }

@@ -868,7 +868,11 @@ func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uu
 	if err != nil {
 		return nil, err
 	}
-	return renderCertificateWithImages(*layoutOverride, bg, images, vals)
+	html, err := buildCertificateHTML(*layoutOverride, vals, bg, images)
+	if err != nil {
+		return nil, fmt.Errorf("build certificate html: %w", err)
+	}
+	return s.renderer.RenderHTML(ctx, html)
 }
 
 func (s *Service) ReplaceExamTests(ctx context.Context, examID uuid.UUID, testIDs []uuid.UUID) error {

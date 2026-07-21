@@ -327,7 +327,7 @@ func TestExamSessionStruct(t *testing.T) {
 	jsonTag(t, v, "ExtendedUntil", "extended_until")
 	jsonTag(t, v, "AdminSubmitted", "admin_submitted")
 	jsonTag(t, v, "Score", "score")
-	jsonTag(t, v, "CertificateURL", "certificate_url")
+	jsonTag(t, v, "CertificateKey", "certificate_key")
 	jsonTag(t, v, "CertificateGeneratedAt", "certificate_generated_at")
 	jsonTag(t, v, "CertificateNumber", "certificate_number")
 	jsonTag(t, v, "LastSavedAt", "last_saved_at")
@@ -358,9 +358,9 @@ func TestExamSessionStruct(t *testing.T) {
 	if mustField(t, v, "Score").Type.Elem().Kind() != reflect.Float64 {
 		t.Errorf("ExamSession.Score pointer base type should be float64")
 	}
-	fieldKind(t, v, "CertificateURL", reflect.Ptr)
-	if mustField(t, v, "CertificateURL").Type.Elem().Kind() != reflect.String {
-		t.Errorf("ExamSession.CertificateURL pointer base type should be string")
+	fieldKind(t, v, "CertificateKey", reflect.Ptr)
+	if mustField(t, v, "CertificateKey").Type.Elem().Kind() != reflect.String {
+		t.Errorf("ExamSession.CertificateKey pointer base type should be string")
 	}
 	fieldKind(t, v, "CertificateNumber", reflect.Ptr)
 	if mustField(t, v, "CertificateNumber").Type.Elem().Kind() != reflect.String {

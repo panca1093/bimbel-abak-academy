@@ -377,7 +377,7 @@ func TestAnalytics_GetFullyGradedScores(t *testing.T) {
 // Certificate — UpdateSessionCertificate
 // ---------------------------------------------------------------------------
 
-// TestCertificate_UpdateSessionCertificate verifies that both certificate_url and
+// TestCertificate_UpdateSessionCertificate verifies that both certificate_key and
 // certificate_generated_at are persisted and that a second call overwrites both.
 func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 	pool := newGradingTestPool(t)
@@ -390,10 +390,10 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 	now := time.Now()
 	sessionID := insertGradingSession(t, pool, student, examID, "submitted", &now, f64PtrG(85))
 
-	t.Run("persists certificate_url and certificate_generated_at", func(t *testing.T) {
-		url := "https://minio/certificates/abc123.pdf"
+	t.Run("persists certificate_key and certificate_generated_at", func(t *testing.T) {
+		key := "certificates/abc123.pdf"
 		genAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
-		if err := repo.UpdateSessionCertificate(ctx, sessionID, url, genAt); err != nil {
+		if err := repo.UpdateSessionCertificate(ctx, sessionID, key, genAt); err != nil {
 			t.Fatalf("UpdateSessionCertificate: %v", err)
 		}
 
@@ -401,8 +401,8 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetExamSessionByID: %v", err)
 		}
-		if sess.CertificateURL == nil || *sess.CertificateURL != url {
-			t.Errorf("CertificateURL = %v, want %q", sess.CertificateURL, url)
+		if sess.CertificateKey == nil || *sess.CertificateKey != key {
+			t.Errorf("CertificateKey = %v, want %q", sess.CertificateKey, key)
 		}
 		if sess.CertificateGeneratedAt == nil || !sess.CertificateGeneratedAt.Equal(genAt) {
 			t.Errorf("CertificateGeneratedAt = %v, want %v", sess.CertificateGeneratedAt, genAt)
@@ -410,9 +410,9 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 	})
 
 	t.Run("second call overwrites both fields", func(t *testing.T) {
-		url2 := "https://minio/certificates/def456.pdf"
+		key2 := "certificates/def456.pdf"
 		genAt2 := time.Date(2026, 7, 2, 14, 30, 0, 0, time.UTC)
-		if err := repo.UpdateSessionCertificate(ctx, sessionID, url2, genAt2); err != nil {
+		if err := repo.UpdateSessionCertificate(ctx, sessionID, key2, genAt2); err != nil {
 			t.Fatalf("UpdateSessionCertificate (2nd): %v", err)
 		}
 
@@ -420,8 +420,8 @@ func TestCertificate_UpdateSessionCertificate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetExamSessionByID: %v", err)
 		}
-		if sess.CertificateURL == nil || *sess.CertificateURL != url2 {
-			t.Errorf("CertificateURL = %v, want %q", sess.CertificateURL, url2)
+		if sess.CertificateKey == nil || *sess.CertificateKey != key2 {
+			t.Errorf("CertificateKey = %v, want %q", sess.CertificateKey, key2)
 		}
 		if sess.CertificateGeneratedAt == nil || !sess.CertificateGeneratedAt.Equal(genAt2) {
 			t.Errorf("CertificateGeneratedAt = %v, want %v", sess.CertificateGeneratedAt, genAt2)

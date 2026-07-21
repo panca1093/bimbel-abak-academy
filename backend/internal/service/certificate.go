@@ -8,14 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 
 	"github.com/google/uuid"
-	"github.com/jung-kurt/gofpdf"
 	"github.com/minio/minio-go/v7"
 )
 
@@ -26,14 +24,6 @@ var validCertificateTemplates = map[string]bool{
 	"elegant": true,
 	"custom":  true,
 }
-
-// shrinkToFitSafetyMargin leaves headroom below the exact fitted width so
-// glyph rendering rounding doesn't tip a shrunk field back over the box edge.
-// minShrinkToFitSizePt is the floor below which shrinking stops.
-const (
-	shrinkToFitSafetyMargin = 0.97
-	minShrinkToFitSizePt    = 6.0
-)
 
 func validateCertificateTemplate(tmpl string) error {
 	if !validCertificateTemplates[tmpl] {
@@ -66,149 +56,9 @@ func builtinCertificateBackground(ref string) []byte {
 	}
 }
 
-// renderCertificate renders with no foreground images (text + background only).
-// Callers that stamp an uploaded signature use renderCertificateWithImages.
-func renderCertificate(layout Layout, bg []byte, vals map[FieldID]string) ([]byte, error) {
-	return renderCertificateWithImages(layout, bg, nil, vals)
-}
-
-// renderCertificateWithImages is the single rendering entry point for real
-// generation, preview, and the editor (FR-4): it draws bg full-bleed on an A4
-// landscape page, stamps each visible text field from layout with its value from
-// vals, and stamps foreground image fields (currently "signature") from images.
-// It performs no I/O — bg and images are supplied by the caller (embedded asset
-// for built-in backgrounds, downloaded objects for custom, FR-8). Coordinates
-// are passed straight to SetXY with no Y-axis arithmetic (FR-1).
-func renderCertificateWithImages(layout Layout, bg []byte, images map[FieldID][]byte, vals map[FieldID]string) ([]byte, error) {
-	// gofpdf.NewCustom treats Size as the *portrait* reference and swaps it
-	// for OrientationStr "L" (see gofpdf fpdfNew). layout.Page is already
-	// expressed in landscape terms, so orientation "P" applies it unswapped.
-	pdf := gofpdf.NewCustom(&gofpdf.InitType{
-		OrientationStr: "P",
-		UnitStr:        "mm",
-		Size:           gofpdf.SizeType{Wd: layout.Page.WidthMm, Ht: layout.Page.HeightMm},
-	})
-	if err := RegisterFonts(pdf); err != nil {
-		return nil, fmt.Errorf("register fonts: %w", err)
-	}
-	// Certificates are exactly one page by construction (FR-6); gofpdf's
-	// default auto page-break would otherwise silently start a second page
-	// when a field near the bottom margin is stamped.
-	pdf.SetAutoPageBreak(false, 0)
-	pdf.AddPage()
-
-	imgOpt := gofpdf.ImageOptions{ImageType: "PNG"}
-	pdf.RegisterImageOptionsReader("certificate-background", imgOpt, bytes.NewReader(bg))
-	pdf.ImageOptions("certificate-background", 0, 0, layout.Page.WidthMm, layout.Page.HeightMm, false, imgOpt, 0, "")
-
-	for _, field := range layout.Fields {
-		if !field.Visible || field.ID == "logo" {
-			continue
-		}
-		if field.ID == "signature" {
-			if img := images["signature"]; len(img) > 0 {
-				drawCertificateImageField(pdf, "certificate-signature", img, field)
-			}
-			continue
-		}
-		text := vals[field.ID]
-		if text == "" {
-			continue
-		}
-
-		style := ""
-		if field.Weight == "bold" {
-			style = "B"
-		}
-		family := ResolveFontFamily(field.Font)
-		pdf.SetFont(family, style, field.SizePt)
-
-		// Shrink-to-fit: CellFormat does not wrap or clip, so a long value
-		// (e.g. a ~60-char name) at the field's nominal size can run past
-		// the page edge (FR-6). Scale the font down to the field's box
-		// width before drawing rather than let it overflow.
-		size := field.SizePt
-		if textWidth := pdf.GetStringWidth(text); textWidth > field.WMm && textWidth > 0 {
-			size = field.SizePt * (field.WMm / textWidth) * shrinkToFitSafetyMargin
-			if size < minShrinkToFitSizePt {
-				size = minShrinkToFitSizePt
-			}
-			pdf.SetFont(family, style, size)
-		}
-
-		r, g, b := hexToRGB(field.Color)
-		pdf.SetTextColor(r, g, b)
-
-		pdf.SetXY(field.XMm, field.YMm)
-		lineHeightMm := size * 0.3528 * 1.15
-		pdf.CellFormat(field.WMm, lineHeightMm, text, "", 0, alignToGofpdf(field.Align), false, 0, "")
-	}
-
-	if err := pdf.Error(); err != nil {
-		return nil, fmt.Errorf("render certificate: %w", err)
-	}
-
-	var buf bytes.Buffer
-	if err := pdf.Output(&buf); err != nil {
-		return nil, fmt.Errorf("output certificate pdf: %w", err)
-	}
-	return buf.Bytes(), nil
-}
-
-// drawCertificateImageField stamps an uploaded image (e.g. a signature) inside a
-// field's box, scaled to fit (contain) and centred, so it is never cropped or
-// stretched. Bad/undecodable image bytes are skipped, never failing the render.
-func drawCertificateImageField(pdf *gofpdf.Fpdf, name string, data []byte, field LayoutField) {
-	ok, srcW, srcH := registerOptionalImage(pdf, name, data)
-	if !ok || field.WMm <= 0 || field.HMm <= 0 {
-		return
-	}
-	boxAspect := field.WMm / field.HMm
-	srcAspect := float64(srcW) / float64(srcH)
-	drawW, drawH := field.WMm, field.HMm
-	if srcAspect > boxAspect {
-		drawW = field.WMm
-		drawH = field.WMm / srcAspect
-	} else {
-		drawH = field.HMm
-		drawW = field.HMm * srcAspect
-	}
-	x := field.XMm + (field.WMm-drawW)/2
-	y := field.YMm + (field.HMm-drawH)/2
-	pdf.ImageOptions(name, x, y, drawW, drawH, false, gofpdf.ImageOptions{}, 0, "")
-}
-
-// alignToGofpdf maps the layout schema's align values to gofpdf's CellFormat
-// alignStr codes; an unrecognised value centers, matching the field default.
-func alignToGofpdf(align string) string {
-	switch align {
-	case "left":
-		return "L"
-	case "right":
-		return "R"
-	default:
-		return "C"
-	}
-}
-
-// hexToRGB parses a "#RRGGBB" color into 0-255 components; a malformed value
-// falls back to black rather than erroring, since layout field colors are not
-// validated at parse time (see certificate_layout.go).
-func hexToRGB(hex string) (int, int, int) {
-	hex = strings.TrimPrefix(hex, "#")
-	var r, g, b int
-	if len(hex) != 6 {
-		return 0, 0, 0
-	}
-	if _, err := fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b); err != nil {
-		return 0, 0, 0
-	}
-	return r, g, b
-}
-
 // certificateFieldValues assembles the fixed certificate copy plus the
 // per-render student name, date, and certificate number shared by real
-// generation, preview, and the standalone generateCertificatePDF helper.
+// generation and preview.
 func certificateFieldValues(examTitle, studentName, dateStr, certNumber string) map[FieldID]string {
 	return map[FieldID]string{
 		"title":              "CERTIFICATE OF COMPLETION",
@@ -219,28 +69,6 @@ func certificateFieldValues(examTitle, studentName, dateStr, certNumber string) 
 		"date":               dateStr,
 		"certificate_number": certNumber,
 	}
-}
-
-// generateCertificatePDF renders a single-page A4 landscape certificate PDF
-// through renderCertificate, using the given template's default layout and
-// built-in background, with student name, exam title, and submission date
-// (Asia/Jakarta, no score) stamped in.
-func generateCertificatePDF(template, studentName, examTitle string, submittedAt time.Time) ([]byte, error) {
-	if err := validateCertificateTemplate(template); err != nil {
-		return nil, err
-	}
-
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		return nil, err
-	}
-	dateStr := submittedAt.In(loc).Format("2 January 2006")
-
-	layout := defaultLayout(template)
-	bg := builtinCertificateBackground(layout.Background.Ref)
-	vals := certificateFieldValues(examTitle, studentName, dateStr, "ABK/2026/000000")
-
-	return renderCertificate(layout, bg, vals)
 }
 
 // resolveCertificateLayout returns exam.CertificateLayout when the admin has
@@ -266,8 +94,8 @@ func resolveCertificateLayout(exam *model.Exam) (Layout, error) {
 // private bucket by its object key — never a raw or presigned URL is stored
 // (FR-18), so every render downloads fresh.
 // resolveCertificateSignatureImages downloads the layout's uploaded signature
-// image (if any) into the foreground-image map renderCertificateWithImages
-// consumes. Returns nil when no signature key is set.
+// image (if any) into the images map buildCertificateHTML consumes. Returns
+// nil when no signature key is set.
 func (s *Service) resolveCertificateSignatureImages(ctx context.Context, layout Layout) (map[FieldID][]byte, error) {
 	if layout.SignatureKey == nil || *layout.SignatureKey == "" {
 		return nil, nil
@@ -361,7 +189,7 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 		exam.CertificateDesignUpdatedAt.After(*sess.CertificateGeneratedAt)
 
 	// Regenerate when certificate is missing, grading is newer, or the design changed.
-	if sess.CertificateURL == nil || sess.CertificateGeneratedAt == nil ||
+	if sess.CertificateKey == nil || sess.CertificateGeneratedAt == nil ||
 		(gradedAt != nil && gradedAt.After(*sess.CertificateGeneratedAt)) || designStale {
 
 		number, err := s.storeRepo.AllocateCertificateNumber(ctx, sess.ID)
@@ -376,6 +204,10 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 		if err != nil {
 			return nil, fmt.Errorf("resolve certificate background: %w", err)
 		}
+		images, err := s.resolveCertificateSignatureImages(ctx, layout)
+		if err != nil {
+			return nil, err
+		}
 
 		loc, err := time.LoadLocation("Asia/Jakarta")
 		if err != nil {
@@ -384,7 +216,11 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 		dateStr := sess.SubmittedAt.In(loc).Format("2 January 2006")
 		vals := certificateFieldValues(exam.Title, studentName, dateStr, number)
 
-		pdf, err := renderCertificate(layout, bg, vals)
+		html, err := buildCertificateHTML(layout, vals, bg, images)
+		if err != nil {
+			return nil, fmt.Errorf("build certificate html: %w", err)
+		}
+		pdf, err := s.renderer.RenderHTML(ctx, html)
 		if err != nil {
 			return nil, fmt.Errorf("generate certificate pdf: %w", err)
 		}
@@ -396,11 +232,11 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 		if err := s.storeRepo.UpdateSessionCertificate(ctx, sess.ID, key, now); err != nil {
 			return nil, fmt.Errorf("persist certificate key: %w", err)
 		}
-		sess.CertificateURL = &key
+		sess.CertificateKey = &key
 		sess.CertificateNumber = &number
 	}
 
-	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *sess.CertificateURL, time.Hour)
+	signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *sess.CertificateKey, time.Hour)
 	if err != nil {
 		return nil, fmt.Errorf("presign certificate url: %w", err)
 	}
@@ -458,5 +294,9 @@ func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, t
 	if err != nil {
 		return nil, err
 	}
-	return renderCertificateWithImages(layout, bg, images, vals)
+	html, err := buildCertificateHTML(layout, vals, bg, images)
+	if err != nil {
+		return nil, fmt.Errorf("build certificate html: %w", err)
+	}
+	return s.renderer.RenderHTML(ctx, html)
 }

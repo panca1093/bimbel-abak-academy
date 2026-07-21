@@ -1244,7 +1244,7 @@ func scanExamSession(row interface{ Scan(dest ...any) error }, s *model.ExamSess
 		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
 		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
 		&s.ExtendedUntil, &s.AdminSubmitted, &s.Score,
-		&s.CertificateURL, &s.CertificateGeneratedAt, &s.CertificateNumber, &s.LastSavedAt, &s.Status, &s.CreatedAt,
+		&s.CertificateKey, &s.CertificateGeneratedAt, &s.CertificateNumber, &s.LastSavedAt, &s.Status, &s.CreatedAt,
 	)
 }
 
@@ -1329,14 +1329,14 @@ func (r *Repository) CreateExamSessionTx(ctx context.Context, tx pgx.Tx, reg mod
 		`INSERT INTO exam_session (registration_id, student_id, exam_id, attempt_number, started_at, status)
 		VALUES ($1, $2, $3, 1, now(), 'in_progress')
 		RETURNING id, registration_id, student_id, exam_id, attempt_number, started_at,
-			submitted_at, extended_until, admin_submitted, score, certificate_url,
+			submitted_at, extended_until, admin_submitted, score, certificate_key,
 			certificate_generated_at, certificate_number, last_saved_at, status, created_at`,
 		reg.ID, reg.StudentID, reg.ExamID,
 	).Scan(
 		&s.ID, &s.RegistrationID, &s.StudentID, &s.ExamID,
 		&s.AttemptNumber, &s.StartedAt, &s.SubmittedAt,
 		&s.ExtendedUntil, &s.AdminSubmitted, &s.Score,
-		&s.CertificateURL, &s.CertificateGeneratedAt, &s.CertificateNumber, &s.LastSavedAt, &s.Status, &s.CreatedAt,
+		&s.CertificateKey, &s.CertificateGeneratedAt, &s.CertificateNumber, &s.LastSavedAt, &s.Status, &s.CreatedAt,
 	)
 	if err != nil {
 		return model.ExamSession{}, err
@@ -1349,7 +1349,7 @@ func (r *Repository) GetExamSessionForStudent(ctx context.Context, sessionID, st
 	var s model.ExamSession
 	err := scanExamSession(r.pool.QueryRow(ctx,
 		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
-			submitted_at, extended_until, admin_submitted, score, certificate_url,
+			submitted_at, extended_until, admin_submitted, score, certificate_key,
 			certificate_generated_at, certificate_number, last_saved_at, status, created_at
 		FROM exam_session
 		WHERE id = $1 AND student_id = $2`,
@@ -1369,7 +1369,7 @@ func (r *Repository) GetExamSessionByID(ctx context.Context, sessionID uuid.UUID
 	var s model.ExamSession
 	err := scanExamSession(r.pool.QueryRow(ctx,
 		`SELECT id, registration_id, student_id, exam_id, attempt_number, started_at,
-			submitted_at, extended_until, admin_submitted, score, certificate_url,
+			submitted_at, extended_until, admin_submitted, score, certificate_key,
 			certificate_generated_at, certificate_number, last_saved_at, status, created_at
 		FROM exam_session
 		WHERE id = $1`,
@@ -1753,11 +1753,11 @@ func (r *Repository) GetExamForSession(ctx context.Context, examID uuid.UUID) (*
 	return r.GetExamByID(ctx, examID)
 }
 
-// UpdateSessionCertificate persists a certificate URL and generation timestamp for a session.
-func (r *Repository) UpdateSessionCertificate(ctx context.Context, sessionID uuid.UUID, url string, generatedAt time.Time) error {
+// UpdateSessionCertificate persists a certificate object key and generation timestamp for a session.
+func (r *Repository) UpdateSessionCertificate(ctx context.Context, sessionID uuid.UUID, key string, generatedAt time.Time) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE exam_session SET certificate_url = $1, certificate_generated_at = $2 WHERE id = $3`,
-		url, generatedAt, sessionID,
+		`UPDATE exam_session SET certificate_key = $1, certificate_generated_at = $2 WHERE id = $3`,
+		key, generatedAt, sessionID,
 	)
 	return err
 }

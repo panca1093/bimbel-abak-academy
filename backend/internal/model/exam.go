@@ -160,7 +160,7 @@ type ExamSession struct {
 	ExtendedUntil          *time.Time `json:"extended_until"`
 	AdminSubmitted         bool       `json:"admin_submitted"`
 	Score                  *float64   `json:"score"`
-	CertificateURL         *string    `json:"certificate_url"`
+	CertificateKey         *string    `json:"certificate_key"`
 	CertificateGeneratedAt *time.Time `json:"certificate_generated_at"`
 	// CertificateNumber is allocated once (ABK/YYYY/NNNNNN) on first certificate
 	// generation and reused thereafter; nil until allocated (FR-9/FR-10).

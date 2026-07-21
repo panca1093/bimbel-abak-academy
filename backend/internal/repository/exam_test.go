@@ -409,7 +409,7 @@ func TestScanExamSession_passes_expected_destinations(t *testing.T) {
 	}
 
 	if got := len(rec.dests); got != 16 {
-		t.Fatalf("scanExamSession passed %d destinations, want 16 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_url, certificate_generated_at, certificate_number, last_saved_at, status, created_at)", got)
+		t.Fatalf("scanExamSession passed %d destinations, want 16 (id, registration_id, student_id, exam_id, attempt_number, started_at, submitted_at, extended_until, admin_submitted, score, certificate_key, certificate_generated_at, certificate_number, last_saved_at, status, created_at)", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -443,7 +443,7 @@ func TestScanExamSession_passes_expected_destinations(t *testing.T) {
 		t.Errorf("dest[9] = %T, want **float64 (score, nullable)", rec.dests[9])
 	}
 	if _, ok := rec.dests[10].(**string); !ok {
-		t.Errorf("dest[10] = %T, want **string (certificate_url, nullable)", rec.dests[10])
+		t.Errorf("dest[10] = %T, want **string (certificate_key, nullable)", rec.dests[10])
 	}
 	if _, ok := rec.dests[11].(**time.Time); !ok {
 		t.Errorf("dest[11] = %T, want **time.Time (certificate_generated_at, nullable)", rec.dests[11])
