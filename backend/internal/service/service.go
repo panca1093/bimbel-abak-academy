@@ -76,6 +76,12 @@ func NewWithStore(
 	storage *minio.Client,
 	cfg *config.Config,
 ) *Service {
+	// cfg is nil in many unit/integration tests that don't render certificates;
+	// guard the renderer URL so construction never nil-derefs.
+	gotenbergURL := ""
+	if cfg != nil {
+		gotenbergURL = cfg.GotenbergURL
+	}
 	s := &Service{
 		repo:          repo,
 		storeRepo:     storeRepo,
@@ -87,7 +93,7 @@ func NewWithStore(
 		storage:       storage,
 		announceRepo:  storeRepo,
 		cfg:           cfg,
-		renderer:      newGotenbergRenderer(cfg.GotenbergURL, http.DefaultClient),
+		renderer:      newGotenbergRenderer(gotenbergURL, http.DefaultClient),
 	}
 	s.logistics.Store(&logistics)
 	return s
