@@ -272,10 +272,10 @@ func TestValidateCertificateTemplate_InvalidKey(t *testing.T) {
 	}
 }
 
-// ---------- tests: generateCertificatePDF (removed in Task 6 — gofpdf renderer gone) ----------
+// ---------- tests: generateCertificatePDF (removed in Task 6 — PDF renderer gone) ----------
 //
-// generateCertificatePDF and the gofpdf renderCertificate/renderCertificateWithImages
-// path it exercised were deleted in Task 6 (certificates now render via
+// generateCertificatePDF and the renderCertificate/renderCertificateWithImages
+// PDF-rendering path it exercised were deleted in Task 6 (certificates now render via
 // buildCertificateHTML + Gotenberg). Distinguishability across templates and
 // long/non-ASCII names are re-asserted on the HTML pipeline below.
 // TestValidateCertificateTemplate_InvalidKey above already covers the
@@ -283,8 +283,8 @@ func TestValidateCertificateTemplate_InvalidKey(t *testing.T) {
 
 // TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground proves each
 // builtin template renders a single A4-landscape page with its own embedded
-// background — the HTML-pipeline equivalent of the deleted gofpdf rasterization
-// assertion (one page, background filling the page).
+// background — the HTML-pipeline equivalent of the deleted PDF-rendering
+// rasterization assertion (one page, background filling the page).
 func TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground(t *testing.T) {
 	for _, tmpl := range []string{"classic", "modern", "elegant"} {
 		t.Run(tmpl, func(t *testing.T) {
@@ -780,7 +780,7 @@ func assertA4LandscapeAspect(t *testing.T, img image.Image, name string) {
 // TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground and
 // TestGenerateCertificatePDF_LongAndNonASCIINames above, and
 // TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions below, are the
-// HTML-pipeline equivalents of the deleted gofpdf rasterization assertions
+// HTML-pipeline equivalents of the deleted PDF-rendering rasterization assertions
 // (one page, A4 landscape, background present, field ink at the correct mm
 // position — the direct guard for R1's off-centre/upside-down bug).
 

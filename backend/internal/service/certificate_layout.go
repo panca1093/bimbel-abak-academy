@@ -3,8 +3,8 @@ package service
 // Coordinate contract (FR-1, FR-2): every coordinate in this file is expressed in
 // millimetres, origin at the page's top-left corner, Y increasing downward — no
 // flip anywhere. x_mm,y_mm is the box's top-left corner and align applies inside
-// the box. The renderer passes these values straight to gofpdf's SetXY in "mm"
-// mode; the editor's only conversion is the uniform scale
+// the box. The renderer consumes these values directly in "mm" mode; the
+// editor's only conversion is the uniform scale
 // mm = px * (page_width_mm / preview_width_px). Never compute pageHeight - y.
 
 import (

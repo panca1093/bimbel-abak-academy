@@ -67,7 +67,7 @@ type certificateHTMLData struct {
 }
 
 // buildCertificateHTML renders layout+vals+bg+images into self-contained
-// certificate HTML (FR-2..FR-5, FR-9): no DB/network access, no gofpdf.
+// certificate HTML (FR-2..FR-5, FR-9): no DB/network access, no PDF library.
 func buildCertificateHTML(layout Layout, vals map[FieldID]string, bg []byte, images map[FieldID][]byte) ([]byte, error) {
 	faces, err := certificateFontFaces()
 	if err != nil {
@@ -119,7 +119,7 @@ func buildCertificateHTML(layout Layout, vals map[FieldID]string, bg []byte, ima
 // reusing pdffonts.go's fontFiles map. It emits one normal-weight face per
 // family, plus a bold face only when a genuinely distinct bold TTF is
 // bundled (source_serif_4, public_sans) — the other four reuse their single
-// file for both gofpdf styles, so a second face would be redundant.
+// file for both style keys, so a second face would be redundant.
 func certificateFontFaces() ([]certificateFontFace, error) {
 	families := make([]string, 0, len(fontFiles))
 	for family := range fontFiles {

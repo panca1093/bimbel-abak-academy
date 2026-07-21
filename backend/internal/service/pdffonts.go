@@ -1,10 +1,6 @@
 package service
 
-import (
-	"embed"
-
-	"github.com/jung-kurt/gofpdf"
-)
+import "embed"
 
 //go:embed fonts
 var fontFS embed.FS
@@ -22,7 +18,7 @@ const (
 	defaultFontFamily = FontSourceSerif4
 )
 
-// fontFiles maps each family to its embedded TTF per gofpdf style string.
+// fontFiles maps each family to its embedded TTF per style key ("" / "B").
 // Families with only one committed weight reuse that weight for both ""
 // and "B" so SetFont never fails regardless of requested style.
 var fontFiles = map[string]map[string]string{
@@ -60,20 +56,4 @@ func ResolveFontFamily(family string) string {
 		return family
 	}
 	return defaultFontFamily
-}
-
-// RegisterFonts loads the six bundled OFL families onto pdf via
-// AddUTF8FontFromBytes. Both the certificate and exam-card PDF surfaces call
-// this one helper so font embedding has a single code path (FR-7).
-func RegisterFonts(pdf *gofpdf.Fpdf) error {
-	for family, styles := range fontFiles {
-		for style, path := range styles {
-			b, err := fontFS.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			pdf.AddUTF8FontFromBytes(family, style, b)
-		}
-	}
-	return nil
 }

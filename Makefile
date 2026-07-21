@@ -5,7 +5,7 @@ GO := $(GOROOT)/bin/go
 COMPOSE := docker compose -f deploy/docker-compose.yml
 DATABASE_URL ?= postgres://akademi:akademi@localhost:5432/akademi?sslmode=disable
 
-.PHONY: help up down logs api worker web migrate-up migrate-down tidy build gen-cert-backgrounds
+.PHONY: help up down logs api worker web migrate-up migrate-down tidy build
 
 help: ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -39,10 +39,3 @@ migrate-down: ## roll back the last migration (needs golang-migrate CLI)
 
 tidy: ## resolve Go dependencies
 	cd backend && $(GO) mod tidy
-
-gen-cert-backgrounds: ## regenerate built-in certificate background PNGs (spec OQ3)
-	cd backend && $(GO) run ./cmd/genbg
-	@for name in classic modern elegant; do \
-		pdftoppm -r 150 -png -singlefile backend/internal/service/assets/cert_bg_$$name.pdf backend/internal/service/assets/cert_bg_$$name; \
-		rm -f backend/internal/service/assets/cert_bg_$$name.pdf; \
-	done

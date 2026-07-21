@@ -16,7 +16,7 @@ import (
 )
 
 // Exam card geometry (FR-20..24): A6 landscape, 148 x 105 mm, mm 1:1, top-left
-// origin — the same page mirrored from the retired gofpdf renderer, now laid
+// origin — the same page mirrored from the retired PDF renderer, now laid
 // out with CSS instead of manual coordinate math.
 const (
 	cardPageWidthMm  = 148.0
@@ -108,7 +108,7 @@ type cardHTMLData struct {
 
 // buildCardHTML renders reg/studentName/tenantName/logoImg/photoImg into
 // self-contained exam card HTML (FR-20..24): no DB/network access, no
-// gofpdf. logoImg/photoImg are already-fetched image bytes (or nil) —
+// PDF library. logoImg/photoImg are already-fetched image bytes (or nil) —
 // fetching app_logo_url/User.PhotoURL is I/O that belongs at the call site
 // (Service.GetExamCard), so a network failure there never fails card
 // generation (FR-21): a missing/unfetchable/corrupt logo just omits the

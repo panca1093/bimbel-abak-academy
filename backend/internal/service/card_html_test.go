@@ -232,8 +232,7 @@ func TestBuildCardHTML_NoTenantNameOmitsTenantLine(t *testing.T) {
 }
 
 // fakePNGBytesForCard is a minimal valid PNG, self-contained so this file has
-// no compile-time dependency on pdf_test.go (Task 13 removes it once gofpdf
-// is fully retired).
+// no compile-time dependency on pdf_test.go (deleted in Task 13).
 func fakePNGBytesForCard(t *testing.T) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
