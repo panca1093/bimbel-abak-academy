@@ -275,7 +275,12 @@ type RegistrationDetail struct {
 	// where YYMMDD is the exam's scheduled start date (falls back to the
 	// registration date if the exam is not yet scheduled). Empty if unassigned.
 	ParticipantNo string `json:"participant_no"`
-	Exam          struct {
+	// Subject is the aggregated subject(s) of the exam's attached test(s)
+	// (Paket/Mapel on the card). Platform is the single, system-config-sourced
+	// exam platform (Platform/Ruang on the card).
+	Subject  string `json:"subject"`
+	Platform string `json:"platform"`
+	Exam     struct {
 		ID                   uuid.UUID  `json:"id"`
 		Title                string     `json:"title"`
 		ScheduledAt          *time.Time `json:"scheduled_at"`

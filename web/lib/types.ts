@@ -912,6 +912,8 @@ export interface RegistrationDetail {
   created_at: string;
   participant_number: number | null;
   participant_no: string;
+  subject: string;
+  platform: string;
   exam: {
     id: string;
     title: string;

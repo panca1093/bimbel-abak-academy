@@ -57,6 +57,8 @@ const sampleWithCheckin: RegistrationDetail = {
   created_at: "2026-06-01T00:00:00Z",
   participant_number: 1,
   participant_no: "260715-000001",
+  subject: "TPS — Penalaran Umum",
+  platform: "exam.abakacademy.id",
   exam: {
     id: "e-1",
     title: "Try Out UTBK Nasional",

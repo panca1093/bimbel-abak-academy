@@ -1203,7 +1203,12 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_pdf_url,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at, reg.participant_number,
 			e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
-			e.timer_mode, e.duration_minutes, e.result_config
+			e.timer_mode, e.duration_minutes, e.result_config,
+			COALESCE((
+				SELECT string_agg(DISTINCT t.subject, ', ')
+				FROM exam_test et JOIN test t ON t.id = et.test_id
+				WHERE et.exam_id = e.id
+			), '') AS subject
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		WHERE reg.id = $1 AND reg.student_id = $2`,
@@ -1213,7 +1218,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
-		&detail.Exam.ResultConfig,
+		&detail.Exam.ResultConfig, &detail.Subject,
 	)
 	if err != nil {
 		if isNotFound(err) {

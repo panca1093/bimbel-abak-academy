@@ -111,14 +111,14 @@ export default function ExamCardPrintPage() {
         dob={fmtDate(student?.dob)}
         photoUrl={fileUrl(student?.photo_url)}
         examName={exam.title || DASH}
-        subject={DASH}
+        subject={reg.subject || DASH}
         date={fmtDate(exam.scheduled_at)}
         timeRange={timeRange}
         duration={
           exam.duration_minutes ? `${exam.duration_minutes} menit` : DASH
         }
-        mode={DASH}
-        platform={DASH}
+        mode="Online (CBT)"
+        platform={reg.platform || DASH}
         checkInCode={reg.token || DASH}
       />
     </div>
