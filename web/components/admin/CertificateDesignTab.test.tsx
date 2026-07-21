@@ -75,7 +75,7 @@ describe("CertificateDesignTab", () => {
     mockUpdateDesignMutateAsync.mockReset();
     mockPresignMutateAsync.mockReset();
     certificateDesignState = {
-      data: { template: "classic", background_url: null, layout: sampleLayout },
+      data: { template: "classic", background_url: null, signature_url: null, layout: sampleLayout },
       isLoading: false,
       isError: false,
     };
@@ -112,6 +112,7 @@ describe("CertificateDesignTab", () => {
       data: {
         template: "classic",
         background_url: "https://cdn.example.com/bg.png",
+        signature_url: null,
         layout: layoutWithField,
       },
       isLoading: false,
@@ -161,6 +162,7 @@ describe("CertificateDesignTab", () => {
       data: {
         template: "classic",
         background_url: "https://cdn.example.com/bg.png",
+        signature_url: null,
         layout: layoutWithField,
       },
       isLoading: false,

@@ -53,7 +53,7 @@ func generateExamCardPDF(reg *model.RegistrationDetail, studentName, tenantName 
 
 	drawCardBackdrop(pdf)
 	drawCardHeaderBand(pdf, tenantName, logoImg)
-	drawCardPhotoFrame(pdf, photoImg)
+	drawCardPhotoFrame(pdf, photoImg, studentName)
 	drawCardDetailColumn(pdf, reg, studentName)
 	drawCardTokenBand(pdf, reg.Token)
 	drawCardFooterNote(pdf, reg)
@@ -81,12 +81,12 @@ func drawCardBackdrop(pdf *gofpdf.Fpdf) {
 }
 
 func drawCardHeaderBand(pdf *gofpdf.Fpdf, tenantName string, logoImg []byte) {
-	t1r, t1g, t1b := hexRGB(cardTealHex)
-	t2r, t2g, t2b := hexRGB(cardTealDarkHex)
+	navyR, navyG, navyB := hexRGB(cardNavyHex)
+	tealR, tealG, tealB := hexRGB(cardTealHex)
 	goldR, goldG, goldB := hexRGB(cardGoldHex)
 
-	// teal → teal-dark diagonal gradient header
-	pdf.LinearGradient(0, 0, cardPageW, 18, t1r, t1g, t1b, t2r, t2g, t2b, 0, 0, 1, 0.4)
+	// navy → teal (blue → green) gradient, matching the app's brand gradient
+	pdf.LinearGradient(0, 0, cardPageW, 18, navyR, navyG, navyB, tealR, tealG, tealB, 0, 0, 1, 0.3)
 	// gold underline seam
 	pdf.SetFillColor(goldR, goldG, goldB)
 	pdf.Rect(0, 18, cardPageW, 1.1, "F")
@@ -117,7 +117,7 @@ const (
 	cardPhotoH = 28.0
 )
 
-func drawCardPhotoFrame(pdf *gofpdf.Fpdf, photoImg []byte) {
+func drawCardPhotoFrame(pdf *gofpdf.Fpdf, photoImg []byte, studentName string) {
 	// teal mat behind the photo for a pop of colour, then the image/placeholder
 	tr, tg, tb := hexRGB(cardTealHex)
 	pdf.SetFillColor(tr, tg, tb)
@@ -128,7 +128,7 @@ func drawCardPhotoFrame(pdf *gofpdf.Fpdf, photoImg []byte) {
 	if ok, srcW, srcH := registerOptionalImage(pdf, "card-photo", photoImg); ok {
 		drawAspectFillImage(pdf, "card-photo", cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, srcW, srcH)
 	} else {
-		drawCardPhotoPlaceholder(pdf, cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH)
+		drawCardInitialsAvatar(pdf, cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, studentName)
 	}
 
 	goldR, goldG, goldB := hexRGB(cardGoldHex)
@@ -137,14 +137,49 @@ func drawCardPhotoFrame(pdf *gofpdf.Fpdf, photoImg []byte) {
 	pdf.Rect(cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, "D")
 }
 
-// drawCardPhotoPlaceholder draws a neutral silhouette (head + shoulders)
-// clipped to the photo frame, so a NULL PhotoURL still leaves the frame
-// occupying the identical position as the photo case (FR-21).
-func drawCardPhotoPlaceholder(pdf *gofpdf.Fpdf, x, y, w, h float64) {
+// drawCardInitialsAvatar fills the photo frame with a brand-tint avatar showing
+// the student's initials (mirroring the app's AvatarFallback), so a NULL
+// PhotoURL leaves the frame in the identical position as the photo case (FR-21)
+// rather than an empty box. With no name it falls back to a neutral silhouette.
+func drawCardInitialsAvatar(pdf *gofpdf.Fpdf, x, y, w, h float64, studentName string) {
+	tintR, tintG, tintB := hexRGB(cardTealTintHex)
+	pdf.SetFillColor(tintR, tintG, tintB)
+	pdf.Rect(x, y, w, h, "F")
+
+	initials := nameInitials(studentName)
+	if initials == "" {
+		drawCardPhotoSilhouette(pdf, x, y, w, h)
+		return
+	}
+	navyR, navyG, navyB := hexRGB(cardNavyHex)
+	pdf.SetTextColor(navyR, navyG, navyB)
+	pdf.SetFont(FontSourceSerif4, "B", 20)
+	pdf.SetXY(x, y+h/2-5)
+	pdf.CellFormat(w, 10, initials, "", 0, "C", false, 0, "")
+}
+
+// nameInitials returns up to two uppercase initials from a name: the first
+// letter of the first and last words, or just the first letter for one word.
+func nameInitials(name string) string {
+	fields := strings.Fields(name)
+	if len(fields) == 0 {
+		return ""
+	}
+	first := []rune(fields[0])
+	out := strings.ToUpper(string(first[0]))
+	if len(fields) > 1 {
+		last := []rune(fields[len(fields)-1])
+		out += strings.ToUpper(string(last[0]))
+	}
+	return out
+}
+
+// drawCardPhotoSilhouette draws a neutral head-and-shoulders shape clipped to
+// the frame, used when no name is available for an initials avatar.
+func drawCardPhotoSilhouette(pdf *gofpdf.Fpdf, x, y, w, h float64) {
 	r, g, b := hexRGB(cardPlaceholderHex)
 	pdf.SetFillColor(r, g, b)
 	cx := x + w/2
-
 	pdf.ClipRect(x, y, w, h, false)
 	pdf.Ellipse(cx, y+h*0.30, w*0.24, h*0.16, 0, "F")
 	pdf.Ellipse(cx, y+h*1.15, w*0.55, h*0.5, 0, "F")
