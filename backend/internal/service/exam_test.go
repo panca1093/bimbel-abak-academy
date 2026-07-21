@@ -1613,6 +1613,20 @@ func (s *shimRegistrationService) GetExamRegistration(ctx context.Context, regID
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrRegistrationNotFound
 	}
+	if err == nil && detail != nil && detail.ParticipantNumber != nil {
+		prefix := detail.CreatedAt
+		if detail.Exam.ScheduledAt != nil {
+			prefix = *detail.Exam.ScheduledAt
+		}
+		if wib, e := time.LoadLocation("Asia/Jakarta"); e == nil {
+			prefix = prefix.In(wib)
+		}
+		examNo := 0
+		if detail.Exam.ExamNumber != nil {
+			examNo = *detail.Exam.ExamNumber
+		}
+		detail.ParticipantNo = fmt.Sprintf("%s-%s-%06d", prefix.Format("060102"), formatExamNumber(examNo), *detail.ParticipantNumber)
+	}
 	return detail, err
 }
 
@@ -1649,6 +1663,40 @@ func TestGetExamRegistration_NotOwned_ReturnsErrRegistrationNotFound(t *testing.
 	_, err = svc.GetExamRegistration(ctx, absent.String(), owner.String())
 	if !errors.Is(err, ErrRegistrationNotFound) {
 		t.Errorf("absent id should return ErrRegistrationNotFound, got %v", err)
+	}
+}
+
+func TestGetExamRegistration_ParticipantNoFormat_IncludesExamNumber(t *testing.T) {
+	ctx := context.Background()
+	fake := newFakeRegRepo()
+
+	studentID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	regID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	scheduledAt := time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)
+	examNumber := 42
+	participantNumber := 5
+
+	detail := model.RegistrationDetail{}
+	detail.ExamRegistration = model.ExamRegistration{
+		ID:                regID,
+		StudentID:         studentID,
+		Status:            "registered",
+		ParticipantNumber: &participantNumber,
+	}
+	detail.Exam.ScheduledAt = &scheduledAt
+	detail.Exam.ExamNumber = &examNumber
+	fake.seed(detail)
+
+	svc := &shimRegistrationService{fake: fake}
+
+	got, err := svc.GetExamRegistration(ctx, regID.String(), studentID.String())
+	if err != nil {
+		t.Fatalf("GetExamRegistration: %v", err)
+	}
+
+	want := "250620-0042-000005"
+	if got.ParticipantNo != want {
+		t.Errorf("ParticipantNo = %q, want %q", got.ParticipantNo, want)
 	}
 }
 

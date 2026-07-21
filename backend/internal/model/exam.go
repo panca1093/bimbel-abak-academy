@@ -274,7 +274,7 @@ type RegistrationListItem struct {
 // an ExamRegistration joined with the nested exam config needed by the student detail page.
 type RegistrationDetail struct {
 	ExamRegistration `json:",inline"`
-	// ParticipantNo is the display form of ParticipantNumber, "YYMMDD-NNNNNN"
+	// ParticipantNo is the display form of ParticipantNumber, "YYMMDD-<exam_number(pad4)>-NNNNNN"
 	// where YYMMDD is the exam's scheduled start date (falls back to the
 	// registration date if the exam is not yet scheduled). Empty if unassigned.
 	ParticipantNo string `json:"participant_no"`

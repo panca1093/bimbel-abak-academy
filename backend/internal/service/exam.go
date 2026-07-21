@@ -984,7 +984,11 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 			if wib, e := time.LoadLocation("Asia/Jakarta"); e == nil {
 				prefix = prefix.In(wib)
 			}
-			detail.ParticipantNo = fmt.Sprintf("%s-%06d", prefix.Format("060102"), *detail.ParticipantNumber)
+			examNo := 0
+			if detail.Exam.ExamNumber != nil {
+				examNo = *detail.Exam.ExamNumber
+			}
+			detail.ParticipantNo = fmt.Sprintf("%s-%s-%06d", prefix.Format("060102"), formatExamNumber(examNo), *detail.ParticipantNumber)
 		}
 		// Platform/Ruang is a single system-config value (one platform for all exams).
 		detail.Platform = examPlatformDefault
