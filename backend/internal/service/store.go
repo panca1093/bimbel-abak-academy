@@ -65,6 +65,11 @@ func (s *Service) GetProduct(ctx context.Context, id string, role string) (model
 		if p.Status != "published" {
 			return model.Product{}, ErrProductNotFound
 		}
+		now := time.Now()
+		if (p.AvailableFrom != nil && now.Before(*p.AvailableFrom)) ||
+			(p.AvailableUntil != nil && now.After(*p.AvailableUntil)) {
+			return model.Product{}, ErrProductNotFound
+		}
 	}
 	if p.Type == "course" {
 		pID, err := parseUUID(p.ID)
@@ -189,6 +194,12 @@ func (s *Service) UpdateProductWithExams(ctx context.Context, id string, p model
 	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
 	}
+	if !p.AvailableFromSet {
+		p.AvailableFrom = existing.AvailableFrom
+	}
+	if !p.AvailableUntilSet {
+		p.AvailableUntil = existing.AvailableUntil
+	}
 
 	var ids []uuid.UUID
 	for _, eid := range examIDs {
@@ -244,6 +255,12 @@ func (s *Service) UpdateProductWithCourses(ctx context.Context, id string, p mod
 	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
 	}
+	if !p.AvailableFromSet {
+		p.AvailableFrom = existing.AvailableFrom
+	}
+	if !p.AvailableUntilSet {
+		p.AvailableUntil = existing.AvailableUntil
+	}
 
 	var ids []uuid.UUID
 	for _, cid := range courseIDs {
@@ -298,6 +315,12 @@ func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product,
 	}
 	if !p.ImageURLSet && p.ImageURL == "" {
 		p.ImageURL = existing.ImageURL
+	}
+	if !p.AvailableFromSet {
+		p.AvailableFrom = existing.AvailableFrom
+	}
+	if !p.AvailableUntilSet {
+		p.AvailableUntil = existing.AvailableUntil
 	}
 	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {
 		return model.Product{}, err

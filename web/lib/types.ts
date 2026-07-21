@@ -133,6 +133,8 @@ export interface Product {
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
+  available_from?: string | null;
+  available_until?: string | null;
   course_ids?: string[];
   exam_ids?: string[];
   created_at?: string;
@@ -147,6 +149,8 @@ export interface AdminCreateProductInput {
   stock?: number;
   weight_grams?: number;
   image_url?: string;
+  available_from?: string | null;
+  available_until?: string | null;
   course_ids?: string[];
   exam_ids?: string[];
 }
@@ -159,6 +163,8 @@ export interface AdminUpdateProductInput {
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
+  available_from?: string | null;
+  available_until?: string | null;
   course_ids?: string[];
   exam_ids?: string[];
 }
