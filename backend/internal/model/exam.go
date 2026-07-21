@@ -118,6 +118,9 @@ type Exam struct {
 	// changes (C3/FR-14) — the single staleness timestamp compared against a session's
 	// certificate_generated_at.
 	CertificateDesignUpdatedAt *time.Time `json:"certificate_design_updated_at"`
+	// ExamNumber is a global human-friendly serial (FR-23) assigned from exam_number_seq,
+	// distinct from the exam UUID. Non-nil after create; nil only pre-migration/pre-backfill.
+	ExamNumber *int `json:"exam_number"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -290,6 +293,8 @@ type RegistrationDetail struct {
 		TimerMode            string     `json:"timer_mode"`
 		DurationMinutes      *int       `json:"duration_minutes"`
 		ResultConfig         string     `json:"result_config"`
+		// ExamNumber is joined in for the participant-number display format (FR-24, Task 5).
+		ExamNumber *int `json:"exam_number"`
 	} `json:"exam"`
 }
 

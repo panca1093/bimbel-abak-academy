@@ -26,6 +26,21 @@ import (
 
 func strPtr(s string) *string { return &s }
 
+func TestFormatExamNumber_PadsToMinimumFourDigits(t *testing.T) {
+	cases := map[int]string{
+		1:     "0001",
+		42:    "0042",
+		999:   "0999",
+		9999:  "9999",
+		10000: "10000",
+	}
+	for n, want := range cases {
+		if got := formatExamNumber(n); got != want {
+			t.Errorf("formatExamNumber(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
 func TestValidateQuestion_mcq_accepts_exactly_one_correct(t *testing.T) {
 	q := model.Question{Format: "mcq", Body: "2+2", PointCorrect: 1}
 	options := []model.QuestionOption{

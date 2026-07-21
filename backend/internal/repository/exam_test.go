@@ -298,8 +298,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 25 {
-		t.Fatalf("scanExam passed %d destinations, want 25", got)
+	if got := len(rec.dests); got != 26 {
+		t.Fatalf("scanExam passed %d destinations, want 26", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -340,6 +340,9 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[24].(**time.Time); !ok {
 		t.Errorf("dest[24] = %T, want **time.Time (certificate_design_updated_at, nullable pointer field)", rec.dests[24])
+	}
+	if _, ok := rec.dests[25].(**int); !ok {
+		t.Errorf("dest[25] = %T, want **int (exam_number, nullable pointer field)", rec.dests[25])
 	}
 }
 

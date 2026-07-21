@@ -675,6 +675,13 @@ func validateExam(e model.Exam) error {
 	return nil
 }
 
+// formatExamNumber renders an exam's human-friendly serial zero-padded to a
+// minimum of 4 digits (FR-23). "%04d" pads but never truncates, so numbers
+// past 9999 simply grow wider instead of being capped.
+func formatExamNumber(n int) string {
+	return fmt.Sprintf("%04d", n)
+}
+
 // CreateExam creates a standalone exam — no product is created here. Selling the
 // exam is a separate step: attach it to a Product via the generic Product flow
 // (POST/PATCH /admin/products with exam_ids), mirroring how course-type products
