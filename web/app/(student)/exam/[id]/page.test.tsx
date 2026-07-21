@@ -4,9 +4,11 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import ExamDetailPage from "./page";
 import type { RegistrationDetail } from "@/lib/types";
 
+const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "reg-1" }),
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 let uiStore = { lang: "id" as "id" | "en" };
@@ -76,6 +78,7 @@ const sampleNoCheckin: RegistrationDetail = {
 describe("ExamDetailPage", () => {
   beforeEach(() => {
     uiStore = { lang: "id" };
+    mockPush.mockReset();
     downloadCardMock.mockReset();
     checkInMutate.mockReset();
     startSessionMutate.mockReset();
@@ -124,8 +127,7 @@ describe("ExamDetailPage", () => {
     expect(screen.getByText("••••••••")).toBeInTheDocument();
   });
 
-  it("download button calls downloadCard with the registration id (FR12)", async () => {
-    downloadCardMock.mockResolvedValue(undefined);
+  it("card button opens the printable card page for the registration (FR12)", async () => {
     render(<ExamDetailPage />);
 
     await waitFor(() => {
@@ -137,7 +139,7 @@ describe("ExamDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /unduh kartu peserta/i }));
 
     await waitFor(() => {
-      expect(downloadCardMock).toHaveBeenCalledWith("reg-1");
+      expect(mockPush).toHaveBeenCalledWith("/exam/reg-1/card");
     });
   });
 
