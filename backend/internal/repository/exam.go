@@ -1762,35 +1762,65 @@ func (r *Repository) UpdateSessionCertificate(ctx context.Context, sessionID uui
 	return err
 }
 
-// AllocateCertificateNumber assigns ABK/YYYY/NNNNNN to a session's certificate_number
-// exactly once (FR-9/FR-10/FR-11): the UPDATE only fires — and only then consumes a
-// certificate_number_seq value — when the column is still NULL, so a second call for
-// an already-numbered session neither mints a new number nor advances the sequence.
-// A concurrent second call blocks on the row lock and, once the guarding UPDATE no
-// longer matches, falls through to the read of the value the first call committed.
+// AllocateCertificateNumber assigns ABK/YYYY/<exam_number(pad4)>/<participant_number(pad6)>
+// to a session's certificate_number exactly once (FR-25). The number is composed in Go —
+// no global sequence is consumed — from the session's exam (exam_number, scheduled_at) and
+// its registration (participant_number). A second call for an already-numbered session
+// returns the existing value unchanged. A concurrent second call loses the guarding
+// UPDATE (WHERE certificate_number IS NULL matches no row) and falls through to a read
+// of the value the first call committed.
 func (r *Repository) AllocateCertificateNumber(ctx context.Context, sessionID uuid.UUID) (string, error) {
-	var number string
+	var existing *string
+	var examNumber, participantNumber int
+	var scheduledAt *time.Time
 	err := r.pool.QueryRow(ctx,
-		`WITH allocated AS (
-			UPDATE exam_session
-			SET certificate_number = 'ABK/' || to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY') || '/' ||
-				lpad(nextval('certificate_number_seq')::text, 6, '0')
-			WHERE id = $1 AND certificate_number IS NULL
-			RETURNING certificate_number
-		)
-		SELECT certificate_number FROM allocated
-		UNION ALL
-		SELECT certificate_number FROM exam_session WHERE id = $1 AND certificate_number IS NOT NULL
-		LIMIT 1`,
+		`SELECT s.certificate_number, e.exam_number, reg.participant_number, e.scheduled_at
+		FROM exam_session s
+		JOIN exam_registration reg ON reg.id = s.registration_id
+		JOIN exam e ON e.id = s.exam_id
+		WHERE s.id = $1`,
 		sessionID,
-	).Scan(&number)
+	).Scan(&existing, &examNumber, &participantNumber, &scheduledAt)
 	if err != nil {
 		if isNotFound(err) {
 			return "", ErrNotFound
 		}
 		return "", err
 	}
-	return number, nil
+	if existing != nil {
+		return *existing, nil
+	}
+
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return "", err
+	}
+	year := time.Now().In(loc).Year()
+	if scheduledAt != nil {
+		year = scheduledAt.In(loc).Year()
+	}
+	number := fmt.Sprintf("ABK/%04d/%04d/%06d", year, examNumber, participantNumber)
+
+	var allocated string
+	err = r.pool.QueryRow(ctx,
+		`UPDATE exam_session SET certificate_number = $1
+		WHERE id = $2 AND certificate_number IS NULL
+		RETURNING certificate_number`,
+		number, sessionID,
+	).Scan(&allocated)
+	if err == nil {
+		return allocated, nil
+	}
+	if !isNotFound(err) {
+		return "", err
+	}
+
+	if err := r.pool.QueryRow(ctx,
+		`SELECT certificate_number FROM exam_session WHERE id = $1`, sessionID,
+	).Scan(&allocated); err != nil {
+		return "", err
+	}
+	return allocated, nil
 }
 
 // ListExamLeaderboard returns a cursor-paginated ranked list of fully-graded submitted
