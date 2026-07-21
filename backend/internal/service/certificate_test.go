@@ -3,12 +3,16 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	htmlutil "html"
 	"image"
 	"image/color"
 	"image/png"
 	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +21,26 @@ import (
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
+
+// dataURIBytes extracts and decodes a data:image/png;base64,... URI from the
+// given element (matched by its distinguishing style/class prefix), undoing
+// html/template's attribute escaping (e.g. '+' -> "&#43;") the same way a real
+// HTML parser (Chromium, via Gotenberg) would before the image bytes ever
+// matter — a raw literal-base64 substring match is brittle against real binary
+// asset bytes, which frequently contain '+' and so get entity-escaped.
+func dataURIBytes(t *testing.T, htmlOut, elementPrefix string) []byte {
+	t.Helper()
+	re := regexp.MustCompile(regexp.QuoteMeta(elementPrefix) + `[^>]*src="data:image/png;base64,([^"]*)"`)
+	m := re.FindStringSubmatch(htmlOut)
+	if m == nil {
+		t.Fatalf("no %q data URI found in output:\n%s", elementPrefix, htmlOut)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(htmlutil.UnescapeString(m[1]))
+	if err != nil {
+		t.Fatalf("decode data URI base64: %v", err)
+	}
+	return decoded
+}
 
 // certDesignJSON builds a *json.RawMessage certificate_design blob naming only
 // a template — the test-era equivalent of the pre-Task-8 CertificateTemplate
@@ -253,16 +277,82 @@ func TestValidateCertificateTemplate_InvalidKey(t *testing.T) {
 // generateCertificatePDF and the gofpdf renderCertificate/renderCertificateWithImages
 // path it exercised were deleted in Task 6 (certificates now render via
 // buildCertificateHTML + Gotenberg). Distinguishability across templates and
-// invalid-template handling are re-asserted on the HTML pipeline in Task 9;
+// long/non-ASCII names are re-asserted on the HTML pipeline below.
 // TestValidateCertificateTemplate_InvalidKey above already covers the
-// validation error path directly.
+// invalid-template validation error path directly.
 
-func TestGenerateCertificatePDF_DifferentTemplates_Distinguishable(t *testing.T) {
-	t.Skip("rewritten as HTML tests in Task 9")
+// TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground proves each
+// builtin template renders a single A4-landscape page with its own embedded
+// background — the HTML-pipeline equivalent of the deleted gofpdf rasterization
+// assertion (one page, background filling the page).
+func TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground(t *testing.T) {
+	for _, tmpl := range []string{"classic", "modern", "elegant"} {
+		t.Run(tmpl, func(t *testing.T) {
+			layout := defaultLayout(tmpl)
+			bg := builtinCertificateBackground(tmpl)
+			vals := certificateFieldValues("Ujian Matematika", "Budi Santoso", "21 Juli 2026", "ABK/2026/0001/000001")
+
+			out, err := buildCertificateHTML(layout, vals, bg, nil)
+			if err != nil {
+				t.Fatalf("buildCertificateHTML(%s): unexpected error: %v", tmpl, err)
+			}
+			html := string(out)
+
+			if !strings.Contains(html, "@page{size:297mm 210mm;margin:0;}") {
+				t.Errorf("%s: expected a single A4-landscape @page rule, got:\n%s", tmpl, html)
+			}
+			if gotBg := dataURIBytes(t, html, `class="certificate-bg"`); !bytes.Equal(gotBg, bg) {
+				t.Errorf("%s: embedded background bytes don't match its own built-in asset", tmpl)
+			}
+			if !strings.Contains(html, "Budi Santoso") {
+				t.Errorf("%s: expected student name in output", tmpl)
+			}
+		})
+	}
 }
 
-func TestGenerateCertificatePDF_InvalidTemplate(t *testing.T) {
-	t.Skip("rewritten as HTML tests in Task 9")
+// TestGenerateCertificatePDF_DifferentTemplates_Distinguishable proves classic/
+// modern/elegant produce different HTML (distinct layout/background/fonts) for
+// the same field values — the regression guard for "all templates render
+// identically" bugs.
+func TestGenerateCertificatePDF_DifferentTemplates_Distinguishable(t *testing.T) {
+	vals := certificateFieldValues("Ujian Matematika", "Budi Santoso", "21 Juli 2026", "ABK/2026/0001/000001")
+
+	outputs := make(map[string]string, 3)
+	for _, tmpl := range []string{"classic", "modern", "elegant"} {
+		out, err := buildCertificateHTML(defaultLayout(tmpl), vals, builtinCertificateBackground(tmpl), nil)
+		if err != nil {
+			t.Fatalf("buildCertificateHTML(%s): unexpected error: %v", tmpl, err)
+		}
+		outputs[tmpl] = string(out)
+	}
+
+	if outputs["classic"] == outputs["modern"] || outputs["classic"] == outputs["elegant"] || outputs["modern"] == outputs["elegant"] {
+		t.Error("distinct templates must render distinguishable HTML (different layout/background/fonts), got identical output")
+	}
+}
+
+// TestGenerateCertificatePDF_LongAndNonASCIINames proves a very long name and a
+// non-ASCII name both build without error and render verbatim — the fit script
+// (FR-8) handles overflow client-side, so the Go builder itself must never
+// reject or mangle these values.
+func TestGenerateCertificatePDF_LongAndNonASCIINames(t *testing.T) {
+	layout := defaultLayout("classic")
+	bg := builtinCertificateBackground("classic")
+
+	for _, name := range []string{
+		"Muhammad Abdurrahman Al-Ghazali Bin Abdullah Wibisono Setiawan Nugroho",
+		"Nguyễn Thị Phương Anh — 日本語テスト",
+	} {
+		vals := certificateFieldValues("Ujian Matematika", name, "21 Juli 2026", "ABK/2026/0001/000001")
+		out, err := buildCertificateHTML(layout, vals, bg, nil)
+		if err != nil {
+			t.Fatalf("buildCertificateHTML: unexpected error for name %q: %v", name, err)
+		}
+		if !strings.Contains(string(out), name) {
+			t.Errorf("expected long/non-ASCII name %q to render verbatim in output", name)
+		}
+	}
 }
 
 // ---------- tests: resolveCertificateURL ----------
@@ -687,23 +777,45 @@ func assertA4LandscapeAspect(t *testing.T, img image.Image, name string) {
 	}
 }
 
-// TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground,
-// TestGenerateCertificatePDF_LongAndNonASCIINames, and
-// TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions rasterized gofpdf
-// output (generateCertificatePDF/renderCertificate, deleted in Task 6). The
-// equivalent regression guards (one page, A4 landscape, background present,
-// field ink at the correct mm position — the direct guard for R1's
-// off-centre/upside-down bug) are Task 9's job on the HTML pipeline.
-func TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground(t *testing.T) {
-	t.Skip("rewritten as HTML tests in Task 9")
-}
+// TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground and
+// TestGenerateCertificatePDF_LongAndNonASCIINames above, and
+// TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions below, are the
+// HTML-pipeline equivalents of the deleted gofpdf rasterization assertions
+// (one page, A4 landscape, background present, field ink at the correct mm
+// position — the direct guard for R1's off-centre/upside-down bug).
 
-func TestGenerateCertificatePDF_LongAndNonASCIINames(t *testing.T) {
-	t.Skip("rewritten as HTML tests in Task 9")
-}
-
+// TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions proves the full path
+// from an exam's saved certificate_design blob (resolveCertificateLayout) to
+// rendered HTML preserves field geometry exactly, keeping the date field as
+// the Y-inversion discriminator (R1): its top sits near the page bottom
+// (166mm of a 210mm page), which a pageHeight-y inversion bug would instead
+// place near the top. certificate_html_test.go's
+// TestBuildCertificateHTML_PageSizeAndFieldGeometry covers buildCertificateHTML
+// directly on a hand-built Layout; this covers the exam->layout->HTML path.
 func TestGenerateCertificatePDF_FieldsRenderAtLayoutPositions(t *testing.T) {
-	t.Skip("rewritten as HTML tests in Task 9")
+	raw := json.RawMessage(`{"template":"classic","page":{"width_mm":297,"height_mm":210},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"student_name","x_mm":48.5,"y_mm":108,"w_mm":200,"align":"left","font":"cormorant_garamond","weight":"bold","size_pt":40,"color":"#22315B","visible":true},{"id":"date","x_mm":48.5,"y_mm":166,"w_mm":200,"align":"right","font":"public_sans","weight":"regular","size_pt":11,"color":"#4A5568","visible":true}]}`)
+	exam := &model.Exam{CertificateDesign: &raw, Title: "Ujian Matematika"}
+
+	layout, err := resolveCertificateLayout(exam)
+	if err != nil {
+		t.Fatalf("resolveCertificateLayout: unexpected error: %v", err)
+	}
+	vals := certificateFieldValues(exam.Title, "Budi Santoso", "21 Juli 2026", "ABK/2026/0001/000001")
+	out, err := buildCertificateHTML(layout, vals, builtinCertificateBackground("classic"), nil)
+	if err != nil {
+		t.Fatalf("buildCertificateHTML: unexpected error: %v", err)
+	}
+	html := string(out)
+
+	if !strings.Contains(html, "left:48.5mm;top:108mm;width:200mm;text-align:left;") {
+		t.Errorf("student_name field not at its saved geometry, got:\n%s", html)
+	}
+	if !strings.Contains(html, "left:48.5mm;top:166mm;width:200mm;text-align:right;") {
+		t.Errorf("date field not at its saved geometry (Y-inversion guard), got:\n%s", html)
+	}
+	if strings.Contains(html, "top:44mm") {
+		t.Errorf("date field appears inverted toward the page top, got:\n%s", html)
+	}
 }
 
 // TestDefaultLayout_CertificateNumberColorContrastsWithBackground is the
@@ -764,10 +876,35 @@ func solidDarkPNG(t *testing.T, w, h int) []byte {
 	return buf.Bytes()
 }
 
-// TestRenderCertificate_SignatureImageStampsAtFieldBoxOnlyWhenPresent covered
-// the signature-upload feature via renderCertificateWithImages (deleted in
-// Task 6). The HTML-pipeline equivalent (buildCertificateHTML's image field
-// handling) is Task 9's job.
+// TestRenderCertificate_SignatureImageStampsAtFieldBoxOnlyWhenPresent proves
+// buildCertificateHTML's image field handling (the HTML-pipeline equivalent of
+// the deleted renderCertificateWithImages behavior): a visible "signature"
+// field stamps the uploaded image at its own box (object-fit:contain, no
+// stretch/crop) only when image bytes are supplied, and renders nothing at all
+// when they are not.
 func TestRenderCertificate_SignatureImageStampsAtFieldBoxOnlyWhenPresent(t *testing.T) {
-	t.Skip("rewritten as HTML tests in Task 9")
+	layout := testCertificateLayout()
+	dateStr := jakartaDateStr(t)
+	vals := certificateFieldValues("Ujian Matematika", "Budi Santoso", dateStr, "ABK/2026/0042/000005")
+	sigBytes := solidDarkPNG(t, 40, 20)
+
+	withSig, err := buildCertificateHTML(layout, vals, []byte("bg"), map[FieldID][]byte{"signature": sigBytes})
+	if err != nil {
+		t.Fatalf("buildCertificateHTML: unexpected error: %v", err)
+	}
+	html := string(withSig)
+	if gotSig := dataURIBytes(t, html, `style="position:absolute;left:205mm;top:150mm;width:62mm;height:22mm;object-fit:contain;"`); !bytes.Equal(gotSig, sigBytes) {
+		t.Error("expected the signature image bytes to be embedded at its field box")
+	}
+	if !strings.Contains(html, "left:205mm;top:150mm;width:62mm;height:22mm;object-fit:contain;") {
+		t.Errorf("expected signature field geometry (object-fit:contain, no stretch/crop), got:\n%s", html)
+	}
+
+	withoutSig, err := buildCertificateHTML(layout, vals, []byte("bg"), nil)
+	if err != nil {
+		t.Fatalf("buildCertificateHTML: unexpected error: %v", err)
+	}
+	if strings.Contains(string(withoutSig), "left:205mm;top:150mm") {
+		t.Errorf("signature field with no image bytes must not render, got:\n%s", string(withoutSig))
+	}
 }

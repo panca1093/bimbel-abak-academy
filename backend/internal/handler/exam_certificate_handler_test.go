@@ -61,6 +61,33 @@ func registerStudentLeaderboardRoute(t *testing.T, env *testEnv, h *handler.Hand
 }
 
 // ---------------------------------------------------------------------------
+// Fake Gotenberg (no live sidecar in the test env)
+// ---------------------------------------------------------------------------
+
+// fakePDFBytes is a minimal well-formed PDF good enough for the
+// "%PDF"-prefix/non-empty assertions these tests make on the response body.
+var fakePDFBytes = []byte("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF")
+
+// newFakeGotenbergServer stands in for a real Gotenberg sidecar: it answers
+// the Chromium HTML-to-PDF route the renderer POSTs to with a fixed PDF, so
+// certificate-preview tests get a real 200+PDF round trip without a live
+// Gotenberg in the test environment. Closed automatically via t.Cleanup.
+func newFakeGotenbergServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/forms/chromium/convert/html" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.WriteHeader(http.StatusOK)
+		w.Write(fakePDFBytes)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// ---------------------------------------------------------------------------
 // DB-backed test environment (testcontainers Postgres)
 // ---------------------------------------------------------------------------
 
@@ -110,6 +137,12 @@ func newTestEnvWithStoreAndStorage(t *testing.T) *testEnvWithStore {
 func newTestEnvWithStoreCfg(t *testing.T, storage *minio.Client, cfg *config.Config) *testEnvWithStore {
 	t.Helper()
 	ctx := context.Background()
+
+	// No live Gotenberg sidecar runs in the test environment; point the
+	// renderer at a fake one unless a caller already configured a URL.
+	if cfg.GotenbergURL == "" {
+		cfg.GotenbergURL = newFakeGotenbergServer(t).URL
+	}
 
 	pgContainer, err := tcpostgres.Run(ctx,
 		"postgres:16-alpine",
