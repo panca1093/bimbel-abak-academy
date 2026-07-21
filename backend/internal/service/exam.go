@@ -641,18 +641,20 @@ func validateExam(e model.Exam) error {
 	if e.ResultConfig != "" && !validResultConfigs[e.ResultConfig] {
 		return fmt.Errorf("%w: result_config must be hidden, score_only, or score_pembahasan", ErrValidation)
 	}
-	if e.CertificateTemplate != "" {
-		if err := validateCertificateTemplate(e.CertificateTemplate); err != nil {
-			return err
+	if e.CertificateDesign != nil {
+		design, err := parseCertificateDesign(e.CertificateDesign)
+		if err != nil {
+			return fmt.Errorf("%w: invalid certificate design json", ErrValidation)
 		}
-	}
-	if e.CertificateLayout != nil {
-		var layout Layout
-		if err := json.Unmarshal(*e.CertificateLayout, &layout); err != nil {
-			return fmt.Errorf("%w: invalid certificate layout json", ErrValidation)
+		if design.Template != "" {
+			if err := validateCertificateTemplate(design.Template); err != nil {
+				return err
+			}
 		}
-		if err := ValidateLayout(layout); err != nil {
-			return err
+		if len(design.Fields) > 0 {
+			if err := ValidateLayout(design.Layout); err != nil {
+				return err
+			}
 		}
 	}
 	if e.CheckInWindowMinutes != nil && *e.CheckInWindowMinutes < 0 {
@@ -690,9 +692,6 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, err
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"
 	}
-	if m.CertificateTemplate == "" {
-		m.CertificateTemplate = "classic"
-	}
 	if m.Status == "" {
 		m.Status = "draft"
 	}
@@ -721,10 +720,11 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 	}
 	m.ID = id
 	m.CreatedAt = existing.CreatedAt
-	// C3/FR-14: one timestamp covers all three certificate design axes — bump
-	// it only when template, background key, or layout actually changed, so an
-	// unrelated field edit doesn't falsely mark the design stale.
-	if certificateDesignChanged(*existing, m) {
+	// C3/FR-14: template, background key, and layout now share one JSON blob
+	// (Task 8/FR-26), so a single raw-bytes compare on that blob is the whole
+	// staleness check — bump only when it actually changed, so an unrelated
+	// field edit doesn't falsely mark the design stale.
+	if !rawMessagePtrEqual(existing.CertificateDesign, m.CertificateDesign) {
 		now := time.Now()
 		m.CertificateDesignUpdatedAt = &now
 	} else {
@@ -737,26 +737,6 @@ func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam) (m
 		return model.Exam{}, err
 	}
 	return m, nil
-}
-
-// certificateDesignChanged reports whether template, background key, or
-// layout differ between the previously persisted exam and an incoming update
-// — the three axes that share one staleness timestamp (C3/FR-14).
-func certificateDesignChanged(old, updated model.Exam) bool {
-	if old.CertificateTemplate != updated.CertificateTemplate {
-		return true
-	}
-	if !strPtrEqual(old.CertificateBackgroundKey, updated.CertificateBackgroundKey) {
-		return true
-	}
-	return !rawMessagePtrEqual(old.CertificateLayout, updated.CertificateLayout)
-}
-
-func strPtrEqual(a, b *string) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
 }
 
 func rawMessagePtrEqual(a, b *json.RawMessage) bool {
@@ -794,8 +774,8 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	}
 
 	var bgURL *string
-	if exam.CertificateBackgroundKey != nil {
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *exam.CertificateBackgroundKey, time.Hour)
+	if key := certificateBackgroundKey(exam); key != nil {
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *key, time.Hour)
 		if err != nil {
 			return nil, fmt.Errorf("presign certificate background: %w", err)
 		}
@@ -812,7 +792,7 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 	}
 
 	return &CertificateDesignResponse{
-		Template:      exam.CertificateTemplate,
+		Template:      certificateTemplate(exam),
 		BackgroundURL: bgURL,
 		SignatureURL:  sigURL,
 		Layout:        layout,
@@ -839,19 +819,25 @@ func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uu
 		return nil, err
 	}
 
+	storedTmpl := certificateTemplate(exam)
 	tmpl := templateOverride
 	if tmpl == "" {
-		tmpl = exam.CertificateTemplate
+		tmpl = storedTmpl
 	}
 	if err := validateCertificateTemplate(tmpl); err != nil {
 		return nil, err
 	}
 
-	previewExam := *exam
-	previewExam.CertificateTemplate = tmpl
-	if templateOverride != "" && templateOverride != exam.CertificateTemplate {
-		previewExam.CertificateBackgroundKey = nil
+	previewDesign := certificateDesign{Template: tmpl}
+	if templateOverride == "" || templateOverride == storedTmpl {
+		previewDesign.BackgroundKey = certificateBackgroundKey(exam)
 	}
+	raw, err := marshalCertificateDesign(previewDesign)
+	if err != nil {
+		return nil, err
+	}
+	previewExam := *exam
+	previewExam.CertificateDesign = raw
 
 	bg, err := s.resolveCertificateBackground(ctx, &previewExam)
 	if err != nil {

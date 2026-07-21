@@ -14,7 +14,7 @@ func TestCreateExam_AssignsIncreasingExamNumber(t *testing.T) {
 	pool := newGradingTestPool(t)
 	r := New(pool)
 
-	e1 := model.Exam{Title: "Exam One", CertificateTemplate: "classic", ResultConfig: "hidden"}
+	e1 := model.Exam{Title: "Exam One", ResultConfig: "hidden"}
 	if err := r.CreateExam(ctx, &e1); err != nil {
 		t.Fatalf("create exam 1: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestCreateExam_AssignsIncreasingExamNumber(t *testing.T) {
 		t.Fatal("exam_number is nil after create, want non-nil")
 	}
 
-	e2 := model.Exam{Title: "Exam Two", CertificateTemplate: "classic", ResultConfig: "hidden"}
+	e2 := model.Exam{Title: "Exam Two", ResultConfig: "hidden"}
 	if err := r.CreateExam(ctx, &e2); err != nil {
 		t.Fatalf("create exam 2: %v", err)
 	}

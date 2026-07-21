@@ -2046,13 +2046,19 @@ func TestProcessQuestionImportRows_sanitizes_option_text(t *testing.T) {
 	}
 }
 
-// ---------- tests: certificateDesignChanged (FR-14/C3) ----------
+// ---------- tests: certificate design staleness — single-blob compare (FR-14/C3/FR-27) ----------
 
-func TestCertificateDesignChanged(t *testing.T) {
-	layoutA := json.RawMessage(`{"fields":[]}`)
-	layoutB := json.RawMessage(`{"fields":[{"id":"title"}]}`)
-	keyA := "certificates/bg/a.png"
-	keyB := "certificates/bg/b.png"
+// TestCertificateDesignBlobChanged proves UpdateExam's staleness bump (rawMessagePtrEqual
+// on exam.CertificateDesign) fires for ANY change inside the consolidated blob — template,
+// background_key, or layout fields, since Task 8 folded all three into one JSON column —
+// and stays quiet for an unrelated field change (title), since the blob itself is untouched.
+func TestCertificateDesignBlobChanged(t *testing.T) {
+	classicKeyA := json.RawMessage(`{"template":"classic","background_key":"certificates/bg/a.png","fields":[]}`)
+	classicKeyASame := json.RawMessage(`{"template":"classic","background_key":"certificates/bg/a.png","fields":[]}`)
+	modern := json.RawMessage(`{"template":"modern","background_key":"certificates/bg/a.png","fields":[]}`)
+	keyB := json.RawMessage(`{"template":"classic","background_key":"certificates/bg/b.png","fields":[]}`)
+	keyCleared := json.RawMessage(`{"template":"classic","fields":[]}`)
+	layoutB := json.RawMessage(`{"template":"classic","background_key":"certificates/bg/a.png","fields":[{"id":"title"}]}`)
 
 	cases := []struct {
 		name string
@@ -2061,48 +2067,48 @@ func TestCertificateDesignChanged(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "identical exam",
-			old:  model.Exam{CertificateTemplate: "classic", CertificateBackgroundKey: &keyA, CertificateLayout: &layoutA},
-			new:  model.Exam{CertificateTemplate: "classic", CertificateBackgroundKey: &keyA, CertificateLayout: &layoutA},
+			name: "identical blob",
+			old:  model.Exam{CertificateDesign: &classicKeyA},
+			new:  model.Exam{CertificateDesign: &classicKeyASame},
 			want: false,
 		},
 		{
 			name: "template changed",
-			old:  model.Exam{CertificateTemplate: "classic"},
-			new:  model.Exam{CertificateTemplate: "modern"},
+			old:  model.Exam{CertificateDesign: &classicKeyA},
+			new:  model.Exam{CertificateDesign: &modern},
 			want: true,
 		},
 		{
 			name: "background key changed",
-			old:  model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: &keyA},
-			new:  model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: &keyB},
+			old:  model.Exam{CertificateDesign: &classicKeyA},
+			new:  model.Exam{CertificateDesign: &keyB},
 			want: true,
 		},
 		{
 			name: "background key cleared",
-			old:  model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: &keyA},
-			new:  model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: nil},
+			old:  model.Exam{CertificateDesign: &classicKeyA},
+			new:  model.Exam{CertificateDesign: &keyCleared},
 			want: true,
 		},
 		{
-			name: "layout changed",
-			old:  model.Exam{CertificateTemplate: "classic", CertificateLayout: &layoutA},
-			new:  model.Exam{CertificateTemplate: "classic", CertificateLayout: &layoutB},
+			name: "layout fields changed",
+			old:  model.Exam{CertificateDesign: &classicKeyA},
+			new:  model.Exam{CertificateDesign: &layoutB},
 			want: true,
 		},
 		{
-			name: "unrelated field only (title)",
-			old:  model.Exam{CertificateTemplate: "classic", Title: "Old Title"},
-			new:  model.Exam{CertificateTemplate: "classic", Title: "New Title"},
+			name: "unrelated field only (title), blob untouched",
+			old:  model.Exam{CertificateDesign: &classicKeyA, Title: "Old Title"},
+			new:  model.Exam{CertificateDesign: &classicKeyASame, Title: "New Title"},
 			want: false,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := certificateDesignChanged(tc.old, tc.new)
+			got := !rawMessagePtrEqual(tc.old.CertificateDesign, tc.new.CertificateDesign)
 			if got != tc.want {
-				t.Errorf("certificateDesignChanged(%+v, %+v) = %v, want %v", tc.old, tc.new, got, tc.want)
+				t.Errorf("blob changed(%+v, %+v) = %v, want %v", tc.old, tc.new, got, tc.want)
 			}
 		})
 	}
@@ -2115,7 +2121,7 @@ func TestCertificateDesignChanged(t *testing.T) {
 
 func TestValidateExam_rejects_unknown_certificate_layout_field_id(t *testing.T) {
 	raw := json.RawMessage(`{"page":{"width_mm":297,"height_mm":210},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"not_a_real_field","x_mm":10,"y_mm":10,"w_mm":50,"align":"center","visible":true}]}`)
-	e := model.Exam{Title: "Layout Exam", CertificateLayout: &raw}
+	e := model.Exam{Title: "Layout Exam", CertificateDesign: &raw}
 	err := validateExam(e)
 	if !errors.Is(err, ErrValidation) {
 		t.Fatalf("unknown field id should return ErrValidation, got %v", err)
@@ -2127,7 +2133,7 @@ func TestValidateExam_rejects_unknown_certificate_layout_field_id(t *testing.T) 
 
 func TestValidateExam_accepts_valid_certificate_layout(t *testing.T) {
 	raw := json.RawMessage(`{"page":{"width_mm":297,"height_mm":210},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"title","x_mm":10,"y_mm":10,"w_mm":50,"align":"center","visible":true}]}`)
-	e := model.Exam{Title: "Layout Exam", CertificateLayout: &raw}
+	e := model.Exam{Title: "Layout Exam", CertificateDesign: &raw}
 	if err := validateExam(e); err != nil {
 		t.Errorf("valid layout should pass, got %v", err)
 	}
@@ -2137,7 +2143,7 @@ func TestGetCertificateDesign_Integration_UntouchedExam_ReturnsBuiltinDefaultLay
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
-	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Design Default Exam " + uniqueSuffix(), CertificateTemplate: "classic"})
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Design Default Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("classic")})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
@@ -2188,12 +2194,13 @@ func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNo
 		client, &config.Config{ObjectStorageBucketName: "test-bucket", ObjectStorageRegion: "us-east-1"},
 	)
 
-	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Design Presign Exam " + uniqueSuffix(), CertificateTemplate: "custom"})
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Design Presign Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("custom")})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}
 	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
-	exam.CertificateBackgroundKey = &key
+	designWithKey := json.RawMessage(`{"template":"custom","background_key":"` + key + `"}`)
+	exam.CertificateDesign = &designWithKey
 	if _, err := svc.UpdateExam(ctx, exam.ID, exam); err != nil {
 		t.Fatalf("UpdateExam: %v", err)
 	}
@@ -2217,7 +2224,7 @@ func TestGetCertificatePreviewWithLayout_Integration_InvalidOverride_ReturnsVali
 	svc, _ := newRealDBService(t)
 	ctx := context.Background()
 
-	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Preview Override Exam " + uniqueSuffix(), CertificateTemplate: "classic"})
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "Preview Override Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("classic")})
 	if err != nil {
 		t.Fatalf("CreateExam: %v", err)
 	}

@@ -9,6 +9,7 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -138,7 +139,11 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	applyNullable(req.GraceWindowMinutes, &overlay.GraceWindowMinutes)
 	applyNullable(req.MaxAttempts, &overlay.MaxAttempts)
 	if req.CertificateTemplate != "" {
-		overlay.CertificateTemplate = req.CertificateTemplate
+		raw, err := service.SetCertificateTemplate(overlay.CertificateDesign, req.CertificateTemplate)
+		if err != nil {
+			return badRequest(c, "invalid certificate design")
+		}
+		overlay.CertificateDesign = raw
 	}
 	if req.IsFree != nil {
 		overlay.IsFree = *req.IsFree

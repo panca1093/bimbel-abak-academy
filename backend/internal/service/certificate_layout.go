@@ -7,7 +7,12 @@ package service
 // mode; the editor's only conversion is the uniform scale
 // mm = px * (page_width_mm / preview_width_px). Never compute pageHeight - y.
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+
+	"akademi-bimbel/internal/model"
+)
 
 // FieldID identifies a certificate layout field. It aliases string rather than
 // defining a distinct type so it drops in wherever LayoutField.ID and
@@ -73,7 +78,7 @@ type LayoutField struct {
 }
 
 // Layout is the JSON contract shared by the certificate renderer and the admin
-// editor, persisted in exam.certificate_layout.
+// editor, embedded (flattened) inside the exam.certificate_design blob.
 type Layout struct {
 	Page       Page          `json:"page"`
 	Background Background    `json:"background"`
@@ -82,6 +87,95 @@ type Layout struct {
 	// image; nil until an admin uploads one. The image is stamped at the
 	// "signature" field's box when that field is visible.
 	SignatureKey *string `json:"signature_key,omitempty"`
+}
+
+// certificateDesign is the full shape persisted in exam.certificate_design
+// (FR-26/FR-27): Layout's fields (page/background/fields/signature_key) plus
+// Template and BackgroundKey, which lived in separate certificate_template and
+// certificate_background_key columns before migration 0042. Embedding Layout
+// keeps those keys at the top level of the JSON object rather than nesting
+// them under a "layout" key.
+type certificateDesign struct {
+	Layout
+	Template string `json:"template,omitempty"`
+	// BackgroundKey is the private-bucket object key of an uploaded custom
+	// background (never a raw or presigned URL). Nil when no custom background
+	// is set. Distinct from Layout.Background, which only carries display
+	// metadata (kind/ref) for the editor.
+	BackgroundKey *string `json:"background_key,omitempty"`
+}
+
+// parseCertificateDesign unmarshals exam.CertificateDesign. A nil blob (an
+// exam that has never had a design saved) parses to a zero-value design —
+// empty template, no background key, no layout fields — so callers apply
+// their own defaults rather than erroring.
+func parseCertificateDesign(raw *json.RawMessage) (certificateDesign, error) {
+	var d certificateDesign
+	if raw == nil {
+		return d, nil
+	}
+	if err := json.Unmarshal(*raw, &d); err != nil {
+		return certificateDesign{}, fmt.Errorf("unmarshal certificate design: %w", err)
+	}
+	return d, nil
+}
+
+// marshalCertificateDesign serializes a certificateDesign back into the raw
+// JSON shape stored in exam.CertificateDesign.
+func marshalCertificateDesign(d certificateDesign) (*json.RawMessage, error) {
+	b, err := json.Marshal(d)
+	if err != nil {
+		return nil, err
+	}
+	raw := json.RawMessage(b)
+	return &raw, nil
+}
+
+// certificateTemplate returns the template name persisted in an exam's
+// certificate_design blob, defaulting to "classic" for an exam that has no
+// design yet (mirrors defaultLayout's own "unknown template" fallback, and
+// the pre-Task-8 certificate_template column's NOT NULL DEFAULT 'classic').
+// Helper for call sites that only need the template, not the full parsed design.
+func certificateTemplate(e *model.Exam) string {
+	d, _ := parseCertificateDesign(e.CertificateDesign)
+	if d.Template == "" {
+		return "classic"
+	}
+	return d.Template
+}
+
+// certificateBackgroundKey returns the custom background object key
+// persisted in an exam's certificate_design blob, or nil if unset.
+func certificateBackgroundKey(e *model.Exam) *string {
+	d, _ := parseCertificateDesign(e.CertificateDesign)
+	return d.BackgroundKey
+}
+
+// SetCertificateTemplate overlays a new template name onto an exam's existing
+// certificate_design blob, preserving its background key/layout/signature key.
+// Used by AdminUpdateExam's plain certificate_template PATCH field, which
+// (unlike the dedicated certificate-design PUT) doesn't also send a layout.
+func SetCertificateTemplate(design *json.RawMessage, template string) (*json.RawMessage, error) {
+	d, err := parseCertificateDesign(design)
+	if err != nil {
+		return nil, err
+	}
+	d.Template = template
+	return marshalCertificateDesign(d)
+}
+
+// MarshalCertificateDesign builds the exam.certificate_design JSON blob from
+// the admin editor's PUT body (template, background key, layout) — the
+// combined shape GetCertificateDesign/resolveCertificateLayout/
+// resolveCertificateBackground read back (FR-26/FR-27). Exported so the
+// handler layer can assemble the blob without reaching into this package's
+// unexported certificateDesign type.
+func MarshalCertificateDesign(template string, backgroundKey *string, layout Layout) (*json.RawMessage, error) {
+	return marshalCertificateDesign(certificateDesign{
+		Layout:        layout,
+		Template:      template,
+		BackgroundKey: backgroundKey,
+	})
 }
 
 // nominalLineHeightMm derives an approximate single-line text box height in

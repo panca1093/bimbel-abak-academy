@@ -332,9 +332,9 @@ func seedExam(t *testing.T, pool *pgxpool.Pool, title string, allowLeaderboard b
 		certificateTemplate = "classic"
 	}
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO exam (title, allow_leaderboard, result_config, certificate_template, timer_mode, duration_minutes)
+		`INSERT INTO exam (title, allow_leaderboard, result_config, certificate_design, timer_mode, duration_minutes)
 		VALUES ($1, $2, $3, $4, 'overall', 60) RETURNING id`,
-		title, allowLeaderboard, resultConfig, certificateTemplate,
+		title, allowLeaderboard, resultConfig, fmt.Sprintf(`{"template":%q}`, certificateTemplate),
 	).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert exam: %v", err)
@@ -828,9 +828,10 @@ func TestAdminGetExamCertificateDesign_CustomBackground_ReturnsPresignedURLNotRa
 	examID := seedExam(t, env.pool, "Design Presign Exam", false, "hidden", "custom")
 	key := "avatars/admin/" + uuid.NewString() + "-bg.png"
 	if _, err := env.pool.Exec(context.Background(),
-		`UPDATE exam SET certificate_background_key = $1 WHERE id = $2`, key, examID,
+		`UPDATE exam SET certificate_design = jsonb_set(COALESCE(certificate_design, '{}'::jsonb), '{background_key}', to_jsonb($1::text)) WHERE id = $2`,
+		key, examID,
 	); err != nil {
-		t.Fatalf("seed certificate_background_key: %v", err)
+		t.Fatalf("seed certificate_design background_key: %v", err)
 	}
 
 	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminExam)
@@ -884,23 +885,29 @@ func TestAdminUpdateExamCertificateDesign_ValidPUT_PersistsAndBumpsTimestamp(t *
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	var persistedTemplate string
-	var persistedKey *string
-	var persistedLayout []byte
+	var persistedDesign []byte
 	var after *time.Time
 	if err := env.pool.QueryRow(context.Background(),
-		`SELECT certificate_template, certificate_background_key, certificate_layout, certificate_design_updated_at FROM exam WHERE id = $1`, examID,
-	).Scan(&persistedTemplate, &persistedKey, &persistedLayout, &after); err != nil {
+		`SELECT certificate_design, certificate_design_updated_at FROM exam WHERE id = $1`, examID,
+	).Scan(&persistedDesign, &after); err != nil {
 		t.Fatalf("query persisted design: %v", err)
 	}
-	if persistedTemplate != "custom" {
-		t.Errorf("certificate_template: want custom, got %q", persistedTemplate)
+	var decoded struct {
+		Template      string `json:"template"`
+		BackgroundKey string `json:"background_key"`
+		Fields        []any  `json:"fields"`
 	}
-	if persistedKey == nil || *persistedKey != key {
-		t.Errorf("certificate_background_key: want %q, got %v", key, persistedKey)
+	if err := json.Unmarshal(persistedDesign, &decoded); err != nil {
+		t.Fatalf("unmarshal certificate_design: %v", err)
 	}
-	if len(persistedLayout) == 0 {
-		t.Error("expected certificate_layout to be persisted")
+	if decoded.Template != "custom" {
+		t.Errorf("certificate_design template: want custom, got %q", decoded.Template)
+	}
+	if decoded.BackgroundKey != key {
+		t.Errorf("certificate_design background_key: want %q, got %q", key, decoded.BackgroundKey)
+	}
+	if len(decoded.Fields) == 0 {
+		t.Error("expected certificate_design fields to be persisted")
 	}
 	if after == nil {
 		t.Fatal("expected certificate_design_updated_at to be bumped, got NULL")
@@ -1123,15 +1130,21 @@ func TestAdminUpdateExam_ValidCertificateTemplate_Returns200(t *testing.T) {
 	}
 
 	// Verify the value was persisted by reading it back via a separate query.
-	var persisted string
+	var persisted []byte
 	err := env.pool.QueryRow(context.Background(),
-		`SELECT certificate_template FROM exam WHERE id = $1`, examID,
+		`SELECT certificate_design FROM exam WHERE id = $1`, examID,
 	).Scan(&persisted)
 	if err != nil {
-		t.Fatalf("query certificate_template: %v", err)
+		t.Fatalf("query certificate_design: %v", err)
 	}
-	if persisted != "modern" {
-		t.Errorf("certificate_template: want modern, got %q", persisted)
+	var decoded struct {
+		Template string `json:"template"`
+	}
+	if err := json.Unmarshal(persisted, &decoded); err != nil {
+		t.Fatalf("unmarshal certificate_design: %v", err)
+	}
+	if decoded.Template != "modern" {
+		t.Errorf("certificate_design template: want modern, got %q", decoded.Template)
 	}
 }
 

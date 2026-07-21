@@ -18,6 +18,14 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
+// certDesignJSON builds a *json.RawMessage certificate_design blob naming only
+// a template — the test-era equivalent of the pre-Task-8 CertificateTemplate
+// column, for tests that don't care about background/layout.
+func certDesignJSON(template string) *json.RawMessage {
+	raw := json.RawMessage(`{"template":"` + template + `"}`)
+	return &raw
+}
+
 // ---------- fakeSessionRepo: certificate extensions ----------
 
 func (f *fakeSessionRepo) UpdateSessionCertificate(_ context.Context, sessionID uuid.UUID, key string, generatedAt time.Time) error {
@@ -68,13 +76,14 @@ func (s *shimSessionService) downloadCertificateBackground(_ context.Context, _ 
 // built-in templates use the embedded asset; "custom" downloads by key, or falls
 // back to classic when the key is NULL (FR-19).
 func (s *shimSessionService) resolveCertificateBackground(ctx context.Context, exam *model.Exam) ([]byte, error) {
-	if exam.CertificateTemplate == "custom" {
-		if exam.CertificateBackgroundKey != nil {
-			return s.downloadCertificateBackground(ctx, *exam.CertificateBackgroundKey)
+	tmpl := certificateTemplate(exam)
+	if tmpl == "custom" {
+		if key := certificateBackgroundKey(exam); key != nil {
+			return s.downloadCertificateBackground(ctx, *key)
 		}
 		return builtinCertificateBackground("classic"), nil
 	}
-	return builtinCertificateBackground(exam.CertificateTemplate), nil
+	return builtinCertificateBackground(tmpl), nil
 }
 
 // resolveCertificateURL mirrors the real Service.resolveCertificateURL using the fake repo
@@ -149,19 +158,22 @@ func (s *shimSessionService) GetCertificatePreview(ctx context.Context, examID u
 		return nil, err
 	}
 
+	storedTmpl := certificateTemplate(exam)
 	tmpl := templateOverride
 	if tmpl == "" {
-		tmpl = exam.CertificateTemplate
+		tmpl = storedTmpl
 	}
 	if err := validateCertificateTemplate(tmpl); err != nil {
 		return nil, err
 	}
 
 	previewExam := *exam
-	previewExam.CertificateTemplate = tmpl
-	if templateOverride != "" && templateOverride != exam.CertificateTemplate {
-		previewExam.CertificateBackgroundKey = nil
-		previewExam.CertificateLayout = nil
+	if templateOverride != "" && templateOverride != storedTmpl {
+		raw, err := marshalCertificateDesign(certificateDesign{Template: tmpl})
+		if err != nil {
+			return nil, err
+		}
+		previewExam.CertificateDesign = raw
 	}
 
 	layout, err := resolveCertificateLayout(&previewExam)
@@ -264,7 +276,7 @@ func TestResolveCertificateURL_NotSubmitted(t *testing.T) {
 		SubmittedAt: nil, CertificateKey: nil, CertificateGeneratedAt: nil,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "Test"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "Test"}
 
 	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
 	if err != nil {
@@ -292,7 +304,7 @@ func TestResolveCertificateURL_FirstTimeGeneration(t *testing.T) {
 		CertificateKey: nil, CertificateGeneratedAt: nil,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "My Exam"}
 	wantURL := "http://minio.example.com/certificates/" + sess.ID.String() + ".pdf"
 
 	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
@@ -327,7 +339,7 @@ func TestResolveCertificateURL_NoRegenerationWhenNotStale(t *testing.T) {
 		CertificateKey: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "My Exam"}
 
 	// Answers graded before the certificate was generated.
 	gradedAt := time.Date(2026, 6, 30, 10, 0, 0, 0, time.UTC)
@@ -362,7 +374,7 @@ func TestResolveCertificateURL_RegenerationWhenStale(t *testing.T) {
 		CertificateKey: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "My Exam"}
 
 	// Answer graded AFTER certificate was generated → stale → regen.
 	gradedAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
@@ -402,7 +414,7 @@ func TestResolveCertificateURL_UploadFailure_ReturnsError(t *testing.T) {
 		CertificateKey: nil, CertificateGeneratedAt: nil,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "My Exam"}
 
 	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
 	if err == nil {
@@ -426,7 +438,7 @@ func TestResolveCertificateURL_PersistFailure_ReturnsError(t *testing.T) {
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
 		CertificateKey: nil, CertificateGeneratedAt: nil,
 	}
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "My Exam"}
 
 	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
 	if !errors.Is(err, repository.ErrNotFound) {
@@ -452,7 +464,7 @@ func TestResolveCertificateURL_RegenerationWhenDesignStale(t *testing.T) {
 		CertificateKey: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam", CertificateDesignUpdatedAt: &designUpdatedAt}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "My Exam", CertificateDesignUpdatedAt: &designUpdatedAt}
 
 	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
 	if err != nil {
@@ -483,7 +495,7 @@ func TestResolveCertificateURL_NoRegenerationWhenDesignNotStaleOrChanged(t *test
 		CertificateKey: &oldURL, CertificateGeneratedAt: &certGeneratedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam", CertificateDesignUpdatedAt: &designUpdatedAt}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "My Exam", CertificateDesignUpdatedAt: &designUpdatedAt}
 
 	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
 	if err != nil {
@@ -516,7 +528,7 @@ func TestResolveCertificateURL_RegenerationReusesCertificateNumber(t *testing.T)
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "My Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "My Exam"}
 
 	if _, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi"); err != nil {
 		t.Fatalf("first generation: %v", err)
@@ -552,7 +564,7 @@ func TestResolveCertificateURL_CustomTemplateNilBackgroundKey_Renders(t *testing
 		ID: uuid.New(), Status: "submitted", SubmittedAt: &submittedAt,
 	}
 	svc.repo.sessions[sess.ID] = sess
-	exam := &model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: nil, Title: "Custom Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("custom"), Title: "Custom Exam"}
 
 	url, err := svc.resolveCertificateURL(ctx, exam, sess, nil, "Budi")
 	if err != nil {
@@ -569,7 +581,7 @@ func TestGetCertificatePreview_DoesNotAllocate(t *testing.T) {
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
-	exam := &model.Exam{CertificateTemplate: "classic", Title: "Preview Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("classic"), Title: "Preview Exam"}
 	svc.repo.seedExam(exam)
 
 	pdf, err := svc.GetCertificatePreview(ctx, exam.ID, "")
@@ -591,7 +603,7 @@ func TestGetCertificatePreview_CustomTemplateNilBackgroundKey_Renders(t *testing
 	ctx := context.Background()
 	svc, _ := newShimSessionService(t)
 
-	exam := &model.Exam{CertificateTemplate: "custom", CertificateBackgroundKey: nil, Title: "Custom Preview Exam"}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("custom"), Title: "Custom Preview Exam"}
 	svc.repo.seedExam(exam)
 
 	pdf, err := svc.GetCertificatePreview(ctx, exam.ID, "")
@@ -616,7 +628,7 @@ func TestGetCertificatePreview_UnknownExam_ReturnsErrExamNotFound(t *testing.T) 
 // ---------- tests: resolveCertificateLayout (FR-29) ----------
 
 func TestResolveCertificateLayout_NilLayout_SeedsBuiltinDefault(t *testing.T) {
-	exam := &model.Exam{CertificateTemplate: "modern", CertificateLayout: nil}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("modern")}
 	layout, err := resolveCertificateLayout(exam)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -628,7 +640,7 @@ func TestResolveCertificateLayout_NilLayout_SeedsBuiltinDefault(t *testing.T) {
 }
 
 func TestResolveCertificateLayout_CustomTemplateNilLayout_FallsBackToClassic(t *testing.T) {
-	exam := &model.Exam{CertificateTemplate: "custom", CertificateLayout: nil}
+	exam := &model.Exam{CertificateDesign: certDesignJSON("custom")}
 	layout, err := resolveCertificateLayout(exam)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -640,8 +652,8 @@ func TestResolveCertificateLayout_CustomTemplateNilLayout_FallsBackToClassic(t *
 }
 
 func TestResolveCertificateLayout_SavedLayout_UsesPersistedFields(t *testing.T) {
-	raw := json.RawMessage(`{"page":{"width_mm":297,"height_mm":210},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"title","x_mm":10,"y_mm":10,"w_mm":50,"align":"left","visible":true}]}`)
-	exam := &model.Exam{CertificateTemplate: "classic", CertificateLayout: &raw}
+	raw := json.RawMessage(`{"template":"classic","page":{"width_mm":297,"height_mm":210},"background":{"kind":"builtin","ref":"classic"},"fields":[{"id":"title","x_mm":10,"y_mm":10,"w_mm":50,"align":"left","visible":true}]}`)
+	exam := &model.Exam{CertificateDesign: &raw}
 	layout, err := resolveCertificateLayout(exam)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

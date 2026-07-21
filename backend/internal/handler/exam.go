@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -916,16 +915,21 @@ func (h *Handler) AdminUpdateExamCertificateDesign(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	layoutJSON, err := json.Marshal(req.Layout)
+	// This endpoint always carries a full Layout (an omitted `layout` key binds
+	// the zero value), so it must always be validated here — unlike the general
+	// validateExam gate, which skips layout validation for a template-only
+	// design blob (e.g. AdminUpdateExam's plain certificate_template PATCH).
+	if err := service.ValidateLayout(req.Layout); err != nil {
+		return mapServiceError(c, err)
+	}
+
+	raw, err := service.MarshalCertificateDesign(req.Template, req.BackgroundKey, req.Layout)
 	if err != nil {
 		return badRequest(c, "invalid layout")
 	}
-	raw := json.RawMessage(layoutJSON)
 
 	overlay := existing.Exam
-	overlay.CertificateTemplate = req.Template
-	overlay.CertificateBackgroundKey = req.BackgroundKey
-	overlay.CertificateLayout = &raw
+	overlay.CertificateDesign = raw
 
 	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay)
 	if err != nil {

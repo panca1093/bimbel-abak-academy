@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -71,19 +70,21 @@ func certificateFieldValues(examTitle, studentName, dateStr, certNumber string) 
 	}
 }
 
-// resolveCertificateLayout returns exam.CertificateLayout when the admin has
-// saved one, else the built-in default layout for the exam's template (FR-29)
-// — an exam never opens to an empty canvas. A "custom" template with no saved
-// layout seeds from classic, mirroring the background fallback (FR-19).
+// resolveCertificateLayout returns the layout saved in exam.CertificateDesign
+// when the admin has saved one (signalled by a non-empty Fields slice — a
+// design blob that only carries a template has no fields yet), else the
+// built-in default layout for the exam's template (FR-29) — an exam never
+// opens to an empty canvas. A "custom" template with no saved layout seeds
+// from classic, mirroring the background fallback (FR-19).
 func resolveCertificateLayout(exam *model.Exam) (Layout, error) {
-	if exam.CertificateLayout != nil {
-		var layout Layout
-		if err := json.Unmarshal(*exam.CertificateLayout, &layout); err != nil {
-			return Layout{}, fmt.Errorf("unmarshal certificate layout: %w", err)
-		}
-		return layout, nil
+	design, err := parseCertificateDesign(exam.CertificateDesign)
+	if err != nil {
+		return Layout{}, err
 	}
-	tmpl := exam.CertificateTemplate
+	if len(design.Fields) > 0 {
+		return design.Layout, nil
+	}
+	tmpl := design.Template
 	if tmpl == "custom" {
 		tmpl = "classic"
 	}
@@ -130,13 +131,14 @@ func (s *Service) downloadCertificateBackground(ctx context.Context, key string)
 // Invariant 8) — there is no input state where generation fails for lack of a
 // template.
 func (s *Service) resolveCertificateBackground(ctx context.Context, exam *model.Exam) ([]byte, error) {
-	if exam.CertificateTemplate == "custom" {
-		if exam.CertificateBackgroundKey != nil {
-			return s.downloadCertificateBackground(ctx, *exam.CertificateBackgroundKey)
+	tmpl := certificateTemplate(exam)
+	if tmpl == "custom" {
+		if key := certificateBackgroundKey(exam); key != nil {
+			return s.downloadCertificateBackground(ctx, *key)
 		}
 		return builtinCertificateBackground("classic"), nil
 	}
-	return builtinCertificateBackground(exam.CertificateTemplate), nil
+	return builtinCertificateBackground(tmpl), nil
 }
 
 // uploadCertificatePDF uploads a PDF certificate at certificates/<sessionID>.pdf
@@ -260,19 +262,26 @@ func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, t
 		return nil, err
 	}
 
+	storedTmpl := certificateTemplate(exam)
 	tmpl := templateOverride
 	if tmpl == "" {
-		tmpl = exam.CertificateTemplate
+		tmpl = storedTmpl
 	}
 	if err := validateCertificateTemplate(tmpl); err != nil {
 		return nil, err
 	}
 
 	previewExam := *exam
-	previewExam.CertificateTemplate = tmpl
-	if templateOverride != "" && templateOverride != exam.CertificateTemplate {
-		previewExam.CertificateBackgroundKey = nil
-		previewExam.CertificateLayout = nil
+	if templateOverride != "" && templateOverride != storedTmpl {
+		// A different template than the one saved: the saved background/layout
+		// were authored for that template, so don't carry them over — seed a
+		// bare design naming only the override, and let resolveCertificateLayout/
+		// resolveCertificateBackground fall back to the override's own built-in.
+		raw, err := marshalCertificateDesign(certificateDesign{Template: tmpl})
+		if err != nil {
+			return nil, err
+		}
+		previewExam.CertificateDesign = raw
 	}
 
 	layout, err := resolveCertificateLayout(&previewExam)

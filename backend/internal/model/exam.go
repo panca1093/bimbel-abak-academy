@@ -103,17 +103,17 @@ type Exam struct {
 	ResultReleaseAt      *time.Time `json:"result_release_at"`
 	Status               string     `json:"status"`
 	CreatedAt            time.Time  `json:"created_at"`
-	CertificateTemplate  string     `json:"certificate_template"`
 	// Mode discriminates standard vs sectioned (utbk|ielts) exams. NOT NULL DEFAULT
 	// 'standard' in the DB; omitempty no-ops since 'standard' is non-empty — admin
 	// payloads gain the key, student-facing payloads are assembled in the service.
 	Mode string `json:"mode,omitempty"`
-	// CertificateBackgroundKey is the private-bucket object key of an uploaded custom
-	// background (never a raw or presigned URL). Nil when no custom background is set.
-	CertificateBackgroundKey *string `json:"certificate_background_key"`
-	// CertificateLayout is the persisted field-position JSON for the certificate editor
-	// (FR-26/FR-27). Nil until an admin has dragged and saved a layout.
-	CertificateLayout *json.RawMessage `json:"certificate_layout"`
+	// CertificateDesign is the single persisted JSON blob for the certificate editor:
+	// template, background (kind/ref plus the private-bucket object key for a custom
+	// upload — never a raw or presigned URL), signature_key, and fields (FR-26/FR-27).
+	// Nil until an admin has saved a design; consolidates what were previously three
+	// separate columns (certificate_template, certificate_background_key,
+	// certificate_layout — folded by migration 0042).
+	CertificateDesign *json.RawMessage `json:"certificate_design"`
 	// CertificateDesignUpdatedAt is bumped whenever template, background key, or layout
 	// changes (C3/FR-14) — the single staleness timestamp compared against a session's
 	// certificate_generated_at.

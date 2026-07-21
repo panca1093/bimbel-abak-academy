@@ -298,8 +298,8 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 26 {
-		t.Fatalf("scanExam passed %d destinations, want 26", got)
+	if got := len(rec.dests); got != 24 {
+		t.Fatalf("scanExam passed %d destinations, want 24", got)
 	}
 
 	if _, ok := rec.dests[0].(*uuid.UUID); !ok {
@@ -329,20 +329,17 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	if _, ok := rec.dests[19].(*time.Time); !ok {
 		t.Errorf("dest[19] = %T, want *time.Time (created_at)", rec.dests[19])
 	}
-	if _, ok := rec.dests[21].(*string); !ok {
-		t.Errorf("dest[21] = %T, want *string (mode)", rec.dests[21])
+	if _, ok := rec.dests[20].(*string); !ok {
+		t.Errorf("dest[20] = %T, want *string (mode)", rec.dests[20])
 	}
-	if _, ok := rec.dests[22].(**string); !ok {
-		t.Errorf("dest[22] = %T, want **string (certificate_background_key, nullable pointer field)", rec.dests[22])
+	if _, ok := rec.dests[21].(**json.RawMessage); !ok {
+		t.Errorf("dest[21] = %T, want **json.RawMessage (certificate_design, nullable pointer field)", rec.dests[21])
 	}
-	if _, ok := rec.dests[23].(**json.RawMessage); !ok {
-		t.Errorf("dest[23] = %T, want **json.RawMessage (certificate_layout, nullable pointer field)", rec.dests[23])
+	if _, ok := rec.dests[22].(**time.Time); !ok {
+		t.Errorf("dest[22] = %T, want **time.Time (certificate_design_updated_at, nullable pointer field)", rec.dests[22])
 	}
-	if _, ok := rec.dests[24].(**time.Time); !ok {
-		t.Errorf("dest[24] = %T, want **time.Time (certificate_design_updated_at, nullable pointer field)", rec.dests[24])
-	}
-	if _, ok := rec.dests[25].(**int); !ok {
-		t.Errorf("dest[25] = %T, want **int (exam_number, nullable pointer field)", rec.dests[25])
+	if _, ok := rec.dests[23].(**int); !ok {
+		t.Errorf("dest[23] = %T, want **int (exam_number, nullable pointer field)", rec.dests[23])
 	}
 }
 
