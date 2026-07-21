@@ -1027,6 +1027,17 @@ export const DICT = {
     exam_grant_empty_students: "Pilih minimal satu siswa.",
     exam_grant_grant_again: "Beri Akses Lagi",
 
+    // Admin participant roster (FR-32)
+    exam_roster_title: "Daftar Peserta",
+    exam_roster_th_participant_no: "No. Peserta",
+    exam_roster_th_name: "Nama",
+    exam_roster_th_username: "Username",
+    exam_roster_th_status: "Status",
+    exam_roster_th_checked_in: "Check-in",
+    exam_roster_empty: "Belum ada peserta terdaftar.",
+    exam_roster_export_csv: "Ekspor CSV",
+    exam_roster_load_failed: "Gagal memuat daftar peserta.",
+
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "Sekolah saya tidak ada di daftar",
     complete_profile_school_unlisted_placeholder: "Tulis nama sekolah Anda",
@@ -2066,6 +2077,17 @@ export const DICT = {
     exam_grant_success_desc_count: "Exam access has been granted to {n} students",
     exam_grant_empty_students: "Please select at least one student.",
     exam_grant_grant_again: "Grant Again",
+
+    // Admin participant roster (FR-32)
+    exam_roster_title: "Participant Roster",
+    exam_roster_th_participant_no: "No. Peserta",
+    exam_roster_th_name: "Name",
+    exam_roster_th_username: "Username",
+    exam_roster_th_status: "Status",
+    exam_roster_th_checked_in: "Checked in",
+    exam_roster_empty: "No participants registered yet.",
+    exam_roster_export_csv: "Export CSV",
+    exam_roster_load_failed: "Failed to load the participant roster.",
 
     // Complete-profile unlisted-school fallback
     complete_profile_school_unlisted_label: "My school is not on the list",

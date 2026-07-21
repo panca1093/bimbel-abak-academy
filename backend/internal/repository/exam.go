@@ -1234,6 +1234,48 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 	return &detail, nil
 }
 
+// GetExamRoster returns every registration for an exam joined with the
+// student's name/username and the exam's scheduled_at/exam_number (the
+// ingredients the service needs to compose each row's FR-24 display
+// participant number), ordered by participant_number (NULLs — rows predating
+// the FR-24 backfill — sort last, then by registration time).
+func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID) ([]model.ExamRosterEntry, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT reg.id, reg.student_id, u.name, u.username, reg.participant_number,
+			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number
+		FROM exam_registration reg
+		JOIN exam e ON e.id = reg.exam_id
+		JOIN users u ON u.id = reg.student_id
+		WHERE reg.exam_id = $1
+		ORDER BY reg.participant_number NULLS LAST, reg.created_at`,
+		examID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.ExamRosterEntry
+	for rows.Next() {
+		var item model.ExamRosterEntry
+		if err := rows.Scan(
+			&item.RegistrationID, &item.StudentID, &item.StudentName, &item.StudentUsername,
+			&item.ParticipantNumber, &item.Status, &item.CheckedInAt, &item.RegisteredAt,
+			&item.ExamScheduledAt, &item.ExamNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []model.ExamRosterEntry{}
+	}
+	return items, nil
+}
+
 // ---------- Session scan helpers ----------
 
 func scanExamSession(row interface{ Scan(dest ...any) error }, s *model.ExamSession) error {

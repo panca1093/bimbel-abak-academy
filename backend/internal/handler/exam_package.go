@@ -65,6 +65,21 @@ func (h *Handler) AdminGetExam(c echo.Context) error {
 	return c.JSON(http.StatusOK, detail)
 }
 
+// AdminListExamRegistrations returns the read-only admin participant roster
+// for an exam (FR-32): registrations joined with student name/username and
+// each row's FR-24 display participant number.
+func (h *Handler) AdminListExamRegistrations(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	rows, err := h.svc.AdminGetExamRoster(c.Request().Context(), id)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"data": rows})
+}
+
 // examPatchRequest is the PATCH body for AdminUpdateExam. Nullable[T] fields
 // distinguish "absent — preserve" from "present and null — clear" from "present
 // with a value" (a plain *T cannot: encoding/json leaves it nil for both absent

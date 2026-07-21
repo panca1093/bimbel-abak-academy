@@ -16,6 +16,7 @@ import type {
   CertificateDesign,
   CertificateDesignInput,
   CertificateLayout,
+  ExamRosterEntry,
 } from "@/lib/types";
 
 export const adminExamsKeys = {
@@ -34,6 +35,8 @@ export const adminExamsKeys = {
     [...adminExamsKeys.leaderboardLists(), examId, filter ?? {}] as const,
   certificateDesign: (examId: string) =>
     [...adminExamsKeys.detail(examId), "certificate-design"] as const,
+  rosters: () => [...adminExamsKeys.all, "roster"] as const,
+  roster: (examId: string) => [...adminExamsKeys.rosters(), examId] as const,
 };
 
 export interface GradeEssayInput {
@@ -203,6 +206,17 @@ export function useExamLeaderboard(
       if (filter.limit !== undefined) params.set("limit", String(filter.limit));
       return authFetch<{ data: ExamLeaderboardEntry[]; next_cursor?: string }>(`${base}?${params.toString()}`);
     },
+    enabled: Boolean(examId) && enabled,
+  });
+}
+
+export function useExamRoster(examId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: adminExamsKeys.roster(examId ?? ""),
+    queryFn: () =>
+      authFetch<{ data: ExamRosterEntry[] }>(
+        `/admin/exams/${encodeURIComponent(examId!)}/registrations`,
+      ),
     enabled: Boolean(examId) && enabled,
   });
 }

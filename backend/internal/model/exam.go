@@ -298,6 +298,27 @@ type RegistrationDetail struct {
 	} `json:"exam"`
 }
 
+// ExamRosterEntry is one row of the admin participant roster for an exam
+// (GET /admin/exams/:id/registrations, FR-32): a registration joined with the
+// student's name/username. ParticipantNumber may be nil for rows predating
+// FR-24 (participant_number backfill) — ParticipantNo stays "" in that case;
+// the service composes it (formatParticipantNo) from the raw ExamScheduledAt/
+// ExamNumber/RegisteredAt ingredients, which are join inputs only and not
+// surfaced on the wire (json:"-").
+type ExamRosterEntry struct {
+	RegistrationID    uuid.UUID  `json:"registration_id"`
+	StudentID         uuid.UUID  `json:"student_id"`
+	StudentName       string     `json:"student_name"`
+	StudentUsername   *string    `json:"student_username"`
+	ParticipantNumber *int       `json:"participant_number"`
+	ParticipantNo     string     `json:"participant_no"`
+	Status            string     `json:"status"`
+	CheckedInAt       *time.Time `json:"checked_in_at"`
+	RegisteredAt      time.Time  `json:"-"`
+	ExamScheduledAt   *time.Time `json:"-"`
+	ExamNumber        *int       `json:"-"`
+}
+
 // SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the
 // gate discriminator ("hidden" | "grading" | "locked" | "result"); the remaining fields are
 // populated per state (score/counts/rank always on "result"; breakdown/pembahasan only on

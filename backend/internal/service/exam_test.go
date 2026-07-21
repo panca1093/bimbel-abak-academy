@@ -2371,3 +2371,79 @@ func TestGetCertificatePreviewWithLayout_Integration_InvalidOverride_ReturnsVali
 		t.Errorf("want ErrValidation for an unknown field id, got %v", err)
 	}
 }
+
+// --- FR-32: admin participant roster ---
+
+func TestFormatParticipantNo_ComposesYYMMDDExamNumberParticipantNumber(t *testing.T) {
+	prefix := time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)
+	got := formatParticipantNo(prefix, 42, 5)
+	want := "250620-0042-000005"
+	if got != want {
+		t.Errorf("formatParticipantNo = %q, want %q", got, want)
+	}
+}
+
+func seedStudentDirect(t *testing.T, ctx context.Context, repo *repository.Repository, name, username string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO users (name, username, role, status, password_hash) VALUES ($1, $2, 'student', 'active', '') RETURNING id`,
+		name, username,
+	).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+func TestAdminGetExamRoster_OrdersByParticipantNumber_NilSafeForMissingNumbers(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+
+	scheduledAt := time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)
+	var examID uuid.UUID
+	err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO exam (title, status, scheduled_at) VALUES ($1, 'draft', $2) RETURNING id`,
+		"Roster Exam "+uniqueSuffix(), scheduledAt,
+	).Scan(&examID)
+	require.NoError(t, err)
+
+	var examNumber int
+	require.NoError(t, repo.Pool().QueryRow(ctx,
+		`SELECT exam_number FROM exam WHERE id = $1`, examID,
+	).Scan(&examNumber))
+
+	studentWithNo := seedStudentDirect(t, ctx, repo, "Andi Saputra", "andi-"+uniqueSuffix())
+	studentNoNo := seedStudentDirect(t, ctx, repo, "Budi Santoso", "budi-"+uniqueSuffix())
+
+	// studentWithNo has a stored participant_number (FR-24); studentNoNo
+	// predates the backfill and has none — the roster row's display number
+	// must degrade to "" rather than crash or show a bogus number.
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number)
+		VALUES ($1, $2, $3, 'registered', 5)`,
+		studentWithNo, examID, "TOKEN"+uniqueSuffix(),
+	)
+	require.NoError(t, err)
+	_, err = repo.Pool().Exec(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status)
+		VALUES ($1, $2, $3, 'registered')`,
+		studentNoNo, examID, "TOKEN"+uniqueSuffix(),
+	)
+	require.NoError(t, err)
+
+	rows, err := svc.AdminGetExamRoster(ctx, examID)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	// ORDER BY participant_number NULLS LAST: the numbered row comes first.
+	assert.Equal(t, studentWithNo, rows[0].StudentID)
+	assert.Equal(t, "Andi Saputra", rows[0].StudentName)
+	require.NotNil(t, rows[0].StudentUsername)
+	require.NotNil(t, rows[0].ParticipantNumber)
+	assert.Equal(t, 5, *rows[0].ParticipantNumber)
+	want := fmt.Sprintf("250620-%s-000005", formatExamNumber(examNumber))
+	assert.Equal(t, want, rows[0].ParticipantNo)
+
+	assert.Equal(t, studentNoNo, rows[1].StudentID)
+	assert.Nil(t, rows[1].ParticipantNumber)
+	assert.Empty(t, rows[1].ParticipantNo, "nil-safe: missing participant_number must not render a bogus number")
+}

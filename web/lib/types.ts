@@ -994,6 +994,20 @@ export interface ExamLeaderboardEntry {
   score: number;
 }
 
+// ExamRosterEntry is one row of the admin participant roster (FR-32,
+// GET /admin/exams/:id/registrations). participant_number/participant_no are
+// empty/absent for registrations predating the FR-24 backfill.
+export interface ExamRosterEntry {
+  registration_id: string;
+  student_id: string;
+  student_name: string;
+  student_username?: string | null;
+  participant_number?: number | null;
+  participant_no: string;
+  status: string;
+  checked_in_at?: string | null;
+}
+
 export interface ScoreBucket {
   label: string;
   count: number;

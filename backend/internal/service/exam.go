@@ -686,6 +686,15 @@ func formatExamNumber(n int) string {
 	return fmt.Sprintf("%04d", n)
 }
 
+// formatParticipantNo composes the FR-24 display string
+// "YYMMDD-<exam_number(pad4)>-<participant_number(pad6)>" from a date prefix
+// (already converted to the desired timezone by the caller), exam number, and
+// participant number. Shared by GetExamRegistration and AdminGetExamRoster —
+// keep byte-identical to preserve existing display output.
+func formatParticipantNo(prefix time.Time, examNumber, participantNumber int) string {
+	return fmt.Sprintf("%s-%s-%06d", prefix.Format("060102"), formatExamNumber(examNumber), participantNumber)
+}
+
 // CreateExam creates a standalone exam — no product is created here. Selling the
 // exam is a separate step: attach it to a Product via the generic Product flow
 // (POST/PATCH /admin/products with exam_ids), mirroring how course-type products
@@ -976,7 +985,7 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 			if detail.Exam.ExamNumber != nil {
 				examNo = *detail.Exam.ExamNumber
 			}
-			detail.ParticipantNo = fmt.Sprintf("%s-%s-%06d", prefix.Format("060102"), formatExamNumber(examNo), *detail.ParticipantNumber)
+			detail.ParticipantNo = formatParticipantNo(prefix, examNo, *detail.ParticipantNumber)
 		}
 		// Platform/Ruang is a single system-config value (one platform for all exams).
 		detail.Platform = examPlatformDefault
@@ -991,6 +1000,37 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 
 // examPlatformDefault is used when the exam_platform system-config key is unset.
 const examPlatformDefault = "exam.abakacademy.id"
+
+// AdminGetExamRoster returns the read-only admin participant roster for an
+// exam (FR-32): every registration joined with student name/username, with
+// each row's FR-24 display participant number composed here (nil-safe — rows
+// without a stored participant_number keep ParticipantNo empty rather than
+// crashing or showing a bogus number).
+func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID) ([]model.ExamRosterEntry, error) {
+	rows, err := s.storeRepo.GetExamRoster(ctx, examID)
+	if err != nil {
+		return nil, err
+	}
+	wib, _ := time.LoadLocation("Asia/Jakarta")
+	for i := range rows {
+		if rows[i].ParticipantNumber == nil {
+			continue
+		}
+		prefix := rows[i].RegisteredAt
+		if rows[i].ExamScheduledAt != nil {
+			prefix = *rows[i].ExamScheduledAt
+		}
+		if wib != nil {
+			prefix = prefix.In(wib)
+		}
+		examNo := 0
+		if rows[i].ExamNumber != nil {
+			examNo = *rows[i].ExamNumber
+		}
+		rows[i].ParticipantNo = formatParticipantNo(prefix, examNo, *rows[i].ParticipantNumber)
+	}
+	return rows, nil
+}
 
 // GetExamCard serves the exam card PDF, generating it once via Gotenberg and
 // caching the object key thereafter (FR-30): a registration with a CardKey
