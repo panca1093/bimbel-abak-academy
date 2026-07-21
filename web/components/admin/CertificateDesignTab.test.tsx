@@ -241,6 +241,50 @@ describe("CertificateDesignTab", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uploads a signature and saves it inside the layout as a visible signature field", async () => {
+    mockPresignMutateAsync.mockResolvedValue({
+      url: "https://upload.example.com/put-sig",
+      method: "PUT",
+      key: "certificates/exam-1/sig.png",
+    });
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchSpy);
+    mockUpdateDesignMutateAsync.mockResolvedValue({
+      template: "classic",
+      background_url: null,
+      signature_url: null,
+      layout: sampleLayout,
+    });
+
+    render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
+
+    await waitFor(() => {
+      expect(mockFetchCertificatePreview).toHaveBeenCalled();
+    });
+
+    const sigInput = screen.getByTestId("certificate-signature-upload-input");
+    const file = new File(["sig"], "sig.png", { type: "image/png" });
+    fireEvent.change(sigInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://upload.example.com/put-sig",
+        expect.objectContaining({ method: "PUT", body: file }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      const call = mockUpdateDesignMutateAsync.mock.calls.at(-1)?.[0];
+      expect(call?.layout?.signature_key).toBe("certificates/exam-1/sig.png");
+      const sig = call?.layout?.fields?.find((f: { id: string }) => f.id === "signature");
+      expect(sig?.visible).toBe(true);
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   it("pre-fills the background key from the exam even when the background isn't touched", async () => {
     mockUpdateDesignMutateAsync.mockResolvedValue({
       template: "classic",

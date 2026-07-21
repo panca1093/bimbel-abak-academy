@@ -46,21 +46,69 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
   const [layout, setLayout] = useState<CertificateLayout | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+  const [signatureUploading, setSignatureUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const signatureInputRef = useRef<HTMLInputElement | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const backgroundObjectUrlRef = useRef<string | null>(null);
+  const signatureObjectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!data || initialized) return;
     setTemplate((data.template as CertificateTemplateOption) ?? "classic");
     setBackgroundUrl(data.background_url ?? null);
     setBackgroundKey(exam.certificate_background_key ?? null);
+    setSignatureUrl(data.signature_url ?? null);
     setLayout(data.layout);
     setInitialized(true);
   }, [data, initialized, exam.certificate_background_key]);
+
+  const signatureField = layout?.fields.find((f) => f.id === "signature") ?? null;
+  const signatureVisible = signatureField?.visible ?? false;
+
+  function setSignatureVisible(visible: boolean) {
+    setLayout((prev) => {
+      if (!prev) return prev;
+      const hasField = prev.fields.some((f) => f.id === "signature");
+      const fields = hasField
+        ? prev.fields.map((f) => (f.id === "signature" ? { ...f, visible } : f))
+        : [
+            ...prev.fields,
+            { id: "signature", x_mm: 205, y_mm: 150, w_mm: 62, h_mm: 22, align: "center", visible },
+          ];
+      return { ...prev, fields };
+    });
+  }
+
+  async function handleSignatureSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSignatureUploading(true);
+    try {
+      const presigned = await presign.mutateAsync({ filename: file.name, content_type: file.type });
+      const uploadRes = await fetch(presigned.url, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
+      if (signatureObjectUrlRef.current) URL.revokeObjectURL(signatureObjectUrlRef.current);
+      const localUrl = URL.createObjectURL(file);
+      signatureObjectUrlRef.current = localUrl;
+      setSignatureUrl(localUrl);
+      setLayout((prev) => (prev ? { ...prev, signature_key: presigned.key } : prev));
+      setSignatureVisible(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("error_generic"));
+    } finally {
+      setSignatureUploading(false);
+      if (signatureInputRef.current) signatureInputRef.current.value = "";
+    }
+  }
 
   function handleFieldsChange(fields: CertificateLayoutField[]) {
     setLayout((prev) => (prev ? { ...prev, fields } : prev));
@@ -99,6 +147,7 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
     return () => {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       if (backgroundObjectUrlRef.current) URL.revokeObjectURL(backgroundObjectUrlRef.current);
+      if (signatureObjectUrlRef.current) URL.revokeObjectURL(signatureObjectUrlRef.current);
     };
   }, []);
 
@@ -243,6 +292,54 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
                 hidden
                 data-testid="certificate-background-upload-input"
                 onChange={handleFileSelected}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+                {t("certificate_design_signature_label")}
+              </span>
+              {signatureUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={signatureUrl}
+                  alt={t("certificate_design_signature_label")}
+                  className="h-24 w-full rounded-md border border-line bg-white object-contain p-2"
+                />
+              ) : (
+                <div className="flex h-24 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+                  {t("certificate_design_no_signature")}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-fit rounded-full"
+                  onClick={() => signatureInputRef.current?.click()}
+                  disabled={signatureUploading || updateDesign.isPending}
+                >
+                  <Upload className="mr-1 size-4" />
+                  {signatureUploading ? t("saving") : t("certificate_design_upload_signature_button")}
+                </Button>
+                <label className="flex items-center gap-2 text-sm text-ink-600">
+                  <input
+                    type="checkbox"
+                    data-testid="certificate-signature-visible-toggle"
+                    checked={signatureVisible}
+                    onChange={(e) => setSignatureVisible(e.target.checked)}
+                  />
+                  {t("certificate_design_show_signature")}
+                </label>
+              </div>
+              <input
+                ref={signatureInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                data-testid="certificate-signature-upload-input"
+                onChange={handleSignatureSelected}
               />
             </div>
           </div>

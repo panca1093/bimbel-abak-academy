@@ -30,7 +30,12 @@ const FIELD_LABEL_KEY: Record<string, keyof (typeof DICT)["id"]> = {
   date: "certificate_field_date",
   certificate_number: "certificate_field_certificate_number",
   logo: "certificate_field_logo",
+  signature: "certificate_field_signature",
 };
+
+// imageFieldIDs mirror the backend's imageFieldIDs (certificate_layout.go): they
+// carry an explicit h_mm box height rather than a font-derived line height.
+const imageFieldIDs = new Set(["logo", "signature"]);
 
 // Coordinate contract (FR-1): x_mm,y_mm is the field box's top-left corner in
 // millimetres, origin top-left, Y down - identical to the renderer. The only
@@ -60,7 +65,7 @@ export function clampFieldPosition(
 ): CertificateLayoutField {
   const maxX = Math.max(0, page.width_mm - field.w_mm);
   const x_mm = Math.min(Math.max(field.x_mm, 0), maxX);
-  const boxHeightMm = field.id === "logo" ? (field.h_mm ?? 0) : nominalLineHeightMm(field.size_pt);
+  const boxHeightMm = imageFieldIDs.has(field.id) ? (field.h_mm ?? 0) : nominalLineHeightMm(field.size_pt);
   const maxY = Math.max(0, page.height_mm - boxHeightMm);
   const y_mm = Math.min(Math.max(field.y_mm, 0), maxY);
   return { ...field, x_mm, y_mm };

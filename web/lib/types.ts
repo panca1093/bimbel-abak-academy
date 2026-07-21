@@ -707,11 +707,13 @@ export interface CertificateLayout {
   page: { width_mm: number; height_mm: number };
   background: { kind: string; ref: string };
   fields: CertificateLayoutField[];
+  signature_key?: string | null;
 }
 
 export interface CertificateDesign {
   template: string;
   background_url: string | null;
+  signature_url: string | null;
   layout: CertificateLayout;
 }
 
