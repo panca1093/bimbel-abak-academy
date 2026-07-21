@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCheckout, ordersKeys } from "@/lib/hooks/orders";
+import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
 export interface SnapCheckoutProps {
@@ -39,6 +40,11 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCh
         }
       },
       onError: (err) => {
+        if (err instanceof ApiError && err.code === "biodata_incomplete") {
+          toast.error(err.message);
+          router.push("/profile");
+          return;
+        }
         toast.error(err instanceof Error ? err.message : "Gagal memulai checkout.");
       },
     });

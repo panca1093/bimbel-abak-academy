@@ -31,7 +31,19 @@ var (
 	ErrExamLinkRequired        = errors.New("exam product requires at least one linked exam")
 	ErrShippingRequired        = errors.New("order requires a shipping selection before checkout")
 	ErrInvalidCourierSelection = errors.New("selected courier is not available for this destination")
+	ErrBiodataIncomplete       = errors.New("lengkapi biodata (sekolah, kelas, tanggal lahir) sebelum mendaftar ujian")
 )
+
+// biodataComplete reports whether a student has the biodata required to register
+// for an exam: a school (listed or unlisted), a class/grade, and a date of birth.
+func biodataComplete(u *model.User) bool {
+	if u == nil {
+		return false
+	}
+	hasSchool := (u.SchoolID != nil && *u.SchoolID != "") ||
+		(u.UnlistedSchoolName != nil && *u.UnlistedSchoolName != "")
+	return hasSchool && u.Grade != nil && u.DOB != nil
+}
 
 type PromoValidation struct {
 	PromoID  uuid.UUID
@@ -853,6 +865,32 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	for _, item := range order.Items {
 		if isPhysicalType(item.ProductType) && order.ShippingCost <= 0 {
 			return CheckoutResult{}, ErrShippingRequired
+		}
+	}
+
+	// Biodata gate: a student registering for an exam for themselves must have
+	// complete biodata (school, class, dob). Bulk/admin orders (order_participant
+	// rows present) are exempt — those students' biodata is admin-managed.
+	hasExam := false
+	for _, item := range order.Items {
+		if item.ProductType == "exam" {
+			hasExam = true
+			break
+		}
+	}
+	if hasExam {
+		participants, err := s.storeRepo.GetOrderParticipants(ctx, oID)
+		if err != nil {
+			return CheckoutResult{}, err
+		}
+		if len(participants) == 0 { // self-purchase
+			u, err := s.repo.GetUserByID(ctx, order.StudentID.String())
+			if err != nil {
+				return CheckoutResult{}, err
+			}
+			if !biodataComplete(u) {
+				return CheckoutResult{}, ErrBiodataIncomplete
+			}
 		}
 	}
 
