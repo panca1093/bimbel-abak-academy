@@ -189,6 +189,66 @@ describe("CertificateFieldEditor", () => {
     expect(screen.queryByTestId("certificate-field-editor-background")).not.toBeInTheDocument();
   });
 
+  it("renders the field's actual value styled per its font/size/color/align instead of the dashed label (FR-16 WYSIWYG)", () => {
+    const onChange = vi.fn();
+    render(<CertificateFieldEditor layout={baseLayout} onChange={onChange} examTitle="Ujian Matematika" />);
+
+    const box = screen.getByTestId("certificate-field-box-student_name");
+    const value = screen.getByTestId("certificate-field-value-student_name");
+    expect(value.textContent).toBe("Nama Peserta Contoh");
+    expect(box.textContent).not.toContain("Nama Siswa");
+    expect(value.style.fontFamily).toBe("source_serif_4");
+    expect(value.style.fontWeight).toBe("700");
+    expect(value.style.fontSize).toBe("26pt");
+    expect(value.style.color).toBe("rgb(31, 42, 68)");
+    expect(value.style.textAlign).toBe("center");
+  });
+
+  it("falls back to the default brand font when a field's font is unknown or unset (FR-9)", () => {
+    const onChange = vi.fn();
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [
+        { id: "exam_title", x_mm: 48.5, y_mm: 139, w_mm: 200, align: "center", font: "papyrus", size_pt: 15, visible: true },
+      ],
+    };
+    render(<CertificateFieldEditor layout={layout} onChange={onChange} />);
+
+    const value = screen.getByTestId("certificate-field-value-exam_title");
+    expect(value.style.fontFamily).toBe("source_serif_4");
+  });
+
+  it("falls back to black when a field's color is malformed (FR-9)", () => {
+    const onChange = vi.fn();
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [
+        { id: "date", x_mm: 48.5, y_mm: 162, w_mm: 200, align: "center", color: "not-a-color", visible: true },
+      ],
+    };
+    render(<CertificateFieldEditor layout={layout} onChange={onChange} />);
+
+    const value = screen.getByTestId("certificate-field-value-date");
+    expect(value.style.color).toBe("rgb(0, 0, 0)");
+  });
+
+  it("keeps image fields (logo/signature) showing their label, not styled text, since they have no text value", () => {
+    const onChange = vi.fn();
+    const layout: CertificateLayout = {
+      page: { width_mm: 297, height_mm: 210 },
+      background: { kind: "builtin", ref: "classic" },
+      fields: [
+        { id: "logo", x_mm: 138.5, y_mm: 15, w_mm: 20, h_mm: 20, align: "center", visible: true },
+      ],
+    };
+    render(<CertificateFieldEditor layout={layout} onChange={onChange} />);
+
+    expect(screen.queryByTestId("certificate-field-value-logo")).not.toBeInTheDocument();
+    expect(screen.getByTestId("certificate-field-box-logo").textContent).toBe("Logo");
+  });
+
   it("lets the position be set via the numeric mm inputs as a non-drag alternative", () => {
     const onChange = vi.fn();
     render(<CertificateFieldEditor layout={baseLayout} onChange={onChange} />);

@@ -4,6 +4,7 @@ import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointer
 import { useTranslation } from "@/lib/i18n";
 import type { DICT } from "@/lib/i18n";
 import type { CertificateLayout, CertificateLayoutField } from "@/lib/types";
+import "./CertificateFonts.module.css";
 
 interface CertificateFieldEditorProps {
   layout: CertificateLayout;
@@ -13,6 +14,54 @@ interface CertificateFieldEditorProps {
   // instead of a featureless rectangle. Optional/null falls back to a plain
   // fill so the editor still works before a background has resolved.
   backgroundUrl?: string | null;
+  // examTitle seeds the exam_title field's WYSIWYG placeholder (FR-16); falls
+  // back to the translated field label when unavailable.
+  examTitle?: string;
+}
+
+// KNOWN_FONT_FAMILIES / resolveFontFamily mirror the backend's ResolveFontFamily
+// (pdffonts.go): an unknown/unset family falls back to the brand default so a
+// stale/corrupt design still renders (FR-9).
+const KNOWN_FONT_FAMILIES = new Set([
+  "source_serif_4",
+  "public_sans",
+  "cinzel",
+  "playfair_display",
+  "cormorant_garamond",
+  "great_vibes",
+]);
+const DEFAULT_FONT_FAMILY = "source_serif_4";
+
+function resolveFontFamily(font: string | undefined): string {
+  return font && KNOWN_FONT_FAMILIES.has(font) ? font : DEFAULT_FONT_FAMILY;
+}
+
+// safeCssColor mirrors the backend's safeCSSColor (certificate_html.go): a
+// malformed #RRGGBB degrades to black rather than breaking the render (FR-9).
+function safeCssColor(color: string | undefined): string {
+  return color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : "#000000";
+}
+
+// cssAlign mirrors the backend's cssAlign; an unrecognised value centers.
+function cssAlign(align: string): "left" | "right" | "center" {
+  return align === "left" || align === "right" ? align : "center";
+}
+
+// certificateFieldPlaceholders mirrors the backend's certificateFieldValues
+// (certificate.go) and the preview endpoint's fixed sample values (exam.go),
+// so the WYSIWYG editor's placeholder copy matches what a real preview
+// renders. This is admin template-authoring preview data, never a real
+// certificate's values.
+function certificateFieldPlaceholders(examTitle: string): Record<string, string> {
+  return {
+    title: "CERTIFICATE OF COMPLETION",
+    subtitle: "This certificate is proudly awarded to",
+    student_name: "Nama Peserta Contoh",
+    completion_text: "for successfully completing",
+    exam_title: examTitle,
+    date: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
+    certificate_number: "ABK/2026/000000",
+  };
 }
 
 interface DragState {
@@ -71,12 +120,13 @@ export function clampFieldPosition(
   return { ...field, x_mm, y_mm };
 }
 
-export function CertificateFieldEditor({ layout, onChange, backgroundUrl }: CertificateFieldEditorProps) {
+export function CertificateFieldEditor({ layout, onChange, backgroundUrl, examTitle }: CertificateFieldEditorProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const { page, fields } = layout;
   const visibleFields = fields.filter((f) => f.visible);
+  const placeholders = certificateFieldPlaceholders(examTitle || t("certificate_field_exam_title"));
 
   function commitField(fieldId: string, patch: Partial<CertificateLayoutField>) {
     const field = fields.find((f) => f.id === fieldId);
@@ -167,15 +217,34 @@ export function CertificateFieldEditor({ layout, onChange, backgroundUrl }: Cert
                 top: `${(field.y_mm / page.height_mm) * 100}%`,
                 width: `${widthPct}%`,
               };
+          const isImage = imageFieldIDs.has(field.id);
           return (
             <div
               key={field.id}
               data-testid={`certificate-field-box-${field.id}`}
-              className="cursor-grab touch-none rounded border border-dashed border-brand-400 bg-brand-50/70 px-1 py-0.5 text-[10px] leading-tight text-brand-800 active:cursor-grabbing"
+              className="cursor-grab touch-none rounded border border-dashed border-brand-400/70 active:cursor-grabbing"
               style={style}
               onPointerDown={(e) => handlePointerDown(e, field)}
             >
-              {t(FIELD_LABEL_KEY[field.id] ?? "certificate_field_title")}
+              {isImage ? (
+                <span className="px-1 py-0.5 text-[10px] leading-tight text-brand-800">
+                  {t(FIELD_LABEL_KEY[field.id] ?? "certificate_field_title")}
+                </span>
+              ) : (
+                <span
+                  data-testid={`certificate-field-value-${field.id}`}
+                  className="block w-full overflow-hidden whitespace-nowrap"
+                  style={{
+                    fontFamily: resolveFontFamily(field.font),
+                    fontWeight: field.weight === "bold" ? 700 : 400,
+                    fontSize: `${field.size_pt ?? 12}pt`,
+                    color: safeCssColor(field.color),
+                    textAlign: cssAlign(field.align),
+                  }}
+                >
+                  {placeholders[field.id] ?? ""}
+                </span>
+              )}
             </div>
           );
         })}

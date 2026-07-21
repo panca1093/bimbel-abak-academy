@@ -85,29 +85,41 @@ describe("CertificateDesignTab", () => {
     URL.revokeObjectURL = vi.fn();
   });
 
-  it("loads the initial live preview for the saved template, carrying the current layout", async () => {
+  it("does not auto-generate the PDF preview on mount (FR-17)", async () => {
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
 
-    await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic", sampleLayout);
-    });
+    await screen.findByTestId("certificate-generate-pdf-button");
+    expect(mockFetchCertificatePreview).not.toHaveBeenCalled();
   });
 
-  it("refreshes the preview when the template is switched", async () => {
+  it("generates the PDF preview only when the Generate PDF button is clicked, carrying the current layout", async () => {
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
+
+    const button = await screen.findByTestId("certificate-generate-pdf-button");
+    fireEvent.click(button);
 
     await waitFor(() => {
       expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic", sampleLayout);
     });
+    expect(mockFetchCertificatePreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh the preview when the template is switched until Generate PDF is clicked", async () => {
+    render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
+    await screen.findByTestId("certificate-generate-pdf-button");
 
     fireEvent.click(screen.getByLabelText("Modern"));
+    expect(mockFetchCertificatePreview).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("certificate-generate-pdf-button"));
 
     await waitFor(() => {
       expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "modern", sampleLayout);
     });
+    expect(mockFetchCertificatePreview).toHaveBeenCalledTimes(1);
   });
 
-  it("re-fetches the preview with the unsaved layout after a drag, debounced into a single request (FR-26)", async () => {
+  it("reflects a drag in the layout without any auto-render, only on the next Generate PDF click", async () => {
     certificateDesignState = {
       data: {
         template: "classic",
@@ -131,11 +143,7 @@ describe("CertificateDesignTab", () => {
     } as DOMRect);
 
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
-
-    await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic", layoutWithField);
-    });
-    const callsBeforeDrag = mockFetchCertificatePreview.mock.calls.length;
+    await screen.findByTestId("certificate-generate-pdf-button");
 
     const box = screen.getByTestId("certificate-field-box-student_name");
     // Grab exactly at the box's top-left (48.5mm,100mm) -> (194px,400px), drop
@@ -144,8 +152,12 @@ describe("CertificateDesignTab", () => {
     fireEvent.pointerMove(box, { pointerId: 1, clientX: 80, clientY: 600 });
     fireEvent.pointerUp(box, { pointerId: 1 });
 
+    expect(mockFetchCertificatePreview).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("certificate-generate-pdf-button"));
+
     await waitFor(() => {
-      expect(mockFetchCertificatePreview.mock.calls.length).toBe(callsBeforeDrag + 1);
+      expect(mockFetchCertificatePreview).toHaveBeenCalledTimes(1);
     });
 
     const lastCall =
@@ -157,7 +169,7 @@ describe("CertificateDesignTab", () => {
     expect(dragged.y_mm).toBeCloseTo(150, 5);
   });
 
-  it("debounces rapid consecutive layout edits into a single extra preview request", async () => {
+  it("carries rapid consecutive layout edits into the single Generate PDF request that follows", async () => {
     certificateDesignState = {
       data: {
         template: "classic",
@@ -170,18 +182,18 @@ describe("CertificateDesignTab", () => {
     };
 
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
-
-    await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalledWith("exam-1", "classic", layoutWithField);
-    });
-    const callsBeforeEdits = mockFetchCertificatePreview.mock.calls.length;
+    await screen.findByTestId("certificate-generate-pdf-button");
 
     const xInput = screen.getByLabelText("x_mm student_name");
     fireEvent.change(xInput, { target: { value: "10" } });
     fireEvent.change(xInput, { target: { value: "20" } });
 
+    expect(mockFetchCertificatePreview).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("certificate-generate-pdf-button"));
+
     await waitFor(() => {
-      expect(mockFetchCertificatePreview.mock.calls.length).toBe(callsBeforeEdits + 1);
+      expect(mockFetchCertificatePreview).toHaveBeenCalledTimes(1);
     });
 
     const lastCall =
@@ -206,9 +218,7 @@ describe("CertificateDesignTab", () => {
 
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
 
-    await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalled();
-    });
+    await screen.findByTestId("certificate-background-upload-input");
 
     const fileInput = screen.getByTestId("certificate-background-upload-input");
     const file = new File(["bg"], "bg.png", { type: "image/png" });
@@ -260,9 +270,7 @@ describe("CertificateDesignTab", () => {
 
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
 
-    await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalled();
-    });
+    await screen.findByTestId("certificate-background-upload-input");
 
     const sigInput = screen.getByTestId("certificate-signature-upload-input");
     const file = new File(["sig"], "sig.png", { type: "image/png" });
@@ -296,9 +304,7 @@ describe("CertificateDesignTab", () => {
 
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
 
-    await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalled();
-    });
+    await screen.findByTestId("certificate-background-upload-input");
 
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
@@ -316,9 +322,7 @@ describe("CertificateDesignTab", () => {
 
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
 
-    await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalled();
-    });
+    await screen.findByTestId("certificate-background-upload-input");
 
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
@@ -337,9 +341,7 @@ describe("CertificateDesignTab", () => {
 
     render(<CertificateDesignTab examId="exam-1" exam={sampleExam} />);
 
-    await waitFor(() => {
-      expect(mockFetchCertificatePreview).toHaveBeenCalled();
-    });
+    await screen.findByTestId("certificate-background-upload-input");
 
     const fileInput = screen.getByTestId("certificate-background-upload-input");
     const file = new File(["bg"], "bg.png", { type: "image/png" });

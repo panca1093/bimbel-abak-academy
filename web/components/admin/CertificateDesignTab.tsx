@@ -23,11 +23,6 @@ const TEMPLATE_CARD_BASE =
 const TEMPLATE_CARD_ON = "border-brand-400 bg-brand-50 text-brand-800";
 const TEMPLATE_CARD_OFF = "border-line text-ink-700 hover:border-ink-300";
 
-// PREVIEW_DEBOUNCE_MS trails a layout edit (drag release or a typed mm value)
-// before re-rendering the PDF preview, so a burst of edits collapses into one
-// render instead of one per change (FR-26).
-const PREVIEW_DEBOUNCE_MS = 350;
-
 interface CertificateDesignTabProps {
   examId: string;
   exam: ExamDetail;
@@ -129,19 +124,12 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
     }
   }
 
-  // Debounced so a drag release or a run of keystrokes in the mm inputs
-  // triggers one PDF render, not one per edit (FR-26). Carries the current
-  // (possibly unsaved) `layout` so the preview reflects a drag before Save.
-  useEffect(() => {
-    if (!initialized) return;
-    const handle = setTimeout(() => {
-      loadPreview(template, layout ?? undefined);
-    }, PREVIEW_DEBOUNCE_MS);
-    return () => clearTimeout(handle);
-    // Re-fetching on `t` change would refetch on every locale toggle; `loadPreview`
-    // only needs examId/template/layout.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examId, template, initialized, layout]);
+  // FR-17: the PDF preview is only rendered on explicit "Generate PDF" click,
+  // not on every layout edit — the WYSIWYG editor above already gives live
+  // feedback client-side with no round-trip.
+  function handleGeneratePdf() {
+    loadPreview(template, layout ?? undefined);
+  }
 
   useEffect(() => {
     return () => {
@@ -191,7 +179,6 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
       });
       toast.success(t("changes_saved"));
       onSaved?.();
-      await loadPreview(template);
     } catch {
       toast.error(t("error_generic"));
     }
@@ -354,14 +341,28 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
                   layout={layout}
                   onChange={handleFieldsChange}
                   backgroundUrl={backgroundUrl}
+                  examTitle={exam.title}
                 />
               )}
             </div>
 
             <div className="grid gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
-                {t("certificate_design_pdf_fidelity_label")}
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-ink-500">
+                  {t("certificate_design_pdf_fidelity_label")}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  data-testid="certificate-generate-pdf-button"
+                  onClick={handleGeneratePdf}
+                  disabled={previewLoading || !layout}
+                >
+                  {previewLoading ? t("certificate_design_generating_pdf") : t("certificate_design_generate_pdf_button")}
+                </Button>
+              </div>
               {previewLoading && !previewUrl ? (
                 <Skeleton className="h-64 w-full" />
               ) : previewUrl ? (
