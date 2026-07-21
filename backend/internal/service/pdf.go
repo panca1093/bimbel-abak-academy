@@ -23,7 +23,11 @@ const (
 
 	cardNavyHex        = "#22315B"
 	cardGoldHex        = "#D99A2B"
-	cardGoldBgHex      = "#F8F1DD"
+	cardGoldBgHex      = "#FBEFCF"
+	cardTealHex        = "#1E978A"
+	cardTealDarkHex    = "#137063"
+	cardTealTintHex    = "#E6F4F1"
+	cardInkHex         = "#2B3648"
 	cardPlaceholderHex = "#B7BECE"
 )
 
@@ -47,6 +51,7 @@ func generateExamCardPDF(reg *model.RegistrationDetail, studentName, tenantName 
 	}
 	pdf.AddPage()
 
+	drawCardBackdrop(pdf)
 	drawCardHeaderBand(pdf, tenantName, logoImg)
 	drawCardPhotoFrame(pdf, photoImg)
 	drawCardDetailColumn(pdf, reg, studentName)
@@ -61,26 +66,46 @@ func generateExamCardPDF(reg *model.RegistrationDetail, studentName, tenantName 
 	return buf.Bytes(), nil
 }
 
+// drawCardBackdrop lays a soft teal-tint field behind the body and a gold accent
+// rail down the left edge, so the card reads as a bright admission pass rather
+// than a plain white sheet.
+func drawCardBackdrop(pdf *gofpdf.Fpdf) {
+	tr, tg, tb := hexRGB(cardTealTintHex)
+	pdf.SetFillColor(tr, tg, tb)
+	pdf.Rect(0, 18, cardPageW, cardPageH-18, "F")
+	pdf.SetFillColor(255, 255, 255)
+	pdf.RoundedRect(6, 22, cardPageW-12, 58, 3, "1234", "F")
+	gr, gg, gb := hexRGB(cardGoldHex)
+	pdf.SetFillColor(gr, gg, gb)
+	pdf.Rect(0, 18, 2.4, cardPageH-18, "F")
+}
+
 func drawCardHeaderBand(pdf *gofpdf.Fpdf, tenantName string, logoImg []byte) {
-	navyR, navyG, navyB := hexRGB(cardNavyHex)
+	t1r, t1g, t1b := hexRGB(cardTealHex)
+	t2r, t2g, t2b := hexRGB(cardTealDarkHex)
 	goldR, goldG, goldB := hexRGB(cardGoldHex)
 
-	pdf.SetFillColor(navyR, navyG, navyB)
-	pdf.Rect(0, 0, cardPageW, 16, "F")
+	// teal → teal-dark diagonal gradient header
+	pdf.LinearGradient(0, 0, cardPageW, 18, t1r, t1g, t1b, t2r, t2g, t2b, 0, 0, 1, 0.4)
+	// gold underline seam
+	pdf.SetFillColor(goldR, goldG, goldB)
+	pdf.Rect(0, 18, cardPageW, 1.1, "F")
 
 	if ok, _, _ := registerOptionalImage(pdf, "card-logo", logoImg); ok {
-		pdf.ImageOptions("card-logo", 6, 3, 10, 10, false, gofpdf.ImageOptions{}, 0, "")
+		pdf.SetFillColor(255, 255, 255)
+		pdf.RoundedRect(5.5, 3.5, 11, 11, 2, "1234", "F")
+		pdf.ImageOptions("card-logo", 6.5, 4.5, 9, 9, false, gofpdf.ImageOptions{}, 0, "")
 	}
 
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFont(FontSourceSerif4, "B", 12)
-	pdf.SetXY(20, 3)
+	pdf.SetXY(20, 3.5)
 	pdf.CellFormat(cardPageW-20-4, 7, "KARTU PESERTA UJIAN", "", 0, "L", false, 0, "")
 
 	if tenantName != "" {
 		pdf.SetTextColor(goldR, goldG, goldB)
 		pdf.SetFont(FontPublicSans, "", 7)
-		pdf.SetXY(20, 10)
+		pdf.SetXY(20, 10.5)
 		pdf.CellFormat(cardPageW-20-4, 5, fitOneLine(pdf, tenantName, cardPageW-20-4), "", 0, "L", false, 0, "")
 	}
 }
@@ -93,16 +118,23 @@ const (
 )
 
 func drawCardPhotoFrame(pdf *gofpdf.Fpdf, photoImg []byte) {
-	navyR, navyG, navyB := hexRGB(cardNavyHex)
-	pdf.SetDrawColor(navyR, navyG, navyB)
-	pdf.SetLineWidth(ptToMM(0.5))
-	pdf.Rect(cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, "D")
+	// teal mat behind the photo for a pop of colour, then the image/placeholder
+	tr, tg, tb := hexRGB(cardTealHex)
+	pdf.SetFillColor(tr, tg, tb)
+	pdf.RoundedRect(cardPhotoX-1.2, cardPhotoY-1.2, cardPhotoW+2.4, cardPhotoH+2.4, 2, "1234", "F")
 
+	pdf.SetFillColor(255, 255, 255)
+	pdf.Rect(cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, "F")
 	if ok, srcW, srcH := registerOptionalImage(pdf, "card-photo", photoImg); ok {
 		drawAspectFillImage(pdf, "card-photo", cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, srcW, srcH)
-		return
+	} else {
+		drawCardPhotoPlaceholder(pdf, cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH)
 	}
-	drawCardPhotoPlaceholder(pdf, cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH)
+
+	goldR, goldG, goldB := hexRGB(cardGoldHex)
+	pdf.SetDrawColor(goldR, goldG, goldB)
+	pdf.SetLineWidth(ptToMM(0.6))
+	pdf.Rect(cardPhotoX, cardPhotoY, cardPhotoW, cardPhotoH, "D")
 }
 
 // drawCardPhotoPlaceholder draws a neutral silhouette (head + shoulders)
@@ -126,15 +158,17 @@ const (
 
 func drawCardDetailColumn(pdf *gofpdf.Fpdf, reg *model.RegistrationDetail, studentName string) {
 	navyR, navyG, navyB := hexRGB(cardNavyHex)
+	tealR, tealG, tealB := hexRGB(cardTealDarkHex)
 	w := cardDetailRight - cardDetailX
 	y := 24.0
 
+	// coloured labels give the info block life without shouting
 	drawLabel := func(label string) {
-		pdf.SetTextColor(navyR, navyG, navyB)
-		pdf.SetFont(FontPublicSans, "", 6)
+		pdf.SetTextColor(tealR, tealG, tealB)
+		pdf.SetFont(FontPublicSans, "B", 6)
 		pdf.SetXY(cardDetailX, y)
 		pdf.CellFormat(w, 3, label, "", 0, "L", false, 0, "")
-		y += 3.2
+		y += 3.4
 	}
 
 	name := studentName
@@ -142,12 +176,16 @@ func drawCardDetailColumn(pdf *gofpdf.Fpdf, reg *model.RegistrationDetail, stude
 		name = "-"
 	}
 	drawLabel("NAMA")
+	pdf.SetTextColor(navyR, navyG, navyB)
 	pdf.SetFont(FontSourceSerif4, "B", 10)
 	pdf.SetXY(cardDetailX, y)
 	pdf.CellFormat(w, 5, fitOneLine(pdf, name, w), "", 0, "L", false, 0, "")
 	y += 6.5
 
+	inkR, inkG, inkB := hexRGB(cardInkHex)
+
 	drawLabel("UJIAN")
+	pdf.SetTextColor(inkR, inkG, inkB)
 	pdf.SetFont(FontPublicSans, "", 9)
 	for _, line := range wrapLines(pdf, reg.Exam.Title, w, 2) {
 		pdf.SetXY(cardDetailX, y)
@@ -157,6 +195,7 @@ func drawCardDetailColumn(pdf *gofpdf.Fpdf, reg *model.RegistrationDetail, stude
 	y += 1.5
 
 	drawLabel("JADWAL")
+	pdf.SetTextColor(inkR, inkG, inkB)
 	pdf.SetFont(FontPublicSans, "", 8)
 	pdf.SetXY(cardDetailX, y)
 	pdf.CellFormat(w, 4, fitOneLine(pdf, cardScheduleText(reg), w), "", 0, "L", false, 0, "")
@@ -182,24 +221,41 @@ const (
 	cardTokenH = 14.0
 )
 
-// drawCardTokenBand never truncates or wraps the token (FR-22, Invariant 5):
-// only the font size shrinks to fit, the token string itself is never cut.
+// drawCardTokenBand renders the token as an admission-ticket stub: a gold panel
+// with a dashed tear-line and two punch-hole notches. It never truncates or wraps
+// the token (FR-22, Invariant 5): only the font size shrinks to fit, the token
+// string itself is never cut.
 func drawCardTokenBand(pdf *gofpdf.Fpdf, token string) {
 	bgR, bgG, bgB := hexRGB(cardGoldBgHex)
 	navyR, navyG, navyB := hexRGB(cardNavyHex)
+	goldR, goldG, goldB := hexRGB(cardGoldHex)
 
 	pdf.SetFillColor(bgR, bgG, bgB)
-	pdf.Rect(cardTokenX, cardTokenY, cardTokenW, cardTokenH, "F")
+	pdf.RoundedRect(cardTokenX, cardTokenY, cardTokenW, cardTokenH, 2.2, "1234", "F")
 
-	pdf.SetTextColor(navyR, navyG, navyB)
-	pdf.SetFont(FontPublicSans, "", 6)
-	pdf.SetXY(cardTokenX, cardTokenY+1.5)
-	pdf.CellFormat(cardTokenW, 3, "TOKEN", "", 0, "C", false, 0, "")
+	// dashed tear-line just under the label, with punch-hole notches at each end
+	tearY := cardTokenY + 4.6
+	pdf.SetDrawColor(goldR, goldG, goldB)
+	pdf.SetLineWidth(ptToMM(0.5))
+	pdf.SetDashPattern([]float64{1.1, 1.1}, 0)
+	pdf.Line(cardTokenX+5, tearY, cardTokenX+cardTokenW-5, tearY)
+	pdf.SetDashPattern(nil, 0)
+	// notches punched out of the card body colour (the white info panel behind)
+	pnr, png, pnb := hexRGB(cardTealTintHex)
+	pdf.SetFillColor(pnr, png, pnb)
+	pdf.Circle(cardTokenX, tearY, 1.6, "F")
+	pdf.Circle(cardTokenX+cardTokenW, tearY, 1.6, "F")
 
-	size := shrinkToFit(pdf, FontSourceSerif4, "B", token, cardTokenW-12, 20, 8)
+	pdf.SetTextColor(goldR, goldG, goldB)
+	pdf.SetFont(FontPublicSans, "B", 5.5)
+	pdf.SetXY(cardTokenX, cardTokenY+1.1)
+	pdf.CellFormat(cardTokenW, 3, "TOKEN AKSES", "", 0, "C", false, 0, "")
+
+	size := shrinkToFit(pdf, FontSourceSerif4, "B", token, cardTokenW-14, 19, 8)
 	pdf.SetFont(FontSourceSerif4, "B", size)
-	pdf.SetXY(cardTokenX, cardTokenY+5.5)
-	pdf.CellFormat(cardTokenW, 8, token, "", 0, "C", false, 0, "")
+	pdf.SetTextColor(navyR, navyG, navyB)
+	pdf.SetXY(cardTokenX, cardTokenY+6.0)
+	pdf.CellFormat(cardTokenW, 7, token, "", 0, "C", false, 0, "")
 }
 
 const (
@@ -232,10 +288,10 @@ func drawCardFooterNote(pdf *gofpdf.Fpdf, reg *model.RegistrationDetail) {
 }
 
 func drawCardBorder(pdf *gofpdf.Fpdf) {
-	navyR, navyG, navyB := hexRGB(cardNavyHex)
-	pdf.SetDrawColor(navyR, navyG, navyB)
-	pdf.SetLineWidth(ptToMM(0.6))
-	pdf.RoundedRect(4, 4, cardPageW-8, cardPageH-8, 3, "1234", "D")
+	tealR, tealG, tealB := hexRGB(cardTealHex)
+	pdf.SetDrawColor(tealR, tealG, tealB)
+	pdf.SetLineWidth(ptToMM(0.7))
+	pdf.RoundedRect(3, 3, cardPageW-6, cardPageH-6, 3.5, "1234", "D")
 }
 
 // registerOptionalImage validates and registers image bytes for placement,

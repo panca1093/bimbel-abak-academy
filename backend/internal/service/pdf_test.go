@@ -88,7 +88,7 @@ func TestGenerateExamCardPDF_PhotoNull_SinglePageA6(t *testing.T) {
 }
 
 // TestGenerateExamCardPDF_HeaderBandRendersAtTop rasterizes the card and
-// checks the navy header band's ink is where it belongs — at the top edge,
+// checks the teal header band's ink is where it belongs — at the top edge,
 // not the bottom — and that the region just below it is plain background.
 // A full Y-axis inversion of the card would put the band at the bottom and
 // pass a page-count/orientation-only check; this catches that class of bug
@@ -102,15 +102,20 @@ func TestGenerateExamCardPDF_HeaderBandRendersAtTop(t *testing.T) {
 	}
 	img := renderToPNG(t, pdf)
 
-	navyR, navyG, navyB := hexRGB(cardNavyHex)
+	// The header is a teal gradient (teal → teal-dark); at x=120mm it is near
+	// the teal-dark end. Sampling it confirms the band renders at the top.
+	tealR, tealG, tealB := hexRGB(cardTealDarkHex)
 	headerR, headerG, headerB := avgColorAt(img, cardPageW, cardPageH, 120, 8)
-	if colorDistance(headerR, headerG, headerB, float64(navyR), float64(navyG), float64(navyB)) > 30*30*3 {
-		t.Errorf("header band at (120mm,8mm): got (%.0f,%.0f,%.0f), want navy (%d,%d,%d) — header band may be missing or displaced", headerR, headerG, headerB, navyR, navyG, navyB)
+	if colorDistance(headerR, headerG, headerB, float64(tealR), float64(tealG), float64(tealB)) > 30*30*3 {
+		t.Errorf("header band at (120mm,8mm): got (%.0f,%.0f,%.0f), want teal (%d,%d,%d) — header band may be missing or displaced", headerR, headerG, headerB, tealR, tealG, tealB)
 	}
 
-	bgR, bgG, bgB := avgColorAt(img, cardPageW, cardPageH, 120, 20)
-	if colorDistance(bgR, bgG, bgB, 255, 255, 255) > 30*30*3 {
-		t.Errorf("background at (120mm,20mm): got (%.0f,%.0f,%.0f), want white — header band may have leaked past its 16mm height or the card is vertically inverted", bgR, bgG, bgB)
+	// Below the header the card is a near-white body (a faint teal tint), far
+	// from the saturated header — guards against the band leaking down or the
+	// card rendering vertically inverted.
+	bodyR, bodyG, bodyB := avgColorAt(img, cardPageW, cardPageH, 122, 58)
+	if colorDistance(bodyR, bodyG, bodyB, 255, 255, 255) > 30*30*3 {
+		t.Errorf("body at (122mm,58mm): got (%.0f,%.0f,%.0f), want near-white — header band may have leaked down or the card is vertically inverted", bodyR, bodyG, bodyB)
 	}
 }
 
