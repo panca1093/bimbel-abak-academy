@@ -209,7 +209,6 @@ export interface Order {
   payment_expires_at?: string;
   paid_at?: string;
   invoice_url?: string;
-  estimated_delivery_days?: string;
   checked_out_at?: string;
   completed_at?: string;
   cancelled_at?: string;
