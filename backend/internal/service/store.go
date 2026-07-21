@@ -700,11 +700,19 @@ func (s *Service) PatchCart(ctx context.Context, studentID, orderID string, patc
 	return s.storeRepo.PatchCart(ctx, oID, repoPatch)
 }
 
+// freeCheckoutSentinel is cached under the checkout idempotency key when a
+// zero-total order settles without the gateway, so a retried checkout replays
+// the free result instead of a (non-existent) gateway ref.
+const freeCheckoutSentinel = "free"
+
 type CheckoutResult struct {
 	GatewayRef       string
 	SnapToken        string
 	PaymentURL       string
 	PaymentExpiresAt time.Time
+	// Free is true when a zero-total order was settled directly without the
+	// payment gateway — the client should skip the payment page.
+	Free bool
 }
 
 func fetchCustomerInfo(ctx context.Context, s *Service, userID string) CustomerInfo {
@@ -799,6 +807,9 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	cacheKey := "idempotency:checkout:" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
 	if err == nil && cached != "" {
+		if cached == freeCheckoutSentinel {
+			return CheckoutResult{Free: true}, nil
+		}
 		return CheckoutResult{GatewayRef: cached}, nil
 	}
 
@@ -833,6 +844,38 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 			return CheckoutResult{}, ErrInsufficientStock
 		}
 		return CheckoutResult{}, err
+	}
+
+	// Free / zero-total order: skip the payment gateway entirely. Mark it paid
+	// and emit OrderPaid in the SAME tx so fulfilment (exam registrations,
+	// course access, digital auto-complete) runs exactly as a real settlement.
+	if order.Total == 0 {
+		if err := s.storeRepo.SetOrderStatus(ctx, tx, oID, "paid", ""); err != nil {
+			return CheckoutResult{}, err
+		}
+		payload := OrderPaidPayload{OrderID: oID.String()}
+		for _, item := range order.Items {
+			payload.Items = append(payload.Items, OrderPaidPayloadItem{
+				ProductID:   item.ProductID.String(),
+				ProductType: item.ProductType,
+				Qty:         item.Qty,
+			})
+		}
+		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, oID, "OrderPaid", payload); err != nil {
+			return CheckoutResult{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return CheckoutResult{}, err
+		}
+		if order.PromoCodeID != nil {
+			if err := s.storeRepo.IncrementPromoUses(ctx, *order.PromoCodeID); err != nil {
+				return CheckoutResult{}, err
+			}
+		}
+		if err := s.rdb.Set(ctx, cacheKey, freeCheckoutSentinel, 24*time.Hour).Err(); err != nil {
+			return CheckoutResult{}, err
+		}
+		return CheckoutResult{Free: true}, nil
 	}
 
 	if err := tx.Commit(ctx); err != nil {

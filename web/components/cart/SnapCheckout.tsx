@@ -22,7 +22,13 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCh
     if (!orderId) return;
     checkout.mutate(orderId, {
       onSuccess: (data) => {
-        if (data.payment_url) {
+        if (data.free) {
+          qc.invalidateQueries({ queryKey: ordersKeys.all });
+          toast.success("Pesanan gratis berhasil diproses.");
+          if (basePath === "/orders") {
+            router.push(`/orders/${orderId}`);
+          }
+        } else if (data.payment_url) {
           window.open(data.payment_url, "_blank");
           toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
         } else if (data.snap_token) {

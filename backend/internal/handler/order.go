@@ -196,6 +196,7 @@ func (h *Handler) Checkout(c echo.Context) error {
 		"snap_token":         result.SnapToken,
 		"payment_url":        result.PaymentURL,
 		"payment_expires_at": result.PaymentExpiresAt,
+		"free":               result.Free,
 	})
 }
 

@@ -351,6 +351,8 @@ export interface CheckoutResult {
   gateway_ref?: string;
   payment_url?: string;
   payment_expires_at?: string;
+  // free is true when a zero-total order was settled without the payment gateway.
+  free?: boolean;
 }
 
 export interface DashboardCourseSummary {
