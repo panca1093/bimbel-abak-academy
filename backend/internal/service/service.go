@@ -5,6 +5,7 @@ import (
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
 	"context"
+	"net/http"
 	"sync"
 	"sync/atomic"
 
@@ -23,12 +24,13 @@ type Service struct {
 	// logistics is swapped by ReloadLogisticsClient while quote requests read
 	// it concurrently, so it's held behind an atomic pointer rather than a
 	// plain field.
-	logistics atomic.Pointer[LogisticsClient]
-	storage   *minio.Client
+	logistics     atomic.Pointer[LogisticsClient]
+	storage       *minio.Client
 	announceRepo  AnnounceRepo
 	presignOnce   sync.Once
 	presignClient *minio.Client
 	cfg           *config.Config
+	renderer      certificateRenderer
 
 	// reloadPaymentFn is called by ReloadPaymentClient to rebuild the
 	// payment client from current config (DB or env). Injected by main.
@@ -85,6 +87,7 @@ func NewWithStore(
 		storage:       storage,
 		announceRepo:  storeRepo,
 		cfg:           cfg,
+		renderer:      newGotenbergRenderer(cfg.GotenbergURL, http.DefaultClient),
 	}
 	s.logistics.Store(&logistics)
 	return s
