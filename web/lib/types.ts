@@ -100,7 +100,7 @@ export interface User {
   otp_enabled?: boolean;
   phone?: string;
   nis?: string;
-  grade?: string;
+  grade?: number;
   target_exam?: string;
   alamat_domisili?: string;
   dob?: string;

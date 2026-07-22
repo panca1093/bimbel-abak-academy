@@ -46,6 +46,7 @@ function fmtDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return DASH;
   return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -57,6 +58,7 @@ function fmtTime(iso: string | null | undefined): string | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
     hour: "2-digit",
     minute: "2-digit",
   }).format(d);
@@ -169,7 +171,7 @@ export default function ExamCardPrintPage() {
         fullName={student?.name?.trim() || DASH}
         participantNumber={participantNumber}
         school={schoolName}
-        grade={student?.grade?.trim() || DASH}
+        grade={student?.grade != null ? String(student.grade) : DASH}
         dob={fmtDate(student?.dob)}
         photoUrl={fileUrl(student?.photo_url)}
         examName={exam.title || DASH}

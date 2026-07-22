@@ -23,12 +23,17 @@ let registrationState = {
   isError: false,
 };
 
+let profileState = {
+  data: { name: "Saifullah Panca" } as Record<string, unknown>,
+  isLoading: false,
+};
+
 vi.mock("@/lib/hooks/exam", () => ({
   useRegistration: () => registrationState,
 }));
 
 vi.mock("@/lib/hooks/students", () => ({
-  useProfile: () => ({ data: { name: "Saifullah Panca" }, isLoading: false }),
+  useProfile: () => profileState,
   useSchools: () => ({ data: [] }),
 }));
 
@@ -63,6 +68,7 @@ describe("ExamCardPrintPage — Download PDF", () => {
   beforeEach(() => {
     toastError.mockClear();
     registrationState = { data: registration, isLoading: false, isError: false };
+    profileState = { data: { name: "Saifullah Panca" }, isLoading: false };
     global.fetch = vi.fn();
     global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
     global.URL.revokeObjectURL = vi.fn();
@@ -109,5 +115,32 @@ describe("ExamCardPrintPage — Download PDF", () => {
     await waitFor(() => {
       expect(toastError).toHaveBeenCalled();
     });
+  });
+
+  // C-01: grade arrives as a number (backend *int). The card must render it
+  // without crashing — the pre-fix code called grade.trim() on a number.
+  it("renders a numeric grade without crashing", async () => {
+    profileState = { data: { name: "Saifullah Panca", grade: 10 }, isLoading: false };
+
+    render(<ExamCardPrintPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Ujian Simulasi UTBK")).toBeInTheDocument();
+    });
+    expect(screen.getByText("10")).toBeInTheDocument();
+  });
+
+  // C-06: scheduled_at is 02:00Z; the card labels the time "WIB", so it must be
+  // formatted in Asia/Jakarta (09.00) regardless of the runner's timezone —
+  // not the runner-local hour.
+  it("formats the schedule time in WIB, not the runner timezone", async () => {
+    render(<ExamCardPrintPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Ujian Simulasi UTBK")).toBeInTheDocument();
+    });
+    const waktu = screen.getByText(/WIB/);
+    expect(waktu.textContent).toMatch(/09[.:]00/);
+    expect(waktu.textContent).not.toMatch(/02[.:]00/);
   });
 });
