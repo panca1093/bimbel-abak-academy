@@ -746,7 +746,7 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 		}
 		req.Items = append(req.Items, ItemDetail{
 			ID:       item.ProductID.String(),
-			Name:     item.Name,
+			Name:     truncateItemName(item.Name),
 			Price:    int64(item.UnitPrice),
 			Qty:      int32(item.Qty),
 			Category: cat,
@@ -763,7 +763,29 @@ func buildPaymentRequest(orderID string, order model.Order, customer CustomerInf
 		})
 	}
 
+	// Midtrans requires gross_amount == sum(item_details). Discount isn't a line
+	// item, so represent it as a negative-priced entry to keep the sum balanced.
+	if order.Discount > 0 {
+		req.Items = append(req.Items, ItemDetail{
+			ID:       "discount",
+			Name:     "Diskon",
+			Price:    -int64(order.Discount),
+			Qty:      1,
+			Category: "Discount",
+		})
+	}
+
 	return req
+}
+
+// truncateItemName caps a name at Midtrans's 50-character item_details.name limit.
+func truncateItemName(name string) string {
+	const midtransItemNameMax = 50
+	r := []rune(name)
+	if len(r) <= midtransItemNameMax {
+		return name
+	}
+	return string(r[:midtransItemNameMax])
 }
 
 type OrderPaidPayload struct {

@@ -1611,6 +1611,63 @@ func TestBuildPaymentRequest_NoShippingLineItemWhenZero(t *testing.T) {
 	}
 }
 
+// Midtrans rejects the transaction when gross_amount != sum(item_details).
+// A discount must be reflected as a negative line item so the sum stays balanced.
+func TestBuildPaymentRequest_SumEqualsAmount_WithDiscount(t *testing.T) {
+	order := model.Order{
+		ID:           uuid.New(),
+		Subtotal:     100,
+		Discount:     10,
+		ShippingCost: 50,
+		Total:        140,
+	}
+	order.Items = append(order.Items, model.OrderItem{
+		ProductID:   uuid.New(),
+		ProductType: "book",
+		Name:        "Book 1",
+		UnitPrice:   100,
+		Qty:         1,
+	})
+
+	req := buildPaymentRequest(order.ID.String(), order, CustomerInfo{Name: "John Doe"})
+
+	var sum int64
+	discountFound := false
+	for _, item := range req.Items {
+		sum += item.Price * int64(item.Qty)
+		if item.ID == "discount" {
+			discountFound = true
+			if item.Price != -10 {
+				t.Errorf("want discount price=-10, got %d", item.Price)
+			}
+		}
+	}
+	if !discountFound {
+		t.Error("discount line item not found when discount > 0")
+	}
+	if sum != req.Amount {
+		t.Errorf("sum(item_details)=%d != gross_amount=%d", sum, req.Amount)
+	}
+}
+
+func TestBuildPaymentRequest_TruncatesLongItemName(t *testing.T) {
+	longName := "Course Matematika Dasar (Siap Masuk Sekolah Unggulan)" // 53 chars
+	order := model.Order{ID: uuid.New(), Subtotal: 100, Total: 100}
+	order.Items = append(order.Items, model.OrderItem{
+		ProductID:   uuid.New(),
+		ProductType: "course",
+		Name:        longName,
+		UnitPrice:   100,
+		Qty:         1,
+	})
+
+	req := buildPaymentRequest(order.ID.String(), order, CustomerInfo{Name: "Jane"})
+
+	if got := len([]rune(req.Items[0].Name)); got > 50 {
+		t.Errorf("item name length=%d exceeds Midtrans limit of 50", got)
+	}
+}
+
 func TestRemoveItem_PhysicalItem_ClearsShipping(t *testing.T) {
 	ctx := context.Background()
 	fake := newFakeOrderRepo()
