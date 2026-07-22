@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"akademi-bimbel/internal/service"
@@ -194,6 +195,7 @@ func mapServiceError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrInvalidCourierSelection):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	default:
+		slog.Error("unhandled service error", "method", c.Request().Method, "uri", c.Request().RequestURI, "err", err)
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}
 	}
 	return c.JSON(status, apiErr)
