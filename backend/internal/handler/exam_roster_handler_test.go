@@ -5,13 +5,33 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"akademi-bimbel/internal/service"
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 // ---------------------------------------------------------------------------
 // AdminListExamRegistrations tests (FR-32 admin participant roster)
 // ---------------------------------------------------------------------------
+
+// mintSchoolTokenForEnv mints an access token carrying a school_id, so the
+// middleware populates claims.SchoolID (needed to exercise admin_school
+// tenant scoping on the roster).
+func mintSchoolTokenForEnv(t *testing.T, env *testEnvWithStore, userID, role, schoolID string) string {
+	t.Helper()
+	rdb := redis.NewClient(&redis.Options{Addr: env.mr.Addr()})
+	t.Cleanup(func() { rdb.Close() })
+	tokenString, jti, err := env.signer.SignAccess(userID, role, &schoolID, []string{})
+	if err != nil {
+		t.Fatalf("SignAccess: %v", err)
+	}
+	if err := rdb.Set(context.Background(), "session:access:"+jti, userID, 15*time.Minute).Err(); err != nil {
+		t.Fatalf("redis set session: %v", err)
+	}
+	return tokenString
+}
 
 func TestAdminListExamRegistrations_NoToken_Returns401(t *testing.T) {
 	env := newTestEnvWithStore(t)
@@ -36,19 +56,46 @@ func TestAdminListExamRegistrations_RoleWithoutReadCapability_Returns403(t *test
 	}
 }
 
-// admin_school only has products(exam):read (not :write) and must still be
-// able to use the roster on the Registrations tab.
-func TestAdminListExamRegistrations_AdminSchoolToken_Returns200WithRoster(t *testing.T) {
+// An admin_school whose token carries no school_id cannot be scoped, so the
+// roster must refuse rather than fall back to an all-schools view.
+func TestAdminListExamRegistrations_AdminSchoolNilSchool_Returns403(t *testing.T) {
 	env := newTestEnvWithStore(t)
-	admin := seedUser(t, env.pool, service.RoleAdminSchool, "School Admin")
-	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminSchool)
+	admin := seedUser(t, env.pool, service.RoleAdminSchool, "Unscoped School Admin")
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleAdminSchool) // nil school_id
 
-	examID := seedExam(t, env.pool, "Roster Exam", false, "hidden", "classic")
-	student := seedUser(t, env.pool, service.RoleStudent, "Student Roster")
-	regID := seedRegistration(t, env.pool, student, examID)
-	if _, err := env.pool.Exec(context.Background(),
-		`UPDATE exam_registration SET participant_number = 1 WHERE id = $1`, regID,
-	); err != nil {
+	examID := seedExam(t, env.pool, "Roster Nil-School Exam", false, "hidden", "classic")
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations", token)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// admin_school only has products(exam):read and must see its OWN school's
+// participants — and MUST NOT see another school's students registered to the
+// same exam (tenant isolation; the pre-fix endpoint leaked cross-school PII).
+func TestAdminListExamRegistrations_AdminSchool_ScopedToOwnSchool(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+
+	schoolA := seedSchool(t, env.pool)
+	schoolB := seedSchool(t, env.pool)
+
+	admin := seedUser(t, env.pool, service.RoleAdminSchool, "School A Admin")
+	token := mintSchoolTokenForEnv(t, env, admin.String(), service.RoleAdminSchool, schoolA)
+
+	examID := seedExam(t, env.pool, "Shared Roster Exam", false, "hidden", "classic")
+
+	studentA := seedUser(t, env.pool, service.RoleStudent, "Student A")
+	studentB := seedUser(t, env.pool, service.RoleStudent, "Student B")
+	for id, school := range map[uuid.UUID]string{studentA: schoolA, studentB: schoolB} {
+		if _, err := env.pool.Exec(ctx, `UPDATE users SET school_id = $1 WHERE id = $2`, school, id); err != nil {
+			t.Fatalf("set user school: %v", err)
+		}
+	}
+	regA := seedRegistration(t, env.pool, studentA, examID)
+	seedRegistration(t, env.pool, studentB, examID)
+	if _, err := env.pool.Exec(ctx, `UPDATE exam_registration SET participant_number = 1 WHERE id = $1`, regA); err != nil {
 		t.Fatalf("set participant_number: %v", err)
 	}
 
@@ -57,23 +104,56 @@ func TestAdminListExamRegistrations_AdminSchoolToken_Returns200WithRoster(t *tes
 		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
+	data := decodeRosterData(t, rec.Body.Bytes())
+	if len(data) != 1 {
+		t.Fatalf("admin_school must see only its own school's 1 student, got %d rows", len(data))
+	}
+	row := data[0].(map[string]any)
+	if row["student_id"] != studentA.String() {
+		t.Errorf("student_id: want school-A student %s, got %v (cross-school leak)", studentA.String(), row["student_id"])
+	}
+}
+
+// super_admin is a global exam manager and sees the full cross-school roster.
+func TestAdminListExamRegistrations_SuperAdmin_SeesAllSchools(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+
+	schoolA := seedSchool(t, env.pool)
+	schoolB := seedSchool(t, env.pool)
+
+	admin := seedUser(t, env.pool, service.RoleSuperAdmin, "Super Admin")
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+
+	examID := seedExam(t, env.pool, "Super Roster Exam", false, "hidden", "classic")
+	studentA := seedUser(t, env.pool, service.RoleStudent, "Student A")
+	studentB := seedUser(t, env.pool, service.RoleStudent, "Student B")
+	for id, school := range map[uuid.UUID]string{studentA: schoolA, studentB: schoolB} {
+		if _, err := env.pool.Exec(ctx, `UPDATE users SET school_id = $1 WHERE id = $2`, school, id); err != nil {
+			t.Fatalf("set user school: %v", err)
+		}
+	}
+	seedRegistration(t, env.pool, studentA, examID)
+	seedRegistration(t, env.pool, studentB, examID)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if data := decodeRosterData(t, rec.Body.Bytes()); len(data) != 2 {
+		t.Fatalf("super_admin must see both schools' students, got %d rows", len(data))
+	}
+}
+
+func decodeRosterData(t *testing.T, body []byte) []any {
+	t.Helper()
 	var resp map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+	if err := json.Unmarshal(body, &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	data, ok := resp["data"].([]any)
 	if !ok {
 		t.Fatalf("data is not an array: %T", resp["data"])
 	}
-	if len(data) != 1 {
-		t.Fatalf("want 1 roster row, got %d", len(data))
-	}
-	row := data[0].(map[string]any)
-	if row["student_id"] != student.String() {
-		t.Errorf("student_id: want %s, got %v", student.String(), row["student_id"])
-	}
-	no, _ := row["participant_no"].(string)
-	if no == "" {
-		t.Errorf("want a non-empty participant_no for a row with participant_number set, got %v", row["participant_no"])
-	}
+	return data
 }

@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -1908,44 +1906,31 @@ func TestGetExamCard_SecondCallReusesCachedKey(t *testing.T) {
 	}
 }
 
-// fetchCardImage (exam.go) is the I/O call site that fetches the exam-card
-// logo/photo bytes; it must never surface an error, only nil bytes, so a
-// missing or unfetchable asset can never fail card generation (FR-21).
-
-func TestFetchCardImage_EmptyURLReturnsNil(t *testing.T) {
-	if got := fetchCardImage(""); got != nil {
-		t.Errorf("expected nil for empty URL, got %d bytes", len(got))
+// avatarKeyFromStored (exam.go) extracts the object key from a stored avatar
+// reference for card generation. It must ignore the URL host entirely (so a
+// student-supplied photo_url cannot cause an outbound/SSRF request) and reject
+// anything that isn't a real avatars/ object.
+func TestAvatarKeyFromStored(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		{"empty", "", ""},
+		{"proxy url", "http://localhost:8080/api/v1/files/avatars/u1/pic.png", "avatars/u1/pic.png"},
+		{"https proxy url", "https://stg.abakacademy.id/api/v1/files/avatars/u1/pic.png", "avatars/u1/pic.png"},
+		{"bare key", "avatars/u1/pic.png", "avatars/u1/pic.png"},
+		{"leading slash key", "/files/avatars/u1/pic.png", "avatars/u1/pic.png"},
+		// SSRF probes: the host is never used, and non-avatar targets yield "".
+		{"metadata ssrf", "http://169.254.169.254/latest/meta-data/iam/security-credentials/role", ""},
+		{"loopback ssrf", "http://127.0.0.1:9000/internal/secret", ""},
+		{"non-avatar files key", "http://evil.example/files/certificates/secret.pdf", ""},
+		{"traversal", "http://evil.example/files/avatars/../certificates/secret.pdf", ""},
 	}
-}
-
-func TestFetchCardImage_Success(t *testing.T) {
-	want := []byte("fake-image-bytes")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write(want)
-	}))
-	defer srv.Close()
-
-	got := fetchCardImage(srv.URL)
-	if !bytes.Equal(got, want) {
-		t.Errorf("fetchCardImage() = %v, want %v", got, want)
-	}
-}
-
-func TestFetchCardImage_NonOKStatusReturnsNil(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	if got := fetchCardImage(srv.URL); got != nil {
-		t.Errorf("expected nil for 404 response, got %d bytes", len(got))
-	}
-}
-
-func TestFetchCardImage_UnreachableHostReturnsNil(t *testing.T) {
-	if got := fetchCardImage("http://127.0.0.1:1/does-not-exist"); got != nil {
-		t.Errorf("expected nil for unreachable host, got %d bytes", len(got))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := avatarKeyFromStored(tc.in); got != tc.want {
+				t.Errorf("avatarKeyFromStored(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -2430,7 +2415,7 @@ func TestAdminGetExamRoster_OrdersByParticipantNumber_NilSafeForMissingNumbers(t
 	)
 	require.NoError(t, err)
 
-	rows, err := svc.AdminGetExamRoster(ctx, examID)
+	rows, err := svc.AdminGetExamRoster(ctx, examID, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 

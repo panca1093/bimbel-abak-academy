@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -1005,9 +1004,10 @@ const examPlatformDefault = "exam.abakacademy.id"
 // exam (FR-32): every registration joined with student name/username, with
 // each row's FR-24 display participant number composed here (nil-safe — rows
 // without a stored participant_number keep ParticipantNo empty rather than
-// crashing or showing a bogus number).
-func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID) ([]model.ExamRosterEntry, error) {
-	rows, err := s.storeRepo.GetExamRoster(ctx, examID)
+// crashing or showing a bogus number). schoolFilter, when non-nil, restricts
+// the roster to that school's students (admin_school tenant isolation).
+func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID, schoolFilter *string) ([]model.ExamRosterEntry, error) {
+	rows, err := s.storeRepo.GetExamRoster(ctx, examID, schoolFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -1074,10 +1074,12 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]b
 	if tenantName == "" {
 		tenantName = "Akademi Bimbel"
 	}
-	// Fetching is I/O kept out of the pure card_html.go builder; failure here is
-	// non-fatal (nil bytes), never blocking card generation (FR-21).
-	logoImg := fetchCardImage(logoURL)
-	photoImg := fetchCardImage(photoURL)
+	// Card images are read from our own object storage by KEY (the host in a
+	// stored proxy URL is ignored), so a student-supplied photo_url can never
+	// drive an outbound request. Failure is non-fatal (nil bytes) so a missing
+	// asset never blocks card generation (FR-21).
+	logoImg := s.loadCardAvatarImage(ctx, logoURL)
+	photoImg := s.loadCardAvatarImage(ctx, photoURL)
 
 	html, err := buildCardHTML(detail, studentName, tenantName, logoImg, photoImg)
 	if err != nil {
@@ -1134,25 +1136,40 @@ func (s *Service) downloadCardPDF(ctx context.Context, key string) ([]byte, erro
 	return io.ReadAll(obj)
 }
 
-var cardImageHTTPClient = &http.Client{Timeout: 3 * time.Second}
+// avatarKeyFromStored extracts the object key from a stored avatar reference —
+// either an "<api-base>/files/<key>" proxy URL or a bare key — and returns ""
+// for anything that isn't an avatars/ object. Only the key is used; the host
+// in a stored URL is ignored, so a student-supplied photo_url cannot cause an
+// outbound (SSRF) request during card generation.
+func avatarKeyFromStored(stored string) string {
+	if stored == "" {
+		return ""
+	}
+	key := stored
+	if i := strings.Index(stored, "/files/"); i >= 0 {
+		key = stored[i+len("/files/"):]
+	}
+	key = strings.TrimPrefix(key, "/")
+	if !strings.HasPrefix(key, "avatars/") || strings.Contains(key, "..") {
+		return ""
+	}
+	return key
+}
 
-// fetchCardImage best-effort fetches image bytes for the exam card logo/photo
-// fields. Any failure (unset URL, network error, non-200, oversized body)
-// returns nil rather than an error — a missing/unfetchable asset must never
-// fail card generation (FR-21).
-func fetchCardImage(url string) []byte {
-	if url == "" {
+// loadCardAvatarImage best-effort reads an avatar image from object storage by
+// key. Any failure returns nil rather than an error — a missing/unreadable
+// asset must never fail card generation (FR-21).
+func (s *Service) loadCardAvatarImage(ctx context.Context, stored string) []byte {
+	key := avatarKeyFromStored(stored)
+	if key == "" {
 		return nil
 	}
-	resp, err := cardImageHTTPClient.Get(url)
+	obj, _, err := s.OpenAvatar(ctx, key)
 	if err != nil {
 		return nil
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	defer obj.Close()
+	data, err := io.ReadAll(io.LimitReader(obj, 5<<20))
 	if err != nil {
 		return nil
 	}

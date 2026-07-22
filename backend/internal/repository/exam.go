@@ -1239,16 +1239,19 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 // ingredients the service needs to compose each row's FR-24 display
 // participant number), ordered by participant_number (NULLs — rows predating
 // the FR-24 backfill — sort last, then by registration time).
-func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID) ([]model.ExamRosterEntry, error) {
+// GetExamRoster's schoolFilter, when non-nil, constrains rows to students of
+// that school (tenant isolation for admin_school — a nil filter is the
+// all-schools view used by super_admin/admin_exam).
+func (r *Repository) GetExamRoster(ctx context.Context, examID uuid.UUID, schoolFilter *string) ([]model.ExamRosterEntry, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT reg.id, reg.student_id, u.name, u.username, reg.participant_number,
 			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		JOIN users u ON u.id = reg.student_id
-		WHERE reg.exam_id = $1
+		WHERE reg.exam_id = $1 AND ($2::uuid IS NULL OR u.school_id = $2)
 		ORDER BY reg.participant_number NULLS LAST, reg.created_at`,
-		examID,
+		examID, schoolFilter,
 	)
 	if err != nil {
 		return nil, err

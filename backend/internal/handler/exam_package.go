@@ -73,7 +73,22 @@ func (h *Handler) AdminListExamRegistrations(c echo.Context) error {
 	if err != nil {
 		return badRequest(c, "invalid id")
 	}
-	rows, err := h.svc.AdminGetExamRoster(c.Request().Context(), id)
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	// admin_school sees only its own school's participants; super_admin and
+	// admin_exam (global exam managers) see the full roster. Without this the
+	// endpoint leaks other schools' student PII (name/username/id) for any
+	// known exam id.
+	var schoolFilter *string
+	if claims.Role == "admin_school" {
+		if claims.SchoolID == nil {
+			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+		}
+		schoolFilter = claims.SchoolID
+	}
+	rows, err := h.svc.AdminGetExamRoster(c.Request().Context(), id, schoolFilter)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
