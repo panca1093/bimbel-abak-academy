@@ -23,6 +23,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -101,5 +102,45 @@ func TestCertificateRender_RealGotenberg(t *testing.T) {
 			t.Fatalf("write sample PDF to %s: %v", out, err)
 		}
 		t.Logf("wrote %d-byte sample certificate to %s for visual inspection", len(pdf), out)
+	}
+
+	// Byte checks above cannot tell a correct certificate from a blank, rotated,
+	// or upside-down one — exactly the bug class that shipped before (memory:
+	// pdf-layout-needs-visual-verification). Assert on rendered pixels instead.
+	// renderToPNG also fails if a second page appears. It skips when pdftoppm is
+	// absent, which for this gate would mean silently checking nothing — so
+	// require it here rather than degrading (CI installs poppler-utils).
+	if _, err := exec.LookPath("pdftoppm"); err != nil {
+		t.Fatal("pdftoppm not installed: the render gate cannot verify layout without it")
+	}
+	img := renderToPNG(t, pdf)
+
+	bounds := img.Bounds()
+	if bounds.Dx() <= bounds.Dy() {
+		t.Errorf("expected A4 landscape, got %dx%d px", bounds.Dx(), bounds.Dy())
+	}
+
+	// The classic background's navy band runs along the top edge; a blank or
+	// background-less render leaves this area white.
+	r, g, b := avgColorAt(img, certificatePageWidthMm, certificatePageHeightMm, 148, 8)
+	if r > 200 && g > 200 && b > 200 {
+		t.Errorf("top band is near-white (%.0f,%.0f,%.0f) — background did not render", r, g, b)
+	}
+
+	// The student name must land in its own layout box. Scanning that band for
+	// ink catches a field stamped somewhere else entirely (e.g. a Y-axis flip).
+	var nameField LayoutField
+	for _, f := range layout.Fields {
+		if f.ID == "student_name" {
+			nameField = f
+		}
+	}
+	if nameField.ID == "" {
+		t.Fatal("classic layout has no student_name field")
+	}
+	nameInk := regionMinBrightness(img, certificatePageWidthMm, certificatePageHeightMm,
+		nameField.XMm, nameField.YMm, nameField.XMm+nameField.WMm, nameField.YMm+nominalLineHeightMm(nameField.SizePt))
+	if nameInk > 600 {
+		t.Errorf("no glyph ink in the student_name box (darkest pixel %.0f/765) — the field did not render where the layout puts it", nameInk)
 	}
 }

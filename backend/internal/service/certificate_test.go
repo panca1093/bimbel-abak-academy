@@ -763,29 +763,14 @@ func TestResolveCertificateLayout_SavedLayout_UsesPersistedFields(t *testing.T) 
 	}
 }
 
-// ---------- tests: rasterized certificate output (FR-30, FR-31) ----------
+// ---------- tests: certificate output geometry (FR-30, FR-31) ----------
 //
-// These assert on the certificate's rendered pixels via renderToPNG rather
-// than on PDF byte substrings. A bytes.Contains(pdf, "(Test)")-style check
-// is blind to a fully upside-down page or a blank first page — both shipped
-// past a green byte-level suite in v1 (memory:
-// pdf-layout-needs-visual-verification).
-
-// assertA4LandscapeAspect checks the rasterized page is wider than tall and
-// close to the 297:210 A4 ratio (FR-6).
-func assertA4LandscapeAspect(t *testing.T, img image.Image, name string) {
-	t.Helper()
-	b := img.Bounds()
-	w, h := b.Dx(), b.Dy()
-	if w <= h {
-		t.Errorf("%s: expected landscape orientation, got %dx%d", name, w, h)
-	}
-	gotAspect := float64(w) / float64(h)
-	wantAspect := float64(certificatePageWidthMm) / float64(certificatePageHeightMm)
-	if diff := gotAspect - wantAspect; diff < -0.02 || diff > 0.02 {
-		t.Errorf("%s: aspect ratio %.4f, want ~%.4f (A4 landscape)", name, gotAspect, wantAspect)
-	}
-}
+// These assert on the generated HTML's geometry, which is what the renderer
+// consumes — not on rendered pixels. Pixel-level verification of the real
+// Gotenberg output (orientation, background, glyph ink at the layout position)
+// lives in the gotenberg_integration gate, certificate_integration_test.go: a
+// substring check here is blind to an upside-down or blank page, and both
+// shipped past a green suite in v1 (memory: pdf-layout-needs-visual-verification).
 
 // TestGenerateCertificatePDF_BuiltinsRenderOnePageWithBackground and
 // TestGenerateCertificatePDF_LongAndNonASCIINames above, and

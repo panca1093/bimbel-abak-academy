@@ -11,12 +11,16 @@ import (
 	"testing"
 )
 
-// pdfVisualInspectionDir collects rasterized PNGs for the NFR-1 manual
-// visual-inspection gate: page orientation, field centering, and edge
+// pdfVisualInspectionDir names where rasterized PNGs are kept for the NFR-1
+// manual visual-inspection gate: page orientation, field centering, and edge
 // overflow are confirmed by looking at these images, not by the automated
 // geometry/ink assertions that use renderToPNG (memory:
 // pdf-layout-needs-visual-verification).
-const pdfVisualInspectionDir = "/private/tmp/claude-502/-Users-Panca-Documents-MyBook-Project-akademi-bimbel/5ca055a3-e8e4-4f30-82bf-8f4a23539dfd/scratchpad/pdf-visual-check"
+//
+// Opt-in via PDF_VISUAL_DIR — the images are only useful to someone about to
+// look at them, and t.TempDir() (used for the render itself) is wiped when the
+// test ends. Returns "" when unset, which skips persisting entirely.
+func pdfVisualInspectionDir() string { return os.Getenv("PDF_VISUAL_DIR") }
 
 // renderToPNG writes pdf to disk and rasterizes page 1 at 150dpi with
 // pdftoppm, decoding the result as an image.Image, so correctness
@@ -57,11 +61,13 @@ func renderToPNG(t *testing.T, pdf []byte) image.Image {
 		t.Fatalf("read rasterized png: %v", err)
 	}
 
-	if err := os.MkdirAll(pdfVisualInspectionDir, 0o755); err == nil {
-		name := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
-		persisted := filepath.Join(pdfVisualInspectionDir, name+".png")
-		if werr := os.WriteFile(persisted, data, 0o644); werr == nil {
-			t.Logf("rasterized for visual inspection: %s", persisted)
+	if visualDir := pdfVisualInspectionDir(); visualDir != "" {
+		if err := os.MkdirAll(visualDir, 0o755); err == nil {
+			name := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+			persisted := filepath.Join(visualDir, name+".png")
+			if werr := os.WriteFile(persisted, data, 0o644); werr == nil {
+				t.Logf("rasterized for visual inspection: %s", persisted)
+			}
 		}
 	}
 
