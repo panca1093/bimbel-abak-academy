@@ -427,4 +427,31 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
     expect(text).toContain("250620-0042-000001,Andi Saputra,andi123,registered,yes");
     expect(text).toContain(",Citra Dewi,,registered,no");
   });
+
+  // Student names are attacker-supplied at registration, so a leading =/+/-/@
+  // must not reach the spreadsheet as a live formula.
+  it("neutralizes formula-leading fields in the exported CSV", async () => {
+    rosterData = {
+      data: [
+        {
+          ...rows[0],
+          registration_id: "reg-evil",
+          student_id: "s-evil",
+          student_name: '=HYPERLINK("http://evil.test","claim prize")',
+          student_username: "+cmd|' /C calc'!A0",
+        },
+      ],
+    };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    fireEvent.click(screen.getByText("exam_roster_export_csv"));
+
+    const text = await lastCapturedBlob!.text();
+    expect(text).toContain(`"'=HYPERLINK(""http://evil.test"",""claim prize"")"`);
+    expect(text).toContain(`"'+cmd|' /C calc'!A0"`);
+    expect(text).not.toContain(",=HYPERLINK");
+    expect(text).not.toContain(",+cmd");
+  });
 });

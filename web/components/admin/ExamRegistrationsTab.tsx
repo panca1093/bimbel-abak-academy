@@ -26,11 +26,20 @@ interface ExamRegistrationsTabProps {
 // csvField quotes a CSV field only when it needs it (contains a comma, quote,
 // or newline), doubling embedded quotes per RFC 4180 — student names can
 // contain commas.
+//
+// A field whose first character is one a spreadsheet reads as the start of a
+// formula is additionally prefixed with a single quote and force-quoted:
+// student names are attacker-supplied at registration, so without this a name
+// like `=HYPERLINK(...)` executes when an admin opens the export in Excel or
+// Sheets.
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+
 function csvField(value: string): string {
-  if (/[",\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const neutralized = FORMULA_LEAD.test(value) ? `'${value}` : value;
+  if (neutralized !== value || /[",\n]/.test(neutralized)) {
+    return `"${neutralized.replace(/"/g, '""')}"`;
   }
-  return value;
+  return neutralized;
 }
 
 function downloadRosterCSV(rows: ExamRosterEntry[]): void {
