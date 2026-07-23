@@ -569,13 +569,15 @@ func (h *Handler) StudentGetExamCard(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 	id := c.Param("id")
-	pdf, filename, err := h.svc.GetExamCard(c.Request().Context(), id, claims.Sub)
+	signedURL, _, err := h.svc.GetExamCard(c.Request().Context(), id, claims.Sub)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	c.Response().Header().Set("Content-Type", "application/pdf")
-	c.Response().Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
-	return c.Stream(http.StatusOK, "application/pdf", bytes.NewReader(pdf))
+	// FR-30 serves the PDF from object storage via a fresh presigned GET rather
+	// than streaming the bytes back through the API. The redirect is what the
+	// browser's fetch follows; the presigned URL carries the download filename
+	// through response-content-disposition.
+	return c.Redirect(http.StatusFound, signedURL)
 }
 
 // fingerprint derives a device fingerprint from IP and User-Agent.

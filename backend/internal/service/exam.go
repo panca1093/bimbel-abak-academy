@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -1038,23 +1039,25 @@ func (s *Service) AdminGetExamRoster(ctx context.Context, examID uuid.UUID, scho
 	return rows, nil
 }
 
-// GetExamCard serves the exam card PDF, generating it once via Gotenberg and
-// caching the object key thereafter (FR-30): a registration with a CardKey
-// already set skips straight to a re-download of the cached PDF, so a
-// repeated download never re-renders.
-func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]byte, string, error) {
+// GetExamCard returns a freshly presigned URL for the exam card PDF, generating
+// it once via Gotenberg and caching the object key thereafter (FR-30):
+// buildCardHTML → RenderHTML → object-store put → card_key persisted → fresh
+// presigned GET. A registration with a CardKey already set is presigned
+// straight away, so a repeated download never re-renders — and the API is never
+// the data-transfer path for the PDF bytes themselves.
+func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) (string, string, error) {
 	detail, err := s.GetExamRegistration(ctx, regID, studentID)
 	if err != nil {
-		return nil, "", err
+		return "", "", err
 	}
 	filename := "kartu-peserta-" + detail.Token + ".pdf"
 
 	if detail.CardKey != nil && *detail.CardKey != "" {
-		pdf, err := s.downloadCardPDF(ctx, *detail.CardKey)
+		signed, err := s.presignCardURL(ctx, *detail.CardKey, filename)
 		if err != nil {
-			return nil, "", err
+			return "", "", err
 		}
-		return pdf, filename, nil
+		return signed, filename, nil
 	}
 
 	studentName := ""
@@ -1080,33 +1083,61 @@ func (s *Service) GetExamCard(ctx context.Context, regID, studentID string) ([]b
 	if tenantName == "" {
 		tenantName = "Akademi Bimbel"
 	}
-	// Card images are read from our own object storage by KEY (the host in a
-	// stored proxy URL is ignored), so a student-supplied photo_url can never
-	// drive an outbound request. Failure is non-fatal (nil bytes) so a missing
-	// asset never blocks card generation (FR-21).
-	logoImg := s.loadCardAvatarImage(ctx, logoURL)
+	// The two images have different trust levels and so different loaders: the
+	// student-controlled photo is read from our own storage BY KEY and never
+	// causes an outbound request (the host in a stored proxy URL is ignored),
+	// while the super_admin-configured logo may legitimately be an external
+	// https URL and is fetched under the restrictions in card_logo.go. Failure
+	// is non-fatal (nil bytes) so a missing asset never blocks generation (FR-21).
+	logoImg := s.loadCardLogoImage(ctx, logoURL)
 	photoImg := s.loadCardAvatarImage(ctx, photoURL)
 
 	html, err := buildCardHTML(detail, studentName, tenantName, logoImg, photoImg)
 	if err != nil {
-		return nil, "", err
+		return "", "", err
 	}
 	pdf, err := s.renderer.RenderHTML(ctx, html)
 	if err != nil {
-		return nil, "", fmt.Errorf("generate card pdf: %w", err)
+		return "", "", fmt.Errorf("generate card pdf: %w", err)
 	}
 	regUUID, err := uuid.Parse(regID)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: invalid registration id", ErrValidation)
+		return "", "", fmt.Errorf("%w: invalid registration id", ErrValidation)
 	}
 	key, err := s.uploadCardPDF(ctx, regUUID, pdf)
 	if err != nil {
-		return nil, "", fmt.Errorf("upload card pdf: %w", err)
+		return "", "", fmt.Errorf("upload card pdf: %w", err)
 	}
 	if err := s.storeRepo.UpdateRegistrationCard(ctx, regUUID, key); err != nil {
-		return nil, "", fmt.Errorf("persist card key: %w", err)
+		return "", "", fmt.Errorf("persist card key: %w", err)
 	}
-	return pdf, filename, nil
+
+	signed, err := s.presignCardURL(ctx, key, filename)
+	if err != nil {
+		return "", "", err
+	}
+	return signed, filename, nil
+}
+
+// cardURLTTL bounds how long a signed card-download link stays valid. Short,
+// because the link is handed straight to the browser on each request.
+const cardURLTTL = 15 * time.Minute
+
+// presignCardURL signs a time-limited GET for a stored card PDF. The bucket is
+// private, so every read signs afresh rather than persisting a URL. The
+// response-content-disposition parameter makes the object download under the
+// card's own filename even though the client is fetching an opaque object key.
+func (s *Service) presignCardURL(ctx context.Context, key, filename string) (string, error) {
+	if s.storage == nil {
+		return "", errors.New("storage not configured")
+	}
+	params := url.Values{}
+	params.Set("response-content-disposition", `attachment; filename="`+filename+`"`)
+	u, err := s.presignStorage().PresignedGetObject(ctx, s.cfg.ObjectStorageBucketName, key, cardURLTTL, params)
+	if err != nil {
+		return "", fmt.Errorf("presign card url: %w", err)
+	}
+	return u.String(), nil
 }
 
 // uploadCardPDF uploads the rendered card PDF at cards/<regID>.pdf and returns
