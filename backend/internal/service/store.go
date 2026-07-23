@@ -928,13 +928,21 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		if err := tx.Commit(ctx); err != nil {
 			return CheckoutResult{}, err
 		}
+		// Past this point the order is paid and fulfilment is already queued, so
+		// neither of these may fail the call: returning an error here would tell
+		// the student the checkout failed, and their retry would hit a non-cart
+		// order (ErrOrderNotEditable) forever. Both are recorded and moved past —
+		// an under-counted promo use, or a missing sentinel that only costs a
+		// retry its replay, beats a paid order reported as a failure.
 		if order.PromoCodeID != nil {
 			if err := s.storeRepo.IncrementPromoUses(ctx, *order.PromoCodeID); err != nil {
-				return CheckoutResult{}, err
+				slog.Error("free checkout: increment promo uses failed after commit",
+					"order_id", oID, "promo_code_id", *order.PromoCodeID, "error", err)
 			}
 		}
 		if err := s.rdb.Set(ctx, cacheKey, freeCheckoutSentinel, 24*time.Hour).Err(); err != nil {
-			return CheckoutResult{}, err
+			slog.Error("free checkout: cache idempotency sentinel failed after commit",
+				"order_id", oID, "error", err)
 		}
 		return CheckoutResult{Free: true}, nil
 	}

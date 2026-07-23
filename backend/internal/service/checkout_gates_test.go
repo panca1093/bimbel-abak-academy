@@ -86,6 +86,60 @@ func TestCheckout_FreeOrder_SkipsGateway(t *testing.T) {
 	}
 }
 
+// TestCheckout_FreeOrder_PostCommitCacheFailureStillSucceeds pins that work done
+// after the free-checkout commit cannot fail the call. The order is already paid
+// and fulfilment already queued at that point, so surfacing the error would tell
+// the student the checkout failed while their retry hits a non-cart order.
+func TestCheckout_FreeOrder_PostCommitCacheFailureStillSucceeds(t *testing.T) {
+	_, repo := newRealDBService(t)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, &NoopLogisticsClient{}, nil, nil)
+	ctx := context.Background()
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status)
+		 VALUES ('course', $1, 0, 0, 'published') RETURNING id`,
+		"Free Course "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Cache Down Student", "cachestu_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	// Redis is unreachable for the whole checkout, so caching the idempotency
+	// sentinel after the commit fails.
+	mr.Close()
+
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "cache-down-key-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout must succeed despite a post-commit cache failure, got: %v", err)
+	}
+	if !result.Free {
+		t.Error("want result.Free = true for a zero-total order")
+	}
+
+	got, err := svc.GetStudentOrder(ctx, studentID, order.ID.String())
+	if err != nil {
+		t.Fatalf("GetStudentOrder: %v", err)
+	}
+	if got.Status != "paid" {
+		t.Errorf("want order status paid, got %q", got.Status)
+	}
+}
+
 // TestCheckout_ExamRequiresBiodata verifies a student self-purchasing an exam is
 // blocked until school/class/dob are complete.
 func TestCheckout_ExamRequiresBiodata(t *testing.T) {
