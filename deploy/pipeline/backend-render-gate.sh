@@ -6,4 +6,6 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../../backend"
 # fake renderer the unit tests use. Kept out of backend.sh so the main suite is
 # not slowed by pulling the Chromium image. The test starts its own Gotenberg
 # container; set GOTENBERG_URL to point it at an existing instance instead.
-go test -tags gotenberg_integration -run TestCertificateRender_RealGotenberg -count=1 -v ./internal/service/
+# Matches every gate test (TestCertificateRender_*), not one by name — a new gate
+# test must not silently sit unrun.
+go test -tags gotenberg_integration -run 'TestCertificateRender_' -count=1 -v ./internal/service/

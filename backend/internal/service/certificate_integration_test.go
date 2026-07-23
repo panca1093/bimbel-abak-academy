@@ -144,3 +144,62 @@ func TestCertificateRender_RealGotenberg(t *testing.T) {
 		t.Errorf("no glyph ink in the student_name box (darkest pixel %.0f/765) — the field did not render where the layout puts it", nameInk)
 	}
 }
+
+// TestCertificateRender_DraggedFieldLandsWhereDragged is the pixel-level
+// successor to the old renderer-era drag test (a permanently-skipped placeholder
+// until now). The default layout cannot carry this check: its student_name sits
+// near the middle of the page, so a mirrored Y axis would land it close enough
+// to its own box to pass. A field dragged to the lower-left discriminates —
+// under mirroring its ink appears near the top instead.
+func TestCertificateRender_DraggedFieldLandsWhereDragged(t *testing.T) {
+	url := os.Getenv("GOTENBERG_URL")
+	if url == "" {
+		url = startGotenberg(t)
+	}
+	if _, err := exec.LookPath("pdftoppm"); err != nil {
+		t.Fatal("pdftoppm not installed: the render gate cannot verify layout without it")
+	}
+
+	const (
+		draggedXMm = 20
+		draggedYMm = 175
+		draggedWMm = 90
+		sizePt     = 20
+	)
+	layout := Layout{
+		Page:       Page{WidthMm: certificatePageWidthMm, HeightMm: certificatePageHeightMm},
+		Background: Background{Kind: "builtin", Ref: "classic"},
+		Fields: []LayoutField{{
+			ID: "student_name", XMm: draggedXMm, YMm: draggedYMm, WMm: draggedWMm,
+			Align: "left", Font: "public_sans", Weight: "bold", SizePt: sizePt,
+			Color: "#000000", Visible: true,
+		}},
+	}
+	vals := certificateFieldValues("Ujian", "Budi Santoso", "1 Januari 2026", previewCertificateNumber)
+
+	html, err := buildCertificateHTML(layout, vals, builtinCertificateBackground("classic"), nil)
+	if err != nil {
+		t.Fatalf("buildCertificateHTML: %v", err)
+	}
+	pdf, err := newGotenbergRenderer(url, &http.Client{Timeout: 30 * time.Second}).
+		RenderHTML(context.Background(), html)
+	if err != nil {
+		t.Fatalf("RenderHTML: %v", err)
+	}
+	img := renderToPNG(t, pdf)
+
+	boxH := nominalLineHeightMm(sizePt)
+	inkAtDrop := regionMinBrightness(img, certificatePageWidthMm, certificatePageHeightMm,
+		draggedXMm, draggedYMm, draggedXMm+draggedWMm, draggedYMm+boxH)
+	if inkAtDrop > 600 {
+		t.Errorf("no ink where the field was dropped (%.0fmm,%.0fmm), darkest pixel %.0f/765", float64(draggedXMm), float64(draggedYMm), inkAtDrop)
+	}
+
+	mirroredY := certificatePageHeightMm - draggedYMm - boxH
+	inkAtMirror := regionMinBrightness(img, certificatePageWidthMm, certificatePageHeightMm,
+		draggedXMm, mirroredY, draggedXMm+draggedWMm, mirroredY+boxH)
+	if inkAtMirror < inkAtDrop {
+		t.Errorf("more ink at the mirrored position (y=%.0fmm, %.0f) than where the field was dropped (y=%.0fmm, %.0f) — the Y axis is inverted",
+			mirroredY, inkAtMirror, float64(draggedYMm), inkAtDrop)
+	}
+}

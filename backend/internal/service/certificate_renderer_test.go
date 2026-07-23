@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -108,6 +109,15 @@ func TestGotenbergRenderer_RenderHTML_NonOKStatusReturnsWrappedError(t *testing.
 	_, err := r.RenderHTML(context.Background(), []byte("<html></html>"))
 	if err == nil {
 		t.Fatal("expected error for non-2xx response, got nil")
+	}
+	// The wrapped error is the only diagnostic a failed render leaves behind, so
+	// it has to carry both the status and Gotenberg's own message — "err != nil"
+	// alone would still pass if the error dropped them.
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error must name the upstream status, got %q", err)
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error must carry the upstream response body, got %q", err)
 	}
 }
 
