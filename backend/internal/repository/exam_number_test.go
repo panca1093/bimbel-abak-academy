@@ -35,10 +35,13 @@ func TestCreateExam_AssignsIncreasingExamNumber(t *testing.T) {
 	}
 }
 
-// TestExamNumber_BackfillsExistingRows verifies a raw insert that predates the
-// exam_number column (simulated here as any insert relying on the DB default)
-// still lands with a non-nil, unique exam_number via the column DEFAULT.
-func TestExamNumber_BackfillsExistingRows(t *testing.T) {
+// TestExamNumber_RawInsert_AssignedByColumnDefault verifies an insert that names
+// no exam_number still lands with one, via the column DEFAULT.
+//
+// This runs against a fully-migrated schema, so it says nothing about the 0039
+// backfill itself — ordering, preservation and the sequence high-water mark are
+// covered at the migration boundary by TestMigration0039_ExamNumberBackfill.
+func TestExamNumber_RawInsert_AssignedByColumnDefault(t *testing.T) {
 	ctx := context.Background()
 	pool := newGradingTestPool(t)
 
