@@ -719,6 +719,7 @@ export interface CertificateLayout {
 
 export interface CertificateDesign {
   template: string;
+  background_key: string | null;
   background_url: string | null;
   signature_url: string | null;
   layout: CertificateLayout;

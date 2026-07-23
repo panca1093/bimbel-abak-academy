@@ -758,10 +758,14 @@ func rawMessagePtrEqual(a, b *json.RawMessage) bool {
 
 // CertificateDesignResponse is the admin editor's read model for GET
 // certificate-design: the current template, a freshly presigned background URL
-// (never the raw key, FR-18), and the resolved layout — the built-in default
-// when the admin has not saved one yet (FR-29).
+// for display (FR-18 — the URL is signed per read, never persisted), and the
+// resolved layout — the built-in default when the admin has not saved one yet
+// (FR-29). BackgroundKey is also returned because the PUT replaces the design
+// wholesale: without it an editor that never touches the background has nothing
+// to send back and would erase the persisted upload.
 type CertificateDesignResponse struct {
 	Template      string  `json:"template"`
+	BackgroundKey *string `json:"background_key"`
 	BackgroundURL *string `json:"background_url"`
 	SignatureURL  *string `json:"signature_url"`
 	Layout        Layout  `json:"layout"`
@@ -783,9 +787,10 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 		return nil, err
 	}
 
+	bgKey := certificateBackgroundKey(exam)
 	var bgURL *string
-	if key := certificateBackgroundKey(exam); key != nil {
-		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *key, time.Hour)
+	if bgKey != nil {
+		signed, err := s.presignReadURL(ctx, s.cfg.ObjectStorageBucketName, *bgKey, time.Hour)
 		if err != nil {
 			return nil, fmt.Errorf("presign certificate background: %w", err)
 		}
@@ -803,6 +808,7 @@ func (s *Service) GetCertificateDesign(ctx context.Context, examID uuid.UUID) (*
 
 	return &CertificateDesignResponse{
 		Template:      certificateTemplate(exam),
+		BackgroundKey: bgKey,
 		BackgroundURL: bgURL,
 		SignatureURL:  sigURL,
 		Layout:        layout,
@@ -858,7 +864,7 @@ func (s *Service) GetCertificatePreviewWithLayout(ctx context.Context, examID uu
 	if err != nil {
 		return nil, err
 	}
-	vals := certificateFieldValues(exam.Title, "Nama Peserta Contoh", time.Now().In(loc).Format("2 January 2006"), "ABK/2026/000000")
+	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
 
 	images, err := s.resolveCertificateSignatureImages(ctx, *layoutOverride)
 	if err != nil {

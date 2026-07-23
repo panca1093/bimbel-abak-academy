@@ -136,12 +136,12 @@ func buildCardHTML(reg *model.RegistrationDetail, studentName, tenantName string
 		Script:       cardShrinkScript,
 	}
 
-	if mime, ok := decodeCardImageMime(logoImg); ok {
+	if mime, ok := decodeImageMime(logoImg); ok {
 		data.HasLogo = true
 		data.LogoMime = mime
 		data.LogoBase64 = base64.StdEncoding.EncodeToString(logoImg)
 	}
-	if mime, ok := decodeCardImageMime(photoImg); ok {
+	if mime, ok := decodeImageMime(photoImg); ok {
 		data.HasPhoto = true
 		data.PhotoMime = mime
 		data.PhotoBase64 = base64.StdEncoding.EncodeToString(photoImg)
@@ -156,10 +156,11 @@ func buildCardHTML(reg *model.RegistrationDetail, studentName, tenantName string
 	return buf.Bytes(), nil
 }
 
-// decodeCardImageMime validates image bytes and returns the data-URI mime
+// decodeImageMime validates image bytes and returns the data-URI mime
 // type to embed them with, never failing on missing/corrupt input (FR-21) —
-// callers treat ok=false as "omit this image".
-func decodeCardImageMime(data []byte) (mime string, ok bool) {
+// callers treat ok=false as "omit this image". Shared with the certificate
+// renderer, whose backgrounds and signatures are uploaded as any image type.
+func decodeImageMime(data []byte) (mime string, ok bool) {
 	if len(data) == 0 {
 		return "", false
 	}

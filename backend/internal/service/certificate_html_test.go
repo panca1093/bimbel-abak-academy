@@ -1,8 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
+	htmlutil "html"
+	"image"
+	"image/jpeg"
 	"regexp"
 	"strings"
 	"testing"
@@ -154,6 +158,46 @@ func TestBuildCertificateHTML_BackgroundIsDataURI(t *testing.T) {
 	}
 	if !strings.Contains(html, `class="certificate-bg"`) {
 		t.Errorf("expected certificate-bg element, got:\n%s", html)
+	}
+}
+
+// The background picker accepts any image type, so a JPEG upload must be
+// embedded as image/jpeg — it used to be hardcoded to image/png regardless.
+func TestBuildCertificateHTML_JPEGBackgroundKeepsItsOwnMime(t *testing.T) {
+	var jpg bytes.Buffer
+	if err := jpeg.Encode(&jpg, image.NewRGBA(image.Rect(0, 0, 4, 4)), nil); err != nil {
+		t.Fatalf("encode jpeg fixture: %v", err)
+	}
+
+	layout := testCertificateLayout()
+	vals := certificateFieldValues("Ujian", "Nama", "1 Januari 2026", "ABK/2026/0001/000001")
+
+	out, err := buildCertificateHTML(layout, vals, jpg.Bytes(), nil)
+	if err != nil {
+		t.Fatalf("buildCertificateHTML returned error: %v", err)
+	}
+	html := string(out)
+
+	if !strings.Contains(html, `class="certificate-bg" src="data:image/jpeg;base64,`) {
+		t.Errorf("expected a jpeg-typed background data URI, got:\n%s", html)
+	}
+	if strings.Contains(html, `class="certificate-bg" src="data:image/png`) {
+		t.Error("jpeg background was mislabeled as image/png")
+	}
+
+	// The payload must still be the exact upload once attribute escaping is
+	// undone, the way a real HTML parser does before decoding (see dataURIBytes).
+	re := regexp.MustCompile(`class="certificate-bg" src="data:image/jpeg;base64,([^"]*)"`)
+	m := re.FindStringSubmatch(html)
+	if m == nil {
+		t.Fatal("could not extract the background data URI payload")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(htmlutil.UnescapeString(m[1]))
+	if err != nil {
+		t.Fatalf("decode background base64: %v", err)
+	}
+	if !bytes.Equal(decoded, jpg.Bytes()) {
+		t.Error("embedded background bytes do not match the uploaded jpeg")
 	}
 }
 

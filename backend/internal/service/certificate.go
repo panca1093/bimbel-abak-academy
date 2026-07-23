@@ -245,10 +245,19 @@ func (s *Service) resolveCertificateURL(ctx context.Context, exam *model.Exam, s
 	return &signed, nil
 }
 
+// previewStudentName and previewCertificateNumber are the placeholder values a
+// preview stamps instead of real data. The number mirrors the four-segment shape
+// AllocateCertificateNumber produces (ABK/YYYY/<exam:4>/<participant:6>) so the
+// preview shows the width the real string will occupy.
+const (
+	previewStudentName       = "Nama Peserta Contoh"
+	previewCertificateNumber = "ABK/2026/0000/000000"
+)
+
 // GetCertificatePreview renders a preview certificate through the same
 // background/layout resolution as real generation, using a placeholder
-// student name ("Nama Peserta Contoh") and placeholder certificate number
-// (ABK/2026/000000) — it never allocates a real number (FR-12), since preview
+// student name and placeholder certificate number — it never allocates a real
+// number (FR-12), since preview
 // has no session to allocate against. templateOverride may be empty to use
 // the exam's stored template; when it names a different template, the saved
 // custom background/layout (authored for the stored template) are not carried
@@ -297,7 +306,7 @@ func (s *Service) GetCertificatePreview(ctx context.Context, examID uuid.UUID, t
 	if err != nil {
 		return nil, err
 	}
-	vals := certificateFieldValues(exam.Title, "Nama Peserta Contoh", time.Now().In(loc).Format("2 January 2006"), "ABK/2026/000000")
+	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
 
 	images, err := s.resolveCertificateSignatureImages(ctx, layout)
 	if err != nil {

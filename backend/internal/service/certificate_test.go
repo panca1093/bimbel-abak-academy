@@ -213,9 +213,19 @@ func (s *shimSessionService) GetCertificatePreview(ctx context.Context, examID u
 	if err != nil {
 		return nil, err
 	}
-	vals := certificateFieldValues(exam.Title, "Nama Peserta Contoh", time.Now().In(loc).Format("2 January 2006"), "ABK/2026/000000")
+	vals := certificateFieldValues(exam.Title, previewStudentName, time.Now().In(loc).Format("2 January 2006"), previewCertificateNumber)
 
 	return buildCertificateHTML(layout, vals, bg, nil)
+}
+
+// The preview placeholder must have the same shape as a real allocated number
+// (repository.AllocateCertificateNumber: ABK/%04d/%04d/%06d), otherwise the
+// admin lays the field out against a string narrower than the issued one.
+func TestPreviewCertificateNumber_MatchesAllocatedShape(t *testing.T) {
+	t.Parallel()
+	if !regexp.MustCompile(`^ABK/\d{4}/\d{4}/\d{6}$`).MatchString(previewCertificateNumber) {
+		t.Errorf("previewCertificateNumber = %q, want ABK/YYYY/NNNN/NNNNNN", previewCertificateNumber)
+	}
 }
 
 // ---------- tests: latestGradedAt ----------

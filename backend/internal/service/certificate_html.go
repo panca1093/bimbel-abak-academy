@@ -20,8 +20,8 @@ var certificateHTMLTemplate = template.Must(template.New("certificate").Parse(`<
 <style>{{.StyleBlock}}</style>
 </head>
 <body>
-<img class="certificate-bg" src="data:image/png;base64,{{.BackgroundBase64}}" alt="">
-{{range .Fields}}{{if .IsImage}}<img class="field" style="{{.Style}}" src="data:image/png;base64,{{.ImageBase64}}" alt="">
+<img class="certificate-bg" src="data:{{.BackgroundMime}};base64,{{.BackgroundBase64}}" alt="">
+{{range .Fields}}{{if .IsImage}}<img class="field" style="{{.Style}}" src="data:{{.ImageMime}};base64,{{.ImageBase64}}" alt="">
 {{else}}<div class="field" style="{{.Style}}">{{.Text}}</div>
 {{end}}{{end}}<script>{{.Script}}</script>
 </body>
@@ -57,13 +57,30 @@ type certificateFieldView struct {
 	Style       template.CSS
 	Text        string
 	ImageBase64 string
+	ImageMime   string
 }
 
 type certificateHTMLData struct {
 	StyleBlock       template.CSS
 	BackgroundBase64 string
+	BackgroundMime   string
 	Fields           []certificateFieldView
 	Script           template.JS
+}
+
+// fallbackImageMime is what an undecodable image is embedded as. Every built-in
+// background is a PNG, so this only ever applies to a corrupt upload — which
+// would not render under any mime type.
+const fallbackImageMime = "image/png"
+
+// imageMimeOrFallback resolves the real mime of embedded image bytes. Uploads
+// are accepted as any image type (the picker is not restricted to PNG), so
+// hardcoding image/png here would mislabel every JPEG background.
+func imageMimeOrFallback(data []byte) string {
+	if mime, ok := decodeImageMime(data); ok {
+		return mime
+	}
+	return fallbackImageMime
 }
 
 // buildCertificateHTML renders layout+vals+bg+images into self-contained
@@ -88,6 +105,7 @@ func buildCertificateHTML(layout Layout, vals map[FieldID]string, bg []byte, ima
 				IsImage:     true,
 				Style:       imageFieldStyle(f),
 				ImageBase64: base64.StdEncoding.EncodeToString(img),
+				ImageMime:   imageMimeOrFallback(img),
 			})
 			continue
 		}
@@ -104,6 +122,7 @@ func buildCertificateHTML(layout Layout, vals map[FieldID]string, bg []byte, ima
 	data := certificateHTMLData{
 		StyleBlock:       buildCertificateStyleBlock(layout, faces),
 		BackgroundBase64: base64.StdEncoding.EncodeToString(bg),
+		BackgroundMime:   imageMimeOrFallback(bg),
 		Fields:           fields,
 		Script:           certificateFitScript,
 	}

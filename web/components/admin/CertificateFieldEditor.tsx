@@ -60,7 +60,10 @@ function certificateFieldPlaceholders(examTitle: string): Record<string, string>
     completion_text: "for successfully completing",
     exam_title: examTitle,
     date: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
-    certificate_number: "ABK/2026/000000",
+    // Mirrors the backend's previewCertificateNumber — the four-segment shape
+    // AllocateCertificateNumber really produces, so the WYSIWYG box shows the
+    // width the issued number will occupy.
+    certificate_number: "ABK/2026/0000/000000",
   };
 }
 

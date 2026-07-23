@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"time"
 )
 
 // certificateRenderer turns self-contained HTML into rendered PDF bytes.
@@ -16,21 +17,35 @@ type certificateRenderer interface {
 	RenderHTML(ctx context.Context, html []byte) ([]byte, error)
 }
 
+// defaultGotenbergTimeout bounds a single render end-to-end. Production injects
+// http.DefaultClient, which has no timeout of its own, so without this a stalled
+// Gotenberg would hang every certificate and card render indefinitely.
+const defaultGotenbergTimeout = 30 * time.Second
+
 // gotenbergRenderer calls a Gotenberg sidecar's Chromium HTML-to-PDF route
 // directly via net/http + mime/multipart (FR-10: no third-party client lib).
 type gotenbergRenderer struct {
 	url        string
 	httpClient *http.Client
+	// timeout bounds one RenderHTML call, applied as a context deadline so it
+	// covers the response-body read too and holds whatever client is injected.
+	timeout time.Duration
 }
 
 func newGotenbergRenderer(url string, httpClient *http.Client) *gotenbergRenderer {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &gotenbergRenderer{url: url, httpClient: httpClient}
+	return &gotenbergRenderer{url: url, httpClient: httpClient, timeout: defaultGotenbergTimeout}
 }
 
 func (r *gotenbergRenderer) RenderHTML(ctx context.Context, html []byte) ([]byte, error) {
+	if r.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.timeout)
+		defer cancel()
+	}
+
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 

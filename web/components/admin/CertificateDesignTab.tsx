@@ -56,11 +56,11 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
     if (!data || initialized) return;
     setTemplate((data.template as CertificateTemplateOption) ?? "classic");
     setBackgroundUrl(data.background_url ?? null);
-    setBackgroundKey(exam.certificate_background_key ?? null);
+    setBackgroundKey(data.background_key ?? null);
     setSignatureUrl(data.signature_url ?? null);
     setLayout(data.layout);
     setInitialized(true);
-  }, [data, initialized, exam.certificate_background_key]);
+  }, [data, initialized]);
 
   const signatureField = layout?.fields.find((f) => f.id === "signature") ?? null;
   const signatureVisible = signatureField?.visible ?? false;
@@ -275,7 +275,7 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/gif"
                 hidden
                 data-testid="certificate-background-upload-input"
                 onChange={handleFileSelected}
@@ -323,7 +323,7 @@ export function CertificateDesignTab({ examId, exam, onSaved }: CertificateDesig
               <input
                 ref={signatureInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/png,image/jpeg,image/gif"
                 hidden
                 data-testid="certificate-signature-upload-input"
                 onChange={handleSignatureSelected}

@@ -63,7 +63,6 @@ const sampleExam: ExamDetail = {
   id: "exam-1",
   title: "UTS Matematika",
   certificate_template: "custom",
-  certificate_background_key: "certificates/exam-1/old-bg.png",
   tests: [],
 };
 
@@ -75,7 +74,13 @@ describe("CertificateDesignTab", () => {
     mockUpdateDesignMutateAsync.mockReset();
     mockPresignMutateAsync.mockReset();
     certificateDesignState = {
-      data: { template: "classic", background_url: null, signature_url: null, layout: sampleLayout },
+      data: {
+        template: "classic",
+        background_key: null,
+        background_url: null,
+        signature_url: null,
+        layout: sampleLayout,
+      },
       isLoading: false,
       isError: false,
     };
@@ -123,6 +128,7 @@ describe("CertificateDesignTab", () => {
     certificateDesignState = {
       data: {
         template: "classic",
+        background_key: null,
         background_url: "https://cdn.example.com/bg.png",
         signature_url: null,
         layout: layoutWithField,
@@ -173,6 +179,7 @@ describe("CertificateDesignTab", () => {
     certificateDesignState = {
       data: {
         template: "classic",
+        background_key: null,
         background_url: "https://cdn.example.com/bg.png",
         signature_url: null,
         layout: layoutWithField,
@@ -295,9 +302,24 @@ describe("CertificateDesignTab", () => {
     vi.unstubAllGlobals();
   });
 
-  it("pre-fills the background key from the exam even when the background isn't touched", async () => {
+  // Regression: the key used to be read off exam.certificate_background_key, a
+  // column migration 0042 dropped, so saving without touching the background
+  // sent background_key:null and erased the persisted upload.
+  it("round-trips the saved background key when the background isn't touched", async () => {
+    certificateDesignState = {
+      data: {
+        template: "custom",
+        background_key: "certificates/exam-1/old-bg.png",
+        background_url: "https://signed.example.com/old-bg.png",
+        signature_url: null,
+        layout: sampleLayout,
+      },
+      isLoading: false,
+      isError: false,
+    };
     mockUpdateDesignMutateAsync.mockResolvedValue({
-      template: "classic",
+      template: "custom",
+      background_key: "certificates/exam-1/old-bg.png",
       background_url: null,
       layout: sampleLayout,
     });

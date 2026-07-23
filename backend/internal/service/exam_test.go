@@ -2335,6 +2335,38 @@ func TestGetCertificateDesign_Integration_CustomBackground_ReturnsPresignedURLNo
 	if !strings.Contains(*design.BackgroundURL, "X-Amz-Signature") {
 		t.Errorf("expected a presigned URL (X-Amz-Signature query param), got %q", *design.BackgroundURL)
 	}
+	// The editor replaces the design wholesale on save, so the read model must
+	// also hand back the raw key — otherwise a save that never touched the
+	// background sends background_key:null and erases the upload.
+	if design.BackgroundKey == nil {
+		t.Fatal("expected BackgroundKey to be returned so the editor can round-trip it")
+	}
+	if *design.BackgroundKey != key {
+		t.Errorf("BackgroundKey = %q, want %q", *design.BackgroundKey, key)
+	}
+}
+
+// TestGetCertificateDesign_Integration_NoCustomBackground_ReturnsNilKey pins the
+// other half of the round-trip: an exam without an upload must not invent a key.
+func TestGetCertificateDesign_Integration_NoCustomBackground_ReturnsNilKey(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+
+	exam, err := svc.CreateExam(ctx, model.Exam{Title: "No Background Exam " + uniqueSuffix(), CertificateDesign: certDesignJSON("classic")})
+	if err != nil {
+		t.Fatalf("CreateExam: %v", err)
+	}
+
+	design, err := svc.GetCertificateDesign(ctx, exam.ID)
+	if err != nil {
+		t.Fatalf("GetCertificateDesign: %v", err)
+	}
+	if design.BackgroundKey != nil {
+		t.Errorf("BackgroundKey = %q, want nil", *design.BackgroundKey)
+	}
+	if design.BackgroundURL != nil {
+		t.Errorf("BackgroundURL = %q, want nil", *design.BackgroundURL)
+	}
 }
 
 func TestGetCertificatePreviewWithLayout_Integration_InvalidOverride_ReturnsValidationError(t *testing.T) {
