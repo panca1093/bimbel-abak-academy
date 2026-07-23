@@ -925,21 +925,23 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		if err := s.storeRepo.InsertOutboxEvent(ctx, tx, oID, "OrderPaid", payload); err != nil {
 			return CheckoutResult{}, err
 		}
+		// Promo usage settles inside the same transaction as the order it belongs
+		// to. Counting it afterwards can silently lose the increment, and an
+		// under-counted promo lets max_uses admit redemptions beyond its limit;
+		// there is no gateway round-trip here, so nothing forces it outside.
+		if order.PromoCodeID != nil {
+			if err := s.storeRepo.IncrementPromoUsesTx(ctx, tx, *order.PromoCodeID); err != nil {
+				return CheckoutResult{}, err
+			}
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return CheckoutResult{}, err
 		}
 		// Past this point the order is paid and fulfilment is already queued, so
-		// neither of these may fail the call: returning an error here would tell
-		// the student the checkout failed, and their retry would hit a non-cart
-		// order (ErrOrderNotEditable) forever. Both are recorded and moved past —
-		// an under-counted promo use, or a missing sentinel that only costs a
-		// retry its replay, beats a paid order reported as a failure.
-		if order.PromoCodeID != nil {
-			if err := s.storeRepo.IncrementPromoUses(ctx, *order.PromoCodeID); err != nil {
-				slog.Error("free checkout: increment promo uses failed after commit",
-					"order_id", oID, "promo_code_id", *order.PromoCodeID, "error", err)
-			}
-		}
+		// the idempotency cache may not fail the call: returning an error here
+		// would tell the student the checkout failed, and their retry would hit a
+		// non-cart order (ErrOrderNotEditable) forever. A missing sentinel only
+		// costs a retry its replay.
 		if err := s.rdb.Set(ctx, cacheKey, freeCheckoutSentinel, 24*time.Hour).Err(); err != nil {
 			slog.Error("free checkout: cache idempotency sentinel failed after commit",
 				"order_id", oID, "error", err)

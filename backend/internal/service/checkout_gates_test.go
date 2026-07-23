@@ -140,6 +140,67 @@ func TestCheckout_FreeOrder_PostCommitCacheFailureStillSucceeds(t *testing.T) {
 	}
 }
 
+// TestCheckout_FreeOrder_PromoUsageCommitsWithTheOrder pins that a promo-backed
+// free checkout counts its redemption. The count used to be incremented after
+// the transaction committed, where a failure was discarded — an under-counted
+// promo lets max_uses admit redemptions past its limit. The earlier
+// post-commit-failure test never reached this branch because it created no promo.
+func TestCheckout_FreeOrder_PromoUsageCommitsWithTheOrder(t *testing.T) {
+	svc, repo := newCheckoutTestService(t)
+	ctx := context.Background()
+
+	var productID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO product (type, name, price, stock, status)
+		 VALUES ('course', $1, 0, 0, 'published') RETURNING id`,
+		"Promo Free Course "+uuid.New().String(),
+	).Scan(&productID); err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+
+	var promoID string
+	if err := repo.Pool().QueryRow(ctx,
+		`INSERT INTO promo_code (code, discount_percent, max_uses, used_count)
+		 VALUES ($1, 100, 1, 0) RETURNING id`,
+		"FREE"+uniqueSuffix(),
+	).Scan(&promoID); err != nil {
+		t.Fatalf("create promo: %v", err)
+	}
+
+	studentID := insertCheckoutStudent(t, repo, "Promo Student", "promostu_")
+
+	order, _, err := svc.MintCart(ctx, studentID)
+	if err != nil {
+		t.Fatalf("MintCart: %v", err)
+	}
+	if err := svc.AddItem(ctx, studentID, order.ID.String(), productID, 1); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if _, err := repo.Pool().Exec(ctx,
+		`UPDATE orders SET promo_code_id = $1 WHERE id = $2`, promoID, order.ID,
+	); err != nil {
+		t.Fatalf("attach promo to order: %v", err)
+	}
+
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "promo-key-"+uniqueSuffix())
+	if err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+	if !result.Free {
+		t.Error("want result.Free = true for a zero-total order")
+	}
+
+	var usedCount int
+	if err := repo.Pool().QueryRow(ctx,
+		`SELECT used_count FROM promo_code WHERE id = $1`, promoID,
+	).Scan(&usedCount); err != nil {
+		t.Fatalf("read used_count: %v", err)
+	}
+	if usedCount != 1 {
+		t.Errorf("used_count = %d, want 1 — the redemption must be counted", usedCount)
+	}
+}
+
 // TestCheckout_ExamRequiresBiodata verifies a student self-purchasing an exam is
 // blocked until school/class/dob are complete.
 func TestCheckout_ExamRequiresBiodata(t *testing.T) {
