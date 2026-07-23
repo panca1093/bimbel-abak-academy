@@ -2,10 +2,16 @@
 
 // Real-Gotenberg integration test (FR-6 acceptance gate). Excluded from the
 // default suite by the gotenberg_integration build tag, so plain
-// `go test ./...` never touches it. Run it against a live Gotenberg with:
+// `go test ./...` never touches it. CI runs it as its own job — see
+// deploy/pipeline/backend-render-gate.sh.
 //
-//	GOTENBERG_URL=http://localhost:3001 \
-//	  go test -tags gotenberg_integration -run TestCertificateRender_RealGotenberg ./internal/service/
+// It starts its own Gotenberg container (same testcontainers idiom as the
+// Postgres-backed tests), so no setup is needed:
+//
+//	go test -tags gotenberg_integration -run TestCertificateRender_RealGotenberg ./internal/service/
+//
+// Set GOTENBERG_URL to point at an already-running instance instead — e.g.
+// GOTENBERG_URL=http://localhost:3001 for the deploy/docker-compose.yml sidecar.
 //
 // Set CERT_SAMPLE_OUT=/path/to/sample.pdf to also dump the rendered PDF for the
 // visual acceptance check (page count, orientation, fonts, background, field
@@ -19,12 +25,44 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
+
+// gotenbergTestImage is pinned to the same major the deploy compose file runs,
+// so the gate exercises what production actually renders against.
+const gotenbergTestImage = "gotenberg/gotenberg:8"
+
+// startGotenberg brings up a throwaway Gotenberg and returns its base URL.
+func startGotenberg(t *testing.T) string {
+	t.Helper()
+	ctx := context.Background()
+
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        gotenbergTestImage,
+			ExposedPorts: []string{"3000/tcp"},
+			WaitingFor:   wait.ForHTTP("/health").WithPort("3000/tcp").WithStartupTimeout(2 * time.Minute),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("start gotenberg container: %v", err)
+	}
+	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
+
+	endpoint, err := container.PortEndpoint(ctx, "3000/tcp", "http")
+	if err != nil {
+		t.Fatalf("gotenberg endpoint: %v", err)
+	}
+	return endpoint
+}
 
 func TestCertificateRender_RealGotenberg(t *testing.T) {
 	url := os.Getenv("GOTENBERG_URL")
 	if url == "" {
-		t.Skip("GOTENBERG_URL not set — skipping real-Gotenberg integration test")
+		url = startGotenberg(t)
 	}
 
 	const tmpl = "classic"
