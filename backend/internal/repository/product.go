@@ -20,7 +20,7 @@ func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) err
 	var weightGrams *int
 	err := row.Scan(
 		&p.ID, &p.Type, &p.Name, &description, &p.Price, &p.Stock, &p.Status,
-		&weightGrams, &imageURL, &p.CreatedAt, &p.UpdatedAt,
+		&weightGrams, &imageURL, &p.AvailableFrom, &p.AvailableUntil, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -37,6 +37,11 @@ func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) err
 	return nil
 }
 
+// productAvailabilityFilter is the SQL predicate that restricts the public
+// catalog to products currently inside their availability window (P-A).
+const productAvailabilityFilter = ` AND (available_from IS NULL OR available_from <= now())` +
+	` AND (available_until IS NULL OR available_until >= now())`
+
 type ProductFilter struct {
 	Type       string
 	Status     string
@@ -47,10 +52,10 @@ type ProductFilter struct {
 
 func (r *Repository) CreateProduct(ctx context.Context, p *model.Product) error {
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, available_from, available_until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL,
+		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, p.AvailableFrom, p.AvailableUntil,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	return err
 }
@@ -58,7 +63,7 @@ func (r *Repository) CreateProduct(ctx context.Context, p *model.Product) error 
 func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Product, error) {
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
-		`SELECT id, type, name, description, price, stock, status, weight_grams, image_url, created_at, updated_at
+		`SELECT id, type, name, description, price, stock, status, weight_grams, image_url, available_from, available_until, created_at, updated_at
 		FROM product
 		WHERE id = $1`,
 		id,
@@ -79,10 +84,12 @@ func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
 		`SELECT p.id, p.type, p.name, p.description, p.price, p.stock, p.status,
-		        p.weight_grams, p.image_url, p.created_at, p.updated_at
+		        p.weight_grams, p.image_url, p.available_from, p.available_until, p.created_at, p.updated_at
 		 FROM product p
 		 JOIN product_exam pe ON pe.product_id = p.id
-		 WHERE pe.exam_id = $1 AND p.type = 'exam' AND p.status = 'published'`,
+		 WHERE pe.exam_id = $1 AND p.type = 'exam' AND p.status = 'published'
+		   AND (p.available_from IS NULL OR p.available_from <= now())
+		   AND (p.available_until IS NULL OR p.available_until >= now())`,
 		examID,
 	), p)
 	if err != nil {
@@ -100,7 +107,7 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	}
 
 	products := []model.Product{}
-	query := `SELECT id, type, name, description, price, stock, status, weight_grams, image_url, created_at, updated_at
+	query := `SELECT id, type, name, description, price, stock, status, weight_grams, image_url, available_from, available_until, created_at, updated_at
 	FROM product WHERE 1=1`
 	args := []interface{}{}
 	argIdx := 1
@@ -116,8 +123,9 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 		argIdx++
 	}
 	if filter.VisibleOnly {
-		// public catalog: published and not hidden
+		// public catalog: published and within the availability window
 		query += ` AND status = 'published'`
+		query += productAvailabilityFilter
 	}
 	if filter.Cursor != "" {
 		query += fmt.Sprintf(` AND id > $%d`, argIdx)
@@ -157,9 +165,9 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 func (r *Repository) UpdateProduct(ctx context.Context, id string, p *model.Product) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE product
-		SET type = $1, name = $2, description = $3, price = $4, stock = $5, status = $6, weight_grams = $7, image_url = $8, updated_at = now()
-		WHERE id = $9`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, id,
+		SET type = $1, name = $2, description = $3, price = $4, stock = $5, status = $6, weight_grams = $7, image_url = $8, available_from = $9, available_until = $10, updated_at = now()
+		WHERE id = $11`,
+		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, p.AvailableFrom, p.AvailableUntil, id,
 	)
 	return err
 }
@@ -167,9 +175,9 @@ func (r *Repository) UpdateProduct(ctx context.Context, id string, p *model.Prod
 func (r *Repository) UpdateProductTx(ctx context.Context, tx pgx.Tx, id string, p *model.Product) error {
 	_, err := tx.Exec(ctx,
 		`UPDATE product
-		SET type = $1, name = $2, description = $3, price = $4, stock = $5, status = $6, weight_grams = $7, image_url = $8, updated_at = now()
-		WHERE id = $9`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, id,
+		SET type = $1, name = $2, description = $3, price = $4, stock = $5, status = $6, weight_grams = $7, image_url = $8, available_from = $9, available_until = $10, updated_at = now()
+		WHERE id = $11`,
+		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, p.AvailableFrom, p.AvailableUntil, id,
 	)
 	return err
 }
@@ -219,10 +227,10 @@ func (r *Repository) ReplaceProductCourses(ctx context.Context, tx pgx.Tx, produ
 // CreateProductWithCourses inserts a product and its product_course links in one transaction.
 func (r *Repository) CreateProductWithCourses(ctx context.Context, tx pgx.Tx, p *model.Product, courseIDs []uuid.UUID) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, available_from, available_until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL,
+		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, p.AvailableFrom, p.AvailableUntil,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return err
@@ -265,10 +273,10 @@ func (r *Repository) ReplaceProductExams(ctx context.Context, tx pgx.Tx, product
 // mirroring CreateProductWithCourses.
 func (r *Repository) CreateProductWithExams(ctx context.Context, tx pgx.Tx, p *model.Product, examIDs []uuid.UUID) error {
 	err := tx.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, available_from, available_until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL,
+		p.Type, p.Name, p.Description, p.Price, p.Stock, p.Status, p.WeightGrams, p.ImageURL, p.AvailableFrom, p.AvailableUntil,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return err

@@ -25,7 +25,6 @@ type Order struct {
 	PaymentExpiresAt      *time.Time  `json:"payment_expires_at"`
 	PaidAt                *time.Time  `json:"paid_at"`
 	InvoiceURL            string      `json:"invoice_url"`
-	EstimatedDeliveryDays string      `json:"estimated_delivery_days"`
 	CheckedOutAt          *time.Time  `json:"checked_out_at"`
 	CompletedAt           *time.Time  `json:"completed_at"`
 	CancelledAt           *time.Time  `json:"cancelled_at"`
